@@ -439,7 +439,72 @@ class ConfigService extends EventTarget {
     this.touchModelAsRecentlyUsed(provider, modelId);
     this.saveAppConfig();
   }
+
+  // ==========================================================================
+  // 6. Pi Package Catalog 扩展组件管理
+  // ==========================================================================
+
+  /**
+   * 搜索与获取官网组件目录
+   * @param {string|null} query
+   * @param {string|null} pkgType
+   * @param {string|null} sort
+   * @param {number|null} page
+   * @returns {Promise<{packages: Array, page: number, totalCount: number, totalPages: number, hasMore: boolean}>}
+   */
+  async searchPackages(query = null, pkgType = null, sort = null, page = 1) {
+    return this.invoke("pi_search_packages", {
+      query: query || null,
+      pkgType: pkgType || null,
+      sort: sort || null,
+      page: page || 1,
+    });
+  }
+
+  /**
+   * 获取本地已安装的扩展组件列表
+   * @returns {Promise<Array<{name: string, version: string, description: string, source: string}>>}
+   */
+  async getInstalledPackages() {
+    return this.invoke("pi_get_installed_packages");
+  }
+
+  /**
+   * 安装指定组件
+   * @param {string} packageName
+   * @returns {Promise<string>}
+   */
+  async installPackage(packageName) {
+    return this.invoke("pi_install_package", { packageName });
+  }
+
+  /**
+   * 卸载指定组件
+   * @param {string} packageName
+   * @returns {Promise<string>}
+   */
+  async uninstallPackage(packageName) {
+    return this.invoke("pi_uninstall_package", { packageName });
+  }
+
+  /**
+   * 批量检查已安装组件的最新版本更新
+   * @returns {Promise<Array<{name: string, currentVersion: string, latestVersion: string, hasUpdate: boolean}>>}
+   */
+  async checkPackageUpdates() {
+    return this.invoke("pi_check_package_updates");
+  }
+
+  /**
+   * 更新指定组件
+   * @param {string} packageName
+   * @returns {Promise<string>}
+   */
+  async updatePackage(packageName) {
+    return this.invoke("pi_update_package", { packageName });
+  }
 }
 
 export const configService = new ConfigService();
+
 

@@ -22,11 +22,13 @@
 - 🎨 **全域手绘工程草图 SVG 矢量图元体系**：项目前端彻底清除所有系统默认 Emoji 符号，统一设计并内联 20 款手绘草图风格 SVG 矢量图元（`src/assets/svg/`），配合 `currentColor` 严格实现浅色（素描绘图纸）与深色（炭黑素描黑板）双模毫秒级自适应；
 - 📜 **隐藏式极简滚动条体系**：全域消除上下图标与滚动槽，常态为 4px 隐匿窄竖条，悬浮可滚动内容区不高亮，仅鼠标移入滚动条本身范围时自适应放大至 6px 并高亮加深；
 - 📐 **手绘草图质感自定义下拉框 (Pop-Shake)**：封装 `SketchSelect` 组件，展开时触发迅速轻快的弹出微抖动动画（Pop & Micro-Shake，约 180ms 快速回弹），边框、底色、字色完美适配纸质与黑板双模，双向同步原生 `<select>` 数据与事件；
-- ⚡ **高性能纯 Rust (Tauri 2) 四大后端子系统**：
+- ⚡ **高性能纯 Rust (Tauri 2) 六大后端子系统**：
   - 🛡️ **`pi_runner` (进程监督与孤儿收割)**：Windows 原生 Win32 Job Object 内核级级联收割，杜绝僵尸进程；严格 `\n` (LF) 字节流分帧器；滑动窗口崩溃自愈（30s 内超 2 次熔断保护）；
+  - 🧩 **`package_manager` (官方组件市场与生命周期)**：连通 Pi 官方 Package Catalog (pi.dev/packages)，基于轻量正则解析与 15min TTL 缓存提取结构化组件；精确探测本地已安装组件及版本；内置全局单任务互斥锁（Mutex）与 FIFO 异步任务队列，支持批量连续点击加入队列并自动按序出队执行；调用 `pi install/remove npm:<pkg> -a` 执行非阻塞安装与卸载；并发查询 npm registry API 进行 SemVer 版本比对与一键更新；
   - 🔒 **`security` (正则数据脱敏中间件)**：过滤 API Key / Token / 凭据并脱敏本地私有路径为 `[USER_HOME]`；
   - 🔄 **`version_watcher` (抗抖动版本监测引擎)**：启动延迟 30s 自检，6h 周期轮询带 ±8% Jitter 随机抖动与 15s Watchdog 超时熔断；
   - 📁 **`session` (并发内存索引与监听)**：基于 `DashMap` 并发内存缓存与 `notify` 监听 `~/.pi/sessions/`，实现毫秒级会话检索与分支树导航；
+  - ⚙️ **`config_manager` (配置管理与目录映射)**：双向管理 `~/.pi-dl/config.json` 及 `~/.pi/agent/` 下的 `auth.json`、`models.json`、`settings.json`；
 - ⚙️ **工程级独立设置全页面与模型配置系统 (Settings View)**：
   - 🖥️ **独立全页面视图 (非浮窗)**：作为与详细版/专注版/Flow版平级的独立全屏视图，右上角操作指引（“**提示：在任意位置点击鼠标右键或按 Esc 即可快速回退**”）进入后 3 秒自动平滑渐隐；
   - 📐 **主界面统一配色与非嵌套线框设计**：设置界面配色与主界面完全统一，去除所有高饱和鲜艳颜色，统一采用低饱和度功能色；严格减少层叠 Panel 卡片与胶囊 Tips，外层采用标准细边框（`var(--sketch-border-subtle)`）包裹，内部采用透明底色；
@@ -36,7 +38,8 @@
   - 🛠️ **两步式自定义通道配置与规范吸附**：
     - **步骤 1（新增/配置运营商）**：配置 Provider ID、接口类型（支持 `openai-completions` (OpenAI Chat / 聚合代理 / 硅基 / 火山 / DeepSeek)、`openai-responses` (OpenAI Responses API / Azure)、`anthropic-messages`、`google-generative-ai`、`ollama`）、Base URL、API Key 及 developer role / reasoning 兼容参数；
     - **步骤 2（运营商配置修改与模型管理）**：在各运营商卡片内**支持一键修改运营商配置 (API 类型/URL/Key/兼容开关)**、新增与编辑挂载模型（模型 ID、显示名称、上下文窗口、输出上限及思考能力），**新增模型时思考推理选项默认勾选，输出上限输入任意数字在回车/失焦/保存时自动吸附匹配最接近的标准 Token 规范值**，**自动映射写入 `~/.pi/agent/models.json`** 并同步加入当前模型列表；
-  - 🖥️ **宿主内核与会话管理**：支持 Pi 宿主状态监控、一键重启 Host、版本更新检查及历史会话检索切换。
+  - 🧩 **内核与扩展组件管理 (`Package Catalog & Kernel Runtime`)**：顶部集成底层 Pi 内核状态监控、软件版本与一键重启/更新检查；连通 Pi 官方 Package Catalog，支持按关键词、类型（extension/skill/theme/prompt）与热度排序检索，折叠展示本地已安装扩展列表，提供多阶段手绘草图进度条（解析 ➔ npm下载 ➔ 解压编译 ➔ 写入注册），支持一键安装、批量检查更新、单包更新与卸载；
+  - 📁 **会话历史管理**：支持历史会话列表展示、新建会话与毫秒级会话切换。
 - 🔄 **全域右键“返回上一步 (Step Back)”层级流水线**：
   - 在任意位置点击右键：退出设置全屏视图 ➔ `Flow (界面3, 触发 abort 中止)` ➔ 回退至 `专注版 (界面2)` ➔ 回退至 `详细版 (界面1)` ➔ 输入框失焦/清空；
 
@@ -430,6 +433,8 @@ pi-desktop-lite/
 │   └── src/
 │       ├── lib.rs              # Tauri 状态初始化、命令注册、事件广播与托盘集成
 │       ├── main.rs             # 程序主入口
+│       ├── config_manager.rs   # [核心] 配置管理与目录映射
+│       ├── package_manager/    # [核心] 官网组件市场检索、安装/卸载与版本更新子系统
 │       ├── pi_runner/          # [核心] 进程管理、Win32 Job Object 孤儿收割、严格 LF 分帧器、Inner-Skills 动态注入引擎
 │       ├── security/           # [核心] 正则脱敏中间件 (API Key / 用户隐私路径自动脱敏)
 │       ├── session/            # [核心] DashMap 内存会话索引与 notify 增量文件监视

@@ -271,6 +271,12 @@ window.addEventListener("DOMContentLoaded", () => {
         tabPanes.forEach((pane) => {
           if (pane.id === `pane-${targetTab.replace("tab-", "")}`) {
             pane.classList.add("active");
+            if (targetTab === "tab-packages") {
+              if (typeof loadInstalledPackages === "function") loadInstalledPackages();
+              if (typeof loadCatalogPackages === "function" && !hasLoadedCatalogOnce) {
+                loadCatalogPackages(1);
+              }
+            }
           } else {
             pane.classList.remove("active");
           }
@@ -331,6 +337,10 @@ window.addEventListener("DOMContentLoaded", () => {
     loadModelsAndState();
     loadOfficialProvidersConfig();
     loadCustomProvidersConfig();
+    loadInstalledPackages();
+    if (!hasLoadedCatalogOnce) {
+      loadCatalogPackages(1);
+    }
   };
 
   const closeSettingsView = () => {
@@ -1278,7 +1288,7 @@ window.addEventListener("DOMContentLoaded", () => {
   loadModelsAndState();
 
   // ==========================================================================
-  // 6. 宿主与版本控制逻辑
+  // 6. 内核与版本控制逻辑
   // ==========================================================================
   const updateHostUI = (statusPayload) => {
     const status = typeof statusPayload === "string" ? statusPayload : statusPayload?.status || "ready";
@@ -2098,13 +2108,732 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      if (currentView === VIEW_SETTINGS) {
-        closeSettingsView();
+  // ==========================================================================
+  // 8. 扩展组件管理与 Package Catalog 市场 (Installed & Catalog Market)
+  // ==========================================================================
+  const installedPackagesWrapper = document.getElementById("installed-packages-wrapper");
+  const installedSectionToggle = document.getElementById("installed-section-toggle");
+  const installedPackagesCount = document.getElementById("installed-packages-count");
+  const installedPackagesList = document.getElementById("installed-packages-list");
+  const btnCheckAllPackageUpdates = document.getElementById("btn-check-all-package-updates");
+
+  const packagesSearchInput = document.getElementById("packages-search-input");
+  const btnClearPackageSearch = document.getElementById("btn-clear-package-search");
+  const packagesTypeSelect = document.getElementById("packages-type-select");
+  const packagesSortSelect = document.getElementById("packages-sort-select");
+  const btnSearchPackages = document.getElementById("btn-search-packages");
+
+  const packagesTotalInfo = document.getElementById("packages-total-info");
+  const packagesCatalogGrid = document.getElementById("packages-catalog-grid");
+  const packagesPagination = document.getElementById("packages-pagination");
+  const btnPackagesPrevPage = document.getElementById("btn-packages-prev-page");
+  const btnPackagesNextPage = document.getElementById("btn-packages-next-page");
+  const packagesPageIndicator = document.getElementById("packages-page-indicator");
+
+  const packageProgressFloatCard = document.getElementById("package-progress-float-card");
+  const packageProgressTitle = document.getElementById("package-progress-title");
+  const packageProgressPkgName = document.getElementById("package-progress-pkg-name");
+  const packageProgressPercent = document.getElementById("package-progress-percent");
+  const packageProgressFill = document.getElementById("package-progress-fill");
+  const packageProgressMessage = document.getElementById("package-progress-message");
+  const packageQueueBadge = document.getElementById("package-queue-badge");
+  const btnClosePackageProgress = document.getElementById("btn-close-package-progress");
+
+  let installedPackages = [];
+  let packageUpdatesMap = new Map(); // packageName -> { latestVersion, hasUpdate }
+  let packageOperationMap = new Map(); // packageName -> 'installing' | 'uninstalling' | 'updating'
+  let packageProgressMap = new Map(); // packageName -> { stage, percent, message }
+
+  // 扩展任务队列：FIFO 顺序执行安装、更新与卸载，保证互斥不冲突
+  let packageTaskQueue = []; // Array<{ id: string, packageName: string, action: 'install' | 'uninstall' | 'update' }>
+  let currentRunningTask = null;
+  let isProcessingQueue = false;
+
+  let currentCatalogPage = 1;
+  let currentCatalogResult = null;
+  let hasLoadedCatalogOnce = false;
+  let floatCardDismissTimer = null;
+
+  // 队列状态查询辅助函数
+  const isPackageRunning = (pkgName) => {
+    return (
+      currentRunningTask !== null &&
+      currentRunningTask.packageName.toLowerCase() === pkgName.toLowerCase()
+    );
+  };
+
+  const getPackageQueueIndex = (pkgName) => {
+    return packageTaskQueue.findIndex(
+      (t) => t.packageName.toLowerCase() === pkgName.toLowerCase()
+    );
+  };
+
+  const isPackageInQueue = (pkgName) => {
+    return getPackageQueueIndex(pkgName) !== -1;
+  };
+
+  const isPackageBusy = (pkgName) => {
+    return isPackageRunning(pkgName) || isPackageInQueue(pkgName);
+  };
+
+  if (btnClosePackageProgress && packageProgressFloatCard) {
+    btnClosePackageProgress.addEventListener("click", () => {
+      if (floatCardDismissTimer) clearTimeout(floatCardDismissTimer);
+      packageProgressFloatCard.classList.add("hidden");
+      packageProgressFloatCard.classList.remove("fade-out");
+    });
+  }
+
+  // 更新进度条 UI (浮动卡片 + 卡片内部实时同步)
+  const updatePackageProgressUI = (payload) => {
+    if (!payload || !payload.packageName) return;
+    const { packageName, stage, percent, message } = payload;
+    const cleanPercent = Math.min(100, Math.max(0, Number(percent) || 0));
+
+    packageProgressMap.set(packageName, {
+      stage,
+      percent: cleanPercent,
+      message: message || "",
+    });
+
+    if (packageProgressFloatCard) {
+      if (floatCardDismissTimer) clearTimeout(floatCardDismissTimer);
+      packageProgressFloatCard.classList.remove("hidden", "fade-out");
+
+      if (packageProgressTitle) {
+        if (stage === "uninstalling" || stage === "uninstalled") {
+          packageProgressTitle.textContent = "正在卸载";
+        } else if (stage === "updating") {
+          packageProgressTitle.textContent = "正在更新";
+        } else {
+          packageProgressTitle.textContent = "正在安装";
+        }
+      }
+
+      if (packageProgressPkgName) packageProgressPkgName.textContent = packageName;
+      if (packageProgressPercent) packageProgressPercent.textContent = `${cleanPercent}%`;
+      if (packageProgressFill) packageProgressFill.style.width = `${cleanPercent}%`;
+      if (packageProgressMessage) packageProgressMessage.textContent = message || "";
+
+      // 实时更新队列提示徽章
+      if (packageQueueBadge) {
+        if (packageTaskQueue.length > 0) {
+          packageQueueBadge.textContent = `队列待执行: ${packageTaskQueue.length}`;
+          packageQueueBadge.classList.remove("hidden");
+        } else {
+          packageQueueBadge.classList.add("hidden");
+        }
+      }
+
+      // 当单项任务结束且队列为空时，平滑渐隐
+      if (
+        (stage === "completed" || stage === "uninstalled" || stage === "error") &&
+        packageTaskQueue.length === 0
+      ) {
+        floatCardDismissTimer = setTimeout(() => {
+          packageProgressFloatCard.classList.add("fade-out");
+          setTimeout(() => {
+            packageProgressFloatCard.classList.add("hidden");
+            packageProgressFloatCard.classList.remove("fade-out");
+          }, 350);
+        }, 1800);
       }
     }
-  });
+
+    renderInstalledPackages();
+    if (currentCatalogResult?.packages) {
+      renderCatalogGrid(currentCatalogResult.packages);
+    }
+  };
+
+  // 监听 Tauri 派发的 package-progress 事件
+  if (window.__TAURI__?.event?.listen) {
+    try {
+      window.__TAURI__.event.listen("package-progress", (event) => {
+        if (event.payload) {
+          updatePackageProgressUI(event.payload);
+        }
+      });
+    } catch (e) {
+      console.warn("[PackageManager] Failed to register package-progress listener:", e);
+    }
+  }
+
+  // 折叠/展开已安装列表
+  if (installedSectionToggle && installedPackagesWrapper) {
+    installedSectionToggle.addEventListener("click", () => {
+      const isCollapsed = installedPackagesWrapper.classList.toggle("collapsed");
+      installedSectionToggle.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
+    });
+  }
+
+  // 加载已安装组件
+  const loadInstalledPackages = async () => {
+    try {
+      const list = await configService.getInstalledPackages();
+      installedPackages = Array.isArray(list) ? list : [];
+      if (installedPackagesCount) {
+        installedPackagesCount.textContent = installedPackages.length.toString();
+      }
+      renderInstalledPackages();
+      if (currentCatalogResult && currentCatalogResult.packages) {
+        renderCatalogGrid(currentCatalogResult.packages);
+      }
+    } catch (err) {
+      console.warn("[PackageManager] Failed to load installed packages:", err);
+    }
+  };
+
+  // 渲染已安装组件列表
+  const renderInstalledPackages = () => {
+    if (!installedPackagesList) return;
+
+    if (!installedPackages || installedPackages.length === 0) {
+      installedPackagesList.innerHTML = `<div class="packages-empty-hint">暂未安装任何扩展组件。可在下方市场中搜索并一键安装。</div>`;
+      return;
+    }
+
+    installedPackagesList.innerHTML = "";
+    installedPackages.forEach((pkg) => {
+      const item = document.createElement("div");
+      item.className = "installed-package-item";
+
+      const updateInfo = packageUpdatesMap.get(pkg.name);
+      const isRunning = isPackageRunning(pkg.name);
+      const isQueued = isPackageInQueue(pkg.name);
+      const progress = packageProgressMap.get(pkg.name);
+
+      const verBadgeClass = updateInfo?.hasUpdate ? "installed-pkg-ver update-available" : "installed-pkg-ver";
+      const verText = updateInfo?.hasUpdate
+        ? `v${pkg.version} → v${updateInfo.latestVersion}`
+        : `v${pkg.version}`;
+
+      let actionsHtml = "";
+      if (isRunning && progress) {
+        actionsHtml = `
+          <div class="card-progress-wrap" style="min-width: 140px;">
+            <div class="card-progress-labels">
+              <span class="card-progress-msg" title="${escapeHtml(progress.message)}">${escapeHtml(progress.message)}</span>
+              <span class="card-progress-pct">${progress.percent}%</span>
+            </div>
+            <div class="sketch-progress-track">
+              <div class="sketch-progress-fill" style="width: ${progress.percent}%;"></div>
+            </div>
+          </div>
+        `;
+      } else if (isQueued) {
+        const queuePos = getPackageQueueIndex(pkg.name) + 1;
+        actionsHtml = `
+          <button type="button" class="flat-btn flat-btn-secondary mini btn-queue-cancel" data-name="${escapeHtml(pkg.name)}" title="点击取消卸载排队">
+            <span class="thinking-dot"></span> 卸载排队中 (#${queuePos})
+          </button>
+        `;
+      } else {
+        actionsHtml = `
+          ${
+            updateInfo?.hasUpdate
+              ? `<button type="button" class="flat-btn flat-btn-primary mini btn-update-pkg" data-name="${escapeHtml(pkg.name)}">
+                   更新
+                 </button>`
+              : ""
+          }
+          <button type="button" class="flat-btn flat-btn-secondary mini btn-uninstall-pkg" data-name="${escapeHtml(pkg.name)}" title="卸载组件" aria-label="卸载组件">
+            卸载
+          </button>
+        `;
+      }
+
+      item.innerHTML = `
+        <div class="installed-pkg-info">
+          <div class="installed-pkg-header">
+            <span class="installed-pkg-name">${escapeHtml(pkg.name)}</span>
+            <span class="${verBadgeClass}">${escapeHtml(verText)}</span>
+          </div>
+          ${pkg.description ? `<p class="installed-pkg-desc">${escapeHtml(pkg.description)}</p>` : ""}
+        </div>
+        <div class="installed-pkg-actions">
+          ${actionsHtml}
+        </div>
+      `;
+
+      // 绑定卸载
+      const btnUninstall = item.querySelector(".btn-uninstall-pkg");
+      if (btnUninstall) {
+        btnUninstall.addEventListener("click", (e) => {
+          e.stopPropagation();
+          handleUninstallPackage(pkg.name);
+        });
+      }
+
+      // 绑定更新
+      const btnUpdate = item.querySelector(".btn-update-pkg");
+      if (btnUpdate) {
+        btnUpdate.addEventListener("click", (e) => {
+          e.stopPropagation();
+          handleUpdatePackage(pkg.name);
+        });
+      }
+
+      // 绑定取消排队
+      const btnCancel = item.querySelector(".btn-queue-cancel");
+      if (btnCancel) {
+        btnCancel.addEventListener("click", (e) => {
+          e.stopPropagation();
+          cancelQueuedPackageTask(pkg.name);
+        });
+      }
+
+      installedPackagesList.appendChild(item);
+    });
+  };
+
+  // 加载官网组件市场
+  const loadCatalogPackages = async (page = 1) => {
+    if (!packagesCatalogGrid) return;
+    currentCatalogPage = page;
+
+    if (packagesTotalInfo) {
+      packagesTotalInfo.textContent = "正在从 pi.dev 获取官方组件目录...";
+    }
+
+    packagesCatalogGrid.innerHTML = `
+      <div class="packages-empty-hint" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+        <span class="thinking-dot"></span>
+        <span>加载官方组件目录中...</span>
+      </div>
+    `;
+
+    try {
+      const query = packagesSearchInput?.value?.trim() || "";
+      const pkgType = packagesTypeSelect?.value || "";
+      const sort = packagesSortSelect?.value || "downloads";
+
+      const res = await configService.searchPackages(query, pkgType, sort, page);
+      if (!res || !Array.isArray(res.packages)) {
+        if (packagesTotalInfo) {
+          packagesTotalInfo.textContent = "未能获取官方组件数据";
+        }
+        packagesCatalogGrid.innerHTML = `<div class="packages-empty-hint">未能获取到官方组件数据，请检查网络连接后重试</div>`;
+        return;
+      }
+
+      currentCatalogResult = res;
+      hasLoadedCatalogOnce = true;
+
+      if (packagesTotalInfo) {
+        if (res.totalCount === 0) {
+          packagesTotalInfo.textContent = "未找到符合条件的组件";
+        } else {
+          packagesTotalInfo.textContent = `共找到 ${res.totalCount} 个组件 (第 ${res.page} / ${res.totalPages} 页)`;
+        }
+      }
+
+      renderCatalogGrid(res.packages);
+
+      // 分页器处理
+      if (packagesPagination) {
+        if (res.totalPages > 1) {
+          packagesPagination.classList.remove("hidden");
+          if (packagesPageIndicator) {
+            packagesPageIndicator.textContent = `第 ${res.page} / ${res.totalPages} 页`;
+          }
+          if (btnPackagesPrevPage) {
+            btnPackagesPrevPage.disabled = res.page <= 1;
+          }
+          if (btnPackagesNextPage) {
+            btnPackagesNextPage.disabled = !res.hasMore;
+          }
+        } else {
+          packagesPagination.classList.add("hidden");
+        }
+      }
+    } catch (err) {
+      console.error("[PackageManager] Failed to search catalog:", err);
+      if (packagesTotalInfo) {
+        packagesTotalInfo.textContent = "组件目录加载失败";
+      }
+      packagesCatalogGrid.innerHTML = `
+        <div class="packages-empty-hint" style="color: #ef4444;">
+          获取官方组件失败：${escapeHtml(err?.toString() || "网络错误")}
+        </div>
+      `;
+    }
+  };
+
+  // 检查某个包是否已安装
+  const isPackageInstalled = (pkgName) => {
+    const cleanName = pkgName.toLowerCase().replace(/^npm:/, "");
+    return installedPackages.some(
+      (p) => p.name.toLowerCase() === cleanName || p.name.toLowerCase() === `npm:${cleanName}`
+    );
+  };
+
+  // 渲染市场卡片网格
+  const renderCatalogGrid = (packages) => {
+    if (!packagesCatalogGrid) return;
+
+    if (!packages || packages.length === 0) {
+      packagesCatalogGrid.innerHTML = `<div class="packages-empty-hint">暂无匹配的组件，请尝试更换关键词或类型筛选</div>`;
+      return;
+    }
+
+    packagesCatalogGrid.innerHTML = "";
+
+    packages.forEach((pkg) => {
+      const card = document.createElement("article");
+      card.className = "package-card";
+
+      const isInstalled = isPackageInstalled(pkg.name);
+      const isRunning = isPackageRunning(pkg.name);
+      const isQueued = isPackageInQueue(pkg.name);
+      const updateInfo = packageUpdatesMap.get(pkg.name);
+      const progress = packageProgressMap.get(pkg.name);
+
+      let actionBtnHtml = "";
+      if (isRunning && progress) {
+        actionBtnHtml = `
+          <div class="card-progress-wrap" style="min-width: 140px;">
+            <div class="card-progress-labels">
+              <span class="card-progress-msg" title="${escapeHtml(progress.message)}">${escapeHtml(progress.message)}</span>
+              <span class="card-progress-pct">${progress.percent}%</span>
+            </div>
+            <div class="sketch-progress-track">
+              <div class="sketch-progress-fill" style="width: ${progress.percent}%;"></div>
+            </div>
+          </div>
+        `;
+      } else if (isQueued) {
+        const queuePos = getPackageQueueIndex(pkg.name) + 1;
+        actionBtnHtml = `<button type="button" class="flat-btn flat-btn-secondary mini btn-queue-cancel" data-name="${escapeHtml(pkg.name)}" title="点击取消排队"><span class="thinking-dot"></span> 排队中 (#${queuePos})</button>`;
+      } else if (isInstalled && updateInfo?.hasUpdate) {
+        actionBtnHtml = `<button type="button" class="flat-btn flat-btn-primary mini package-card-btn-action btn-catalog-update" data-name="${escapeHtml(pkg.name)}">更新到 v${escapeHtml(updateInfo.latestVersion)}</button>`;
+      } else if (isInstalled) {
+        actionBtnHtml = `<button type="button" class="flat-btn flat-btn-secondary mini package-card-btn-action" disabled style="opacity: 0.6; display: inline-flex; align-items: center; gap: 4px;"><span class="btn-icon">${ICONS.check}</span> 已安装</button>`;
+      } else {
+        actionBtnHtml = `<button type="button" class="flat-btn flat-btn-primary mini package-card-btn-action btn-catalog-install" data-name="${escapeHtml(pkg.name)}">+ 一键安装</button>`;
+      }
+
+      const linksHtml = [];
+      if (pkg.npmUrl) {
+        linksHtml.push(`<a href="${escapeHtml(pkg.npmUrl)}" target="_blank" rel="noreferrer" class="package-link-icon" title="在 npm 查看">npm</a>`);
+      }
+      if (pkg.repoUrl) {
+        linksHtml.push(`<a href="${escapeHtml(pkg.repoUrl)}" target="_blank" rel="noreferrer" class="package-link-icon" title="查看源码仓库">repo</a>`);
+      }
+
+      card.innerHTML = `
+        <div class="package-card-top">
+          <div class="package-card-header">
+            <h4 class="package-card-name">${escapeHtml(pkg.name)}</h4>
+            <span class="package-type-badge" data-type="${escapeHtml(pkg.pkgType)}">${escapeHtml(pkg.pkgType)}</span>
+          </div>
+          ${pkg.description ? `<p class="package-card-desc" title="${escapeHtml(pkg.description)}">${escapeHtml(pkg.description)}</p>` : ""}
+          <div class="package-card-meta">
+            ${pkg.author ? `<span class="package-meta-item">👤 ${escapeHtml(pkg.author)}</span>` : ""}
+            ${pkg.downloadsFormatted ? `<span class="package-meta-item">⬇️ ${escapeHtml(pkg.downloadsFormatted)}</span>` : ""}
+            ${pkg.timeAgo ? `<span class="package-meta-item">🕒 ${escapeHtml(pkg.timeAgo)}</span>` : ""}
+          </div>
+        </div>
+        <div class="package-card-footer">
+          <div class="package-card-links">
+            ${linksHtml.join("")}
+          </div>
+          ${actionBtnHtml}
+        </div>
+      `;
+
+      // 绑定安装事件
+      const btnInstall = card.querySelector(".btn-catalog-install");
+      if (btnInstall) {
+        btnInstall.addEventListener("click", (e) => {
+          e.stopPropagation();
+          handleInstallPackage(pkg.name);
+        });
+      }
+
+      // 绑定更新事件
+      const btnUpdate = card.querySelector(".btn-catalog-update");
+      if (btnUpdate) {
+        btnUpdate.addEventListener("click", (e) => {
+          e.stopPropagation();
+          handleUpdatePackage(pkg.name);
+        });
+      }
+
+      // 绑定取消排队事件
+      const btnCancel = card.querySelector(".btn-queue-cancel");
+      if (btnCancel) {
+        btnCancel.addEventListener("click", (e) => {
+          e.stopPropagation();
+          cancelQueuedPackageTask(pkg.name);
+        });
+      }
+
+      packagesCatalogGrid.appendChild(card);
+    });
+  };
+
+  // 入队新任务
+  const enqueuePackageTask = (packageName, action) => {
+    if (isPackageBusy(packageName)) {
+      console.warn(`[PackageManager] Package ${packageName} is already busy or queued.`);
+      return;
+    }
+
+    const task = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      packageName,
+      action, // 'install' | 'uninstall' | 'update'
+    };
+
+    packageTaskQueue.push(task);
+
+    // 如果当前没有运行中的任务，且浮动提示存在，显示初始入队提示
+    if (!currentRunningTask && packageProgressFloatCard) {
+      updatePackageProgressUI({
+        packageName,
+        stage: action === "uninstall" ? "uninstalling" : action === "update" ? "updating" : "installing",
+        percent: 5,
+        message: "任务已加入队列，准备执行...",
+      });
+    }
+
+    if (packageQueueBadge) {
+      if (packageTaskQueue.length > 0) {
+        packageQueueBadge.textContent = `队列待执行: ${packageTaskQueue.length}`;
+        packageQueueBadge.classList.remove("hidden");
+      } else {
+        packageQueueBadge.classList.add("hidden");
+      }
+    }
+
+    renderInstalledPackages();
+    if (currentCatalogResult?.packages) renderCatalogGrid(currentCatalogResult.packages);
+
+    processPackageQueue();
+  };
+
+  // 取消排队中的任务
+  const cancelQueuedPackageTask = (packageName) => {
+    const idx = getPackageQueueIndex(packageName);
+    if (idx !== -1) {
+      packageTaskQueue.splice(idx, 1);
+      packageProgressMap.delete(packageName);
+      if (packageQueueBadge) {
+        if (packageTaskQueue.length > 0) {
+          packageQueueBadge.textContent = `队列待执行: ${packageTaskQueue.length}`;
+          packageQueueBadge.classList.remove("hidden");
+        } else {
+          packageQueueBadge.classList.add("hidden");
+        }
+      }
+      renderInstalledPackages();
+      if (currentCatalogResult?.packages) renderCatalogGrid(currentCatalogResult.packages);
+    }
+  };
+
+  // 队列处理循环引擎 (FIFO 严格排他互斥执行)
+  const processPackageQueue = async () => {
+    if (isProcessingQueue) return;
+    if (packageTaskQueue.length === 0) {
+      currentRunningTask = null;
+      if (packageQueueBadge) packageQueueBadge.classList.add("hidden");
+      renderInstalledPackages();
+      if (currentCatalogResult?.packages) renderCatalogGrid(currentCatalogResult.packages);
+      return;
+    }
+
+    isProcessingQueue = true;
+    currentRunningTask = packageTaskQueue.shift();
+    const { packageName, action } = currentRunningTask;
+
+    packageOperationMap.set(
+      packageName,
+      action === "uninstall" ? "uninstalling" : action === "update" ? "updating" : "installing"
+    );
+
+    if (packageQueueBadge) {
+      if (packageTaskQueue.length > 0) {
+        packageQueueBadge.textContent = `队列待执行: ${packageTaskQueue.length}`;
+        packageQueueBadge.classList.remove("hidden");
+      } else {
+        packageQueueBadge.classList.add("hidden");
+      }
+    }
+
+    renderInstalledPackages();
+    if (currentCatalogResult?.packages) renderCatalogGrid(currentCatalogResult.packages);
+
+    try {
+      if (action === "install") {
+        await configService.installPackage(packageName);
+      } else if (action === "uninstall") {
+        await configService.uninstallPackage(packageName);
+      } else if (action === "update") {
+        await configService.updatePackage(packageName);
+        packageUpdatesMap.delete(packageName);
+      }
+      await loadInstalledPackages();
+    } catch (err) {
+      console.error(`[PackageManager] Task ${action} error for ${packageName}:`, err);
+      alert(
+        `组件 ${packageName} ${
+          action === "uninstall" ? "卸载" : action === "update" ? "更新" : "安装"
+        } 失败：\n${err?.toString() || "未知错误"}`
+      );
+    } finally {
+      packageOperationMap.delete(packageName);
+      setTimeout(() => {
+        packageProgressMap.delete(packageName);
+        renderInstalledPackages();
+        if (currentCatalogResult?.packages) renderCatalogGrid(currentCatalogResult.packages);
+      }, 1500);
+
+      currentRunningTask = null;
+      isProcessingQueue = false;
+
+      renderInstalledPackages();
+      if (currentCatalogResult?.packages) renderCatalogGrid(currentCatalogResult.packages);
+
+      // 自动出队继续执行下一个任务
+      if (packageTaskQueue.length > 0) {
+        processPackageQueue();
+      } else {
+        if (packageQueueBadge) packageQueueBadge.classList.add("hidden");
+      }
+    }
+  };
+
+  // 安装组件
+  const handleInstallPackage = (packageName) => {
+    enqueuePackageTask(packageName, "install");
+  };
+
+  // 卸载组件
+  const handleUninstallPackage = (packageName) => {
+    if (!confirm(`确定要从系统中卸载扩展组件「${packageName}」吗？\n（将加入操作队列自动执行）`)) {
+      return;
+    }
+    enqueuePackageTask(packageName, "uninstall");
+  };
+
+  // 更新单个组件
+  const handleUpdatePackage = (packageName) => {
+    enqueuePackageTask(packageName, "update");
+  };
+
+  // 批量检查更新
+  const handleCheckAllUpdates = async () => {
+    if (!btnCheckAllPackageUpdates) return;
+    const origText = btnCheckAllPackageUpdates.innerHTML;
+    btnCheckAllPackageUpdates.disabled = true;
+    btnCheckAllPackageUpdates.innerHTML = `
+      <span class="thinking-dot" style="margin-right: 4px;"></span>
+      检查中...
+    `;
+
+    try {
+      const updates = await configService.checkPackageUpdates();
+      packageUpdatesMap.clear();
+      let updateCount = 0;
+      if (Array.isArray(updates)) {
+        updates.forEach((u) => {
+          packageUpdatesMap.set(u.name, u);
+          if (u.hasUpdate) updateCount++;
+        });
+      }
+      renderInstalledPackages();
+      if (currentCatalogResult?.packages) renderCatalogGrid(currentCatalogResult.packages);
+
+      if (updateCount > 0) {
+        alert(`检查完成：发现 ${updateCount} 个组件有可用更新！`);
+      } else {
+        alert("已安装组件均为最新版本！");
+      }
+    } catch (err) {
+      console.error("[PackageManager] Check updates error:", err);
+      alert(`检查更新失败：${err?.toString() || "网络错误"}`);
+    } finally {
+      btnCheckAllPackageUpdates.disabled = false;
+      btnCheckAllPackageUpdates.innerHTML = origText;
+    }
+  };
+
+  if (btnCheckAllPackageUpdates) {
+    btnCheckAllPackageUpdates.addEventListener("click", (e) => {
+      e.stopPropagation();
+      handleCheckAllUpdates();
+    });
+  }
+
+  // 搜索栏交互绑定
+  if (packagesSearchInput) {
+    packagesSearchInput.addEventListener("input", () => {
+      if (btnClearPackageSearch) {
+        if (packagesSearchInput.value.trim().length > 0) {
+          btnClearPackageSearch.classList.remove("hidden");
+        } else {
+          btnClearPackageSearch.classList.add("hidden");
+        }
+      }
+    });
+
+    packagesSearchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        loadCatalogPackages(1);
+      }
+    });
+  }
+
+  if (btnClearPackageSearch) {
+    btnClearPackageSearch.addEventListener("click", () => {
+      if (packagesSearchInput) {
+        packagesSearchInput.value = "";
+        btnClearPackageSearch.classList.add("hidden");
+        loadCatalogPackages(1);
+      }
+    });
+  }
+
+  if (btnSearchPackages) {
+    btnSearchPackages.addEventListener("click", () => {
+      loadCatalogPackages(1);
+    });
+  }
+
+  if (packagesTypeSelect) {
+    packagesTypeSelect.addEventListener("change", () => {
+      loadCatalogPackages(1);
+    });
+  }
+
+  if (packagesSortSelect) {
+    packagesSortSelect.addEventListener("change", () => {
+      loadCatalogPackages(1);
+    });
+  }
+
+  // 分页按钮绑定
+  if (btnPackagesPrevPage) {
+    btnPackagesPrevPage.addEventListener("click", () => {
+      if (currentCatalogPage > 1) {
+        loadCatalogPackages(currentCatalogPage - 1);
+      }
+    });
+  }
+
+  if (btnPackagesNextPage) {
+    btnPackagesNextPage.addEventListener("click", () => {
+      if (currentCatalogResult?.hasMore) {
+        loadCatalogPackages(currentCatalogPage + 1);
+      }
+    });
+  }
+
+  // 初始化增强下拉框
+  enhanceSelect(packagesTypeSelect);
+  enhanceSelect(packagesSortSelect);
 
   // ==========================================================================
   // 全局右键行为规范：禁用上下文菜单，统一作为“返回上一步/回退 (Step Back)”

@@ -312,12 +312,14 @@
             </svg>
             自定义通道配置
           </button>
-          <button type="button" class="settings-tab-btn" data-tab="tab-host">
+          <button type="button" class="settings-tab-btn" data-tab="tab-packages">
             <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="3" width="16" height="11" rx="1.5" />
-              <path d="M6 17h8M10 14v3" />
+              <rect x="3" y="3" width="6" height="6" rx="1" />
+              <rect x="11" y="3" width="6" height="6" rx="1" />
+              <rect x="3" y="11" width="6" height="6" rx="1" />
+              <path d="M14 11v6M11 14h6" />
             </svg>
-            宿主与版本
+            内核
           </button>
           <button type="button" class="settings-tab-btn" data-tab="tab-sessions">
             <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -546,45 +548,168 @@
             </div>
           </div>
 
-          <!-- 5. 宿主与版本面板 -->
-          <div class="tab-pane" id="pane-host">
+          <!-- 5. 内核面板 (Kernel & Package Catalog) -->
+          <div class="tab-pane" id="pane-packages">
             <div class="pane-header">
-              <h3 class="pane-title">Pi Agent 宿主内核</h3>
-              <p class="pane-desc">查看底层 Pi 进程生命周期与软件版本状态。</p>
+              <h3 class="pane-title">内核</h3>
+              <p class="pane-desc">查看底层 Pi 内核生命周期与软件版本，管理已挂载扩展并连通官方组件市场。</p>
             </div>
 
-            <div class="status-card">
-              <div class="status-card-row">
-                <div class="status-indicator-wrap">
-                  <span class="status-dot status-ready" id="host-status-dot"></span>
-                  <span class="status-text" id="host-status-text">Ready</span>
+            <!-- 内核与版本卡片 (顶部展示) -->
+            <div class="host-kernel-section">
+              <div class="status-card">
+                <div class="status-card-row">
+                  <div class="status-indicator-wrap">
+                    <span class="kernel-label">pi内核</span>
+                    <span class="status-dot status-ready" id="host-status-dot"></span>
+                    <span class="status-text" id="host-status-text">Ready</span>
+                    <span class="version-chip" id="host-version-text">v0.84.3</span>
+                  </div>
+                  <div class="status-actions">
+                    <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-restart-host">
+                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M2.5 8a5.5 5.5 0 0 1 9.39-3.89L13.5 5.5" />
+                        <path d="M13.5 2v3.5H10" />
+                        <path d="M13.5 8a5.5 5.5 0 0 1-9.39 3.89L2.5 10.5" />
+                        <path d="M2.5 14v-3.5H6" />
+                      </svg>
+                      重启内核
+                    </button>
+                    <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-check-update">
+                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M8 2v9M4 7l4 4 4-4M2 14h12" />
+                      </svg>
+                      检查更新
+                    </button>
+                  </div>
                 </div>
-                <span class="version-chip" id="host-version-text">v0.84.3</span>
+                <div class="update-notice hidden" id="update-notice">
+                  <span class="update-icon" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" stroke="none">
+                      <path d="M8 1.2 C8 4.8, 8.5 7.5, 14.8 8 C8.5 8.5, 8 11.2, 8 14.8 C8 11.2, 7.5 8.5, 1.2 8 C7.5 7.5, 8 4.8, 8 1.2 Z" />
+                    </svg>
+                  </span>
+                  <span class="update-msg" id="update-msg">发现新版本！</span>
+                </div>
               </div>
-              <div class="status-actions">
-                <button type="button" class="flat-btn flat-btn-secondary" id="btn-restart-host">
-                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M2.5 8a5.5 5.5 0 0 1 9.39-3.89L13.5 5.5" />
-                    <path d="M13.5 2v3.5H10" />
-                    <path d="M13.5 8a5.5 5.5 0 0 1-9.39 3.89L2.5 10.5" />
-                    <path d="M2.5 14v-3.5H6" />
+            </div>
+
+            <!-- 已安装组件区域 (Collapsible Panel) -->
+            <div class="installed-packages-wrapper" id="installed-packages-wrapper">
+              <div class="installed-section-header" id="installed-section-toggle" role="button" tabindex="0" aria-expanded="true">
+                <div class="installed-header-title">
+                  <svg class="fold-arrow" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 6 L8 10 L12 6" />
                   </svg>
-                  重启 Host
-                </button>
-                <button type="button" class="flat-btn flat-btn-secondary" id="btn-check-update">
-                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M8 2v9M4 7l4 4 4-4M2 14h12" />
+                  <span>已安装组件 (<span id="installed-packages-count">0</span>)</span>
+                </div>
+                <div class="installed-header-actions">
+                  <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-check-all-package-updates" title="检查已安装组件更新">
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M8 2v9M4 7l4 4 4-4M2 14h12" />
+                    </svg>
+                    检查组件更新
+                  </button>
+                </div>
+              </div>
+              <div class="installed-packages-body" id="installed-packages-body">
+                <div class="installed-packages-list" id="installed-packages-list">
+                  <div class="packages-empty-hint">暂未安装任何扩展组件</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 市场搜索与筛选栏 -->
+            <div class="packages-filter-bar">
+              <div class="search-input-group">
+                <div class="filter-search-input-wrap">
+                  <svg class="search-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="7" cy="7" r="4.5" />
+                    <line x1="10.5" y1="10.5" x2="14" y2="14" />
                   </svg>
-                  检查更新
+                  <input type="search" id="packages-search-input" class="flat-input" placeholder="搜索组件名称、描述或作者..." autocomplete="off" />
+                  <button type="button" class="btn-clear-search hidden" id="btn-clear-package-search" title="清空搜索" aria-label="清空搜索">
+                    <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+                      <line x1="3.5" y1="3.5" x2="12.5" y2="12.5" />
+                      <line x1="12.5" y1="3.5" x2="3.5" y2="12.5" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div class="filter-dropdowns-group">
+                <div class="filter-select-shell">
+                  <select id="packages-type-select" class="flat-select" aria-label="按类型筛选">
+                    <option value="" selected>全部类型 (All types)</option>
+                    <option value="extension">扩展 (extension)</option>
+                    <option value="skill">技能 (skill)</option>
+                    <option value="theme">主题 (theme)</option>
+                    <option value="prompt">提示词 (prompt)</option>
+                  </select>
+                </div>
+                <div class="filter-select-shell">
+                  <select id="packages-sort-select" class="flat-select" aria-label="排序方式">
+                    <option value="downloads" selected>按热度下载量 (Most downloads)</option>
+                    <option value="recent">最近发布更新 (Recently published)</option>
+                    <option value="name">名称排序 (A-Z)</option>
+                  </select>
+                </div>
+                <button type="button" class="flat-btn flat-btn-primary" id="btn-search-packages">
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="7" cy="7" r="4.5" />
+                    <line x1="10.5" y1="10.5" x2="14" y2="14" />
+                  </svg>
+                  搜索
                 </button>
               </div>
-              <div class="update-notice hidden" id="update-notice">
-                <span class="update-icon" aria-hidden="true">
-                  <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" stroke="none">
-                    <path d="M8 1.2 C8 4.8, 8.5 7.5, 14.8 8 C8.5 8.5, 8 11.2, 8 14.8 C8 11.2, 7.5 8.5, 1.2 8 C7.5 7.5, 8 4.8, 8 1.2 Z" />
-                  </svg>
-                </span>
-                <span class="update-msg" id="update-msg">发现新版本！</span>
+            </div>
+
+            <!-- 市场目录卡片网格与状态指示 -->
+            <div class="packages-catalog-section">
+              <div class="packages-summary-row">
+                <span class="packages-total-info" id="packages-total-info">正在加载官方组件目录...</span>
+                <span class="packages-catalog-source">数据源：<a href="https://pi.dev/packages" target="_blank" rel="noreferrer" class="flat-link">pi.dev/packages</a></span>
+              </div>
+
+              <div class="packages-catalog-grid" id="packages-catalog-grid">
+                <!-- 动态渲染组件卡片 -->
+              </div>
+
+              <!-- 分页器 -->
+              <div class="packages-pagination hidden" id="packages-pagination">
+                <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-packages-prev-page" disabled>
+                  上一页
+                </button>
+                <span class="pagination-page-indicator" id="packages-page-indicator">第 1 / 1 页</span>
+                <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-packages-next-page" disabled>
+                  下一页
+                </button>
+              </div>
+            </div>
+
+            <!-- 扩展安装/更新/卸载实时手绘进度浮动卡片 -->
+            <div class="package-progress-float-card hidden" id="package-progress-float-card" role="status" aria-live="polite">
+              <div class="package-progress-card-inner">
+                <div class="package-progress-header">
+                  <div class="package-progress-title-wrap">
+                    <span class="package-progress-spinner thinking-dot"></span>
+                    <span class="package-progress-title" id="package-progress-title">正在安装</span>
+                    <span class="package-progress-pkg-name" id="package-progress-pkg-name"></span>
+                    <span class="package-queue-badge hidden" id="package-queue-badge">队列待执行: 0</span>
+                  </div>
+                  <div class="package-progress-header-right">
+                    <span class="package-progress-percent" id="package-progress-percent">0%</span>
+                    <button type="button" class="package-progress-close-btn" id="btn-close-package-progress" aria-label="关闭提示">
+                      <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="4" y1="4" x2="12" y2="12" />
+                        <line x1="12" y1="4" x2="4" y2="12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="sketch-progress-track">
+                  <div class="sketch-progress-fill" id="package-progress-fill" style="width: 0%;"></div>
+                </div>
+                <div class="package-progress-message" id="package-progress-message">正在初始化环境...</div>
               </div>
             </div>
           </div>

@@ -1,4 +1,5 @@
 pub mod config_manager;
+pub mod package_manager;
 pub mod pi_runner;
 pub mod security;
 pub mod session;
@@ -10,6 +11,10 @@ use config_manager::{
     pi_get_official_models_catalog, pi_get_settings_config, pi_save_app_config,
     pi_save_auth_config, pi_save_custom_models, pi_save_custom_provider,
     pi_save_provider_api_key, pi_save_settings_config,
+};
+use package_manager::{
+    pi_check_package_updates, pi_get_installed_packages, pi_install_package, pi_search_packages,
+    pi_uninstall_package, pi_update_package,
 };
 use pi_runner::{FollowUpRequest, HostStatus, PiSupervisor, PromptRequest, SteerRequest};
 use session::{parse_session_entries, SessionEntrySummary, SessionIndexCache, SessionMetadata, SessionWatcher};
@@ -289,6 +294,12 @@ pub fn run() {
             pi_get_app_config,
             pi_save_app_config,
             pi_get_official_models_catalog,
+            pi_search_packages,
+            pi_get_installed_packages,
+            pi_install_package,
+            pi_uninstall_package,
+            pi_check_package_updates,
+            pi_update_package,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

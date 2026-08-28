@@ -252,7 +252,20 @@ const setupOutputTokensAutoSnap = (inputEl) => {
 
 ---
 
-## 🔄 7. 全域右键与键盘回退集成 (Step Back Pipeline)
+## 🧩 7. 内核与扩展组件管理规范 (Package Catalog & Kernel Runtime Pattern)
+
+- **内核顶部状态卡片**：在面板顶部展示底层 Pi 内核进程状态（Ready / Starting / Stopped / Crashed）、版本号及一键重启内核与软件检查更新；
+- **连通官方目录**：通过 Rust `package_manager` 模块异步抓取 `pi.dev/packages`，基于正则提取 `data-package-*` 属性，设置 15min TTL 内存缓存；
+- **已安装组件折叠面板**：读取 `~/.pi/agent/settings.json` 与 `node_modules` 探测本地包名与版本，提供批量检查更新、单包更新与卸载能力；
+- **组件市场卡片与手绘进度条 (Sketch Progress Bar)**：
+  - 展示类型徽章（extension/skill/theme/prompt）、下载量、更新时间、npm/repo 外链；
+  - 安装、更新与卸载时通过 Tauri 事件系统（`package-progress`）实时推送多阶段状态与百分比；
+  - 提供卡片内置微进度条（`.card-progress-wrap`）与右下角手绘浮动进度卡（`.package-progress-float-card`），搭配动态斜纹（`sketchStripesMove`）与平滑退出动效；
+- **非阻塞 CLI 桥接**：执行 `pi install/remove npm:<pkg> -a` 必须附带 `-a` (`--approve`) 保证非交互执行。
+
+---
+
+## 🔄 8. 全域右键与键盘回退集成 (Step Back Pipeline)
 
 所有设置页面必须注册到全局 `window.__piRegisterStepBack`：
 
@@ -274,11 +287,12 @@ window.addEventListener("keydown", (e) => {
 
 ---
 
-## ✅ 8. 交付检查清单 (Pre-Ship Checklist)
+## ✅ 9. 交付检查清单 (Pre-Ship Checklist)
 
 - [ ] **返回按钮**：左上角无物理“返回主界面”按钮，右键与 Esc 均可瞬间平滑退出？
 - [ ] **指引渐隐**：右上角提示条在进入设置 3 秒后通过 CSS 自动平滑渐隐？再次进入可重新触发？
 - [ ] **持久化检查**：在 `~/.pi-dl/config.json` 中完整持久化主题、思考深度、选用模型及 MRU 顺序？目录缺失时 Rust 可自动创建？
 - [ ] **MRU 排序**：选用任意模型自动移到列表首位生效？当前使用中的模型锁定禁止删除？无拖拽把手图标与 grab 手势？
 - [ ] **Token 吸附**：新增模型时思考推理默认勾选？输入任意输出上限数字在回车、失焦或保存时自动吸附至规范值？
+- [ ] **扩展组件市场**：支持组件搜索筛选、已安装列表折叠管理、一键安装、更新比对与卸载？
 - [ ] **编译验证**：执行 `cargo check` 与 `npm run build:check` 均为 Exit Code 0？
