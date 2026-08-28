@@ -1318,6 +1318,14 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   color: var(--ink-muted);
 }
 
+@keyframes hint-shake-in {
+  0%   { opacity: 0; transform: translateX(8px) rotate(0deg); }
+  30%  { opacity: 1; transform: translateX(-3px) rotate(-0.8deg); }
+  55%  { transform: translateX(2px) rotate(0.5deg); }
+  75%  { transform: translateX(-1px) rotate(-0.3deg); }
+  100% { opacity: 1; transform: translateX(0) rotate(0deg); }
+}
+
 .topbar-hint-banner {
   display: flex;
   align-items: center;
@@ -1329,15 +1337,25 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   font-size: 11.5px;
   color: var(--ink-muted);
   white-space: nowrap;
+  /* 默认不可见，等 JS 延迟添加 .hint-visible 后才显示 */
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.6s ease, visibility 0.6s ease;
+}
+
+.topbar-hint-banner.hint-visible {
   opacity: 1;
   visibility: visible;
-  transition: opacity 0.6s ease, visibility 0.6s ease;
+  pointer-events: auto;
+  animation: hint-shake-in 0.38s cubic-bezier(0.22, 0.68, 0, 1.4) both;
 }
 
 .topbar-hint-banner.fade-out {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
+  animation: none;
 }
 
 .hint-icon {

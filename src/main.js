@@ -314,13 +314,17 @@ window.addEventListener("DOMContentLoaded", () => {
     }
     setViewMode(VIEW_SETTINGS, false);
 
-    // 右上角提示 3 秒后平滑渐隐
+    // 右上角提示：重置状态，延迟 1s 后弹入抖动显示，再 3s 后平滑渐隐
     if (topbarHintBanner) {
-      topbarHintBanner.classList.remove("fade-out");
+      topbarHintBanner.classList.remove("hint-visible", "fade-out");
       if (hintBannerTimeout) clearTimeout(hintBannerTimeout);
       hintBannerTimeout = setTimeout(() => {
-        topbarHintBanner.classList.add("fade-out");
-      }, 3000);
+        topbarHintBanner.classList.add("hint-visible");
+        hintBannerTimeout = setTimeout(() => {
+          topbarHintBanner.classList.remove("hint-visible");
+          topbarHintBanner.classList.add("fade-out");
+        }, 3000);
+      }, 1000);
     }
 
     loadSessions();
@@ -793,11 +797,10 @@ window.addEventListener("DOMContentLoaded", () => {
               <div class="form-field">
                 <label class="form-label">接口类型 (API Protocol) <span class="req">*</span></label>
                 <select class="flat-select input-edit-api-type">
-                  <option value="openai-completions" ${provData.api === "openai-completions" ? "selected" : ""}>openai-completions (OpenAI Chat / 聚合代理 / 硅基 / 火山 / DeepSeek)</option>
-                  <option value="openai-responses" ${provData.api === "openai-responses" ? "selected" : ""}>openai-responses (OpenAI Responses API / Azure OpenAI)</option>
-                  <option value="anthropic-messages" ${provData.api === "anthropic-messages" ? "selected" : ""}>anthropic-messages (Anthropic Messages API / Claude)</option>
-                  <option value="google-generative-ai" ${provData.api === "google-generative-ai" ? "selected" : ""}>google-generative-ai (Google Gemini API)</option>
-                  <option value="ollama" ${provData.api === "ollama" ? "selected" : ""}>ollama (Ollama 本地端点)</option>
+                  <option value="openai-completions" ${provData.api === "openai-completions" ? "selected" : ""}>openai-completions</option>
+                  <option value="openai-responses" ${provData.api === "openai-responses" ? "selected" : ""}>openai-responses</option>
+                  <option value="anthropic" ${(provData.api === "anthropic" || provData.api === "anthropic-messages") ? "selected" : ""}>anthropic</option>
+                  <option value="ollama" ${provData.api === "ollama" ? "selected" : ""}>ollama</option>
                 </select>
               </div>
               <div class="form-field">
