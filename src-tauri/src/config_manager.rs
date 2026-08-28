@@ -97,6 +97,8 @@ pub struct CustomProviderEntry {
     pub api_type: String,
     pub base_url: String,
     pub api_key: Option<String>,
+    pub supports_developer_role: Option<bool>,
+    pub supports_reasoning_effort: Option<bool>,
 }
 
 #[tauri::command]
@@ -117,10 +119,17 @@ pub fn pi_save_custom_provider(entry: CustomProviderEntry) -> Result<(), String>
         return Err("运营商标识 (Provider ID) 不能为空".to_string());
     }
 
+    let api_type_str = entry.api_type.trim();
+    let default_dev_role = api_type_str == "openai-responses";
+    let compat_val = json!({
+        "supportsDeveloperRole": entry.supports_developer_role.unwrap_or(default_dev_role),
+        "supportsReasoningEffort": entry.supports_reasoning_effort.unwrap_or(false)
+    });
+
     if let Some(existing_provider) = providers.get_mut(&provider_key) {
         if let Some(p_obj) = existing_provider.as_object_mut() {
             p_obj.insert("baseUrl".to_string(), json!(entry.base_url.trim()));
-            p_obj.insert("api".to_string(), json!(entry.api_type.trim()));
+            p_obj.insert("api".to_string(), json!(api_type_str));
             if let Some(key) = entry.api_key {
                 if !key.trim().is_empty() {
                     p_obj.insert("apiKey".to_string(), json!(key.trim()));
@@ -128,6 +137,7 @@ pub fn pi_save_custom_provider(entry: CustomProviderEntry) -> Result<(), String>
                     p_obj.remove("apiKey");
                 }
             }
+            p_obj.insert("compat".to_string(), compat_val);
             if !p_obj.contains_key("models") || !p_obj["models"].is_array() {
                 p_obj.insert("models".to_string(), json!([]));
             }
@@ -135,12 +145,13 @@ pub fn pi_save_custom_provider(entry: CustomProviderEntry) -> Result<(), String>
     } else {
         let mut new_provider_obj = serde_json::Map::new();
         new_provider_obj.insert("baseUrl".to_string(), json!(entry.base_url.trim()));
-        new_provider_obj.insert("api".to_string(), json!(entry.api_type.trim()));
+        new_provider_obj.insert("api".to_string(), json!(api_type_str));
         if let Some(key) = entry.api_key {
             if !key.trim().is_empty() {
                 new_provider_obj.insert("apiKey".to_string(), json!(key.trim()));
             }
         }
+        new_provider_obj.insert("compat".to_string(), compat_val);
         new_provider_obj.insert("models".to_string(), json!([]));
         providers.insert(provider_key, Value::Object(new_provider_obj));
     }
@@ -256,6 +267,8 @@ pub fn pi_add_custom_model(entry: CustomModelEntry) -> Result<(), String> {
         api_type: entry.api_type.clone(),
         base_url: entry.base_url.clone(),
         api_key: entry.api_key.clone(),
+        supports_developer_role: None,
+        supports_reasoning_effort: None,
     })?;
 
     pi_add_custom_provider_model(CustomProviderModelEntry {

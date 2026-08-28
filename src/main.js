@@ -20,7 +20,12 @@ export const escapeHtml = (str) => {
 
 window.addEventListener("DOMContentLoaded", () => {
   const appContainer = document.getElementById("app-container");
+  const searchInputWrapper = document.getElementById("search-input-wrapper");
   const searchInput = document.getElementById("search-input");
+  const searchMottoLayer = document.getElementById("search-motto-layer");
+  const searchMottoTrack = document.getElementById("search-motto-track");
+  const searchMottoText1 = document.getElementById("search-motto-text-1");
+  const searchMottoText2 = document.getElementById("search-motto-text-2");
   const clearBtn = document.getElementById("clear-btn");
   const settingsBtn = document.getElementById("settings-btn");
   const settingsBadge = document.getElementById("settings-badge");
@@ -685,17 +690,77 @@ window.addEventListener("DOMContentLoaded", () => {
           ? `<span class="flat-badge" style="color: #10b981; border-color: #10b981;">Key: 已配置</span>`
           : `<span class="flat-badge" style="color: var(--ink-muted);">Key: 无</span>`;
 
+        const compat = provData.compat || {};
+        const supportsDeveloperRole = compat.supportsDeveloperRole !== undefined
+          ? !!compat.supportsDeveloperRole
+          : (provData.api === "openai-responses");
+        const supportsReasoningEffort = compat.supportsReasoningEffort !== undefined
+          ? !!compat.supportsReasoningEffort
+          : false;
+
+        const devRoleBadge = supportsDeveloperRole
+          ? `<span class="flat-badge" style="color: #f59e0b; border-color: #f59e0b;" title="启用了 developer 消息角色">dev-role: 开</span>`
+          : `<span class="flat-badge" style="color: #10b981; border-color: #10b981;" title="使用兼容的 system 消息角色 (安全)">system-role</span>`;
+
         card.innerHTML = `
           <div class="custom-provider-header">
             <div class="provider-info-left">
               <span class="flat-badge" style="color: #6366f1; border-color: #6366f1;">${escapeHtml(pKey.toUpperCase())}</span>
               <span class="flat-badge">${escapeHtml(provData.api || "openai-completions")}</span>
               ${keyTag}
+              ${devRoleBadge}
               <span class="provider-url-meta" title="${escapeHtml(provData.baseUrl || "")}">URL: ${escapeHtml(provData.baseUrl || "")}</span>
             </div>
             <div class="provider-card-actions">
+              <button type="button" class="flat-btn flat-btn-secondary mini btn-edit-provider" title="修改运营商接口协议、Base URL、Key 与兼容性配置">✏️ 修改配置</button>
               <button type="button" class="flat-btn flat-btn-primary mini btn-toggle-add-model">+ 新增模型</button>
               <button type="button" class="flat-btn flat-btn-secondary mini btn-delete-provider" style="color: #ef4444;" title="删除此运营商及所有模型">删除运营商</button>
+            </div>
+          </div>
+
+          <!-- 折叠修改运营商配置表单 -->
+          <div class="inline-edit-provider-box hidden" id="inline-edit-prov-${pKey}">
+            <div style="font-size: 12px; font-weight: 600; color: var(--ink-primary); display: flex; align-items: center; justify-content: space-between;">
+              <span>✏️ 修改运营商配置 [${escapeHtml(pKey.toUpperCase())}]</span>
+              <span style="font-size: 11px; color: var(--ink-muted); font-weight: normal;">修改后自动热加载并写入 ~/.pi/agent/models.json</span>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-field">
+                <label class="form-label">接口类型 (API Protocol) <span class="req">*</span></label>
+                <select class="flat-select input-edit-api-type">
+                  <option value="openai-completions" ${provData.api === "openai-completions" ? "selected" : ""}>openai-completions (OpenAI Chat / 聚合代理 / 硅基 / 火山 / DeepSeek)</option>
+                  <option value="openai-responses" ${provData.api === "openai-responses" ? "selected" : ""}>openai-responses (OpenAI Responses API / Azure OpenAI)</option>
+                  <option value="anthropic-messages" ${provData.api === "anthropic-messages" ? "selected" : ""}>anthropic-messages (Anthropic Messages API / Claude)</option>
+                  <option value="google-generative-ai" ${provData.api === "google-generative-ai" ? "selected" : ""}>google-generative-ai (Google Gemini API)</option>
+                  <option value="ollama" ${provData.api === "ollama" ? "selected" : ""}>ollama (Ollama 本地端点)</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label class="form-label">接口地址 (Base URL) <span class="req">*</span></label>
+                <input type="url" class="flat-input input-edit-base-url" value="${escapeHtml(provData.baseUrl || "")}" placeholder="如 https://api.siliconflow.cn/v1" required />
+              </div>
+            </div>
+            <div class="form-field">
+              <label class="form-label">API Key (留空表示清除，支持 $ENV_VAR 环境变量插值)</label>
+              <input type="password" class="flat-input input-edit-api-key" value="${escapeHtml(provData.apiKey || "")}" placeholder="sk-... 或留空" />
+            </div>
+            <div class="form-grid-2" style="margin-top: 2px;">
+              <div class="form-field checkbox-field">
+                <label class="checkbox-label" title="开启后以 developer role 发送系统提示词。国内/聚合平台（DeepSeek、火山方舟等）不支持此角色，会导致 400 报错，请保持未勾选。">
+                  <input type="checkbox" class="input-edit-developer-role" ${supportsDeveloperRole ? "checked" : ""} />
+                  <span>启用 developer 角色 (兼容端点请勿勾)</span>
+                </label>
+              </div>
+              <div class="form-field checkbox-field">
+                <label class="checkbox-label" title="是否支持 reasoning_effort 思考参数">
+                  <input type="checkbox" class="input-edit-reasoning-effort" ${supportsReasoningEffort ? "checked" : ""} />
+                  <span>支持 reasoning_effort 思考参数</span>
+                </label>
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px;">
+              <button type="button" class="flat-btn flat-btn-secondary mini btn-cancel-edit-prov">取消</button>
+              <button type="button" class="flat-btn flat-btn-primary mini btn-save-edit-prov">保存修改</button>
             </div>
           </div>
 
@@ -749,6 +814,69 @@ window.addEventListener("DOMContentLoaded", () => {
           </div>
         `;
 
+        // 绑定修改运营商配置
+        const inlineEditForm = card.querySelector(".inline-edit-provider-box");
+        const btnEditProvider = card.querySelector(".btn-edit-provider");
+        const btnCancelEditProv = card.querySelector(".btn-cancel-edit-prov");
+        const btnSaveEditProv = card.querySelector(".btn-save-edit-prov");
+        const inlineAddForm = card.querySelector(".inline-add-model-box");
+
+        if (btnEditProvider && inlineEditForm) {
+          btnEditProvider.addEventListener("click", () => {
+            inlineEditForm.classList.toggle("hidden");
+            if (!inlineEditForm.classList.contains("hidden") && inlineAddForm) {
+              inlineAddForm.classList.add("hidden");
+            }
+          });
+        }
+
+        if (btnCancelEditProv && inlineEditForm) {
+          btnCancelEditProv.addEventListener("click", () => {
+            inlineEditForm.classList.add("hidden");
+          });
+        }
+
+        if (btnSaveEditProv && inlineEditForm) {
+          btnSaveEditProv.addEventListener("click", async () => {
+            const inputApiType = inlineEditForm.querySelector(".input-edit-api-type");
+            const inputBaseUrl = inlineEditForm.querySelector(".input-edit-base-url");
+            const inputApiKey = inlineEditForm.querySelector(".input-edit-api-key");
+            const inputDevRole = inlineEditForm.querySelector(".input-edit-developer-role");
+            const inputReasoningEffort = inlineEditForm.querySelector(".input-edit-reasoning-effort");
+
+            const newApiType = inputApiType?.value.trim() || "openai-completions";
+            const newBaseUrl = inputBaseUrl?.value.trim();
+            if (!newBaseUrl) {
+              alert("接口地址 (Base URL) 不能为空");
+              inputBaseUrl?.focus();
+              return;
+            }
+            const newApiKey = inputApiKey?.value.trim() || null;
+            const newDevRole = !!inputDevRole?.checked;
+            const newReasoningEffort = !!inputReasoningEffort?.checked;
+
+            btnSaveEditProv.disabled = true;
+            try {
+              await configService.saveCustomProvider({
+                provider_id: pKey,
+                api_type: newApiType,
+                base_url: newBaseUrl,
+                api_key: newApiKey,
+                supports_developer_role: newDevRole,
+                supports_reasoning_effort: newReasoningEffort,
+              });
+
+              alert(`运营商 [${pKey.toUpperCase()}] 配置已成功更新！`);
+              loadCustomProvidersConfig();
+            } catch (err) {
+              console.error("Save custom provider failed:", err);
+              alert(`更新运营商配置失败: ${err}`);
+            } finally {
+              btnSaveEditProv.disabled = false;
+            }
+          });
+        }
+
         // 绑定删除运营商
         const btnDeleteProvider = card.querySelector(".btn-delete-provider");
         if (btnDeleteProvider) {
@@ -764,31 +892,33 @@ window.addEventListener("DOMContentLoaded", () => {
         }
 
         // 绑定新增模型折叠切换
-        const inlineForm = card.querySelector(".inline-add-model-box");
         const btnToggleAddModel = card.querySelector(".btn-toggle-add-model");
         const btnCancelAddModel = card.querySelector(".btn-cancel-add-model");
 
-        if (btnToggleAddModel && inlineForm) {
+        if (btnToggleAddModel && inlineAddForm) {
           btnToggleAddModel.addEventListener("click", () => {
-            inlineForm.classList.toggle("hidden");
+            inlineAddForm.classList.toggle("hidden");
+            if (!inlineAddForm.classList.contains("hidden") && inlineEditForm) {
+              inlineEditForm.classList.add("hidden");
+            }
           });
         }
 
-        if (btnCancelAddModel && inlineForm) {
+        if (btnCancelAddModel && inlineAddForm) {
           btnCancelAddModel.addEventListener("click", () => {
-            inlineForm.classList.add("hidden");
+            inlineAddForm.classList.add("hidden");
           });
         }
 
         // 提交添加模型
         const btnConfirmAddModel = card.querySelector(".btn-confirm-add-model");
-        if (btnConfirmAddModel && inlineForm) {
+        if (btnConfirmAddModel && inlineAddForm) {
           btnConfirmAddModel.addEventListener("click", async () => {
-            const inputModelId = inlineForm.querySelector(".input-new-model-id");
-            const inputModelName = inlineForm.querySelector(".input-new-model-name");
-            const inputContextWin = inlineForm.querySelector(".input-new-context-win");
-            const inputMaxTokens = inlineForm.querySelector(".input-new-max-tokens");
-            const inputReasoning = inlineForm.querySelector(".input-new-reasoning");
+            const inputModelId = inlineAddForm.querySelector(".input-new-model-id");
+            const inputModelName = inlineAddForm.querySelector(".input-new-model-name");
+            const inputContextWin = inlineAddForm.querySelector(".input-new-context-win");
+            const inputMaxTokens = inlineAddForm.querySelector(".input-new-max-tokens");
+            const inputReasoning = inlineAddForm.querySelector(".input-new-reasoning");
 
             const modelIdVal = inputModelId?.value.trim();
             if (!modelIdVal) {
@@ -864,12 +994,115 @@ window.addEventListener("DOMContentLoaded", () => {
                 </div>
               </div>
               <div style="display: flex; gap: 6px; align-items: center;">
+                <button type="button" class="flat-btn flat-btn-secondary mini btn-edit-custom-model" title="修改模型参数">✏️ 编辑</button>
                 <button type="button" class="flat-btn ${isInWhitelist ? "flat-btn-secondary" : "flat-btn-primary"} mini btn-add-custom-whitelist" ${isInWhitelist ? "disabled" : ""}>
                   ${isInWhitelist ? "✓ 已添加" : "+ 添加到当前列表"}
                 </button>
                 <button type="button" class="flat-btn flat-btn-secondary mini btn-delete-custom-model" style="color: #ef4444;" title="删除模型">删除</button>
               </div>
             `;
+
+            // 模型行内编辑面板
+            const modelEditBox = document.createElement("div");
+            modelEditBox.className = "inline-add-model-box hidden";
+            modelEditBox.innerHTML = `
+              <div style="font-size: 11px; font-weight: 600; color: var(--ink-primary);">✏️ 编辑模型 [${escapeHtml(m.id)}]</div>
+              <div class="form-grid-2">
+                <div class="form-field">
+                  <label class="form-label">模型标识 (Model ID)</label>
+                  <input type="text" class="flat-input input-edit-model-id" value="${escapeHtml(m.id)}" readonly style="opacity: 0.75; cursor: not-allowed;" />
+                </div>
+                <div class="form-field">
+                  <label class="form-label">显示名称 (Display Name)</label>
+                  <input type="text" class="flat-input input-edit-model-name" value="${escapeHtml(m.name || m.id)}" />
+                </div>
+              </div>
+              <div class="form-grid-3">
+                <div class="form-field">
+                  <label class="form-label">上下文 (Tokens)</label>
+                  <input type="number" class="flat-input input-edit-context-win" value="${m.contextWindow || 64000}" min="1000" step="1000" />
+                </div>
+                <div class="form-field">
+                  <label class="form-label">输出上限 (Tokens)</label>
+                  <input type="number" class="flat-input input-edit-max-tokens" value="${m.maxTokens || 4096}" min="256" step="256" />
+                </div>
+                <div class="form-field checkbox-field">
+                  <label class="checkbox-label">
+                    <input type="checkbox" class="input-edit-reasoning" ${m.reasoning ? "checked" : ""} />
+                    <span>支持思考/推理</span>
+                  </label>
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                <button type="button" class="flat-btn flat-btn-secondary mini btn-cancel-edit-model">取消</button>
+                <button type="button" class="flat-btn flat-btn-primary mini btn-save-edit-model">保存模型修改</button>
+              </div>
+            `;
+
+            // 绑定编辑模型按钮
+            const btnEditModel = chip.querySelector(".btn-edit-custom-model");
+            const btnCancelEditModel = modelEditBox.querySelector(".btn-cancel-edit-model");
+            const btnSaveEditModel = modelEditBox.querySelector(".btn-save-edit-model");
+
+            if (btnEditModel) {
+              btnEditModel.addEventListener("click", () => {
+                modelEditBox.classList.toggle("hidden");
+              });
+            }
+
+            if (btnCancelEditModel) {
+              btnCancelEditModel.addEventListener("click", () => {
+                modelEditBox.classList.add("hidden");
+              });
+            }
+
+            if (btnSaveEditModel) {
+              btnSaveEditModel.addEventListener("click", async () => {
+                const inputName = modelEditBox.querySelector(".input-edit-model-name");
+                const inputContext = modelEditBox.querySelector(".input-edit-context-win");
+                const inputMax = modelEditBox.querySelector(".input-edit-max-tokens");
+                const inputReas = modelEditBox.querySelector(".input-edit-reasoning");
+
+                const updatedName = inputName?.value.trim() || m.id;
+                const updatedContext = parseInt(inputContext?.value, 10) || 64000;
+                const updatedMax = parseInt(inputMax?.value, 10) || 4096;
+                const updatedReas = !!inputReas?.checked;
+
+                btnSaveEditModel.disabled = true;
+                try {
+                  await configService.addCustomProviderModel({
+                    provider_id: pKey,
+                    model_id: m.id,
+                    model_name: updatedName,
+                    context_window: updatedContext,
+                    max_tokens: updatedMax,
+                    reasoning: updatedReas,
+                  });
+
+                  // 如果该模型已在白名单中，同步更新白名单
+                  if (configService.isModelInWhitelist(pKey, m.id)) {
+                    configService.addModelToWhitelist({
+                      id: m.id,
+                      name: updatedName,
+                      provider: pKey,
+                      contextWindow: updatedContext,
+                      maxTokens: updatedMax,
+                      reasoning: updatedReas,
+                      isCustom: true,
+                    });
+                  }
+
+                  alert(`模型 [${updatedName}] 配置已成功更新！`);
+                  loadCustomProvidersConfig();
+                  renderWhitelistModels(piClient.currentModel);
+                } catch (err) {
+                  console.error("Update model failed:", err);
+                  alert(`更新模型失败: ${err}`);
+                } finally {
+                  btnSaveEditModel.disabled = false;
+                }
+              });
+            }
 
             // 添加到当前列表
             const addBtn = chip.querySelector(".btn-add-custom-whitelist");
@@ -905,6 +1138,7 @@ window.addEventListener("DOMContentLoaded", () => {
             }
 
             modelsListEl.appendChild(chip);
+            modelsListEl.appendChild(modelEditBox);
           });
         }
 
@@ -924,6 +1158,8 @@ window.addEventListener("DOMContentLoaded", () => {
       const apiType = customApiType.value.trim();
       const baseUrl = customBaseUrl.value.trim();
       const apiKey = customApiKey.value.trim() || null;
+      const customDevRole = document.getElementById("custom-supports-dev-role");
+      const customReasoningEffort = document.getElementById("custom-supports-reasoning-effort");
 
       const saveBtn = document.getElementById("btn-save-custom-provider");
       if (saveBtn) saveBtn.disabled = true;
@@ -934,9 +1170,11 @@ window.addEventListener("DOMContentLoaded", () => {
           api_type: apiType,
           base_url: baseUrl,
           api_key: apiKey,
+          supports_developer_role: customDevRole ? !!customDevRole.checked : (apiType === "openai-responses"),
+          supports_reasoning_effort: customReasoningEffort ? !!customReasoningEffort.checked : false,
         });
 
-        alert(`运营商 [${providerId.toUpperCase()}] 已成功保存！现在可以在下方“步骤 2”中为该运营商添加具体模型。`);
+        alert(`运营商 [${providerId.toUpperCase()}] 已成功保存！现在可以在下方“步骤 2”中为该运营商添加具体模型或修改配置。`);
         customProviderId.value = "";
         customBaseUrl.value = "";
         customApiKey.value = "";
@@ -1424,20 +1662,25 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // 控制清空按钮显隐
-  const updateClearBtn = () => {
-    if (searchInput.value.trim().length > 0) {
-      clearBtn.classList.add("visible");
+  // 控制清空按钮显隐与格言跑马灯层可见性
+  const updateInputState = () => {
+    if (!searchInput) return;
+    const hasText = searchInput.value.length > 0;
+    if (hasText) {
+      clearBtn?.classList.add("visible");
+      searchInputWrapper?.classList.add("has-value");
     } else {
-      clearBtn.classList.remove("visible");
+      clearBtn?.classList.remove("visible");
+      searchInputWrapper?.classList.remove("has-value");
     }
   };
+  const updateClearBtn = updateInputState;
 
-  searchInput.addEventListener("input", updateClearBtn);
+  searchInput.addEventListener("input", updateInputState);
 
   clearBtn.addEventListener("click", () => {
     searchInput.value = "";
-    updateClearBtn();
+    updateInputState();
     searchInput.focus();
   });
 
@@ -1445,7 +1688,7 @@ window.addEventListener("DOMContentLoaded", () => {
     if (e.key === "Escape") {
       if (searchInput.value.length > 0) {
         searchInput.value = "";
-        updateClearBtn();
+        updateInputState();
       } else {
         searchInput.blur();
       }
@@ -1453,7 +1696,7 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   // ==========================================================================
-  // 动态输入框灵感提示词轮播（30分钟周期，Math.floor(N/2) 冷却队列机制）
+  // 动态输入框灵感格言轮播与从右向左自适应循环滚动引擎
   // ==========================================================================
   const SEARCH_PROMPTS = [
     "别等完美，先打个草稿",
@@ -1481,6 +1724,70 @@ window.addEventListener("DOMContentLoaded", () => {
   const STORAGE_KEY_HISTORY = "pi_placeholder_history";
 
   let promptTimer = null;
+  let currentPromptText = "别等完美，先打个草稿";
+  let mottoMeasureCanvas = null;
+
+  /**
+   * 精确测量格言文本在当前输入框字体环境下的实际渲染像素宽度
+   * @param {string} text
+   * @returns {number}
+   */
+  const measureMottoTextWidth = (text) => {
+    if (!text) return 0;
+    try {
+      if (!mottoMeasureCanvas) {
+        mottoMeasureCanvas = document.createElement("canvas");
+      }
+      const ctx = mottoMeasureCanvas.getContext("2d");
+      if (ctx && searchInput) {
+        const computed = window.getComputedStyle(searchInput);
+        const fontStyle = computed.fontStyle || "normal";
+        const fontWeight = computed.fontWeight || "400";
+        const fontSize = computed.fontSize || "15.5px";
+        const fontFamily = computed.fontFamily || "inherit";
+        ctx.font = `${fontStyle} ${fontWeight} ${fontSize} ${fontFamily}`;
+        const metrics = ctx.measureText(text);
+        return Math.ceil(metrics.width);
+      }
+    } catch (e) {
+      console.warn("[Placeholder Marquee] Text measurement fallback:", e);
+    }
+    let width = 0;
+    for (let i = 0; i < text.length; i++) {
+      width += text.charCodeAt(i) > 255 ? 16 : 9;
+    }
+    return width;
+  };
+
+  /**
+   * 检查格言文本是否超出输入框宽度，超出则启用从右向左平滑无缝跑马灯
+   */
+  const checkAndUpdateMottoMarquee = () => {
+    if (!searchInputWrapper || !searchMottoLayer || !searchMottoTrack || !searchMottoText1) {
+      return;
+    }
+
+    const containerWidth = searchInputWrapper.clientWidth;
+    if (containerWidth <= 0) return;
+
+    const textWidth = measureMottoTextWidth(currentPromptText);
+    const MARQUEE_GAP = 48; // 循环副本间距 (px)
+    const MARQUEE_SPEED = 28; // 跑马灯恒定线速度 (px/s)
+
+    // 留 6px 容差防微小亚像素舍入
+    if (textWidth > containerWidth - 6) {
+      const cycleDistance = textWidth + MARQUEE_GAP;
+      const duration = Math.max(6, Math.round((cycleDistance / MARQUEE_SPEED) * 10) / 10);
+
+      searchMottoTrack.style.setProperty("--motto-duration", `${duration}s`);
+      searchMottoLayer.classList.add("is-scrolling");
+      searchMottoTrack.classList.add("animating");
+    } else {
+      searchMottoLayer.classList.remove("is-scrolling");
+      searchMottoTrack.classList.remove("animating");
+      searchMottoTrack.style.removeProperty("--motto-duration");
+    }
+  };
 
   const getPromptHistory = () => {
     try {
@@ -1529,11 +1836,15 @@ window.addEventListener("DOMContentLoaded", () => {
   };
 
   const applyPrompt = (promptText, timestamp = Date.now()) => {
+    currentPromptText = promptText || "";
+    if (searchMottoText1) searchMottoText1.textContent = currentPromptText;
+    if (searchMottoText2) searchMottoText2.textContent = currentPromptText;
     if (searchInput) {
-      searchInput.placeholder = promptText;
+      searchInput.setAttribute("aria-placeholder", currentPromptText);
     }
+    checkAndUpdateMottoMarquee();
     try {
-      localStorage.setItem(STORAGE_KEY_CURRENT, promptText);
+      localStorage.setItem(STORAGE_KEY_CURRENT, currentPromptText);
       localStorage.setItem(STORAGE_KEY_TIMESTAMP, timestamp.toString());
     } catch (e) {
       console.warn("[Placeholder] Failed to save prompt:", e);
@@ -1584,7 +1895,17 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   };
 
+  // 容器尺寸响应式监听（窗口缩放、视图模式切换自适应）
+  if (searchInputWrapper && typeof ResizeObserver !== "undefined") {
+    const mottoResizeObserver = new ResizeObserver(() => {
+      checkAndUpdateMottoMarquee();
+    });
+    mottoResizeObserver.observe(searchInputWrapper);
+  }
+
   window.__piRotatePlaceholder = rotatePrompt;
+  window.__piCheckMottoMarquee = checkAndUpdateMottoMarquee;
+  window.__piSetMottoText = (text) => applyPrompt(text);
   initPlaceholderRotation();
 
   // ==========================================================================

@@ -16,8 +16,8 @@
 ## ✨ 核心特性
 
 - 🤖 **AI-Agent 三态核心界面系统**：
-  - **界面1（初始界面-详细版 `detailed`）**：默认完整视图，包含沉浸标题栏、手绘齿轮设置按钮、完整输入框功能（导入图标/清空/Enter快捷引导）与底部快捷标签；
-  - **界面2（初始界面-专注版 `focus`）**：单击/聚焦输入框即可自动进入，界面极简纯粹，仅保留居中手绘 $\pi$ Logo 徽标与纯净手绘输入框，彻底隐藏所有多余按钮；
+  - **界面1（初始界面-详细版 `detailed`）**：默认完整视图，包含沉浸标题栏、手绘齿轮设置按钮、完整输入框功能（导入图标/清空/Enter快捷引导）、底部快捷标签及内置自适应灵感格言跑马灯（超长文本自动从右向左无缝循环滚动）；
+  - **界面2（初始界面-专注版 `focus`）**：单击/聚焦输入框即可自动进入，界面极简纯粹，仅保留居中手绘 $\pi$ Logo 徽标与纯净手绘输入框（支持格言自适应滚动），彻底隐藏所有多余按钮；
   - **界面3（Flow 流式交互版 `flow`）**：输入内容并回车触发，手绘 Logo 优雅移至左上角，主体区展示真实手绘思考过程卡片（支持折叠/耗时/实时打字流）、工具调用卡片（支持 bash / powershell / 文件编辑等可折叠日志）与 Markdown 流式回答，输入框平滑下移并自适应拉长；
 - ⚡ **高性能纯 Rust (Tauri 2) 四大后端子系统**：
   - 🛡️ **`pi_runner` (进程监督与孤儿收割)**：Windows 原生 Win32 Job Object 内核级级联收割，杜绝僵尸进程；严格 `\n` (LF) 字节流分帧器；滑动窗口崩溃自愈（30s 内超 2 次熔断保护）；
@@ -31,8 +31,8 @@
   - 📋 **当前模型列表 (白名单筛选、拖拽排序与删除锁定)**：集中管理已启用模型列表，**支持鼠标按住自由拖拽排序并持久化存储**，**当前正在激活使用的模型自动锁定、严禁删除**；点击任一模型卡片即可直接切换选用；
   - ⚡ **官方通道配置 (API Key 自动映射与模型拉取)**：支持 Anthropic Claude, OpenAI, DeepSeek, Google Gemini, OpenRouter, 通义千问 Qwen, 月之暗面 Kimi, MiniMax, Groq, xAI Grok 等官方通道，配置 API Key **自动写入 `~/.pi/agent/auth.json`**，并可一键自动拉取官方可用模型添加到列表；
   - 🛠️ **两步式自定义通道配置 (端点与模型挂载)**：
-    - **步骤 1（新增/管理运营商）**：配置 Provider ID、接口类型（支持 **`openai-responses` (OpenAI Responses API)**、`openai-completions`、`anthropic-messages`、`google-generative-ai`、`ollama`）、Base URL 及 API Key；
-    - **步骤 2（运营商内添加与管理模型）**：在各运营商卡片内添加具体模型（模型 ID、显示名称、上下文窗口、输出上限及思考能力），**自动映射写入 `~/.pi/agent/models.json`** 并同步加入当前模型列表；
+    - **步骤 1（新增/配置运营商）**：配置 Provider ID、接口类型（支持 `openai-completions` (OpenAI Chat / 聚合代理 / 硅基 / 火山 / DeepSeek)、`openai-responses` (OpenAI Responses API / Azure)、`anthropic-messages`、`google-generative-ai`、`ollama`）、Base URL、API Key 及 developer role / reasoning 兼容参数；
+    - **步骤 2（运营商配置修改与模型管理）**：在各运营商卡片内**支持一键修改运营商配置 (API 类型/URL/Key/兼容开关)**、新增与编辑挂载模型（模型 ID、显示名称、上下文窗口、输出上限及思考能力），**自动映射写入 `~/.pi/agent/models.json`** 并同步加入当前模型列表；
   - 🖥️ **宿主内核与会话管理**：支持 Pi 宿主状态监控、一键重启 Host、版本更新检查及历史会话检索切换。
 - 🔄 **全域右键“返回上一步 (Step Back)”层级流水线**：
   - 在任意位置点击右键：退出设置全屏视图 ➔ `Flow (界面3, 触发 abort 中止)` ➔ 回退至 `专注版 (界面2)` ➔ 回退至 `详细版 (界面1)` ➔ 输入框失焦/清空；

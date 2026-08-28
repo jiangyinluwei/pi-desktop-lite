@@ -730,9 +730,110 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   transform: scale(1.05);
 }
 
+/* 输入框与格言跑马灯包装层 */
+.search-input-wrapper {
+  flex: 1;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* 格言跑马灯展示层（无输入时呈现） */
+.search-motto-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1;
+  opacity: 1;
+  transition: opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.18s ease;
+}
+
+/* 文本超长滚动时左右微羽化渐变遮罩 */
+.search-motto-layer.is-scrolling {
+  mask-image: linear-gradient(
+    to right,
+    transparent 0px,
+    black 8px,
+    black calc(100% - 12px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0px,
+    black 8px,
+    black calc(100% - 12px),
+    transparent 100%
+  );
+}
+
+/* 用户已键入内容时，隐藏格言层 */
+.search-input-wrapper.has-value .search-motto-layer {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 跑马灯轨道 */
+.search-motto-track {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+/* 滚动动画激活态：从右向左平滑无缝循环滚动 */
+.search-motto-track.animating {
+  animation: piMottoMarquee var(--motto-duration, 12s) linear infinite;
+}
+
+@keyframes piMottoMarquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+/* 格言单项文本 */
+.search-motto-item {
+  font-size: 15.5px;
+  font-family: inherit;
+  color: var(--ink-muted);
+  font-weight: 400;
+  opacity: 0.75;
+  white-space: nowrap;
+  display: inline-block;
+  line-height: 1;
+}
+
+/* 激活滚动时的副本间距 */
+.search-motto-track.animating .search-motto-item {
+  padding-right: 48px;
+}
+
+/* 非滚动状态下隐藏第二个副本且消除额外间距 */
+.search-motto-track:not(.animating) .search-motto-repeat {
+  display: none !important;
+}
+
+.search-motto-track:not(.animating) .search-motto-item {
+  padding-right: 0;
+}
+
 /* 输入框 */
 .search-input {
-  flex: 1;
+  width: 100%;
   height: 100%;
   background: transparent;
   border: none;
@@ -741,12 +842,14 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   font-family: inherit;
   color: var(--ink-primary);
   user-select: text;
+  position: relative;
+  z-index: 2;
+  padding: 0;
+  margin: 0;
 }
 
 .search-input::placeholder {
-  color: var(--ink-muted);
-  font-weight: 400;
-  opacity: 0.75;
+  color: transparent;
 }
 
 /* 快捷引导徽章 */
@@ -1721,8 +1824,9 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   gap: 6px;
 }
 
-/* 运营商内部折叠/新增模型表单 */
-.inline-add-model-box {
+/* 运营商内部折叠/新增模型与编辑运营商表单 */
+.inline-add-model-box,
+.inline-edit-provider-box {
   background-color: var(--sketch-tag-bg);
   border: 1px solid var(--sketch-border-subtle);
   border-radius: 6px;
@@ -1734,7 +1838,8 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   animation: sketchFadeIn 0.15s ease-out;
 }
 
-.inline-add-model-box.hidden {
+.inline-add-model-box.hidden,
+.inline-edit-provider-box.hidden {
   display: none;
 }
 

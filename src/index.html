@@ -182,9 +182,17 @@
             </svg>
           </div>
 
-          <!-- 文本输入框 -->
-          <input type="text" id="search-input" class="search-input" placeholder="别等完美，先打个草稿" autocomplete="off"
-            spellcheck="false" />
+          <!-- 文本输入区域与格言跑马灯容器 -->
+          <div class="search-input-wrapper" id="search-input-wrapper">
+            <div class="search-motto-layer" id="search-motto-layer" aria-hidden="true">
+              <div class="search-motto-track" id="search-motto-track">
+                <span class="search-motto-item" id="search-motto-text-1">别等完美，先打个草稿</span>
+                <span class="search-motto-item search-motto-repeat" id="search-motto-text-2">别等完美，先打个草稿</span>
+              </div>
+            </div>
+            <input type="text" id="search-input" class="search-input" placeholder="" autocomplete="off"
+              spellcheck="false" />
+          </div>
 
           <!-- 手绘风格清空按钮 -->
           <button type="button" id="clear-btn" class="icon-button clear-btn" aria-label="清空输入" title="清空 (Esc)">
@@ -423,7 +431,7 @@
               <p class="pane-desc">支持两步式配置：先新增运营商（端点协议与 Key），再在运营商内新增模型（自动写入 ~/.pi/agent/models.json）。</p>
             </div>
 
-            <!-- 第一步：新增自定义运营商卡片 -->
+            <!-- 第一步：新增或配置自定义运营商卡片 -->
             <div class="custom-step-card">
               <div class="step-card-header">
                 <span class="step-badge">步骤 1</span>
@@ -433,15 +441,15 @@
                 <div class="form-grid-2">
                   <div class="form-field">
                     <label for="custom-provider-id" class="form-label">运营商标识 (Provider ID) <span class="req">*</span></label>
-                    <input type="text" id="custom-provider-id" class="flat-input" placeholder="如 siliconflow, ollama, oneapi, my-proxy" required />
+                    <input type="text" id="custom-provider-id" class="flat-input" placeholder="如 siliconflow, ollama, oneapi, volcengine" required />
                   </div>
                   <div class="form-field">
                     <label for="custom-api-type" class="form-label">接口类型 (API Protocol) <span class="req">*</span></label>
                     <select id="custom-api-type" class="flat-select" required>
-                      <option value="openai-responses">openai-responses (OpenAI Responses API / Azure)</option>
-                      <option value="openai-completions" selected>openai-completions (OpenAI Chat / 聚合代理)</option>
-                      <option value="anthropic-messages">anthropic-messages (Anthropic Messages API)</option>
-                      <option value="google-generative-ai">google-generative-ai (Google AI)</option>
+                      <option value="openai-completions" selected>openai-completions (OpenAI Chat / 聚合代理 / 硅基流动 / 火山方舟 / DeepSeek)</option>
+                      <option value="openai-responses">openai-responses (OpenAI Responses API / Azure OpenAI)</option>
+                      <option value="anthropic-messages">anthropic-messages (Anthropic Messages API / Claude)</option>
+                      <option value="google-generative-ai">google-generative-ai (Google Gemini API)</option>
                       <option value="ollama">ollama (Ollama 本地端点)</option>
                     </select>
                   </div>
@@ -457,6 +465,21 @@
                   <input type="password" id="custom-api-key" class="flat-input" placeholder="sk-... (Ollama 可留空或填 ollama)" />
                 </div>
 
+                <div class="form-grid-2" style="margin-top: 2px;">
+                  <div class="form-field checkbox-field">
+                    <label class="checkbox-label" title="开启后以 developer role 发送系统提示词。国内/聚合平台如 DeepSeek、火山方舟等请勿勾选，否则会导致 400 invalid developer role 错误。">
+                      <input type="checkbox" id="custom-supports-dev-role" />
+                      <span>启用 developer 角色 (兼容端点请勿勾)</span>
+                    </label>
+                  </div>
+                  <div class="form-field checkbox-field">
+                    <label class="checkbox-label" title="是否支持 reasoning_effort 思考参数">
+                      <input type="checkbox" id="custom-supports-reasoning-effort" />
+                      <span>支持 reasoning_effort 思考参数</span>
+                    </label>
+                  </div>
+                </div>
+
                 <div class="form-actions">
                   <button type="submit" class="flat-btn flat-btn-primary" id="btn-save-custom-provider">+ 保存/更新运营商</button>
                 </div>
@@ -469,7 +492,7 @@
                 <span class="step-badge">步骤 2</span>
                 <h4 class="step-title">运营商列表与模型管理</h4>
               </div>
-              <p class="form-hint" style="margin-bottom: 12px;">在下方已配置的运营商卡片中新增模型、查看模型或删除模型配置。</p>
+              <p class="form-hint" style="margin-bottom: 12px;">在下方已配置的运营商卡片中修改配置、新增模型、查看或删除模型配置。</p>
               <div class="custom-providers-container" id="custom-providers-container">
                 <!-- 动态罗列已配置的运营商与模型卡片 -->
               </div>
