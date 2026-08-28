@@ -44,7 +44,12 @@
 5. **按钮设计与交互铁律（常态透明、常态无边框、悬浮显框）**：
    - 严禁违背轻量纸质美学，所有新增按钮常态下背景必须透明（`background: transparent`）；
    - 常态下严禁显示可见边框，必须采用 `border: 1px solid transparent;` 保持 1px 几何占位，彻底杜绝悬停时因 border 显现引起界面抖动与重排（Layout Shift）；
-   - 仅在鼠标悬浮（`:hover`）或键盘聚焦（`:focus-visible`）时显现手绘边框（`border-color: var(--sketch-border-subtle)` / `var(--sketch-border)`）与微背景。
+   - 仅在鼠标悬浮（`:hover`）或键盘聚焦（`:focus-visible`）时显现手绘边框（`border-color: var(--sketch-border-subtle)` / `var(--sketch-border)`）与微背景；
+6. **系统托盘与后台生命周期铁律**：
+   - **右上角关闭为后台休眠**：点击右上角关闭按钮或触发系统关闭请求（如 `CloseRequested`）时，统一通过 `window.hide()` 隐藏窗口，保持后台进程与右下角系统托盘图标驻留；
+   - **系统托盘交互与菜单**：
+     - **左键单击 / 双击**：唤醒、取消最小化并置顶聚焦主窗口；
+     - **右键菜单**：提供 `打开`（唤醒并聚焦窗口）、`设置`（唤醒窗口并派发设置事件）、`退出`（调用 `app.exit(0)` 彻底杀死后台完全退出应用）。
 
 ---
 

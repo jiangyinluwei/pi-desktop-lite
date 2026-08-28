@@ -81,6 +81,13 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // 监听托盘“设置”事件（预留未来设置界面路由）
+  if (window.__TAURI__?.event?.listen) {
+    window.__TAURI__.event.listen("navigate-settings", () => {
+      console.log("[Settings] Navigate to settings requested from system tray.");
+    });
+  }
+
   // 窗口控制元素
   const btnMinimize = document.getElementById("btn-minimize");
   const btnMaximize = document.getElementById("btn-maximize");
