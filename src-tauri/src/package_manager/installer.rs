@@ -112,7 +112,7 @@ pub async fn install_package(
     // 异步排队获取全局互斥锁（严格按队列顺序执行，杜绝并发冲突）
     let _lock = PACKAGE_OPERATION_MUTEX.lock().await;
 
-    let pi_bin = PiSupervisor::find_pi_binary().unwrap_or_else(|| PathBuf::from("pi"));
+    let pi_bin = PiSupervisor::find_pi_binary(Some(app_handle)).unwrap_or_else(|| PathBuf::from("pi"));
 
     log::info!(
         "[PackageManager] Installing package '{}' using binary: {:?}",
@@ -278,7 +278,7 @@ pub async fn uninstall_package(
     // 异步排队获取全局互斥锁（严格按队列顺序执行，杜绝并发冲突）
     let _lock = PACKAGE_OPERATION_MUTEX.lock().await;
 
-    let pi_bin = PiSupervisor::find_pi_binary().unwrap_or_else(|| PathBuf::from("pi"));
+    let pi_bin = PiSupervisor::find_pi_binary(Some(app_handle)).unwrap_or_else(|| PathBuf::from("pi"));
 
     log::info!(
         "[PackageManager] Removing package '{}' using binary: {:?}",

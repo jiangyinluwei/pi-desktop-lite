@@ -8,7 +8,7 @@ use std::pin::Pin;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::sync::{mpsc, Mutex, RwLock};
@@ -56,8 +56,8 @@ impl PiSupervisor {
         }
     }
 
-    /// 查找可用的 Pi 可执行文件路径
-    pub fn find_pi_binary() -> Option<PathBuf> {
+    /// 查找可用的 Pi 可执行文件路径（优先支持打包内置资源、同级目录、开发相对路径与 PATH）
+    pub fn find_pi_binary(app_handle: Option<&AppHandle>) -> Option<PathBuf> {
         // 1. 检查环境变量 PI_BINARY_PATH
         if let Ok(env_path) = std::env::var("PI_BINARY_PATH") {
             let p = PathBuf::from(env_path);
@@ -66,29 +66,69 @@ impl PiSupervisor {
             }
         }
 
-        // 2. 检查本地相对目录 (.mytools/pi-body/pi-windows-x64/pi.exe)
-        let candidate_relative_paths = [
-            ".mytools/pi-body/pi-windows-x64/pi.exe",
-            "../.mytools/pi-body/pi-windows-x64/pi.exe",
-            ".mytools/pi-body/pi-windows-x64/pi",
-            "../.mytools/pi-body/pi-windows-x64/pi",
-        ];
-
-        let base_dirs = [
-            std::env::current_dir().ok(),
-            std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())),
-        ];
-
-        for base in base_dirs.into_iter().flatten() {
-            for rel in &candidate_relative_paths {
-                let full = base.join(rel);
-                if full.is_file() {
-                    return Some(full);
+        // 2. 检查 Tauri Resource 目录（安装包 / Release 打包内置资源）
+        if let Some(app) = app_handle {
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                let resource_candidates = [
+                    resource_dir.join("pi-windows-x64").join("pi.exe"),
+                    resource_dir.join("pi-windows-x64").join("pi"),
+                    resource_dir.join("_up_").join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
+                    resource_dir.join("_up_").join("pi-windows-x64").join("pi.exe"),
+                    resource_dir.join("pi-body").join("pi-windows-x64").join("pi.exe"),
+                    resource_dir.join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
+                    resource_dir.join("pi.exe"),
+                    resource_dir.join("pi"),
+                ];
+                for candidate in &resource_candidates {
+                    if candidate.is_file() {
+                        return Some(candidate.clone());
+                    }
                 }
             }
         }
 
-        // 3. 检查系统 PATH 中的 pi / pi.exe
+        // 3. 检查 exe 所在目录及其 resources 子目录、上级目录
+        if let Ok(current_exe) = std::env::current_exe() {
+            if let Some(exe_dir) = current_exe.parent() {
+                let exe_candidates = [
+                    exe_dir.join("resources").join("pi-windows-x64").join("pi.exe"),
+                    exe_dir.join("resources").join("pi-windows-x64").join("pi"),
+                    exe_dir.join("resources").join("_up_").join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
+                    exe_dir.join("resources").join("pi-body").join("pi-windows-x64").join("pi.exe"),
+                    exe_dir.join("resources").join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
+                    exe_dir.join("resources").join("pi.exe"),
+                    exe_dir.join("pi-windows-x64").join("pi.exe"),
+                    exe_dir.join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
+                    exe_dir.join("..").join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
+                    exe_dir.join("pi.exe"),
+                ];
+                for candidate in &exe_candidates {
+                    if candidate.is_file() {
+                        return Some(candidate.clone());
+                    }
+                }
+            }
+        }
+
+        // 4. 检查当前工作目录 (开发模式及相对路径)
+        if let Ok(curr_dir) = std::env::current_dir() {
+            let curr_candidates = [
+                curr_dir.join(".mytools/pi-body/pi-windows-x64/pi.exe"),
+                curr_dir.join("../.mytools/pi-body/pi-windows-x64/pi.exe"),
+                curr_dir.join("resources/pi-windows-x64/pi.exe"),
+                curr_dir.join("resources/_up_/.mytools/pi-body/pi-windows-x64/pi.exe"),
+                curr_dir.join("pi-windows-x64/pi.exe"),
+                curr_dir.join(".mytools/pi-body/pi-windows-x64/pi"),
+                curr_dir.join("pi.exe"),
+            ];
+            for candidate in &curr_candidates {
+                if candidate.is_file() {
+                    return Some(candidate.clone());
+                }
+            }
+        }
+
+        // 5. 检查系统 PATH 中的 pi / pi.exe
         if let Ok(path_var) = std::env::var("PATH") {
             let split_char = if cfg!(windows) { ';' } else { ':' };
             let bin_name = if cfg!(windows) { "pi.exe" } else { "pi" };
@@ -128,12 +168,19 @@ impl PiSupervisor {
         Box::pin(async move {
             *this.is_stopping.write().await = false;
 
-            let binary_path = Self::find_pi_binary()
-                .ok_or_else(|| "Could not find pi executable in .mytools or PATH".to_string())?;
+            let binary_path = Self::find_pi_binary(Some(&this.app_handle))
+                .ok_or_else(|| "Could not find pi executable in bundled resources, .mytools or PATH".to_string())?;
 
             *this.resolved_binary_path.write().await = Some(binary_path.clone());
 
-            let version_str = match Command::new(&binary_path).arg("--version").output().await {
+            let mut ver_cmd = Command::new(&binary_path);
+            ver_cmd.arg("--version");
+            #[cfg(windows)]
+            {
+                ver_cmd.creation_flags(0x08000000);
+            }
+
+            let version_str = match ver_cmd.output().await {
                 Ok(out) if out.status.success() => {
                     String::from_utf8_lossy(&out.stdout).trim().to_string()
                 }
@@ -161,6 +208,11 @@ impl PiSupervisor {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+
+        #[cfg(windows)]
+        {
+            cmd.creation_flags(0x08000000);
+        }
 
         cmd.envs(std::env::vars());
 

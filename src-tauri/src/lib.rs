@@ -246,6 +246,14 @@ async fn pi_get_cached_update(
     Ok(scheduler.get_cached_result().await)
 }
 
+fn show_and_focus_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
 // ==========================================================================
 // 主启动入口
 // ==========================================================================
@@ -254,6 +262,9 @@ async fn pi_get_cached_update(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_and_focus_main_window(app);
+        }))
         .invoke_handler(tauri::generate_handler![
             minimize_window,
             toggle_maximize_window,
@@ -340,14 +351,6 @@ pub fn run() {
                 .default_window_icon()
                 .cloned()
                 .expect("Failed to get default window icon");
-
-fn show_and_focus_main_window(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
-    }
-}
 
             let _tray = TrayIconBuilder::new()
                 .icon(icon)

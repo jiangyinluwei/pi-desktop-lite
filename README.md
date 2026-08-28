@@ -22,7 +22,8 @@
 - 🎨 **全域手绘工程草图 SVG 矢量图元体系**：项目前端彻底清除所有系统默认 Emoji 符号，统一设计并内联 20 款手绘草图风格 SVG 矢量图元（`src/assets/svg/`），配合 `currentColor` 严格实现浅色（素描绘图纸）与深色（炭黑素描黑板）双模毫秒级自适应；
 - 📜 **隐藏式极简滚动条体系**：全域消除上下图标与滚动槽，常态为 4px 隐匿窄竖条，悬浮可滚动内容区不高亮，仅鼠标移入滚动条本身范围时自适应放大至 6px 并高亮加深；
 - 📐 **手绘草图质感自定义下拉框 (Pop-Shake)**：封装 `SketchSelect` 组件，展开时触发迅速轻快的弹出微抖动动画（Pop & Micro-Shake，约 180ms 快速回弹），边框、底色、字色完美适配纸质与黑板双模，双向同步原生 `<select>` 数据与事件；
-- ⚡ **高性能纯 Rust (Tauri 2) 六大后端子系统**：
+- ⚡ **高性能纯 Rust (Tauri 2) 后端核心架构**：
+  - 🪟 **单实例互斥与防重复启动 (`single-instance`)**：全局保证软件仅有一个实例运行，检测到重复启动时新进程直接退出，并自动将已有主窗口取消最小化、唤醒并置顶聚焦；
   - 🛡️ **`pi_runner` (进程监督与孤儿收割)**：Windows 原生 Win32 Job Object 内核级级联收割，杜绝僵尸进程；严格 `\n` (LF) 字节流分帧器；滑动窗口崩溃自愈（30s 内超 2 次熔断保护）；
   - 🧩 **`package_manager` (官方组件市场与生命周期)**：连通 Pi 官方 Package Catalog (pi.dev/packages)，基于轻量正则解析与 15min TTL 缓存提取结构化组件；精确探测本地已安装组件及版本；内置全局单任务互斥锁（Mutex）与 FIFO 异步任务队列，支持批量连续点击加入队列并自动按序出队执行；调用 `pi install/remove npm:<pkg> -a` 执行非阻塞安装与卸载；并发查询 npm registry API 进行 SemVer 版本比对与一键更新；
   - 🔒 **`security` (正则数据脱敏中间件)**：过滤 API Key / Token / 凭据并脱敏本地私有路径为 `[USER_HOME]`；
@@ -413,7 +414,7 @@ npm run build
 ```text
 pi-desktop-lite/
 ├── .agents/skills/             # 项目技能规范定义 (auto-compile-and-fix, sketch-drafting-ui, clean-code-refactoring 等)
-├── .mytools/pi-body/           # 最新 Pi Agent Release 引擎包 (pi-windows-x64/pi.exe)
+├── .mytools/pi-body/           # 最新 Pi Agent Release 引擎包 (打包发布时自动内嵌作为 App Bundle Resources，开箱即用)
 ├── scripts/                    # 自动化与环境配置脚本 (tauri.js runner)
 ├── src/                        # 前端页面源码与运行时资源
 │   ├── assets/                 # 静态资源 (logo.svg, logo.ico)
