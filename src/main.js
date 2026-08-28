@@ -68,7 +68,8 @@ window.addEventListener("DOMContentLoaded", () => {
 
 
   // 设置独立全页面元素
-  const btnSettingsBack = document.getElementById("btn-settings-back");
+  const topbarHintBanner = document.getElementById("topbar-hint-banner");
+  let hintBannerTimeout = null;
   const hostStatusDot = document.getElementById("host-status-dot");
   const hostStatusText = document.getElementById("host-status-text");
   const hostVersionText = document.getElementById("host-version-text");
@@ -85,7 +86,6 @@ window.addEventListener("DOMContentLoaded", () => {
   const currentModelName = document.getElementById("current-model-name");
   const currentModelInfo = document.getElementById("current-model-info");
   const thinkingSelectDropdown = document.getElementById("thinking-select-dropdown");
-  const btnRefreshModels = document.getElementById("btn-refresh-models");
   const whitelistModelsList = document.getElementById("whitelist-models-list");
 
   // 官方通道设置元素
@@ -167,6 +167,49 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   // ==========================================================================
+  // 0. 模型输出上限规范吸附辅助函数 (Snap to Closest Canonical Token Limits)
+  // ==========================================================================
+  const STANDARD_OUTPUT_TOKENS = [
+    512, 1024, 2048, 4096, 8192, 16384, 32768, 64000, 65536, 100000, 128000, 131072,
+  ];
+
+  const snapToClosestStandardTokens = (inputVal) => {
+    let num = parseInt(inputVal, 10);
+    if (isNaN(num) || num <= 0) return 4096;
+
+    let closest = STANDARD_OUTPUT_TOKENS[0];
+    let minDiff = Math.abs(num - closest);
+
+    for (const val of STANDARD_OUTPUT_TOKENS) {
+      const diff = Math.abs(num - val);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = val;
+      }
+    }
+    return closest;
+  };
+
+  const setupOutputTokensAutoSnap = (inputEl) => {
+    if (!inputEl) return;
+    const doSnap = () => {
+      if (inputEl.value && inputEl.value.trim() !== "") {
+        const snapped = snapToClosestStandardTokens(inputEl.value);
+        inputEl.value = snapped.toString();
+      }
+    };
+    inputEl.addEventListener("blur", doSnap);
+    inputEl.addEventListener("change", doSnap);
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        doSnap();
+        inputEl.blur();
+      }
+    });
+  };
+
+  // ==========================================================================
   // 1. 软件主题色设置 (Theme Mode: 跟随系统、浅色、暗色)
   // ==========================================================================
   const initThemeControl = () => {
@@ -190,9 +233,24 @@ window.addEventListener("DOMContentLoaded", () => {
         btn.classList.add("active");
       });
     });
+
+    configService.addEventListener("theme-change", (e) => {
+      const activeTheme = e.detail?.theme || configService.getTheme();
+      themeButtons.forEach((b) => {
+        if (b.getAttribute("data-theme-val") === activeTheme) {
+          b.classList.add("active");
+        } else {
+          b.classList.remove("active");
+        }
+      });
+    });
   };
 
-  initThemeControl();
+  // 异步预加载 ~/.pi-dl/config.json 并初始化主题与控件
+  (async () => {
+    await configService.loadAppConfig();
+    initThemeControl();
+  })();
 
   // ==========================================================================
   // 2. 独立全页面设置视图导航交互
@@ -229,6 +287,15 @@ window.addEventListener("DOMContentLoaded", () => {
     }
     setViewMode(VIEW_SETTINGS, false);
 
+    // 右上角提示 3 秒后平滑渐隐
+    if (topbarHintBanner) {
+      topbarHintBanner.classList.remove("fade-out");
+      if (hintBannerTimeout) clearTimeout(hintBannerTimeout);
+      hintBannerTimeout = setTimeout(() => {
+        topbarHintBanner.classList.add("fade-out");
+      }, 3000);
+    }
+
     loadSessions();
     loadModelsAndState();
     loadOfficialProvidersConfig();
@@ -257,13 +324,6 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  if (btnSettingsBack) {
-    btnSettingsBack.addEventListener("click", (e) => {
-      e.preventDefault();
-      closeSettingsView();
-    });
-  }
-
   if (window.__TAURI__?.event?.listen) {
     window.__TAURI__.event.listen("navigate-settings", () => {
       openSettingsView();
@@ -271,10 +331,9 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   // ==========================================================================
-  // 3. 当前模型列表与白名单机制 (拖拽排序 + 选中模型禁止删除保护)
+  // 3. 当前模型列表与白名单机制 (最近选用 MRU 自动排序 + 选中模型禁止删除保护)
   // ==========================================================================
   let officialCatalog = [];
-  let draggedModelIndex = null;
 
   const updateModelUI = (model, thinkingLevel = null) => {
     if (!model) return;
@@ -312,13 +371,12 @@ window.addEventListener("DOMContentLoaded", () => {
 
     whitelist.forEach((m, index) => {
       const item = document.createElement("div");
-      item.className = "whitelist-model-item draggable";
-      item.setAttribute("draggable", "true");
+      item.className = "whitelist-model-item";
       item.setAttribute("data-index", index.toString());
 
       const isActive =
         activeModel &&
-        activeModel.id === m.id &&
+        activeModel.id?.toLowerCase() === m.id?.toLowerCase() &&
         activeModel.provider?.toLowerCase() === m.provider?.toLowerCase();
 
       if (isActive) {
@@ -337,7 +395,6 @@ window.addEventListener("DOMContentLoaded", () => {
 
       item.innerHTML = `
         <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
-          <span class="drag-handle" title="按住鼠标拖动排序">${ICONS.dragHandle}</span>
           <div class="model-item-info">
             <div class="model-item-header">
               <span class="flat-badge">${escapeHtml(m.provider?.toUpperCase() || "OTHER")}</span>
@@ -363,61 +420,7 @@ window.addEventListener("DOMContentLoaded", () => {
         </div>
       `;
 
-      // 1. 拖拽事件监听 (HTML5 Drag & Drop)
-      item.addEventListener("dragstart", (e) => {
-        draggedModelIndex = index;
-        item.classList.add("dragging");
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", index.toString());
-      });
-
-      item.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        const rect = item.getBoundingClientRect();
-        const midpoint = rect.top + rect.height / 2;
-        if (e.clientY < midpoint) {
-          item.classList.add("drag-over-top");
-          item.classList.remove("drag-over-bottom");
-        } else {
-          item.classList.add("drag-over-bottom");
-          item.classList.remove("drag-over-top");
-        }
-      });
-
-      item.addEventListener("dragleave", () => {
-        item.classList.remove("drag-over-top", "drag-over-bottom");
-      });
-
-      item.addEventListener("drop", (e) => {
-        e.preventDefault();
-        item.classList.remove("drag-over-top", "drag-over-bottom");
-        const fromIdx = draggedModelIndex;
-        let toIdx = index;
-
-        const rect = item.getBoundingClientRect();
-        const midpoint = rect.top + rect.height / 2;
-        if (e.clientY >= midpoint && fromIdx < toIdx) {
-          // 放在下方
-        } else if (e.clientY < midpoint && fromIdx > toIdx) {
-          // 放在上方
-        }
-
-        if (fromIdx !== null && fromIdx !== toIdx) {
-          configService.reorderModelWhitelist(fromIdx, toIdx);
-          renderWhitelistModels(piClient.currentModel || activeModel);
-        }
-      });
-
-      item.addEventListener("dragend", () => {
-        item.classList.remove("dragging", "drag-over-top", "drag-over-bottom");
-        draggedModelIndex = null;
-        document.querySelectorAll(".whitelist-model-item").forEach((el) => {
-          el.classList.remove("dragging", "drag-over-top", "drag-over-bottom");
-        });
-      });
-
-      // 2. 选用按钮点击
+      // 选用按钮点击 -> 切换模型并将选用模型自动移到列表首位 (MRU)
       const selectBtn = item.querySelector(".btn-select-model");
       if (selectBtn) {
         selectBtn.addEventListener("click", async (e) => {
@@ -439,7 +442,7 @@ window.addEventListener("DOMContentLoaded", () => {
         });
       }
 
-      // 3. 移除按钮点击（激活中的模型已禁止删除）
+      // 移除按钮点击（激活中的模型已禁止删除）
       const removeBtn = item.querySelector(".btn-remove-model");
       if (removeBtn && !isActive) {
         removeBtn.addEventListener("click", (e) => {
@@ -490,8 +493,8 @@ window.addEventListener("DOMContentLoaded", () => {
         savedModel.provider &&
         savedModel.modelId &&
         (!currentActiveModel ||
-          currentActiveModel.id !== savedModel.modelId ||
-          currentActiveModel.provider !== savedModel.provider)
+          currentActiveModel.id?.toLowerCase() !== savedModel.modelId.toLowerCase() ||
+          currentActiveModel.provider?.toLowerCase() !== savedModel.provider.toLowerCase())
       ) {
         try {
           const switched = await piClient.setModel(savedModel.provider, savedModel.modelId);
@@ -501,28 +504,28 @@ window.addEventListener("DOMContentLoaded", () => {
         }
       }
 
-      updateModelUI(currentActiveModel, state?.thinkingLevel);
+      const savedThinking = configService.getDefaultThinkingLevel();
+      if (savedThinking && state?.thinkingLevel !== savedThinking) {
+        try {
+          await piClient.setThinkingLevel(savedThinking);
+        } catch (e) {
+          console.warn("[Main] Auto-set saved thinking level failed:", e);
+        }
+      }
+
+      updateModelUI(currentActiveModel, savedThinking || state?.thinkingLevel);
       renderWhitelistModels(currentActiveModel);
     } catch (err) {
       console.warn("[Main] Failed to load models and state:", err);
     }
   };
 
-  if (btnRefreshModels) {
-    btnRefreshModels.addEventListener("click", async () => {
-      btnRefreshModels.disabled = true;
-      await loadModelsAndState();
-      setTimeout(() => {
-        btnRefreshModels.disabled = false;
-      }, 500);
-    });
-  }
-
   if (thinkingSelectDropdown) {
     thinkingSelectDropdown.addEventListener("change", async () => {
       const level = thinkingSelectDropdown.value;
       try {
         await piClient.setThinkingLevel(level);
+        configService.saveDefaultThinkingLevel(level);
         await configService.saveSettingsConfig({ defaultThinkingLevel: level });
       } catch (err) {
         console.error("Failed to change thinking level:", err);
@@ -531,6 +534,9 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   piClient.addEventListener("model-change", (e) => {
+    if (e.detail?.provider && e.detail?.id) {
+      configService.touchModelAsRecentlyUsed(e.detail.provider, e.detail.id);
+    }
     updateModelUI(e.detail);
     renderWhitelistModels(e.detail);
   });
@@ -820,7 +826,7 @@ window.addEventListener("DOMContentLoaded", () => {
               </div>
               <div class="form-field checkbox-field">
                 <label class="checkbox-label">
-                  <input type="checkbox" class="input-new-reasoning" />
+                  <input type="checkbox" class="input-new-reasoning" checked />
                   <span>支持思考/推理</span>
                 </label>
               </div>
@@ -852,6 +858,12 @@ window.addEventListener("DOMContentLoaded", () => {
         const btnCancelEditProv = card.querySelector(".btn-cancel-edit-prov");
         const btnSaveEditProv = card.querySelector(".btn-save-edit-prov");
         const inlineAddForm = card.querySelector(".inline-add-model-box");
+
+        // 绑定新增模型输入框输出上限自动规范吸附
+        if (inlineAddForm) {
+          const inputNewMaxTokens = inlineAddForm.querySelector(".input-new-max-tokens");
+          setupOutputTokensAutoSnap(inputNewMaxTokens);
+        }
 
         if (btnEditProvider && inlineEditForm) {
           btnEditProvider.addEventListener("click", () => {
@@ -961,7 +973,10 @@ window.addEventListener("DOMContentLoaded", () => {
 
             const modelNameVal = inputModelName?.value.trim() || modelIdVal;
             const contextWinVal = parseInt(inputContextWin?.value, 10) || 64000;
-            const maxTokensVal = parseInt(inputMaxTokens?.value, 10) || 4096;
+            const maxTokensVal = snapToClosestStandardTokens(inputMaxTokens?.value);
+            if (inputMaxTokens) {
+              inputMaxTokens.value = maxTokensVal.toString();
+            }
             const reasoningVal = !!inputReasoning?.checked;
 
             btnConfirmAddModel.disabled = true;
@@ -975,7 +990,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 reasoning: reasoningVal,
               });
 
-              // 自动添加到白名单
+              // 自动添加到白名单 (插入到首位)
               configService.addModelToWhitelist({
                 id: modelIdVal,
                 name: modelNameVal,
@@ -1071,6 +1086,10 @@ window.addEventListener("DOMContentLoaded", () => {
               </div>
             `;
 
+            // 绑定编辑模型输入框输出上限自动规范吸附
+            const inputEditMaxTokens = modelEditBox.querySelector(".input-edit-max-tokens");
+            setupOutputTokensAutoSnap(inputEditMaxTokens);
+
             // 绑定编辑模型按钮
             const btnEditModel = chip.querySelector(".btn-edit-custom-model");
             const btnCancelEditModel = modelEditBox.querySelector(".btn-cancel-edit-model");
@@ -1097,7 +1116,10 @@ window.addEventListener("DOMContentLoaded", () => {
 
                 const updatedName = inputName?.value.trim() || m.id;
                 const updatedContext = parseInt(inputContext?.value, 10) || 64000;
-                const updatedMax = parseInt(inputMax?.value, 10) || 4096;
+                const updatedMax = snapToClosestStandardTokens(inputMax?.value);
+                if (inputMax) {
+                  inputMax.value = updatedMax.toString();
+                }
                 const updatedReas = !!inputReas?.checked;
 
                 btnSaveEditModel.disabled = true;

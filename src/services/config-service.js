@@ -1,6 +1,7 @@
 /**
  * Pi Desktop Lite 配置与模型管理服务 (config-service.js)
- * 负责管理 ~/.pi/agent/auth.json、models.json、settings.json 以及软件主题与模型白名单
+ * 负责管理 ~/.pi-dl/config.json (应用全局配置: 主题/思考深度/选中模型/模型顺序)
+ * 以及 ~/.pi/agent/auth.json、models.json、settings.json 等 Pi 内核配置
  */
 
 import { invokeTauri } from "./tauri-bridge.js";
@@ -8,13 +9,17 @@ import { invokeTauri } from "./tauri-bridge.js";
 const STORAGE_KEY_THEME = "pi_app_theme";
 const STORAGE_KEY_WHITELIST = "pi_model_whitelist";
 const STORAGE_KEY_SELECTED_MODEL = "pi_selected_model";
+const STORAGE_KEY_THINKING_LEVEL = "pi_thinking_level";
 
 class ConfigService extends EventTarget {
   constructor() {
     super();
     this.currentTheme = "system";
+    this.defaultThinkingLevel = "medium";
+    this.selectedModel = null;
     this.modelWhitelist = [];
     this.mediaQueryDark = window.matchMedia("(prefers-color-scheme: dark)");
+    this._appConfigLoaded = false;
   }
 
   /**
@@ -25,20 +30,74 @@ class ConfigService extends EventTarget {
   }
 
   // ==========================================================================
-  // 1. 软件主题色设置 (Theme Mode: system | light | dark)
+  // 1. 应用全局配置持久化 (~/.pi-dl/config.json)
+  // ==========================================================================
+
+  /**
+   * 从 ~/.pi-dl/config.json 加载应用配置
+   */
+  async loadAppConfig() {
+    try {
+      const config = await this.invoke("pi_get_app_config");
+      if (config && typeof config === "object") {
+        if (config.theme && ["system", "light", "dark"].includes(config.theme)) {
+          this.currentTheme = config.theme;
+          localStorage.setItem(STORAGE_KEY_THEME, this.currentTheme);
+        }
+        if (config.defaultThinkingLevel) {
+          this.defaultThinkingLevel = config.defaultThinkingLevel;
+          localStorage.setItem(STORAGE_KEY_THINKING_LEVEL, this.defaultThinkingLevel);
+        }
+        if (config.selectedModel && config.selectedModel.provider && config.selectedModel.modelId) {
+          this.selectedModel = config.selectedModel;
+          localStorage.setItem(STORAGE_KEY_SELECTED_MODEL, JSON.stringify(this.selectedModel));
+        }
+        if (Array.isArray(config.modelWhitelist) && config.modelWhitelist.length > 0) {
+          this.modelWhitelist = config.modelWhitelist;
+          localStorage.setItem(STORAGE_KEY_WHITELIST, JSON.stringify(this.modelWhitelist));
+        }
+        this._appConfigLoaded = true;
+        return config;
+      }
+    } catch (e) {
+      console.warn("[ConfigService] Failed to load app config from ~/.pi-dl/config.json:", e);
+    }
+    return null;
+  }
+
+  /**
+   * 将当前应用配置完整保存至 ~/.pi-dl/config.json
+   */
+  async saveAppConfig() {
+    const configData = {
+      theme: this.getTheme(),
+      defaultThinkingLevel: this.getDefaultThinkingLevel(),
+      selectedModel: this.getSelectedModel(),
+      modelWhitelist: this.loadModelWhitelist(),
+    };
+
+    try {
+      await this.invoke("pi_save_app_config", { configData });
+    } catch (e) {
+      console.warn("[ConfigService] Failed to save app config to ~/.pi-dl/config.json:", e);
+    }
+  }
+
+  // ==========================================================================
+  // 2. 软件主题色设置 (Theme Mode: system | light | dark)
   // ==========================================================================
 
   /**
    * 初始化应用主题
    */
   initTheme() {
-    const savedTheme = localStorage.getItem(STORAGE_KEY_THEME) || "system";
-    this.applyTheme(savedTheme);
+    const savedTheme = this.currentTheme || localStorage.getItem(STORAGE_KEY_THEME) || "system";
+    this.applyTheme(savedTheme, false);
 
     // 监听系统色彩偏好变化
     this.mediaQueryDark.addEventListener("change", () => {
       if (this.currentTheme === "system") {
-        this.applyTheme("system");
+        this.applyTheme("system", false);
       }
     });
   }
@@ -46,8 +105,9 @@ class ConfigService extends EventTarget {
   /**
    * 应用并持久化主题色
    * @param {"system" | "light" | "dark"} theme
+   * @param {boolean} [persistToFile=true]
    */
-  applyTheme(theme) {
+  applyTheme(theme, persistToFile = true) {
     if (!["system", "light", "dark"].includes(theme)) {
       theme = "system";
     }
@@ -56,6 +116,10 @@ class ConfigService extends EventTarget {
 
     const docEl = document.documentElement;
     docEl.setAttribute("data-theme", theme);
+
+    if (persistToFile) {
+      this.saveAppConfig();
+    }
 
     this.dispatchEvent(new CustomEvent("theme-change", { detail: { theme } }));
   }
@@ -68,7 +132,33 @@ class ConfigService extends EventTarget {
   }
 
   // ==========================================================================
-  // 2. Pi 官方与自定义配置后端读写
+  // 3. 默认思考强度设置 (Thinking Level)
+  // ==========================================================================
+
+  /**
+   * 获取默认思考强度
+   */
+  getDefaultThinkingLevel() {
+    return (
+      this.defaultThinkingLevel ||
+      localStorage.getItem(STORAGE_KEY_THINKING_LEVEL) ||
+      "medium"
+    );
+  }
+
+  /**
+   * 保存默认思考强度
+   * @param {string} level
+   */
+  saveDefaultThinkingLevel(level) {
+    if (!level) return;
+    this.defaultThinkingLevel = level;
+    localStorage.setItem(STORAGE_KEY_THINKING_LEVEL, level);
+    this.saveAppConfig();
+  }
+
+  // ==========================================================================
+  // 4. Pi 官方与自定义配置后端读写 (~/.pi/agent/)
   // ==========================================================================
 
   /**
@@ -171,13 +261,16 @@ class ConfigService extends EventTarget {
   }
 
   // ==========================================================================
-  // 3. 当前模型列表与白名单机制 (Model Whitelist & Active Selection)
+  // 5. 当前模型列表与白名单机制 (MRU 顺序、持久化与选中保护)
   // ==========================================================================
 
   /**
-   * 加载模型白名单（优先本地持久化，无则根据已配置密钥和自定义模型自动初始化）
+   * 加载模型白名单（优先内存/本地持久化，无则根据已配置密钥和自定义模型自动初始化）
    */
   loadModelWhitelist() {
+    if (this.modelWhitelist && this.modelWhitelist.length > 0) {
+      return this.modelWhitelist;
+    }
     try {
       const raw = localStorage.getItem(STORAGE_KEY_WHITELIST);
       if (raw) {
@@ -199,11 +292,33 @@ class ConfigService extends EventTarget {
   saveModelWhitelist(list) {
     this.modelWhitelist = list;
     localStorage.setItem(STORAGE_KEY_WHITELIST, JSON.stringify(list));
+    this.saveAppConfig();
     this.dispatchEvent(new CustomEvent("whitelist-change", { detail: { list } }));
   }
 
   /**
-   * 重新排序模型白名单 (拖拽排序)
+   * 将指定模型标记为最近选用 (MRU)：将其移动到白名单首位 (index 0)，新的在前旧的在后
+   * @param {string} provider
+   * @param {string} modelId
+   */
+  touchModelAsRecentlyUsed(provider, modelId) {
+    if (!provider || !modelId) return;
+    const list = [...this.loadModelWhitelist()];
+    const index = list.findIndex(
+      (m) =>
+        m.id.toLowerCase() === modelId.toLowerCase() &&
+        m.provider.toLowerCase() === provider.toLowerCase()
+    );
+
+    if (index > 0) {
+      const [item] = list.splice(index, 1);
+      list.unshift(item);
+      this.saveModelWhitelist(list);
+    }
+  }
+
+  /**
+   * 重新排序模型白名单
    * @param {number} fromIndex
    * @param {number} toIndex
    */
@@ -226,27 +341,37 @@ class ConfigService extends EventTarget {
   }
 
   /**
-   * 添加模型到白名单
+   * 添加模型到白名单（插入到首位作为最新模型）
    * @param {Object} model
    */
   addModelToWhitelist(model) {
     if (!model || !model.id || !model.provider) return;
-    const list = this.loadModelWhitelist();
-    const exists = list.some(
-      (m) => m.id === model.id && m.provider === model.provider
+    let list = [...this.loadModelWhitelist()];
+    const existsIndex = list.findIndex(
+      (m) =>
+        m.id.toLowerCase() === model.id.toLowerCase() &&
+        m.provider.toLowerCase() === model.provider.toLowerCase()
     );
-    if (!exists) {
-      list.push({
-        id: model.id,
-        name: model.name || model.id,
-        provider: model.provider,
-        contextWindow: model.contextWindow || 64000,
-        maxTokens: model.maxTokens || 4096,
-        reasoning: !!model.reasoning,
-        isCustom: !!model.isCustom,
-      });
-      this.saveModelWhitelist(list);
+
+    const modelObj = {
+      id: model.id,
+      name: model.name || model.id,
+      provider: model.provider,
+      contextWindow: model.contextWindow || 64000,
+      maxTokens: model.maxTokens || 4096,
+      reasoning: !!model.reasoning,
+      isCustom: !!model.isCustom,
+    };
+
+    if (existsIndex >= 0) {
+      // 存在则更新并提到最前面
+      list.splice(existsIndex, 1);
+      list.unshift(modelObj);
+    } else {
+      list.unshift(modelObj);
     }
+
+    this.saveModelWhitelist(list);
   }
 
   /**
@@ -256,7 +381,13 @@ class ConfigService extends EventTarget {
    */
   removeModelFromWhitelist(provider, modelId) {
     let list = this.loadModelWhitelist();
-    list = list.filter((m) => !(m.provider === provider && m.id === modelId));
+    list = list.filter(
+      (m) =>
+        !(
+          m.provider.toLowerCase() === provider.toLowerCase() &&
+          m.id.toLowerCase() === modelId.toLowerCase()
+        )
+    );
     this.saveModelWhitelist(list);
   }
 
@@ -267,16 +398,29 @@ class ConfigService extends EventTarget {
    */
   isModelInWhitelist(provider, modelId) {
     const list = this.loadModelWhitelist();
-    return list.some((m) => m.provider === provider && m.id === modelId);
+    return list.some(
+      (m) =>
+        m.provider.toLowerCase() === provider.toLowerCase() &&
+        m.id.toLowerCase() === modelId.toLowerCase()
+    );
   }
 
   /**
    * 获取持久化的当前所选模型
    */
   getSelectedModel() {
+    if (this.selectedModel && this.selectedModel.provider && this.selectedModel.modelId) {
+      return this.selectedModel;
+    }
     try {
       const raw = localStorage.getItem(STORAGE_KEY_SELECTED_MODEL);
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.provider && parsed.modelId) {
+          this.selectedModel = parsed;
+          return this.selectedModel;
+        }
+      }
     } catch (_) {}
     return null;
   }
@@ -287,11 +431,15 @@ class ConfigService extends EventTarget {
    * @param {string} modelId
    */
   saveSelectedModel(provider, modelId) {
+    this.selectedModel = { provider, modelId };
     localStorage.setItem(
       STORAGE_KEY_SELECTED_MODEL,
-      JSON.stringify({ provider, modelId })
+      JSON.stringify(this.selectedModel)
     );
+    this.touchModelAsRecentlyUsed(provider, modelId);
+    this.saveAppConfig();
   }
 }
 
 export const configService = new ConfigService();
+

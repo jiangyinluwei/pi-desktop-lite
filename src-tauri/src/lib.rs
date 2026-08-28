@@ -6,10 +6,10 @@ pub mod version_watcher;
 
 use config_manager::{
     pi_add_custom_model, pi_add_custom_provider_model, pi_delete_custom_model,
-    pi_delete_custom_provider, pi_get_auth_config, pi_get_custom_models,
-    pi_get_official_models_catalog, pi_get_settings_config, pi_save_auth_config,
-    pi_save_custom_models, pi_save_custom_provider, pi_save_provider_api_key,
-    pi_save_settings_config,
+    pi_delete_custom_provider, pi_get_app_config, pi_get_auth_config, pi_get_custom_models,
+    pi_get_official_models_catalog, pi_get_settings_config, pi_save_app_config,
+    pi_save_auth_config, pi_save_custom_models, pi_save_custom_provider,
+    pi_save_provider_api_key, pi_save_settings_config,
 };
 use pi_runner::{FollowUpRequest, HostStatus, PiSupervisor, PromptRequest, SteerRequest};
 use session::{parse_session_entries, SessionEntrySummary, SessionIndexCache, SessionMetadata, SessionWatcher};
@@ -286,6 +286,8 @@ pub fn run() {
             pi_add_custom_provider_model,
             pi_get_settings_config,
             pi_save_settings_config,
+            pi_get_app_config,
+            pi_save_app_config,
             pi_get_official_models_catalog,
         ])
         .setup(|app| {

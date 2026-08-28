@@ -1329,6 +1329,15 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   font-size: 11.5px;
   color: var(--ink-muted);
   white-space: nowrap;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.6s ease, visibility 0.6s ease;
+}
+
+.topbar-hint-banner.fade-out {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .hint-icon {
@@ -1930,12 +1939,12 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   font-family: ui-monospace, monospace;
 }
 
-/* 白名单模型列表 (支持拖拽排序) */
+/* 白名单模型列表 (按选用次序排序) */
 .models-list-container {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 380px;
+  max-height: 460px;
   overflow-y: auto;
   padding-right: 2px;
 }
@@ -1951,40 +1960,6 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   gap: 12px;
   transition: border-color 0.15s ease, background-color 0.15s ease;
   position: relative;
-  user-select: none;
-}
-
-.whitelist-model-item.draggable {
-  cursor: grab;
-}
-
-.whitelist-model-item.dragging {
-  opacity: 0.35;
-  border: 1px dashed var(--sketch-border);
-  background: transparent;
-}
-
-.whitelist-model-item.drag-over-top {
-  border-top: 2px solid var(--sketch-border);
-}
-
-.whitelist-model-item.drag-over-bottom {
-  border-bottom: 2px solid var(--sketch-border);
-}
-
-.drag-handle {
-  cursor: grab;
-  color: var(--ink-muted);
-  opacity: 0.5;
-  display: flex;
-  align-items: center;
-  padding: 2px;
-  transition: opacity 0.15s ease, color 0.15s ease;
-}
-
-.whitelist-model-item:hover .drag-handle {
-  opacity: 1;
-  color: var(--ink-primary);
 }
 
 .whitelist-model-item:hover {

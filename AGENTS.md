@@ -42,13 +42,14 @@
    - **界面2：初始界面-专注版 (`focus`)**：单击输入框自动进入，仅保留居中手绘 $\pi$ Logo 徽标与纯净输入框（保留格言跑马灯与自适应滚动能力），隐藏所有按钮与副标题；右键回退至界面1；
    - **界面3：Flow 流式交互版 (`flow`)**：回车触发真实 Pi RPC 下发与流式通信，手绘 Logo 移至最左上方；在用户提问卡片下方与思考过程卡片上方，在成功注入运行态技能时展示一行手绘草图“胶囊（Capsule）”标签（如 `已注入运行态技能: windows-bash-compatibility`）；主体区域展示思考过程卡片（最新一轮默认展开、限高滚动、随输出触发自动收起、可手动折叠、含步骤与实时耗时）、工具调用卡片（可折叠日志）与 Agent 回答卡片（Markdown 排版，无冗余头部胶囊），输入框移至最下方并自适应拉长；右键中止当前 Agent 并回退至界面2；
    - **界面4：项目设置独立全屏页面 (`settings`)**：
-     - **非浮窗独立视图**：作为与详细版/专注版/Flow版平级的独立全屏视图，顶部常驻醒目导航条与操作指引：“**提示：在任意位置点击鼠标右键或按 Esc 即可快速回退**”；
+     - **非浮窗独立视图**：作为与详细版/专注版/Flow版平级的独立全屏视图，右上角操作指引提示条（“**提示：在任意位置点击鼠标右键或按 Esc 即可快速回退**”）在进入设置视图后 3 秒自动平滑渐隐；
+     - **应用全局配置持久化 (`~/.pi-dl/config.json`)**：主题色（跟随系统/浅色/暗色）、默认思考推理深度（Thinking Level）、默认选中模型及模型顺序等统一持久化保存至用户目录下的 `~/.pi-dl/config.json`（若目录不存在则自动递归新建）；
      - **几何工程与纯净配色**：**配色与主界面统一，全面避免鲜艳饱和色，统一使用低饱和度功能色；严格减少层叠 Panel 卡片与胶囊 Tips，外层采用标准边框（`var(--sketch-border-subtle)`）包裹，内部使用透明背景**；
-     - **当前模型列表 (白名单与拖拽排序)**：支持鼠标按住拖拽自由排序并持久化存储，**当前正在使用中的激活模型严格锁定、禁止删除**；
+     - **当前模型列表 (MRU 自动排序与激活锁定)**：模型列表自动按“最近选用顺序（MRU）”排序（新的在前，旧的在后），选用任一模型即自动移至首位生效；**当前正在使用中的激活模型严格锁定、禁止删除**；
      - **官方通道配置**：API Key 自动映射写入 `~/.pi/agent/auth.json`，并可拉取官方目录一键添加；
-     - **两步式自定义通道配置与运营商修改**：
+     - **两步式自定义通道配置与规范吸附**：
        - 第一步：新增/配置运营商（Provider ID、接口协议[含 `openai-completions`、`openai-responses` 等]、Base URL、API Key 及 developer role / reasoning 兼容参数）；
-       - 第二步：在运营商卡片内**支持一键修改运营商配置**、新增/编辑挂载模型（Model ID、显示名称、Context Window、Max Tokens、Reasoning），自动映射写入 `~/.pi/agent/models.json` 并添加至“当前模型列表”。
+       - 第二步：在运营商卡片内**支持一键修改运营商配置**、新增/编辑挂载模型（Model ID、显示名称、Context Window、Max Tokens、Reasoning），自动映射写入 `~/.pi/agent/models.json` 并添加至“当前模型列表”。**新增模型时思考推理选项默认勾选；输出上限输入任意数字在按回车、失焦或保存时自动吸附匹配最接近的标准 Token 规范值**。
 5. **手绘 SVG 矢量图元规范（全域消除默认 Emoji）**：
    - 全项目禁止使用系统默认 Emoji 表情符号，所有功能图标与提示图标统一在 `src/assets/svg/` 归档并以内联手绘 SVG 形式呈现；
    - 所有 SVG 矢量图标统一采用 `currentColor`，深度适配浅色（Warm Oatmeal Paper）与深色（Charcoal Blackboard）双模主题；
@@ -99,6 +100,7 @@
 | **`desktop-rendering-optimization`** | [`.agents/skills/desktop-rendering-optimization/SKILL.md`](file:///.agents/skills/desktop-rendering-optimization/SKILL.md) | 桌面端与 Webview 渲染性能调优、窗口缩放白闪/黑屏排查、动画帧掉帧卡顿与重绘风暴根治规范。 |
 | **`clean-code-refactoring`** | [`.agents/skills/clean-code-refactoring/SKILL.md`](file:///.agents/skills/clean-code-refactoring/SKILL.md) | 指导在桌面端（Tauri/Rust）与 Web 前端混合项目中进行逻辑去重、结构精简、样板代码消除与架构轻量化重构。 |
 | **`inner-skills-injection`** | [`.agents/skills/inner-skills-injection/SKILL.md`](file:///.agents/skills/inner-skills-injection/SKILL.md) | 指导桌面端作为 Pi Agent 宿主代理时，运行态内置约束（Inner-Skills / RULES.md）的上下文强行注入架构、三态决策流水线、拓扑结构与前端反馈规范。 |
+| **`settings-view-pattern`** | [`.agents/skills/settings-view-pattern/SKILL.md`](file:///.agents/skills/settings-view-pattern/SKILL.md) | 指导桌面端 (Tauri 2 + Web 前端) 中项目设置独立全屏页面（Settings View - 第 4 态独立视图）的工程化实现与交互设计。涵盖非浮窗全屏视图状态机、3 秒定时平滑渐隐指引、~/.pi-dl/config.json 应用全局配置持久化与 ~/.pi/agent/ 双层映射、当前模型列表 MRU 最近选用自动排序与锁定保护、自定义模型 Token 规范智能吸附、手绘草图表单几何工程美学及全域右键/Esc 回退流水线规范。当用户提出"设置界面"、"配置页面"、"设置页写法"、"settings view"、"模型配置界面"、"持久化配置"、"设置规范"时使用此技能。 |
 
 
 ### 2. 应用内置运行态约束级 Inner-Skills (`src-tauri/inner-skills/`)
