@@ -66,40 +66,36 @@ impl PiSupervisor {
             }
         }
 
-        // 2. 检查 Tauri Resource 目录（安装包 / Release 打包内置资源）
-        if let Some(app) = app_handle {
-            if let Ok(resource_dir) = app.path().resource_dir() {
-                let resource_candidates = [
-                    resource_dir.join("pi-windows-x64").join("pi.exe"),
-                    resource_dir.join("pi-windows-x64").join("pi"),
-                    resource_dir.join("_up_").join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
-                    resource_dir.join("_up_").join("pi-windows-x64").join("pi.exe"),
-                    resource_dir.join("pi-body").join("pi-windows-x64").join("pi.exe"),
-                    resource_dir.join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
-                    resource_dir.join("pi.exe"),
-                    resource_dir.join("pi"),
-                ];
-                for candidate in &resource_candidates {
-                    if candidate.is_file() {
-                        return Some(candidate.clone());
-                    }
+        // 2. 优先检查当前源码与工作区目录 (.mytools/pi-body/pi-windows-x64/pi.exe)
+        if let Ok(curr_dir) = std::env::current_dir() {
+            let curr_candidates = [
+                curr_dir.join(".mytools/pi-body/pi-windows-x64/pi.exe"),
+                curr_dir.join("../.mytools/pi-body/pi-windows-x64/pi.exe"),
+                curr_dir.join("pi-windows-x64/pi.exe"),
+                curr_dir.join(".mytools/pi-body/pi-windows-x64/pi"),
+                curr_dir.join("resources/pi-windows-x64/pi.exe"),
+                curr_dir.join("resources/_up_/.mytools/pi-body/pi-windows-x64/pi.exe"),
+                curr_dir.join("pi.exe"),
+            ];
+            for candidate in &curr_candidates {
+                if candidate.is_file() {
+                    return Some(candidate.clone());
                 }
             }
         }
 
-        // 3. 检查 exe 所在目录及其 resources 子目录、上级目录
+        // 3. 检查 exe 所在目录及其 resources 子目录 (Release 独立分发/安装目录)
         if let Ok(current_exe) = std::env::current_exe() {
             if let Some(exe_dir) = current_exe.parent() {
                 let exe_candidates = [
                     exe_dir.join("resources").join("pi-windows-x64").join("pi.exe"),
                     exe_dir.join("resources").join("pi-windows-x64").join("pi"),
-                    exe_dir.join("resources").join("_up_").join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
                     exe_dir.join("resources").join("pi-body").join("pi-windows-x64").join("pi.exe"),
-                    exe_dir.join("resources").join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
-                    exe_dir.join("resources").join("pi.exe"),
+                    exe_dir.join("resources").join("_up_").join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
                     exe_dir.join("pi-windows-x64").join("pi.exe"),
                     exe_dir.join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
                     exe_dir.join("..").join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
+                    exe_dir.join("resources").join("pi.exe"),
                     exe_dir.join("pi.exe"),
                 ];
                 for candidate in &exe_candidates {
@@ -110,20 +106,22 @@ impl PiSupervisor {
             }
         }
 
-        // 4. 检查当前工作目录 (开发模式及相对路径)
-        if let Ok(curr_dir) = std::env::current_dir() {
-            let curr_candidates = [
-                curr_dir.join(".mytools/pi-body/pi-windows-x64/pi.exe"),
-                curr_dir.join("../.mytools/pi-body/pi-windows-x64/pi.exe"),
-                curr_dir.join("resources/pi-windows-x64/pi.exe"),
-                curr_dir.join("resources/_up_/.mytools/pi-body/pi-windows-x64/pi.exe"),
-                curr_dir.join("pi-windows-x64/pi.exe"),
-                curr_dir.join(".mytools/pi-body/pi-windows-x64/pi"),
-                curr_dir.join("pi.exe"),
-            ];
-            for candidate in &curr_candidates {
-                if candidate.is_file() {
-                    return Some(candidate.clone());
+        // 4. 检查 Tauri Resource 目录 (安装包标准资源目录)
+        if let Some(app) = app_handle {
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                let resource_candidates = [
+                    resource_dir.join("pi-windows-x64").join("pi.exe"),
+                    resource_dir.join("pi-windows-x64").join("pi"),
+                    resource_dir.join("pi-body").join("pi-windows-x64").join("pi.exe"),
+                    resource_dir.join("_up_").join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
+                    resource_dir.join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
+                    resource_dir.join("pi.exe"),
+                    resource_dir.join("pi"),
+                ];
+                for candidate in &resource_candidates {
+                    if candidate.is_file() {
+                        return Some(candidate.clone());
+                    }
                 }
             }
         }
@@ -214,22 +212,23 @@ impl PiSupervisor {
             cmd.creation_flags(0x08000000);
         }
 
-        // 1. 设置工作目录为用户主目录 (dirs::home_dir)，避免 Program Files 只读权限崩溃
-        if let Some(home) = dirs::home_dir() {
+        // 1. 设置工作目录：优先继承当前目录，异常时回退至用户主目录
+        if let Ok(curr) = std::env::current_dir() {
+            cmd.current_dir(curr);
+        } else if let Some(home) = dirs::home_dir() {
             cmd.current_dir(home);
         }
 
-        // 2. 补全 PATH 环境变量，将 binary_path 所在目录及用户工具目录加入 PATH
-        let mut env_map: HashMap<String, String> = std::env::vars().collect();
+        // 2. 补全 PATH 环境变量（使用 std::env::var 自动大小写兼容，避免 Windows 环境块冲突）
         if let Some(bin_dir) = binary_path.parent() {
             let split_char = if cfg!(windows) { ";" } else { ":" };
-            let current_path = env_map.get("PATH").cloned().unwrap_or_default();
+            let existing_path = std::env::var("PATH").unwrap_or_default();
             let bin_dir_str = bin_dir.to_string_lossy().to_string();
-            if !current_path.split(if cfg!(windows) { ';' } else { ':' }).any(|p| p == bin_dir_str) {
-                env_map.insert("PATH".to_string(), format!("{}{}{}", bin_dir_str, split_char, current_path));
+            if !existing_path.split(if cfg!(windows) { ';' } else { ':' }).any(|p| p == bin_dir_str) {
+                let new_path = format!("{}{}{}", bin_dir_str, split_char, existing_path);
+                cmd.env("PATH", new_path);
             }
         }
-        cmd.envs(env_map);
 
         let mut child = cmd
             .spawn()
