@@ -438,7 +438,16 @@
             <div class="settings-group">
               <label for="official-provider-select" class="group-label">选择官方服务商</label>
               <select id="official-provider-select" class="flat-select">
-                <!-- 动态注入服务商选项 -->
+                <option value="anthropic" selected>Anthropic Claude</option>
+                <option value="openai">OpenAI (ChatGPT / Codex)</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="google">Google Gemini</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="qwen">通义千问 Qwen</option>
+                <option value="kimi">月之暗面 Kimi</option>
+                <option value="minimax">MiniMax</option>
+                <option value="groq">Groq</option>
+                <option value="xai">xAI Grok</option>
               </select>
             </div>
 
@@ -622,7 +631,7 @@
     </section>
   </main>
 
-  <script type="module" src="/main.js"></script>
+  <script type="module" src="./main.js"></script>
 </body>
 
 </html>

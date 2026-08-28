@@ -181,7 +181,27 @@ description: |
 - 滚动线速度保持在约 28~30px/s 恒定速度，维持克制、慢节奏阅读质感；
 - 跑马灯左右两端配合 `mask-image` 实现微柔和羽化；当用户键入任意内容时瞬时隐去，清空后优雅复显。
 
-### 8. 运行态技能注入胶囊设计规范 (Inner-Skill Injection Capsule Specification)
+### 8. 隐藏式极简滚动条规范 (Minimal Slim Hidden Scrollbar Specification)
+- **无滚动槽与上下图标**：全域消除浏览器默认上下箭头按钮（`::-webkit-scrollbar-button`）与背景槽（`::-webkit-scrollbar-track: background: transparent`），杜绝割裂感；
+- **极窄隐匿竖条**：默认宽度保持在 4px（水平为 4px），采用柔和低饱和度的 `var(--sketch-border-subtle)`（浅色模式为 `#d6cfc4`，深色模式为 `#36322c`），透明度 0.45，静默无扰；
+- **移入滚动条范围才放大高亮（内容区 hover 不高亮）**：
+  - 鼠标在可滚动内容主体区悬浮、阅读或滑动时，滚动条保持静默低对比度；
+  - 仅当鼠标真正移入滚动条轨道/滑块范围时（`::-webkit-scrollbar:hover` / `::-webkit-scrollbar-thumb:hover`），滑块自适应展开至 6px，高亮为深墨/粉笔白（`var(--ink-primary)`，透明度 1.0）。
+
+### 9. 手绘草图质感自定义下拉框规范 (Sketch Select Pop & Shake Specification)
+- **封装与渐进增强**：由 `SketchSelect` 统一增强原生 `<select>`，隐藏原生 Native Popup 窗口，实现纯 CSS/HTML 驱动的高质感组件；
+- **弹出微抖动动效（Pop & Micro-Shake）**：
+  - 展开下拉菜单时瞬时触发 `@keyframes sketchDropdownPopShake`；
+  - 动画时长约 180ms，以轻微倾斜角度（`-0.6deg`）和缩放快速展开，经极微小回弹过冲（`+0.35deg` / 2px）后迅速稳固归位，手感清脆利落、不油腻；
+- **双模色彩与手绘微弧度**：
+  - 触发框：`var(--sketch-box-bg)`、手绘边框 `1px solid var(--sketch-border-subtle)`、右侧手绘微弧度下拉箭头（`rotate(180deg)` 平滑过渡）；
+  - 下拉面板：绝对定位、`1.2px solid var(--sketch-border)`、`var(--sketch-shadow-hover)` 立体纸质投影、内置隐藏式细窄滚动条；
+  - 选项条目：悬浮时背景切换为 `var(--sketch-tag-bg)`，选中项带手绘 Checkmark SVG 勾选标；
+- **双向数据同步与交互**：
+  - 拦截 `value` 与 `selectedIndex` setter，监听 `MutationObserver` 选项动态更新，派发标准 `change`/`input` 事件；
+  - 支持键盘上下键选择、Enter 确认、Esc / 点击外部 / 鼠标右键（Step Back）优先收起。
+
+### 10. 运行态技能注入胶囊设计规范 (Inner-Skill Injection Capsule Specification)
 - **视觉层级与定位**：位于 Flow 交互版中用户提问卡片下方、AI 思考过程卡片 (`.agent-thinking-card`) 正上方，以极简轻量的一行草图“胶囊（Capsule / Pill Badge）”示意当前已强行注入的运行态上下文；
 - **手绘纸质微徽章质感**：
   - **草图虚线与有机圆角**：采用 `1px dashed var(--sketch-border-subtle)` 搭配有机不对称圆角 `border-radius: 255px 12px 225px 10px / 12px 225px 10px 255px;`；

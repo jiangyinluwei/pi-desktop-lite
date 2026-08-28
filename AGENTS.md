@@ -56,12 +56,20 @@
    - 严禁违背轻量纸质美学，主界面所有新增按钮常态下背景必须透明（`background: transparent`）；
    - 常态下严禁显示可见边框，必须采用 `border: 1px solid transparent;` 保持 1px 几何占位，彻底杜绝悬停时因 border 显现引起界面抖动与重排（Layout Shift）；
    - 仅在鼠标悬浮（`:hover`）或键盘聚焦（`:focus-visible`）时显现手绘边框（`border-color: var(--sketch-border-subtle)` / `var(--sketch-border)`）与微背景；
-6. **系统托盘与后台生命周期铁律**：
+7. **隐藏式极简滚动条规范 (Minimal Slim Hidden Scrollbar)**：
+   - 全局消除浏览器默认上下箭头按钮与滚动槽（`::-webkit-scrollbar-button { display: none; }`、`::-webkit-scrollbar-track { background: transparent; }`）；
+   - 常态下为 4px 极窄竖条（隐匿且不遮挡内容），采用半透明 `var(--sketch-border-subtle)`（透明度 0.45）；
+   - **内容区 hover 不高亮**：鼠标悬浮于可滚动内容主体区域时保持静默不高亮；仅当鼠标真正移入滚动条轨道/滑块本身范围时（`::-webkit-scrollbar:hover` / `::-webkit-scrollbar-thumb:hover`），滑块才展开至 6px 并高亮至深墨/粉笔白（`var(--ink-primary)`）；
+8. **手绘草图质感自定义下拉框规范 (Sketch Select Pop & Shake)**：
+   - 封装 `SketchSelect` 统一增强原生 `<select>`，彻底消除系统原生 Native Popup 的破相与无动画问题；
+   - **弹出微抖动动效（Pop & Micro-Shake）**：展开时在 180ms 内轻快弹出并伴随极微小自然回弹倾角过冲（`-0.6deg` ➔ `+0.35deg` ➔ `0deg`），迅速触发且绝不油腻；
+   - 边框、底色、字色与手绘微箭头深度适配暖纸墨水与炭黑粉笔双模主题，并在底层双向 100% 保持与原生 `<select>` 数据与事件同步；
+9. **系统托盘与后台生命周期铁律**：
    - **右上角关闭为后台休眠**：点击右上角关闭按钮或触发系统关闭请求（如 `CloseRequested`）时，统一通过 `window.hide()` 隐藏窗口，保持后台进程与右下角系统托盘图标驻留；
    - **系统托盘交互与菜单**：
      - **左键单击 / 双击**：唤醒、取消最小化并置顶聚焦主窗口；
      - **右键菜单**：提供 `打开`（唤醒并聚焦窗口）、`设置`（唤醒窗口并派发设置事件）、`退出`（调用 `app.exit(0)` 彻底杀死后台完全退出应用）。
-7. **Pi 进程与数据交互五大子系统规范**：
+10. **Pi 进程与数据交互五大子系统规范**：
    - **`pi_runner` (进程监督与生命周期)**：集成 Win32 Job Object 孤儿进程自动收割、严格 LF (`\n`) 字节流分帧器、滑动窗口崩溃抑制（30s 内超 2 次熔断告警）；
    - **`config_manager` (配置管理与目录映射)**：负责 `~/.pi/agent/` 目录下 `auth.json`、`models.json`、`settings.json` 的双向读写映射、官方可用模型目录拉取与模型白名单持久化；
    - **`security` (安全与脱敏中间件)**：全量上行下行数据经过正则脱敏过滤器（API Key、Token 与本地私有目录自动掩码）；

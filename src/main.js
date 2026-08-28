@@ -3,6 +3,7 @@ import { sessionService } from "./services/session-service.js";
 import { versionService } from "./services/version-service.js";
 import { configService } from "./services/config-service.js";
 import { invokeTauri } from "./services/tauri-bridge.js";
+import { enhanceAllSelects, enhanceSelect } from "./services/sketch-select.js";
 
 /**
  * 简单 HTML 转义防 XSS
@@ -34,6 +35,7 @@ const ICONS = {
   eyeOff: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2 L14 14" /><path d="M6.2 6.3 A2.2 2.2 0 0 0 9.7 9.8" /><path d="M4.5 4.8 C2.8 5.8, 1.8 7.2, 1.5 8 C3.5 11.5, 12.5 11.5, 14.5 8 C14.1 7.3, 13.3 6.3, 12.2 5.5" /><path d="M7 3.6 C7.3 3.5, 7.7 3.5, 8 3.5 C12.5 3.5, 14.5 8, 14.5 8" /></svg>`,
   warning: `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2 L1.5 13.5 L14.5 13.5 Z" /><line x1="8" y1="6" x2="8" y2="9.5" /><circle cx="8" cy="11.5" r="0.6" fill="currentColor" stroke="none" /></svg>`,
   tool: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.8 2.2 C9.2 1.6, 8.2 1.4, 7.5 1.8 L6.2 3.1 L8.9 5.8 L10.2 4.5 C10.6 3.8, 10.4 2.8, 9.8 2.2 Z" /><path d="M8.2 6.5 L3.2 11.5 C2.8 11.9, 2.5 12.6, 2.7 13.2 C2.9 13.5, 3.2 13.8, 3.5 14 C4.1 14.2, 4.8 13.9, 5.2 13.5 L10.2 8.5 Z" /></svg>`,
+  chevronDown: `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6 L8 10 L12 6" /></svg>`,
 };
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -633,15 +635,23 @@ window.addEventListener("DOMContentLoaded", () => {
 
       if (officialProviderSelect) {
         officialProviderSelect.innerHTML = "";
-        officialCatalog.forEach((p) => {
+        officialCatalog.forEach((p, idx) => {
           const opt = document.createElement("option");
           opt.value = p.id;
           opt.textContent = `${p.name} (${p.models.length} 个模型)`;
+          if (idx === 0) opt.selected = true;
           officialProviderSelect.appendChild(opt);
         });
 
         if (officialCatalog.length > 0) {
+          officialProviderSelect.value = officialCatalog[0].id;
           renderOfficialProviderDetails(officialCatalog[0].id);
+        }
+
+        if (officialProviderSelect.__sketchSelect) {
+          officialProviderSelect.__sketchSelect.syncOptions();
+        } else {
+          enhanceSelect(officialProviderSelect);
         }
       }
     } catch (e) {
@@ -1166,6 +1176,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
         customProvidersContainer.appendChild(card);
       });
+      enhanceAllSelects(customProvidersContainer);
     } catch (e) {
       console.warn("[Main] Load custom providers failed:", e);
     }
@@ -2014,6 +2025,8 @@ window.addEventListener("DOMContentLoaded", () => {
   window.__piCheckMottoMarquee = checkAndUpdateMottoMarquee;
   window.__piSetMottoText = (text) => applyPrompt(text);
   initPlaceholderRotation();
+  enhanceAllSelects();
+  loadOfficialProvidersConfig();
 
   // ==========================================================================
   // 焦点与失焦控制（点击外部空白区域主动取消输入框高亮）
