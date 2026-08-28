@@ -1,0 +1,16 @@
+{
+  "name": "pi-desktop-lite",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/tauri.js dev",
+    "build": "node scripts/tauri.js build",
+    "build:check": "node scripts/tauri.js build --no-bundle --debug",
+    "tauri": "node scripts/tauri.js"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@tauri-apps/cli-win32-x64-msvc": "^2.11.4"
+  }
+}

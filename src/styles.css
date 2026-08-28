@@ -1,0 +1,937 @@
+:root {
+  color-scheme: light dark;
+  /* 浅色模式（高质感暖调素描绘图纸 / Warm Oatmeal Paper） */
+  --bg-base: #faf8f5;
+  --bg-gradient: radial-gradient(130% 110% at 50% 18%, #fdfbf7 0%, #f6f2ea 55%, #ede6da 100%);
+  --ink-primary: #1c1a17;
+  --ink-muted: #78716a;
+  --ink-faint: #a69f94;
+  --sketch-border: #262422;
+  --sketch-border-subtle: #d6cfc4;
+  --sketch-border-hover: #1c1a17;
+  --sketch-box-bg: #ffffff;
+  --sketch-box-bg-focus: #ffffff;
+  --sketch-tag-bg: #f5f0e6;
+  --sketch-tag-border: #dcd4c6;
+  --sketch-tag-hover-bg: #ece5d8;
+  --sketch-kbd-bg: #f0eae0;
+  --sketch-kbd-border: #d2c8b8;
+  --sketch-shadow: 2px 3px 0px rgba(28, 26, 23, 0.08);
+  --sketch-shadow-hover: 3px 4px 0px rgba(28, 26, 23, 0.12);
+  --sketch-shadow-focus: 3px 5px 0px rgba(28, 26, 23, 0.18);
+  --titlebar-height: 30px;
+  --titlebar-btn-hover: rgba(28, 26, 23, 0.06);
+  --titlebar-btn-active: rgba(28, 26, 23, 0.12);
+  --titlebar-close-hover: #dc2626;
+  --titlebar-close-text: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    /* 深色模式（极简黑板/素描炭黑纸 / Charcoal Blackboard） */
+    --bg-base: #141312;
+    --bg-gradient: radial-gradient(130% 110% at 50% 18%, #1c1a18 0%, #141311 55%, #0d0c0b 100%);
+    --ink-primary: #f3efe6;
+    --ink-muted: #9c9488;
+    --ink-faint: #5f5950;
+    --sketch-border: #ede8dc;
+    --sketch-border-subtle: #36322c;
+    --sketch-border-hover: #f3efe6;
+    --sketch-box-bg: #1c1a18;
+    --sketch-box-bg-focus: #1f1d1a;
+    --sketch-tag-bg: #23211e;
+    --sketch-tag-border: #38342e;
+    --sketch-tag-hover-bg: #2e2b27;
+    --sketch-kbd-bg: #2a2723;
+    --sketch-kbd-border: #443f38;
+    --sketch-shadow: 2px 3px 0px rgba(0, 0, 0, 0.5);
+    --sketch-shadow-hover: 3px 4px 0px rgba(0, 0, 0, 0.65);
+    --sketch-shadow-focus: 3px 5px 0px rgba(243, 239, 230, 0.2);
+    --titlebar-btn-hover: rgba(243, 239, 230, 0.08);
+    --titlebar-btn-active: rgba(243, 239, 230, 0.15);
+    --titlebar-close-hover: #ef4444;
+    --titlebar-close-text: #ffffff;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg-base);
+}
+
+body {
+  width: 100%;
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--bg-base);
+  background-image: var(--bg-gradient);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  color: var(--ink-primary);
+  overflow: hidden;
+  user-select: none;
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+/* ==========================================================================
+   极简沉浸式标题栏（无多余文本、纯线条手绘控制按钮）
+   ========================================================================== */
+.titlebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--titlebar-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 12px;
+  z-index: 1000;
+  user-select: none;
+  -webkit-app-region: drag;
+  background: transparent;
+}
+
+/* Flow 模式下左上角仅展示手绘 Mini π 徽标（无任何文本） */
+.flow-mini-brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-10px);
+  transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  -webkit-app-region: no-drag;
+}
+
+.mini-sketch-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-primary);
+  transition: transform 0.2s ease;
+}
+
+.flow-mini-brand:hover .mini-sketch-icon {
+  transform: rotate(-5deg) scale(1.1);
+}
+
+.titlebar-drag-area {
+  flex: 1;
+  height: 100%;
+  -webkit-app-region: drag;
+}
+
+.titlebar-controls {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  outline: none;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: all 0.15s ease-out;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-btn:hover {
+  background-color: var(--titlebar-btn-hover);
+  color: var(--ink-primary);
+  border-color: var(--sketch-border-subtle);
+}
+
+.titlebar-btn:active {
+  background-color: var(--titlebar-btn-active);
+  transform: scale(0.95);
+}
+
+.titlebar-btn.btn-close:hover {
+  background-color: var(--titlebar-close-hover);
+  color: var(--titlebar-close-text);
+  border-color: var(--titlebar-close-hover);
+}
+
+.titlebar-btn.btn-close:active {
+  transform: scale(0.95);
+}
+
+.titlebar-btn svg {
+  pointer-events: none;
+  display: block;
+}
+
+/* ==========================================================================
+   主应用容器
+   ========================================================================== */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: calc(var(--titlebar-height) + 12px) 24px 24px;
+  position: relative;
+  user-select: none;
+  overflow: hidden;
+  transition: justify-content 0.3s ease;
+}
+
+/* ==========================================================================
+   三态模式驱动规则 (detailed | focus | flow)
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   模式 1：详细版 (detailed)
+   -------------------------------------------------------------------------- */
+.app-container[data-view="detailed"] .flow-stage {
+  display: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   模式 2：专注版 (focus)
+   说明：仅保留中心 Logo 与完整输入框（内部图标/Enter均保留），隐藏外部设置按钮、副标题与底部标签
+   -------------------------------------------------------------------------- */
+.app-container[data-view="focus"] .brand-title-wrap {
+  opacity: 0;
+  max-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translateY(-6px);
+}
+
+.app-container[data-view="focus"] .brand-header {
+  margin-bottom: 24px;
+  transform: scale(1.04);
+}
+
+.app-container[data-view="focus"] .settings-btn {
+  opacity: 0;
+  width: 0;
+  margin: 0;
+  padding: 0;
+  border-color: transparent;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.app-container[data-view="focus"] .sketch-tags-container {
+  opacity: 0;
+  max-height: 0;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+  overflow: hidden;
+  transform: translateY(10px);
+}
+
+.app-container[data-view="focus"] .flow-stage {
+  display: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   模式 3：Flow 流式交互版 (flow)
+   -------------------------------------------------------------------------- */
+.app-container[data-view="flow"] {
+  justify-content: space-between;
+  padding: calc(var(--titlebar-height) + 8px) 24px 18px;
+}
+
+/* 显现左上角 Mini π 徽标 */
+body:has(.app-container[data-view="flow"]) .flow-mini-brand {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.app-container[data-view="flow"] .brand-header {
+  opacity: 0;
+  max-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translateY(-20px) scale(0.85);
+}
+
+.app-container[data-view="flow"] .settings-btn {
+  opacity: 0;
+  width: 0;
+  margin: 0;
+  padding: 0;
+  border-color: transparent;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.app-container[data-view="flow"] .sketch-tags-container {
+  display: none;
+}
+
+.app-container[data-view="flow"] .search-section {
+  max-width: 760px;
+  margin-top: 0;
+  margin-bottom: 0;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.app-container[data-view="flow"] .sketch-search-box {
+  border-radius: 255px 16px 225px 16px / 16px 225px 16px 255px;
+  box-shadow: var(--sketch-shadow);
+}
+
+.app-container[data-view="flow"] .flow-stage {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 760px;
+  flex: 1;
+  min-height: 0;
+  opacity: 1;
+  pointer-events: auto;
+  margin-bottom: 14px;
+  animation: flowStageFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ==========================================================================
+   Flow 主体交互流与卡片排版（横平竖直现代结构）
+   ========================================================================== */
+.flow-stage {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 760px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.flow-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 6px;
+  scroll-behavior: smooth;
+}
+
+/* 细线条滚动条 */
+.flow-scroll-area::-webkit-scrollbar {
+  width: 5px;
+}
+
+.flow-scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.flow-scroll-area::-webkit-scrollbar-thumb {
+  background-color: var(--sketch-border-subtle);
+  border-radius: 4px;
+}
+
+.flow-scroll-area::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ink-muted);
+}
+
+.flow-conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 12px;
+}
+
+.flow-message-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 用户提问气泡卡片（横平竖直微圆角） */
+.flow-user-prompt-card {
+  align-self: flex-start;
+  max-width: 90%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--sketch-tag-bg);
+  border: 1px solid var(--sketch-tag-border);
+  border-radius: 8px;
+  padding: 8px 16px;
+  box-shadow: 1px 2px 0px rgba(0, 0, 0, 0.04);
+}
+
+.flow-user-prompt-card .prompt-icon {
+  color: var(--ink-muted);
+  display: flex;
+  align-items: center;
+}
+
+.flow-user-prompt-card .prompt-content {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  line-height: 1.4;
+}
+
+/* AI Agent 思考过程卡片（横平竖直边框） */
+.agent-thinking-card {
+  background: var(--sketch-box-bg);
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 8px;
+  box-shadow: 1px 2px 0px rgba(0, 0, 0, 0.03);
+  padding: 10px 14px;
+  transition: border-color 0.2s ease;
+}
+
+.agent-thinking-card:hover {
+  border-color: var(--sketch-border);
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+  outline: none;
+}
+
+.thinking-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.thinking-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--ink-muted);
+  animation: pulseDot 1.8s ease-in-out infinite;
+}
+
+.thinking-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  letter-spacing: 0.02em;
+}
+
+.thinking-duration {
+  font-size: 11.5px;
+  font-family: ui-monospace, monospace;
+  color: var(--ink-muted);
+  margin-left: 4px;
+}
+
+.thinking-arrow-icon {
+  color: var(--ink-muted);
+  display: flex;
+  align-items: center;
+  transition: transform 0.2s ease;
+}
+
+.agent-thinking-card.open .thinking-arrow-icon {
+  transform: rotate(180deg);
+}
+
+.thinking-body {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--sketch-border-subtle);
+  display: none;
+}
+
+.agent-thinking-card.open .thinking-body {
+  display: block;
+  animation: sketchFadeIn 0.25s ease-out;
+}
+
+.thinking-steps {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.step-item.done {
+  color: var(--ink-primary);
+}
+
+.step-item .step-marker {
+  font-family: ui-monospace, monospace;
+  font-weight: 700;
+  color: var(--ink-muted);
+}
+
+.step-item.done .step-marker {
+  color: var(--ink-primary);
+}
+
+.step-item.in-progress .step-marker {
+  animation: spinMarker 3s linear infinite;
+  display: inline-block;
+}
+
+/* AI Agent 回复卡片（横平竖直边框） */
+.agent-response-card {
+  background: var(--sketch-box-bg);
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 8px;
+  box-shadow: 1px 2px 0px rgba(0, 0, 0, 0.04);
+  padding: 16px 20px;
+  animation: sketchFadeIn 0.3s ease-out;
+}
+
+.response-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.agent-badge {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-primary);
+  background: var(--sketch-tag-bg);
+  border: 1px solid var(--sketch-tag-border);
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: -0.01em;
+}
+
+.response-content {
+  font-size: 13.8px;
+  line-height: 1.65;
+  color: var(--ink-primary);
+  user-select: text;
+}
+
+.response-content p {
+  margin-bottom: 10px;
+}
+
+.response-content p:last-child {
+  margin-bottom: 0;
+}
+
+.response-content ul {
+  margin: 8px 0 12px 18px;
+}
+
+.response-content li {
+  margin-bottom: 5px;
+}
+
+.sketch-callout {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: var(--sketch-tag-bg);
+  border-left: 3px solid var(--ink-primary);
+  border-radius: 0 6px 6px 0;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}
+
+/* ==========================================================================
+   搜索与输入框区域
+   ========================================================================== */
+.search-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 600px;
+  margin-top: -36px;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  -webkit-app-region: no-drag;
+}
+
+/* 品牌 Logo & 手绘草图徽标 */
+.brand-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 32px;
+  cursor: default;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.brand-sketch-icon {
+  color: var(--ink-primary);
+  margin-bottom: 6px;
+  transition: transform 0.25s ease;
+}
+
+.brand-sketch-icon:hover {
+  transform: rotate(-3deg) scale(1.05);
+}
+
+.brand-title-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: all 0.25s ease;
+}
+
+.logo-text {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Newsreader", "Charter", Georgia, serif;
+  font-size: 46px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  color: var(--ink-primary);
+  display: inline-block;
+  position: relative;
+  transition: transform 0.2s ease;
+}
+
+.logo-text::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -3px;
+  width: 100%;
+  height: 2px;
+  background: currentColor;
+  opacity: 0.18;
+  border-radius: 2px;
+}
+
+.brand-subtitle {
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  color: var(--ink-muted);
+  margin-top: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+
+/* 手绘线条搜索区域与外部控制行 */
+.search-box-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 12px;
+}
+
+.sketch-search-box {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  width: 100%;
+  height: 52px;
+  background: var(--sketch-box-bg);
+  /* 手绘自然微有机曲线边角 */
+  border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  border: 1.5px solid var(--sketch-border-subtle);
+  box-shadow: var(--sketch-shadow);
+  padding: 0 16px;
+  position: relative;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, background-color 0.2s ease, padding 0.2s ease, border-radius 0.2s ease;
+}
+
+.sketch-search-box:hover {
+  border-color: var(--sketch-border);
+  box-shadow: var(--sketch-shadow-hover);
+}
+
+.sketch-search-box:focus-within {
+  border-color: var(--sketch-border);
+  background: var(--sketch-box-bg-focus);
+  box-shadow: var(--sketch-shadow-focus);
+  transform: translateY(-1px);
+}
+
+/* 搜索图标 */
+.search-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  margin-right: 12px;
+  flex-shrink: 0;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.sketch-search-box:focus-within .search-icon {
+  color: var(--ink-primary);
+  transform: scale(1.05);
+}
+
+/* 输入框 */
+.search-input {
+  flex: 1;
+  height: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 15.5px;
+  font-family: inherit;
+  color: var(--ink-primary);
+  user-select: text;
+}
+
+.search-input::placeholder {
+  color: var(--ink-muted);
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+/* 快捷引导徽章 */
+.search-action-hint {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+  user-select: none;
+}
+
+.sketch-kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  background: var(--sketch-kbd-bg);
+  border: 1px solid var(--sketch-kbd-border);
+  border-radius: 4px;
+  padding: 3px 7px;
+  line-height: 1;
+  transition: all 0.2s ease;
+}
+
+.sketch-search-box:focus-within .sketch-kbd {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+}
+
+/* ==========================================================================
+   通用手绘图标与操作按钮规范 (Button Design Principle)
+   核心原则：背景常态透明，常态无边框（1px transparent 占位防抖），悬浮（:hover）显现边框与微背景
+   ========================================================================== */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  outline: none;
+  cursor: pointer;
+  color: var(--ink-muted);
+  border-radius: 255px 8px 225px 8px / 8px 225px 8px 255px;
+  transition: all 0.18s ease-out;
+  user-select: none;
+  -webkit-app-region: no-drag;
+}
+
+.icon-button:hover {
+  color: var(--ink-primary);
+  background-color: var(--sketch-tag-bg);
+  border-color: var(--sketch-border-subtle);
+}
+
+.icon-button:active {
+  background-color: var(--sketch-tag-hover-bg);
+  border-color: var(--sketch-border);
+}
+
+.icon-button:focus-visible {
+  border-color: var(--sketch-border);
+}
+
+.icon-button svg {
+  pointer-events: none;
+  display: block;
+}
+
+/* 对话框外部左侧手绘齿轮设置按钮 */
+.icon-button.settings-btn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 255px 12px 225px 10px / 12px 225px 10px 255px;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease, opacity 0.2s ease, width 0.2s ease, margin 0.2s ease;
+}
+
+.icon-button.settings-btn:hover {
+  color: var(--ink-primary);
+  background-color: var(--sketch-tag-bg);
+  border-color: var(--sketch-border-subtle);
+  box-shadow: 1px 2px 0px rgba(0, 0, 0, 0.04);
+  transform: translateY(-1px) rotate(15deg);
+}
+
+.icon-button.settings-btn:active {
+  transform: translateY(0) rotate(15deg) scale(0.94);
+  box-shadow: 1px 1px 0px rgba(0, 0, 0, 0.02);
+}
+
+/* 清空图标按钮 */
+.icon-button.clear-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.85);
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+.icon-button.clear-btn.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+}
+
+.icon-button.clear-btn:hover {
+  color: var(--ink-primary);
+  background-color: var(--sketch-tag-bg);
+  border-color: var(--sketch-tag-border);
+  transform: scale(1);
+}
+
+.icon-button.clear-btn:active {
+  transform: scale(0.92);
+}
+
+/* ==========================================================================
+   底部手绘草图标签
+   ========================================================================== */
+.sketch-tags-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+  transition: all 0.25s ease;
+}
+
+.sketch-tag {
+  background: var(--sketch-tag-bg);
+  border: 1px solid var(--sketch-tag-border);
+  /* 手绘自然微弧度 */
+  border-radius: 255px 12px 225px 10px / 12px 225px 10px 255px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--ink-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  box-shadow: 1px 2px 0px rgba(0, 0, 0, 0.04);
+  transition: all 0.18s ease;
+  outline: none;
+}
+
+.sketch-tag .tag-marker {
+  font-family: ui-monospace, monospace;
+  font-weight: 700;
+  opacity: 0.6;
+}
+
+.sketch-tag:hover {
+  background: var(--sketch-tag-hover-bg);
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  transform: translateY(-1px);
+  box-shadow: 1.5px 2.5px 0px rgba(0, 0, 0, 0.08);
+}
+
+.sketch-tag:active {
+  transform: translateY(0);
+  box-shadow: 1px 1px 0px rgba(0, 0, 0, 0.04);
+}
+
+/* ==========================================================================
+   动画定义
+   ========================================================================== */
+@keyframes sketchFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes flowStageFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulseDot {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+@keyframes spinMarker {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

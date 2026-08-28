@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <title>pi-dl</title>
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+  <link rel="alternate icon" type="image/x-icon" href="assets/logo.ico" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <!-- 极简沉浸式标题栏（手绘线条窗口控制按钮） -->
+  <header class="titlebar" id="titlebar" data-tauri-drag-region>
+    <!-- Flow 模式下的左上角手绘品牌 Mini 标识（仅保留手绘 Π 图标） -->
+    <div class="flow-mini-brand" id="flow-mini-brand" title="pi-dl" aria-label="pi-dl">
+      <div class="mini-sketch-icon" aria-hidden="true">
+        <svg viewBox="0 0 48 48" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 15.5 C14 14.2, 34 14.8, 40 15" />
+          <path d="M17.5 15 C17 22, 16 29, 14 34.5 C13 37, 10.5 37.5, 9.5 36" />
+          <path d="M30.5 15 C31 23, 31.5 30, 33 34 C34 36.5, 36.5 36.8, 39 35.5" />
+        </svg>
+      </div>
+    </div>
+
+    <div class="titlebar-drag-area" data-tauri-drag-region></div>
+    <div class="titlebar-controls" data-tauri-no-drag>
+      <button type="button" class="titlebar-btn" id="btn-minimize" aria-label="最小化" title="最小化">
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.3"
+          stroke-linecap="round">
+          <line x1="3" y1="8" x2="13" y2="8" />
+        </svg>
+      </button>
+      <button type="button" class="titlebar-btn" id="btn-maximize" aria-label="最大化" title="最大化">
+        <svg id="icon-maximize" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+          stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+          <!-- 手绘微自然弧度方框 -->
+          <path
+            d="M3.2 3.8 C3.2 3.3, 3.7 3.2, 4.2 3.2 L11.8 3.3 C12.3 3.3, 12.8 3.7, 12.8 4.2 L12.7 11.8 C12.7 12.3, 12.3 12.8, 11.8 12.8 L4.2 12.7 C3.7 12.7, 3.2 12.3, 3.2 11.8 Z" />
+        </svg>
+      </button>
+      <button type="button" class="titlebar-btn btn-close" id="btn-close" aria-label="关闭" title="关闭">
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.3"
+          stroke-linecap="round">
+          <line x1="3.5" y1="3.5" x2="12.5" y2="12.5" />
+          <line x1="12.5" y1="3.5" x2="3.5" y2="12.5" />
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="app-container" id="app-container" data-view="detailed">
+    <!-- Flow 模式：AI 思考过程与输出内容主体交互流容器 -->
+    <section class="flow-stage" id="flow-stage" aria-label="Agent 对话与思考流">
+      <div class="flow-scroll-area" id="flow-scroll-area">
+        <!-- 动态消息流将通过 JS 渲染注入此处 -->
+        <div class="flow-conversation" id="flow-conversation">
+          <!-- 默认/当前交互项模板 -->
+          <div class="flow-message-group" id="current-flow-group">
+            <!-- 用户问题卡片 -->
+            <div class="flow-user-prompt-card" id="flow-user-prompt">
+              <div class="prompt-icon">
+                <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                  <path d="M4 10 L16 10 M11 5 L16 10 L11 15" />
+                </svg>
+              </div>
+              <p class="prompt-content" id="flow-user-text">探索手绘草图风格的 Agent 交互体验</p>
+            </div>
+
+            <!-- AI Agent 思考过程卡片（手绘折叠与呼吸状态） -->
+            <div class="agent-thinking-card open" id="agent-thinking-card">
+              <div class="thinking-header" id="thinking-toggle-btn" role="button" tabindex="0" aria-expanded="true">
+                <div class="thinking-status-indicator">
+                  <span class="thinking-dot"></span>
+                  <span class="thinking-title">思考过程</span>
+                  <span class="thinking-duration" id="thinking-duration">已深度思考 1.8 秒</span>
+                </div>
+                <div class="thinking-arrow-icon" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                    <polyline points="4 6 8 10 12 6" />
+                  </svg>
+                </div>
+              </div>
+              <div class="thinking-body" id="thinking-body">
+                <ul class="thinking-steps">
+                  <li class="step-item done">
+                    <span class="step-marker">✓</span>
+                    <span class="step-text">解析意图与上下文：构建多态 Agent 交互视图</span>
+                  </li>
+                  <li class="step-item done">
+                    <span class="step-marker">✓</span>
+                    <span class="step-text">加载草图手绘风格主题与自适应双模纸质变量</span>
+                  </li>
+                  <li class="step-item in-progress">
+                    <span class="step-marker">✦</span>
+                    <span class="step-text">生成结构化响应：已完成状态机与右键回退流水线映射</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <!-- AI Agent 输出响应内容区域 -->
+            <div class="agent-response-card" id="agent-response-card">
+              <div class="response-header">
+                <span class="agent-badge">π Agent</span>
+              </div>
+              <div class="response-content" id="flow-response-content">
+                <p>已成功进入 <strong>Flow 交互界面</strong>。在此界面中：</p>
+                <ul>
+                  <li><strong>Logo 归位</strong>：手绘 $\pi$ 图标已优雅置于最左上方，保持视野开阔；</li>
+                  <li><strong>思维透明</strong>：上方完整呈现模型的思考链路与步骤推演；</li>
+                  <li><strong>输入延展</strong>：输入框已平滑下移并自适应扩展宽度，方便输入多行或复杂指令；</li>
+                </ul>
+                <p class="sketch-callout">💡 <em>提示：单击鼠标右键可一键返回「初始界面-专注版」，再次右键可回退至「初始界面-详细版」。</em></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 主搜索与交互区域（三态自适应布局容器） -->
+    <div class="search-section" id="search-section">
+
+      <!-- 品牌标识与手绘草图徽标 -->
+      <div class="brand-header" id="brand-logo">
+        <div class="brand-sketch-icon" aria-hidden="true">
+          <!-- 手绘风 π 与思维火花草图矢量 -->
+          <svg viewBox="0 0 48 48" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.6"
+            stroke-linecap="round" stroke-linejoin="round">
+            <!-- 手绘顶部横梁微弯曲笔触 -->
+            <path d="M8 15.5 C14 14.2, 34 14.8, 40 15" />
+            <!-- 左侧自然下垂竖画 -->
+            <path d="M17.5 15 C17 22, 16 29, 14 34.5 C13 37, 10.5 37.5, 9.5 36" />
+            <!-- 右侧带微小向右勾笔的竖画 -->
+            <path d="M30.5 15 C31 23, 31.5 30, 33 34 C34 36.5, 36.5 36.8, 39 35.5" />
+            <!-- 灵感小草图星标 -->
+            <path d="M38 7 L38.5 10 L41.5 10.5 L38.5 11 L38 14 L37.5 11 L34.5 10.5 L37.5 10 Z" stroke-width="1.2" />
+          </svg>
+        </div>
+        <div class="brand-title-wrap" id="brand-title-wrap">
+          <h1 class="logo-text">pi-dl</h1>
+          <span class="brand-subtitle">pi desktop lite * Unadorned Agent</span>
+        </div>
+      </div>
+
+      <!-- 搜索框与外部控制栏组合 -->
+      <div class="search-box-row" id="search-box-row">
+        <!-- 对话框外部左侧手绘齿轮设置按钮（透明底、无常态边框、hover显示边框） -->
+        <button type="button" id="settings-btn" class="icon-button settings-btn" aria-label="设置" title="设置">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.4"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path
+              d="M10.2 5.8 C10.3 4.5, 10.4 3.2, 10.4 3.2 L13.6 3.1 C13.6 3.1, 13.7 4.5, 13.8 5.7 C14.6 6.1, 15.4 6.5, 16.2 7.1 L18.6 5.8 L20.3 8.6 L17.8 10.2 C18 11.1, 18 12.9, 17.8 13.8 L20.4 15.4 L18.7 18.2 L16.3 16.9 C15.5 17.5, 14.6 17.9, 13.8 18.3 L13.6 20.9 L10.4 20.8 L10.2 18.2 C9.4 17.8, 8.5 17.4, 7.8 16.9 L5.4 18.2 L3.7 15.4 L6.1 13.8 C5.9 12.9, 5.9 11.1, 6.1 10.2 L3.6 8.6 L5.3 5.8 L7.7 7.1 C8.5 6.5, 9.4 6.1, 10.2 5.8 Z" />
+            <path
+              d="M12 9.1 C13.6 9.05, 14.95 10.4, 14.9 12 C14.85 13.65, 13.55 14.95, 12 14.9 C10.4 14.85, 9.05 13.55, 9.1 12 C9.15 10.45, 10.45 9.15, 12 9.1 Z" />
+          </svg>
+        </button>
+
+        <!-- 手绘线条素描搜索框 -->
+        <form class="sketch-search-box" id="search-form" onsubmit="return false;">
+          <!-- 导入图标 -->
+          <div class="search-icon" id="search-icon-box" aria-hidden="true">
+            <svg viewBox="0 0 50 50" width="18" height="18" fill="currentColor">
+              <path
+                d="M 1.78125 -0.03125 C 1.300781 0.078125 0.960938 0.507813 0.96875 1 L 0.96875 49 C 0.972656 49.566406 1.433594 50.027344 2 50.03125 L 32 50.03125 C 32.566406 50.027344 33.027344 49.566406 33.03125 49 L 33.03125 39 L 30.96875 39 L 30.96875 47.96875 L 3.03125 47.96875 L 3.03125 2.03125 L 30.96875 2.03125 L 30.96875 11 L 33.03125 11 L 33.03125 1 L 33.027344 0.433594 32.566406 -0.0273438 32 -0.03125 L 2 -0.03125 C 1.925781 -0.0390625 1.855469 -0.0390625 1.78125 -0.03125 Z M 24.78125 15.09375 C 24.554688 15.125 24.34375 15.238281 24.1875 15.40625 L 15.28125 24.28125 L 14.59375 25 L 15.28125 25.71875 L 24.1875 34.59375 C 24.429688 34.890625 24.816406 35.027344 25.191406 34.941406 C 25.5625 34.855469 25.855469 34.5625 25.941406 34.191406 C 26.027344 33.816406 25.890625 33.429688 25.59375 33.1875 L 18.4375 26 L 48 26 C 48.359375 26.003906 48.695313 25.816406 48.878906 25.503906 C 49.058594 25.191406 49.058594 24.808594 48.878906 24.496094 C 48.695313 24.183594 48.359375 23.996094 48 24 L 18.4375 24 L 25.59375 16.8125 C 25.90625 16.515625 25.996094 16.050781 25.8125 15.660156 C 25.625 15.265625 25.210938 15.039063 24.78125 15.09375 Z" />
+            </svg>
+          </div>
+
+          <!-- 文本输入框 -->
+          <input type="text" id="search-input" class="search-input" placeholder="别等完美，先打个草稿" autocomplete="off"
+            spellcheck="false" />
+
+          <!-- 手绘风格清空按钮 -->
+          <button type="button" id="clear-btn" class="icon-button clear-btn" aria-label="清空输入" title="清空 (Esc)">
+            <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4"
+              stroke-linecap="round">
+              <line x1="5" y1="5" x2="15" y2="15" />
+              <line x1="15" y1="5" x2="5" y2="15" />
+            </svg>
+          </button>
+
+          <!-- 快捷键引导徽章 -->
+          <div class="search-action-hint" id="search-hint">
+            <span class="sketch-kbd">↵ Enter</span>
+          </div>
+        </form>
+      </div>
+
+      <!-- 底部手绘风快捷草图标签 -->
+      <div class="sketch-tags-container" id="sketch-tags-container">
+        <button type="button" class="sketch-tag" data-query="Anthropic Research">
+          <span class="tag-marker">~</span> Anthropic Research
+        </button>
+        <button type="button" class="sketch-tag" data-query="Pi.dev Engineering">
+          <span class="tag-marker">~</span> Pi.dev Engineering
+        </button>
+        <button type="button" class="sketch-tag" data-query="Tauri v2 Docs">
+          <span class="tag-marker">~</span> Tauri v2 Docs
+        </button>
+      </div>
+
+    </div>
+  </main>
+
+  <script type="module" src="/main.js"></script>
+</body>
+
+</html>
