@@ -406,21 +406,20 @@ npm run build
 
 ```text
 pi-desktop-lite/
-├── .agents/skills/             # 项目技能规范定义 (auto-compile-and-fix, sketch-drafting-ui 等)
-├── .doc/                       # 架构规划与实施运维文档
-│   ├── pi-agent-architecture.md# Pi Agent 高性能数据交互与版本监测架构设计
-│   └── issues-and-risks.md     # 联通与实施问题、隐患与运维要点汇总
+├── .agents/skills/             # 项目技能规范定义 (auto-compile-and-fix, sketch-drafting-ui, clean-code-refactoring 等)
 ├── .mytools/pi-body/           # 最新 Pi Agent Release 引擎包 (pi-windows-x64/pi.exe)
 ├── scripts/                    # 自动化与环境配置脚本 (tauri.js runner)
 ├── src/                        # 前端页面源码与运行时资源
 │   ├── assets/                 # 静态资源 (logo.svg, logo.ico)
 │   ├── services/               # 前端服务层
+│   │   ├── tauri-bridge.js     # 统一 Tauri IPC 跨平台调用桥接器
+│   │   ├── config-service.js   # ~/.pi/agent 配置与模型白名单管理服务
 │   │   ├── pi-client.js        # 对接 Rust 后端 supervisor 的流式通信客户端
 │   │   ├── session-service.js  # 历史会话管理与切换服务
 │   │   └── version-service.js  # 版本检测与更新通知服务
-│   ├── index.html              # 页面主体（隐藏式标题栏 + 手绘Logo + 三态流容器 + 设置抽屉）
-│   ├── styles.css              # 手绘线条、微渐变、按钮交互规范与系统自适应明暗主题样式
-│   └── main.js                 # 状态机分发、流式渲染、思维卡片、工具卡片与右键回退流水线
+│   ├── index.html              # 页面主体（沉浸式标题栏 + 手绘Logo + 四态界面容器 + 独立设置视图）
+│   ├── styles.css              # 手绘线条、微渐变、工程几何设置页与系统自适应明暗主题样式
+│   └── main.js                 # 状态机分发、流式渲染、思维卡片、工具卡片、跑马灯与右键回退流水线
 ├── src-tauri/                  # Tauri (Rust) 高性能后端核心
 │   ├── Cargo.toml              # 依赖: tokio, serde, dashmap, notify, reqwest, regex, windows-sys
 │   ├── tauri.conf.json         # 窗口无边框、原生透明与安全策略配置

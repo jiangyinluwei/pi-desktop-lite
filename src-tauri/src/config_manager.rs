@@ -14,31 +14,38 @@ pub fn get_pi_agent_dir() -> Result<PathBuf, String> {
     Ok(agent_dir)
 }
 
+/// 通用安全读取 ~/.pi/agent/ 下的 JSON 配置文件
+pub fn read_agent_json(filename: &str, default_val: Value) -> Result<Value, String> {
+    let agent_dir = get_pi_agent_dir()?;
+    let path = agent_dir.join(filename);
+    if !path.exists() {
+        return Ok(default_val);
+    }
+    let content = fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read {}: {}", filename, e))?;
+    Ok(serde_json::from_str(&content).unwrap_or(default_val))
+}
+
+/// 通用安全写入 ~/.pi/agent/ 下的 JSON 配置文件
+pub fn write_agent_json(filename: &str, data: &Value) -> Result<(), String> {
+    let agent_dir = get_pi_agent_dir()?;
+    let path = agent_dir.join(filename);
+    let content = serde_json::to_string_pretty(data)
+        .map_err(|e| format!("Failed to serialize {}: {}", filename, e))?;
+    fs::write(&path, content)
+        .map_err(|e| format!("Failed to write {}: {}", filename, e))
+}
+
 /// 读取 auth.json
 #[tauri::command]
 pub fn pi_get_auth_config() -> Result<Value, String> {
-    let agent_dir = get_pi_agent_dir()?;
-    let auth_path = agent_dir.join("auth.json");
-    if !auth_path.exists() {
-        return Ok(json!({}));
-    }
-    let content = fs::read_to_string(&auth_path)
-        .map_err(|e| format!("Failed to read auth.json: {}", e))?;
-    let val: Value = serde_json::from_str(&content)
-        .unwrap_or_else(|_| json!({}));
-    Ok(val)
+    read_agent_json("auth.json", json!({}))
 }
 
 /// 写入 auth.json
 #[tauri::command]
 pub fn pi_save_auth_config(auth_data: Value) -> Result<(), String> {
-    let agent_dir = get_pi_agent_dir()?;
-    let auth_path = agent_dir.join("auth.json");
-    let content = serde_json::to_string_pretty(&auth_data)
-        .map_err(|e| format!("Failed to serialize auth.json: {}", e))?;
-    fs::write(&auth_path, content)
-        .map_err(|e| format!("Failed to write to auth.json: {}", e))?;
-    Ok(())
+    write_agent_json("auth.json", &auth_data)
 }
 
 /// 保存单个官方 Provider 的 API Key
@@ -47,7 +54,7 @@ pub fn pi_save_provider_api_key(provider: String, api_key: String) -> Result<(),
     let mut current_auth = pi_get_auth_config().unwrap_or_else(|_| json!({}));
     let map = current_auth.as_object_mut().ok_or_else(|| "auth.json is not an object".to_string())?;
 
-    let trimmed_key = api_key.trim().to_string();
+    let trimmed_key = api_key.trim();
     if trimmed_key.is_empty() {
         map.remove(&provider);
     } else {
@@ -60,34 +67,31 @@ pub fn pi_save_provider_api_key(provider: String, api_key: String) -> Result<(),
         );
     }
 
-    pi_save_auth_config(Value::Object(map.clone()))
+    pi_save_auth_config(current_auth)
 }
 
 /// 读取 models.json (自定义模型与端点)
 #[tauri::command]
 pub fn pi_get_custom_models() -> Result<Value, String> {
-    let agent_dir = get_pi_agent_dir()?;
-    let models_path = agent_dir.join("models.json");
-    if !models_path.exists() {
-        return Ok(json!({ "providers": {} }));
-    }
-    let content = fs::read_to_string(&models_path)
-        .map_err(|e| format!("Failed to read models.json: {}", e))?;
-    let val: Value = serde_json::from_str(&content)
-        .unwrap_or_else(|_| json!({ "providers": {} }));
-    Ok(val)
+    read_agent_json("models.json", json!({ "providers": {} }))
 }
 
 /// 写入 models.json
 #[tauri::command]
 pub fn pi_save_custom_models(models_data: Value) -> Result<(), String> {
-    let agent_dir = get_pi_agent_dir()?;
-    let models_path = agent_dir.join("models.json");
-    let content = serde_json::to_string_pretty(&models_data)
-        .map_err(|e| format!("Failed to serialize models.json: {}", e))?;
-    fs::write(&models_path, content)
-        .map_err(|e| format!("Failed to write to models.json: {}", e))?;
-    Ok(())
+    write_agent_json("models.json", &models_data)
+}
+
+/// 确保 custom_config 中包含合法的 providers Map 引用
+fn ensure_providers_map_mut(custom_config: &mut Value) -> &mut serde_json::Map<String, Value> {
+    if !custom_config.is_object() {
+        *custom_config = json!({ "providers": {} });
+    }
+    let root_obj = custom_config.as_object_mut().unwrap();
+    if !root_obj.contains_key("providers") || !root_obj["providers"].is_object() {
+        root_obj.insert("providers".to_string(), json!({}));
+    }
+    root_obj.get_mut("providers").unwrap().as_object_mut().unwrap()
 }
 
 /// 保存或更新自定义运营商 (第一步)
@@ -104,16 +108,6 @@ pub struct CustomProviderEntry {
 #[tauri::command]
 pub fn pi_save_custom_provider(entry: CustomProviderEntry) -> Result<(), String> {
     let mut custom_config = pi_get_custom_models().unwrap_or_else(|_| json!({ "providers": {} }));
-    if !custom_config.is_object() {
-        custom_config = json!({ "providers": {} });
-    }
-
-    let root_obj = custom_config.as_object_mut().unwrap();
-    if !root_obj.contains_key("providers") || !root_obj["providers"].is_object() {
-        root_obj.insert("providers".to_string(), json!({}));
-    }
-
-    let providers = root_obj.get_mut("providers").unwrap().as_object_mut().unwrap();
     let provider_key = entry.provider_id.trim().to_lowercase();
     if provider_key.is_empty() {
         return Err("运营商标识 (Provider ID) 不能为空".to_string());
@@ -126,34 +120,28 @@ pub fn pi_save_custom_provider(entry: CustomProviderEntry) -> Result<(), String>
         "supportsReasoningEffort": entry.supports_reasoning_effort.unwrap_or(false)
     });
 
-    if let Some(existing_provider) = providers.get_mut(&provider_key) {
-        if let Some(p_obj) = existing_provider.as_object_mut() {
-            p_obj.insert("baseUrl".to_string(), json!(entry.base_url.trim()));
-            p_obj.insert("api".to_string(), json!(api_type_str));
-            if let Some(key) = entry.api_key {
-                if !key.trim().is_empty() {
-                    p_obj.insert("apiKey".to_string(), json!(key.trim()));
-                } else {
-                    p_obj.remove("apiKey");
-                }
-            }
-            p_obj.insert("compat".to_string(), compat_val);
-            if !p_obj.contains_key("models") || !p_obj["models"].is_array() {
-                p_obj.insert("models".to_string(), json!([]));
-            }
+    let providers = ensure_providers_map_mut(&mut custom_config);
+    let p_obj = providers
+        .entry(&provider_key)
+        .or_insert_with(|| json!({ "models": [] }))
+        .as_object_mut()
+        .ok_or_else(|| "Provider entry is not an object".to_string())?;
+
+    p_obj.insert("baseUrl".to_string(), json!(entry.base_url.trim()));
+    p_obj.insert("api".to_string(), json!(api_type_str));
+    p_obj.insert("compat".to_string(), compat_val);
+
+    if let Some(key) = entry.api_key {
+        let key_trimmed = key.trim();
+        if !key_trimmed.is_empty() {
+            p_obj.insert("apiKey".to_string(), json!(key_trimmed));
+        } else {
+            p_obj.remove("apiKey");
         }
-    } else {
-        let mut new_provider_obj = serde_json::Map::new();
-        new_provider_obj.insert("baseUrl".to_string(), json!(entry.base_url.trim()));
-        new_provider_obj.insert("api".to_string(), json!(api_type_str));
-        if let Some(key) = entry.api_key {
-            if !key.trim().is_empty() {
-                new_provider_obj.insert("apiKey".to_string(), json!(key.trim()));
-            }
-        }
-        new_provider_obj.insert("compat".to_string(), compat_val);
-        new_provider_obj.insert("models".to_string(), json!([]));
-        providers.insert(provider_key, Value::Object(new_provider_obj));
+    }
+
+    if !p_obj.contains_key("models") || !p_obj["models"].is_array() {
+        p_obj.insert("models".to_string(), json!([]));
     }
 
     pi_save_custom_models(custom_config)
@@ -187,16 +175,6 @@ pub struct CustomProviderModelEntry {
 #[tauri::command]
 pub fn pi_add_custom_provider_model(entry: CustomProviderModelEntry) -> Result<(), String> {
     let mut custom_config = pi_get_custom_models().unwrap_or_else(|_| json!({ "providers": {} }));
-    if !custom_config.is_object() {
-        custom_config = json!({ "providers": {} });
-    }
-
-    let root_obj = custom_config.as_object_mut().unwrap();
-    if !root_obj.contains_key("providers") || !root_obj["providers"].is_object() {
-        root_obj.insert("providers".to_string(), json!({}));
-    }
-
-    let providers = root_obj.get_mut("providers").unwrap().as_object_mut().unwrap();
     let provider_key = entry.provider_id.trim().to_lowercase();
     if provider_key.is_empty() {
         return Err("运营商标识 (Provider ID) 不能为空".to_string());
@@ -220,27 +198,27 @@ pub fn pi_add_custom_provider_model(entry: CustomProviderModelEntry) -> Result<(
         "reasoning": entry.reasoning.unwrap_or(false)
     });
 
-    if let Some(existing_provider) = providers.get_mut(&provider_key) {
-        if let Some(p_obj) = existing_provider.as_object_mut() {
-            if !p_obj.contains_key("models") || !p_obj["models"].is_array() {
-                p_obj.insert("models".to_string(), json!([]));
-            }
-            let models_arr = p_obj.get_mut("models").unwrap().as_array_mut().unwrap();
+    let providers = ensure_providers_map_mut(&mut custom_config);
+    let p_obj = providers
+        .get_mut(&provider_key)
+        .and_then(|v| v.as_object_mut())
+        .ok_or_else(|| format!("未找到运营商 [{}], 请先创建该运营商", provider_key))?;
 
-            let mut found = false;
-            for m in models_arr.iter_mut() {
-                if m.get("id").and_then(|v| v.as_str()) == Some(entry.model_id.trim()) {
-                    *m = model_item.clone();
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                models_arr.push(model_item);
-            }
+    if !p_obj.contains_key("models") || !p_obj["models"].is_array() {
+        p_obj.insert("models".to_string(), json!([]));
+    }
+    let models_arr = p_obj.get_mut("models").unwrap().as_array_mut().unwrap();
+
+    let mut found = false;
+    for m in models_arr.iter_mut() {
+        if m.get("id").and_then(|v| v.as_str()) == Some(entry.model_id.trim()) {
+            *m = model_item.clone();
+            found = true;
+            break;
         }
-    } else {
-        return Err(format!("未找到运营商 [{}], 请先创建该运营商", provider_key));
+    }
+    if !found {
+        models_arr.push(model_item);
     }
 
     pi_save_custom_models(custom_config)
@@ -307,28 +285,13 @@ pub fn pi_delete_custom_model(provider_id: String, model_id: Option<String>) -> 
 /// 读取 settings.json
 #[tauri::command]
 pub fn pi_get_settings_config() -> Result<Value, String> {
-    let agent_dir = get_pi_agent_dir()?;
-    let settings_path = agent_dir.join("settings.json");
-    if !settings_path.exists() {
-        return Ok(json!({}));
-    }
-    let content = fs::read_to_string(&settings_path)
-        .map_err(|e| format!("Failed to read settings.json: {}", e))?;
-    let val: Value = serde_json::from_str(&content)
-        .unwrap_or_else(|_| json!({}));
-    Ok(val)
+    read_agent_json("settings.json", json!({}))
 }
 
 /// 写入 settings.json
 #[tauri::command]
 pub fn pi_save_settings_config(settings_data: Value) -> Result<(), String> {
-    let agent_dir = get_pi_agent_dir()?;
-    let settings_path = agent_dir.join("settings.json");
-    let content = serde_json::to_string_pretty(&settings_data)
-        .map_err(|e| format!("Failed to serialize settings.json: {}", e))?;
-    fs::write(&settings_path, content)
-        .map_err(|e| format!("Failed to write to settings.json: {}", e))?;
-    Ok(())
+    write_agent_json("settings.json", &settings_data)
 }
 
 /// 官方通道与模型基础元数据目录

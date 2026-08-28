@@ -1,7 +1,8 @@
+import { invokeTauri } from "./tauri-bridge.js";
+
 /**
  * 版本监测与更新提醒服务 (version-service.js)
  */
-
 class VersionService extends EventTarget {
   constructor() {
     super();
@@ -19,13 +20,11 @@ class VersionService extends EventTarget {
       });
 
       // 尝试获取缓存的更新状态
-      if (window.__TAURI__?.core?.invoke) {
-        const cached = await window.__TAURI__.core.invoke("pi_get_cached_update");
-        if (cached) {
-          this.latestUpdate = cached;
-          if (cached.has_update) {
-            this.dispatchEvent(new CustomEvent("update-available", { detail: cached }));
-          }
+      const cached = await invokeTauri("pi_get_cached_update");
+      if (cached) {
+        this.latestUpdate = cached;
+        if (cached.has_update) {
+          this.dispatchEvent(new CustomEvent("update-available", { detail: cached }));
         }
       }
     } catch (e) {
@@ -37,17 +36,16 @@ class VersionService extends EventTarget {
    * 手动触发即时版本检查
    */
   async checkUpdate() {
-    if (window.__TAURI__?.core?.invoke) {
-      try {
-        const res = await window.__TAURI__.core.invoke("pi_check_update");
-        this.latestUpdate = res;
-        return res;
-      } catch (err) {
-        console.error("[VersionService] Failed to check update:", err);
-      }
+    try {
+      const res = await invokeTauri("pi_check_update");
+      this.latestUpdate = res;
+      return res;
+    } catch (err) {
+      console.error("[VersionService] Failed to check update:", err);
+      return null;
     }
-    return null;
   }
 }
 
 export const versionService = new VersionService();
+

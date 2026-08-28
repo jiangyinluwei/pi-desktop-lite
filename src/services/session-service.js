@@ -1,7 +1,8 @@
+import { invokeTauri } from "./tauri-bridge.js";
+
 /**
  * 会话历史与分支导航服务 (session-service.js)
  */
-
 class SessionService extends EventTarget {
   constructor() {
     super();
@@ -27,16 +28,14 @@ class SessionService extends EventTarget {
    * 拉取所有可用会话列表
    */
   async listSessions() {
-    if (window.__TAURI__?.core?.invoke) {
-      try {
-        const list = await window.__TAURI__.core.invoke("pi_list_sessions");
-        this.sessions = list || [];
-        return this.sessions;
-      } catch (err) {
-        console.error("[SessionService] Failed to list sessions:", err);
-      }
+    try {
+      const list = await invokeTauri("pi_list_sessions");
+      this.sessions = list || [];
+      return this.sessions;
+    } catch (err) {
+      console.error("[SessionService] Failed to list sessions:", err);
+      return [];
     }
-    return [];
   }
 
   /**
@@ -44,16 +43,12 @@ class SessionService extends EventTarget {
    * @param {string} sessionPath
    */
   async getSessionTree(sessionPath) {
-    if (window.__TAURI__?.core?.invoke) {
-      try {
-        return await window.__TAURI__.core.invoke("pi_get_session_tree", {
-          sessionPath,
-        });
-      } catch (err) {
-        console.error("[SessionService] Failed to get session tree:", err);
-      }
+    try {
+      return (await invokeTauri("pi_get_session_tree", { sessionPath })) || [];
+    } catch (err) {
+      console.error("[SessionService] Failed to get session tree:", err);
+      return [];
     }
-    return [];
   }
 
   /**
@@ -61,11 +56,7 @@ class SessionService extends EventTarget {
    * @param {string} sessionPath
    */
   async switchSession(sessionPath) {
-    if (window.__TAURI__?.core?.invoke) {
-      return await window.__TAURI__.core.invoke("pi_switch_session", {
-        sessionPath,
-      });
-    }
+    return await invokeTauri("pi_switch_session", { sessionPath });
   }
 
   /**
@@ -73,12 +64,9 @@ class SessionService extends EventTarget {
    * @param {string} [parentSession]
    */
   async newSession(parentSession = null) {
-    if (window.__TAURI__?.core?.invoke) {
-      return await window.__TAURI__.core.invoke("pi_new_session", {
-        parentSession,
-      });
-    }
+    return await invokeTauri("pi_new_session", { parentSession });
   }
 }
 
 export const sessionService = new SessionService();
+

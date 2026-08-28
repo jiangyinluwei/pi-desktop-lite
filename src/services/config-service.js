@@ -3,6 +3,8 @@
  * 负责管理 ~/.pi/agent/auth.json、models.json、settings.json 以及软件主题与模型白名单
  */
 
+import { invokeTauri } from "./tauri-bridge.js";
+
 const STORAGE_KEY_THEME = "pi_app_theme";
 const STORAGE_KEY_WHITELIST = "pi_model_whitelist";
 const STORAGE_KEY_SELECTED_MODEL = "pi_selected_model";
@@ -16,22 +18,10 @@ class ConfigService extends EventTarget {
   }
 
   /**
-   * 安全调用 Tauri Invoke 指令
-   * @param {string} command
-   * @param {Record<string, any>} args
+   * 安全调用 Tauri Invoke 指令 (转发至统一桥接器)
    */
   async invoke(command, args = {}) {
-    if (window.__TAURI__?.core?.invoke) {
-      try {
-        return await window.__TAURI__.core.invoke(command, args);
-      } catch (err) {
-        console.error(`[ConfigService] Invoke ${command} error:`, err);
-        throw err;
-      }
-    } else {
-      console.warn(`[ConfigService] Tauri invoke not available for ${command}`);
-      return null;
-    }
+    return invokeTauri(command, args);
   }
 
   // ==========================================================================

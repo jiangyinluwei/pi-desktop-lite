@@ -70,19 +70,16 @@ impl PiSupervisor {
             "../.mytools/pi-body/pi-windows-x64/pi",
         ];
 
-        for rel in candidate_relative_paths {
-            if let Ok(cwd) = std::env::current_dir() {
-                let full = cwd.join(rel);
+        let base_dirs = [
+            std::env::current_dir().ok(),
+            std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())),
+        ];
+
+        for base in base_dirs.into_iter().flatten() {
+            for rel in &candidate_relative_paths {
+                let full = base.join(rel);
                 if full.is_file() {
                     return Some(full);
-                }
-            }
-            if let Ok(exe) = std::env::current_exe() {
-                if let Some(parent) = exe.parent() {
-                    let full = parent.join(rel);
-                    if full.is_file() {
-                        return Some(full);
-                    }
                 }
             }
         }
@@ -90,10 +87,9 @@ impl PiSupervisor {
         // 3. 检查系统 PATH 中的 pi / pi.exe
         if let Ok(path_var) = std::env::var("PATH") {
             let split_char = if cfg!(windows) { ';' } else { ':' };
+            let bin_name = if cfg!(windows) { "pi.exe" } else { "pi" };
             for dir in path_var.split(split_char) {
-                let dir_path = Path::new(dir);
-                let bin_name = if cfg!(windows) { "pi.exe" } else { "pi" };
-                let full = dir_path.join(bin_name);
+                let full = Path::new(dir).join(bin_name);
                 if full.is_file() {
                     return Some(full);
                 }

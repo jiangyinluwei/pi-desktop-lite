@@ -2,6 +2,7 @@ import { piClient } from "./services/pi-client.js";
 import { sessionService } from "./services/session-service.js";
 import { versionService } from "./services/version-service.js";
 import { configService } from "./services/config-service.js";
+import { invokeTauri } from "./services/tauri-bridge.js";
 
 /**
  * 简单 HTML 转义防 XSS
@@ -1301,7 +1302,7 @@ window.addEventListener("DOMContentLoaded", () => {
       item.addEventListener("click", async () => {
         try {
           await sessionService.switchSession(s.file_path);
-          closeSettingsDrawer();
+          closeSettingsView();
           setViewMode(VIEW_FLOW, true);
         } catch (err) {
           console.error("Failed to switch session:", err);
@@ -1320,7 +1321,7 @@ window.addEventListener("DOMContentLoaded", () => {
     btnNewSession.addEventListener("click", async () => {
       try {
         await sessionService.newSession();
-        closeSettingsDrawer();
+        closeSettingsView();
         setViewMode(VIEW_DETAILED, false);
       } catch (err) {
         console.error("Failed to create new session:", err);
@@ -1335,16 +1336,6 @@ window.addEventListener("DOMContentLoaded", () => {
   const btnMaximize = document.getElementById("btn-maximize");
   const btnClose = document.getElementById("btn-close");
   const titlebar = document.getElementById("titlebar");
-
-  const invokeTauri = async (command, args = {}) => {
-    if (window.__TAURI__?.core?.invoke) {
-      try {
-        return await window.__TAURI__.core.invoke(command, args);
-      } catch (error) {
-        console.warn(`[Tauri] Failed to execute ${command}:`, error);
-      }
-    }
-  };
 
   if (btnMinimize) {
     btnMinimize.addEventListener("click", () => invokeTauri("minimize_window"));
@@ -1512,7 +1503,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
     if (btnSwitch) {
       btnSwitch.addEventListener("click", () => {
-        openSettingsDrawer();
+        openSettingsView();
       });
     }
   };
@@ -1628,7 +1619,7 @@ window.addEventListener("DOMContentLoaded", () => {
     resetStreamState(query);
     setViewMode(VIEW_FLOW, true);
     searchInput.value = "";
-    updateClearBtn();
+    updateInputState();
 
     try {
       await piClient.sendPrompt(query);
@@ -1674,7 +1665,6 @@ window.addEventListener("DOMContentLoaded", () => {
       searchInputWrapper?.classList.remove("has-value");
     }
   };
-  const updateClearBtn = updateInputState;
 
   searchInput.addEventListener("input", updateInputState);
 
@@ -1995,7 +1985,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
     if (searchInput && searchInput.value.trim().length > 0) {
       searchInput.value = "";
-      updateClearBtn();
+      updateInputState();
       return;
     }
 

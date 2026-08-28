@@ -3,6 +3,8 @@
  * 负责与 Rust 后端 supervisor 保持事件同步、分发流式消息、工具调用、模型状态与全链路错误捕获
  */
 
+import { invokeTauri } from "./tauri-bridge.js";
+
 /**
  * 递归解析并提炼复杂的错误信息（支持 JSON 字符串嵌套解析）
  * @param {any} err
@@ -67,21 +69,34 @@ class PiClient extends EventTarget {
 
   /**
    * 安全调用 Tauri Invoke 指令
-   * @param {string} command
-   * @param {Record<string, any>} args
    */
   async invoke(command, args = {}) {
-    if (window.__TAURI__?.core?.invoke) {
-      try {
-        return await window.__TAURI__.core.invoke(command, args);
-      } catch (err) {
-        console.error(`[PiClient] Invoke ${command} error:`, err);
-        throw err;
-      }
-    } else {
-      console.warn(`[PiClient] Tauri invoke not available for ${command}`);
-      return null;
+    return invokeTauri(command, args);
+  }
+
+  /**
+   * 辅助检查并广播消息对象中的错误
+   * @param {Record<string, any>} msgObj
+   * @param {string} [fallback="模型执行出错"]
+   * @returns {boolean}
+   */
+  _dispatchErrorFromMessage(msgObj, fallback = "模型执行出错") {
+    if (!msgObj) return false;
+    if (msgObj.stopReason === "error" || msgObj.errorMessage) {
+      const errMsg = parseErrorMessage(msgObj.errorMessage || fallback);
+      this.dispatchEvent(
+        new CustomEvent("agent-error", {
+          detail: {
+            message: errMsg,
+            model: msgObj.model || this.currentModel?.id,
+            provider: msgObj.provider || this.currentModel?.provider,
+            raw: msgObj,
+          },
+        })
+      );
+      return true;
     }
+    return false;
   }
 
   /**
@@ -151,25 +166,12 @@ class PiClient extends EventTarget {
       case "agent_end":
       case "agent_settled":
         this.isStreaming = false;
-        // 检查是否存在错误消息
-        if (data.messages && Array.isArray(data.messages)) {
+        if (Array.isArray(data.messages)) {
           const errMessage = data.messages.find(
             (m) => m.stopReason === "error" || m.errorMessage
           );
           if (errMessage) {
-            const errMsg = parseErrorMessage(
-              errMessage.errorMessage || "模型调用发生异常"
-            );
-            this.dispatchEvent(
-              new CustomEvent("agent-error", {
-                detail: {
-                  message: errMsg,
-                  model: errMessage.model || this.currentModel?.id,
-                  provider: errMessage.provider || this.currentModel?.provider,
-                  raw: errMessage,
-                },
-              })
-            );
+            this._dispatchErrorFromMessage(errMessage, "模型调用发生异常");
           }
         }
         this.dispatchEvent(new CustomEvent("agent-end", { detail: data }));
@@ -180,36 +182,12 @@ class PiClient extends EventTarget {
         break;
 
       case "turn_end":
-        if (data.message?.stopReason === "error" || data.message?.errorMessage) {
-          const errMsg = parseErrorMessage(data.message.errorMessage || "模型执行出错");
-          this.dispatchEvent(
-            new CustomEvent("agent-error", {
-              detail: {
-                message: errMsg,
-                model: data.message.model || this.currentModel?.id,
-                provider: data.message.provider || this.currentModel?.provider,
-                raw: data.message,
-              },
-            })
-          );
-        }
+        this._dispatchErrorFromMessage(data.message, "模型执行出错");
         this.dispatchEvent(new CustomEvent("turn-end", { detail: data }));
         break;
 
       case "message_start":
-        if (data.message?.stopReason === "error" || data.message?.errorMessage) {
-          const errMsg = parseErrorMessage(data.message.errorMessage || "模型调用失败");
-          this.dispatchEvent(
-            new CustomEvent("agent-error", {
-              detail: {
-                message: errMsg,
-                model: data.message.model || this.currentModel?.id,
-                provider: data.message.provider || this.currentModel?.provider,
-                raw: data.message,
-              },
-            })
-          );
-        }
+        this._dispatchErrorFromMessage(data.message, "模型调用失败");
         this.dispatchEvent(new CustomEvent("message-start", { detail: data }));
         break;
 
@@ -218,19 +196,7 @@ class PiClient extends EventTarget {
         break;
 
       case "message_end":
-        if (data.message?.stopReason === "error" || data.message?.errorMessage) {
-          const errMsg = parseErrorMessage(data.message.errorMessage || "模型执行失败");
-          this.dispatchEvent(
-            new CustomEvent("agent-error", {
-              detail: {
-                message: errMsg,
-                model: data.message.model || this.currentModel?.id,
-                provider: data.message.provider || this.currentModel?.provider,
-                raw: data.message,
-              },
-            })
-          );
-        }
+        this._dispatchErrorFromMessage(data.message, "模型执行失败");
         this.dispatchEvent(new CustomEvent("message-end", { detail: data }));
         break;
 
