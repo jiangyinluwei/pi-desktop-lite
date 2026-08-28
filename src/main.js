@@ -1,6 +1,22 @@
 import { piClient } from "./services/pi-client.js";
 import { sessionService } from "./services/session-service.js";
 import { versionService } from "./services/version-service.js";
+import { configService } from "./services/config-service.js";
+
+/**
+ * 简单 HTML 转义防 XSS
+ * @param {string} str
+ * @returns {string}
+ */
+export const escapeHtml = (str) => {
+  if (typeof str !== "string") return "";
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
 
 window.addEventListener("DOMContentLoaded", () => {
   const appContainer = document.getElementById("app-container");
@@ -19,11 +35,11 @@ window.addEventListener("DOMContentLoaded", () => {
   const thinkingTextStream = document.getElementById("thinking-text-stream");
   const toolCallsContainer = document.getElementById("tool-calls-container");
   const flowResponseContent = document.getElementById("flow-response-content");
+  const flowModelTag = document.getElementById("flow-model-tag");
+  const flowModelName = document.getElementById("flow-model-name");
 
-  // 设置抽屉元素
-  const settingsBackdrop = document.getElementById("settings-backdrop");
-  const settingsDrawer = document.getElementById("settings-drawer");
-  const drawerCloseBtn = document.getElementById("drawer-close-btn");
+  // 设置独立全页面元素
+  const btnSettingsBack = document.getElementById("btn-settings-back");
   const hostStatusDot = document.getElementById("host-status-dot");
   const hostStatusText = document.getElementById("host-status-text");
   const hostVersionText = document.getElementById("host-version-text");
@@ -35,22 +51,51 @@ window.addEventListener("DOMContentLoaded", () => {
   const sessionsList = document.getElementById("sessions-list");
   const sessionCount = document.getElementById("session-count");
 
+  // 模型与推理设置元素
+  const currentModelProvider = document.getElementById("current-model-provider");
+  const currentModelName = document.getElementById("current-model-name");
+  const currentModelInfo = document.getElementById("current-model-info");
+  const thinkingSelectDropdown = document.getElementById("thinking-select-dropdown");
+  const btnRefreshModels = document.getElementById("btn-refresh-models");
+  const whitelistModelsList = document.getElementById("whitelist-models-list");
+
+  // 官方通道设置元素
+  const officialProviderSelect = document.getElementById("official-provider-select");
+  const officialProviderTitle = document.getElementById("official-provider-title");
+  const officialProviderDesc = document.getElementById("official-provider-desc");
+  const officialProviderDoc = document.getElementById("official-provider-doc");
+  const officialApiKeyInput = document.getElementById("official-api-key-input");
+  const btnToggleKeyVisibility = document.getElementById("btn-toggle-key-visibility");
+  const btnSaveOfficialKey = document.getElementById("btn-save-official-key");
+  const officialKeyStatus = document.getElementById("official-key-status");
+  const officialModelsGrid = document.getElementById("official-models-grid");
+
+  // 自定义通道两步式元素
+  const customProviderForm = document.getElementById("custom-provider-form");
+  const customProviderId = document.getElementById("custom-provider-id");
+  const customApiType = document.getElementById("custom-api-type");
+  const customBaseUrl = document.getElementById("custom-base-url");
+  const customApiKey = document.getElementById("custom-api-key");
+  const customProvidersContainer = document.getElementById("custom-providers-container");
+
   // ==========================================================================
-  // 三态界面状态机 (detailed | focus | flow)
+  // 四态界面状态机 (detailed | focus | flow | settings)
   // ==========================================================================
   const VIEW_DETAILED = "detailed";
   const VIEW_FOCUS = "focus";
   const VIEW_FLOW = "flow";
+  const VIEW_SETTINGS = "settings";
 
   let currentView = VIEW_DETAILED;
+  let previousView = VIEW_DETAILED;
 
-  /**
-   * 切换界面模式
-   * @param {"detailed" | "focus" | "flow"} mode
-   * @param {boolean} [shouldFocusInput=true]
-   */
   const setViewMode = (mode, shouldFocusInput = true) => {
-    if (![VIEW_DETAILED, VIEW_FOCUS, VIEW_FLOW].includes(mode)) return;
+    if (![VIEW_DETAILED, VIEW_FOCUS, VIEW_FLOW, VIEW_SETTINGS].includes(mode)) return;
+
+    if (currentView !== VIEW_SETTINGS && mode === VIEW_SETTINGS) {
+      previousView = currentView;
+    }
+
     currentView = mode;
     if (appContainer) {
       appContainer.setAttribute("data-view", mode);
@@ -70,7 +115,6 @@ window.addEventListener("DOMContentLoaded", () => {
   window.__piGetViewMode = () => currentView;
   window.__piSetViewMode = setViewMode;
 
-  // 单击/聚焦输入框：详细版自动切换至专注版
   if (searchInput) {
     searchInput.addEventListener("focus", () => {
       if (currentView === VIEW_DETAILED) {
@@ -85,7 +129,6 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // 思考过程卡片手绘折叠与展开交互
   if (thinkingToggleBtn && agentThinkingCard) {
     thinkingToggleBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -95,21 +138,77 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   // ==========================================================================
-  // 设置抽屉打开与关闭交互
+  // 1. 软件主题色设置 (Theme Mode: 跟随系统、浅色、暗色)
   // ==========================================================================
-  const openSettingsDrawer = async () => {
-    if (settingsBackdrop) {
-      settingsBackdrop.classList.add("open");
-      settingsBackdrop.setAttribute("aria-hidden", "false");
-    }
-    // 刷新会话列表与宿主状态
-    loadSessions();
+  const initThemeControl = () => {
+    configService.initTheme();
+    const currentTheme = configService.getTheme();
+
+    const themeButtons = document.querySelectorAll(".theme-option");
+    themeButtons.forEach((btn) => {
+      if (btn.getAttribute("data-theme-val") === currentTheme) {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const targetTheme = btn.getAttribute("data-theme-val");
+        configService.applyTheme(targetTheme);
+
+        themeButtons.forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+      });
+    });
   };
 
-  const closeSettingsDrawer = () => {
-    if (settingsBackdrop && settingsBackdrop.classList.contains("open")) {
-      settingsBackdrop.classList.remove("open");
-      settingsBackdrop.setAttribute("aria-hidden", "true");
+  initThemeControl();
+
+  // ==========================================================================
+  // 2. 独立全页面设置视图导航交互
+  // ==========================================================================
+  const initSettingsTabs = () => {
+    const tabButtons = document.querySelectorAll(".settings-tab-btn");
+    const tabPanes = document.querySelectorAll(".tab-pane");
+
+    tabButtons.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const targetTab = btn.getAttribute("data-tab");
+        if (!targetTab) return;
+
+        tabButtons.forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+
+        tabPanes.forEach((pane) => {
+          if (pane.id === `pane-${targetTab.replace("tab-", "")}`) {
+            pane.classList.add("active");
+          } else {
+            pane.classList.remove("active");
+          }
+        });
+      });
+    });
+  };
+
+  initSettingsTabs();
+
+  const openSettingsView = async () => {
+    if (currentView !== VIEW_SETTINGS) {
+      previousView = currentView;
+    }
+    setViewMode(VIEW_SETTINGS, false);
+
+    loadSessions();
+    loadModelsAndState();
+    loadOfficialProvidersConfig();
+    loadCustomProvidersConfig();
+  };
+
+  const closeSettingsView = () => {
+    if (currentView === VIEW_SETTINGS) {
+      setViewMode(previousView || VIEW_DETAILED, true);
       return true;
     }
     return false;
@@ -118,34 +217,745 @@ window.addEventListener("DOMContentLoaded", () => {
   if (settingsBtn) {
     settingsBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      openSettingsDrawer();
+      openSettingsView();
     });
   }
 
-  if (drawerCloseBtn) {
-    drawerCloseBtn.addEventListener("click", (e) => {
+  if (flowModelTag) {
+    flowModelTag.addEventListener("click", (e) => {
       e.preventDefault();
-      closeSettingsDrawer();
+      openSettingsView();
     });
   }
 
-  if (settingsBackdrop) {
-    settingsBackdrop.addEventListener("click", (e) => {
-      if (e.target === settingsBackdrop) {
-        closeSettingsDrawer();
-      }
+  if (btnSettingsBack) {
+    btnSettingsBack.addEventListener("click", (e) => {
+      e.preventDefault();
+      closeSettingsView();
     });
   }
 
-  // 监听托盘“设置”事件
   if (window.__TAURI__?.event?.listen) {
     window.__TAURI__.event.listen("navigate-settings", () => {
-      openSettingsDrawer();
+      openSettingsView();
     });
   }
 
   // ==========================================================================
-  // 宿主与版本控制逻辑
+  // 3. 当前模型列表与白名单机制 (拖拽排序 + 选中模型禁止删除保护)
+  // ==========================================================================
+  let officialCatalog = [];
+  let draggedModelIndex = null;
+
+  const updateModelUI = (model, thinkingLevel = null) => {
+    if (!model) return;
+    const provider = model.provider || "anthropic";
+    const name = model.name || model.id || "Unknown Model";
+    const contextWin = model.contextWindow
+      ? `${(model.contextWindow / 1000).toFixed(0)}k context`
+      : "";
+    const reasoningText = model.reasoning ? "支持深度推理 ✦" : "标准对话";
+
+    if (currentModelProvider) currentModelProvider.textContent = provider.toUpperCase();
+    if (currentModelName) currentModelName.textContent = name;
+    if (currentModelInfo) {
+      currentModelInfo.textContent = `${contextWin} · ${reasoningText}`;
+    }
+    if (flowModelName) {
+      flowModelName.textContent = name;
+    }
+
+    if (thinkingLevel && thinkingSelectDropdown) {
+      thinkingSelectDropdown.value = thinkingLevel;
+    }
+  };
+
+  const renderWhitelistModels = (activeModel) => {
+    if (!whitelistModelsList) return;
+    let whitelist = configService.loadModelWhitelist();
+
+    if (!whitelist || whitelist.length === 0) {
+      whitelistModelsList.innerHTML = `<div class="empty-sessions">暂无已添加的模型，请前往“官方通道”或“自定义通道”添加模型。</div>`;
+      return;
+    }
+
+    whitelistModelsList.innerHTML = "";
+
+    whitelist.forEach((m, index) => {
+      const item = document.createElement("div");
+      item.className = "whitelist-model-item draggable";
+      item.setAttribute("draggable", "true");
+      item.setAttribute("data-index", index.toString());
+
+      const isActive =
+        activeModel &&
+        activeModel.id === m.id &&
+        activeModel.provider?.toLowerCase() === m.provider?.toLowerCase();
+
+      if (isActive) {
+        item.classList.add("active");
+      }
+
+      const contextWin = m.contextWindow
+        ? `${(m.contextWindow / 1000).toFixed(0)}k context`
+        : "";
+      const reasoningTag = m.reasoning
+        ? `<span class="flat-badge" style="color: #f59e0b; border-color: #f59e0b;">✦ 思考模型</span>`
+        : "";
+      const customTag = m.isCustom
+        ? `<span class="flat-badge" style="color: #6366f1; border-color: #6366f1;">自定义端点</span>`
+        : "";
+
+      item.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+          <span class="drag-handle" title="按住鼠标拖动排序">⋮⋮</span>
+          <div class="model-item-info">
+            <div class="model-item-header">
+              <span class="flat-badge">${escapeHtml(m.provider?.toUpperCase() || "OTHER")}</span>
+              <span class="model-item-name">${escapeHtml(m.name || m.id)}</span>
+              ${reasoningTag}
+              ${customTag}
+            </div>
+            <div class="model-item-meta">
+              <span>ID: ${escapeHtml(m.id)}</span>
+              ${contextWin ? `<span>· ${contextWin}</span>` : ""}
+              ${m.maxTokens ? `<span>· max ${m.maxTokens} tokens</span>` : ""}
+            </div>
+          </div>
+        </div>
+        <div class="model-item-actions">
+          ${
+            isActive
+              ? `<span class="flat-badge" style="background-color: #10b981; color: #ffffff; border: none;">使用中</span>
+                 <button type="button" class="flat-btn flat-btn-secondary mini btn-remove-model" disabled style="opacity: 0.35; cursor: not-allowed;" title="当前使用中的模型禁止删除">🔒 锁定</button>`
+              : `<button type="button" class="flat-btn flat-btn-secondary mini btn-select-model">选用</button>
+                 <button type="button" class="flat-btn flat-btn-secondary mini btn-remove-model" title="从列表移除">✕</button>`
+          }
+        </div>
+      `;
+
+      // 1. 拖拽事件监听 (HTML5 Drag & Drop)
+      item.addEventListener("dragstart", (e) => {
+        draggedModelIndex = index;
+        item.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", index.toString());
+      });
+
+      item.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        const rect = item.getBoundingClientRect();
+        const midpoint = rect.top + rect.height / 2;
+        if (e.clientY < midpoint) {
+          item.classList.add("drag-over-top");
+          item.classList.remove("drag-over-bottom");
+        } else {
+          item.classList.add("drag-over-bottom");
+          item.classList.remove("drag-over-top");
+        }
+      });
+
+      item.addEventListener("dragleave", () => {
+        item.classList.remove("drag-over-top", "drag-over-bottom");
+      });
+
+      item.addEventListener("drop", (e) => {
+        e.preventDefault();
+        item.classList.remove("drag-over-top", "drag-over-bottom");
+        const fromIdx = draggedModelIndex;
+        let toIdx = index;
+
+        const rect = item.getBoundingClientRect();
+        const midpoint = rect.top + rect.height / 2;
+        if (e.clientY >= midpoint && fromIdx < toIdx) {
+          // 放在下方
+        } else if (e.clientY < midpoint && fromIdx > toIdx) {
+          // 放在上方
+        }
+
+        if (fromIdx !== null && fromIdx !== toIdx) {
+          configService.reorderModelWhitelist(fromIdx, toIdx);
+          renderWhitelistModels(piClient.currentModel || activeModel);
+        }
+      });
+
+      item.addEventListener("dragend", () => {
+        item.classList.remove("dragging", "drag-over-top", "drag-over-bottom");
+        draggedModelIndex = null;
+        document.querySelectorAll(".whitelist-model-item").forEach((el) => {
+          el.classList.remove("dragging", "drag-over-top", "drag-over-bottom");
+        });
+      });
+
+      // 2. 选用按钮点击
+      const selectBtn = item.querySelector(".btn-select-model");
+      if (selectBtn) {
+        selectBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          selectBtn.disabled = true;
+          try {
+            const switched = await piClient.setModel(m.provider, m.id);
+            if (switched) {
+              configService.saveSelectedModel(m.provider, m.id);
+              updateModelUI(switched);
+              renderWhitelistModels(switched);
+            }
+          } catch (err) {
+            console.error("Failed to switch model:", err);
+            alert(`切换模型失败: ${err}`);
+          } finally {
+            selectBtn.disabled = false;
+          }
+        });
+      }
+
+      // 3. 移除按钮点击（激活中的模型已禁止删除）
+      const removeBtn = item.querySelector(".btn-remove-model");
+      if (removeBtn && !isActive) {
+        removeBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (isActive) {
+            alert("当前模型正在使用中，禁止删除！");
+            return;
+          }
+          configService.removeModelFromWhitelist(m.provider, m.id);
+          renderWhitelistModels(piClient.currentModel);
+        });
+      }
+
+      whitelistModelsList.appendChild(item);
+    });
+  };
+
+  const loadModelsAndState = async () => {
+    try {
+      const [state, catalog] = await Promise.all([
+        piClient.getState(),
+        configService.getOfficialModelsCatalog(),
+      ]);
+
+      officialCatalog = catalog || [];
+
+      // 检查白名单是否已存在，不存在则初始化
+      let whitelist = configService.loadModelWhitelist();
+      if (!whitelist || whitelist.length === 0) {
+        if (state?.model) {
+          configService.addModelToWhitelist(state.model);
+        }
+        officialCatalog.forEach((p) => {
+          p.models
+            .filter((m) => m.is_default)
+            .forEach((m) => {
+              configService.addModelToWhitelist(m);
+            });
+        });
+      }
+
+      // 检查本地持久化的用户所选模型
+      const savedModel = configService.getSelectedModel();
+      let currentActiveModel = state?.model || null;
+
+      if (
+        savedModel &&
+        savedModel.provider &&
+        savedModel.modelId &&
+        (!currentActiveModel ||
+          currentActiveModel.id !== savedModel.modelId ||
+          currentActiveModel.provider !== savedModel.provider)
+      ) {
+        try {
+          const switched = await piClient.setModel(savedModel.provider, savedModel.modelId);
+          if (switched) currentActiveModel = switched;
+        } catch (e) {
+          console.warn("[Main] Auto-switch to saved model failed:", e);
+        }
+      }
+
+      updateModelUI(currentActiveModel, state?.thinkingLevel);
+      renderWhitelistModels(currentActiveModel);
+    } catch (err) {
+      console.warn("[Main] Failed to load models and state:", err);
+    }
+  };
+
+  if (btnRefreshModels) {
+    btnRefreshModels.addEventListener("click", async () => {
+      btnRefreshModels.disabled = true;
+      await loadModelsAndState();
+      setTimeout(() => {
+        btnRefreshModels.disabled = false;
+      }, 500);
+    });
+  }
+
+  if (thinkingSelectDropdown) {
+    thinkingSelectDropdown.addEventListener("change", async () => {
+      const level = thinkingSelectDropdown.value;
+      try {
+        await piClient.setThinkingLevel(level);
+        await configService.saveSettingsConfig({ defaultThinkingLevel: level });
+      } catch (err) {
+        console.error("Failed to change thinking level:", err);
+      }
+    });
+  }
+
+  piClient.addEventListener("model-change", (e) => {
+    updateModelUI(e.detail);
+    renderWhitelistModels(e.detail);
+  });
+
+  // ==========================================================================
+  // 4. 官方通道配置与自动拉取模型逻辑
+  // ==========================================================================
+  let currentOfficialAuth = {};
+
+  const renderOfficialProviderDetails = (providerId) => {
+    const provMeta = officialCatalog.find((p) => p.id === providerId);
+    if (!provMeta) return;
+
+    if (officialProviderTitle) officialProviderTitle.textContent = provMeta.name;
+    if (officialProviderDesc) officialProviderDesc.textContent = provMeta.desc;
+    if (officialProviderDoc) {
+      officialProviderDoc.href = provMeta.doc_url || "#";
+      officialProviderDoc.style.display = provMeta.doc_url ? "inline" : "none";
+    }
+
+    const authEntry = currentOfficialAuth[provMeta.id];
+    const existingKey = typeof authEntry === "string" ? authEntry : authEntry?.key || "";
+
+    if (officialApiKeyInput) {
+      officialApiKeyInput.value = existingKey;
+      officialApiKeyInput.placeholder = provMeta.placeholder || "输入 API Key";
+    }
+
+    if (officialKeyStatus) {
+      if (existingKey) {
+        officialKeyStatus.textContent = "● 已在 ~/.pi/agent/auth.json 中配置有效 Key";
+        officialKeyStatus.style.color = "#10b981";
+      } else {
+        officialKeyStatus.textContent = "○ 未配置 API Key";
+        officialKeyStatus.style.color = "var(--ink-muted)";
+      }
+    }
+
+    if (officialModelsGrid) {
+      officialModelsGrid.innerHTML = "";
+      provMeta.models.forEach((m) => {
+        const chip = document.createElement("div");
+        chip.className = "official-model-chip";
+
+        const isInWhitelist = configService.isModelInWhitelist(m.provider, m.id);
+        const contextWin = m.context_window
+          ? `${(m.context_window / 1000).toFixed(0)}k context`
+          : "";
+        const reasoningTag = m.reasoning
+          ? `<span class="flat-badge" style="color: #f59e0b; border-color: #f59e0b;">✦ 思考</span>`
+          : "";
+
+        chip.innerHTML = `
+          <div class="model-item-info">
+            <div class="model-item-header">
+              <span class="model-item-name">${escapeHtml(m.name || m.id)}</span>
+              ${reasoningTag}
+            </div>
+            <div class="model-item-meta">
+              <span>ID: ${escapeHtml(m.id)}</span>
+              ${contextWin ? `<span>· ${contextWin}</span>` : ""}
+            </div>
+          </div>
+          <button type="button" class="flat-btn ${isInWhitelist ? "flat-btn-secondary" : "flat-btn-primary"} mini btn-add-official-model" ${isInWhitelist ? "disabled" : ""}>
+            ${isInWhitelist ? "✓ 已添加" : "+ 添加到当前列表"}
+          </button>
+        `;
+
+        const addBtn = chip.querySelector(".btn-add-official-model");
+        if (addBtn && !isInWhitelist) {
+          addBtn.addEventListener("click", () => {
+            configService.addModelToWhitelist({
+              id: m.id,
+              name: m.name,
+              provider: m.provider,
+              contextWindow: m.context_window,
+              maxTokens: m.max_tokens,
+              reasoning: m.reasoning,
+              isCustom: false,
+            });
+            addBtn.textContent = "✓ 已添加";
+            addBtn.className = "flat-btn flat-btn-secondary mini";
+            addBtn.disabled = true;
+            renderWhitelistModels(piClient.currentModel);
+          });
+        }
+
+        officialModelsGrid.appendChild(chip);
+      });
+    }
+  };
+
+  const loadOfficialProvidersConfig = async () => {
+    try {
+      const [authConfig, catalog] = await Promise.all([
+        configService.getAuthConfig(),
+        configService.getOfficialModelsCatalog(),
+      ]);
+
+      currentOfficialAuth = authConfig || {};
+      officialCatalog = catalog || [];
+
+      if (officialProviderSelect) {
+        officialProviderSelect.innerHTML = "";
+        officialCatalog.forEach((p) => {
+          const opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = `${p.name} (${p.models.length} 个模型)`;
+          officialProviderSelect.appendChild(opt);
+        });
+
+        if (officialCatalog.length > 0) {
+          renderOfficialProviderDetails(officialCatalog[0].id);
+        }
+      }
+    } catch (e) {
+      console.warn("[Main] Load official config failed:", e);
+    }
+  };
+
+  if (officialProviderSelect) {
+    officialProviderSelect.addEventListener("change", () => {
+      renderOfficialProviderDetails(officialProviderSelect.value);
+    });
+  }
+
+  if (btnToggleKeyVisibility && officialApiKeyInput) {
+    btnToggleKeyVisibility.addEventListener("click", () => {
+      const isPwd = officialApiKeyInput.type === "password";
+      officialApiKeyInput.type = isPwd ? "text" : "password";
+      btnToggleKeyVisibility.textContent = isPwd ? "🙈" : "👁";
+    });
+  }
+
+  if (btnSaveOfficialKey && officialProviderSelect && officialApiKeyInput) {
+    btnSaveOfficialKey.addEventListener("click", async () => {
+      const provider = officialProviderSelect.value;
+      const key = officialApiKeyInput.value.trim();
+      btnSaveOfficialKey.disabled = true;
+
+      try {
+        await configService.saveProviderApiKey(provider, key);
+        currentOfficialAuth = await configService.getAuthConfig();
+        renderOfficialProviderDetails(provider);
+        alert(`官方通道 [${provider}] API Key 已成功保存至 ~/.pi/agent/auth.json！`);
+      } catch (err) {
+        console.error("Save API Key failed:", err);
+        alert(`保存失败: ${err}`);
+      } finally {
+        btnSaveOfficialKey.disabled = false;
+      }
+    });
+  }
+
+  // ==========================================================================
+  // 5. 自定义通道两步式配置 (Step 1: 新增运营商, Step 2: 运营商内添加/管理模型)
+  // ==========================================================================
+  const loadCustomProvidersConfig = async () => {
+    if (!customProvidersContainer) return;
+    try {
+      const customConfig = await configService.getCustomModels();
+      const providers = customConfig?.providers || {};
+
+      const providerKeys = Object.keys(providers);
+      if (providerKeys.length === 0) {
+        customProvidersContainer.innerHTML = `<div class="empty-sessions">暂无已配置的运营商，请在上方“步骤 1”中添加第一个运营商。</div>`;
+        return;
+      }
+
+      customProvidersContainer.innerHTML = "";
+
+      providerKeys.forEach((pKey) => {
+        const provData = providers[pKey];
+        const models = provData.models || [];
+
+        const card = document.createElement("div");
+        card.className = "custom-provider-card";
+
+        const hasKey = provData.apiKey && provData.apiKey.trim().length > 0;
+        const keyTag = hasKey
+          ? `<span class="flat-badge" style="color: #10b981; border-color: #10b981;">Key: 已配置</span>`
+          : `<span class="flat-badge" style="color: var(--ink-muted);">Key: 无</span>`;
+
+        card.innerHTML = `
+          <div class="custom-provider-header">
+            <div class="provider-info-left">
+              <span class="flat-badge" style="color: #6366f1; border-color: #6366f1;">${escapeHtml(pKey.toUpperCase())}</span>
+              <span class="flat-badge">${escapeHtml(provData.api || "openai-completions")}</span>
+              ${keyTag}
+              <span class="provider-url-meta" title="${escapeHtml(provData.baseUrl || "")}">URL: ${escapeHtml(provData.baseUrl || "")}</span>
+            </div>
+            <div class="provider-card-actions">
+              <button type="button" class="flat-btn flat-btn-primary mini btn-toggle-add-model">+ 新增模型</button>
+              <button type="button" class="flat-btn flat-btn-secondary mini btn-delete-provider" style="color: #ef4444;" title="删除此运营商及所有模型">删除运营商</button>
+            </div>
+          </div>
+
+          <!-- 折叠添加模型表单 -->
+          <div class="inline-add-model-box hidden" id="inline-form-${pKey}">
+            <div style="font-size: 12px; font-weight: 600; color: var(--ink-primary);">新增模型到运营商 [${escapeHtml(pKey.toUpperCase())}]</div>
+            <div class="form-grid-2">
+              <div class="form-field">
+                <label class="form-label">模型标识 (Model ID) <span class="req">*</span></label>
+                <input type="text" class="flat-input input-new-model-id" placeholder="如 deepseek-ai/DeepSeek-V3, gpt-4o" required />
+              </div>
+              <div class="form-field">
+                <label class="form-label">显示名称 (Display Name)</label>
+                <input type="text" class="flat-input input-new-model-name" placeholder="可选，如 DeepSeek V3" />
+              </div>
+            </div>
+            <div class="form-grid-3">
+              <div class="form-field">
+                <label class="form-label">上下文 (Tokens)</label>
+                <input type="number" class="flat-input input-new-context-win" value="64000" min="1000" step="1000" />
+              </div>
+              <div class="form-field">
+                <label class="form-label">输出上限 (Tokens)</label>
+                <input type="number" class="flat-input input-new-max-tokens" value="4096" min="256" step="256" />
+              </div>
+              <div class="form-field checkbox-field">
+                <label class="checkbox-label">
+                  <input type="checkbox" class="input-new-reasoning" />
+                  <span>支持思考/推理</span>
+                </label>
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+              <button type="button" class="flat-btn flat-btn-secondary mini btn-cancel-add-model">取消</button>
+              <button type="button" class="flat-btn flat-btn-primary mini btn-confirm-add-model">保存并添加到列表</button>
+            </div>
+          </div>
+
+          <!-- 运营商下的模型列表 -->
+          <div class="provider-models-wrapper">
+            <div class="provider-models-title">
+              <span>已挂载模型 (${models.length})</span>
+            </div>
+            <div class="provider-models-list">
+              ${
+                models.length === 0
+                  ? `<div style="font-size: 11px; color: var(--ink-muted); padding: 4px 0;">暂无模型，点击右上角「+ 新增模型」添加。</div>`
+                  : ""
+              }
+            </div>
+          </div>
+        `;
+
+        // 绑定删除运营商
+        const btnDeleteProvider = card.querySelector(".btn-delete-provider");
+        if (btnDeleteProvider) {
+          btnDeleteProvider.addEventListener("click", async () => {
+            if (confirm(`确定要删除运营商 [${pKey.toUpperCase()}] 及其全部模型配置吗？`)) {
+              await configService.deleteCustomProvider(pKey);
+              // 清理白名单中该运营商的模型
+              models.forEach((m) => configService.removeModelFromWhitelist(pKey, m.id));
+              loadCustomProvidersConfig();
+              renderWhitelistModels(piClient.currentModel);
+            }
+          });
+        }
+
+        // 绑定新增模型折叠切换
+        const inlineForm = card.querySelector(".inline-add-model-box");
+        const btnToggleAddModel = card.querySelector(".btn-toggle-add-model");
+        const btnCancelAddModel = card.querySelector(".btn-cancel-add-model");
+
+        if (btnToggleAddModel && inlineForm) {
+          btnToggleAddModel.addEventListener("click", () => {
+            inlineForm.classList.toggle("hidden");
+          });
+        }
+
+        if (btnCancelAddModel && inlineForm) {
+          btnCancelAddModel.addEventListener("click", () => {
+            inlineForm.classList.add("hidden");
+          });
+        }
+
+        // 提交添加模型
+        const btnConfirmAddModel = card.querySelector(".btn-confirm-add-model");
+        if (btnConfirmAddModel && inlineForm) {
+          btnConfirmAddModel.addEventListener("click", async () => {
+            const inputModelId = inlineForm.querySelector(".input-new-model-id");
+            const inputModelName = inlineForm.querySelector(".input-new-model-name");
+            const inputContextWin = inlineForm.querySelector(".input-new-context-win");
+            const inputMaxTokens = inlineForm.querySelector(".input-new-max-tokens");
+            const inputReasoning = inlineForm.querySelector(".input-new-reasoning");
+
+            const modelIdVal = inputModelId?.value.trim();
+            if (!modelIdVal) {
+              alert("请输入模型标识 (Model ID)");
+              inputModelId?.focus();
+              return;
+            }
+
+            const modelNameVal = inputModelName?.value.trim() || modelIdVal;
+            const contextWinVal = parseInt(inputContextWin?.value, 10) || 64000;
+            const maxTokensVal = parseInt(inputMaxTokens?.value, 10) || 4096;
+            const reasoningVal = !!inputReasoning?.checked;
+
+            btnConfirmAddModel.disabled = true;
+            try {
+              await configService.addCustomProviderModel({
+                provider_id: pKey,
+                model_id: modelIdVal,
+                model_name: modelNameVal,
+                context_window: contextWinVal,
+                max_tokens: maxTokensVal,
+                reasoning: reasoningVal,
+              });
+
+              // 自动添加到白名单
+              configService.addModelToWhitelist({
+                id: modelIdVal,
+                name: modelNameVal,
+                provider: pKey,
+                contextWindow: contextWinVal,
+                maxTokens: maxTokensVal,
+                reasoning: reasoningVal,
+                isCustom: true,
+              });
+
+              alert(`模型 [${modelNameVal}] 已成功添加至运营商 [${pKey.toUpperCase()}] 并加入当前模型列表！`);
+              loadCustomProvidersConfig();
+              renderWhitelistModels(piClient.currentModel);
+            } catch (err) {
+              console.error("Add model failed:", err);
+              alert(`添加模型失败: ${err}`);
+            } finally {
+              btnConfirmAddModel.disabled = false;
+            }
+          });
+        }
+
+        // 渲染此运营商下的模型条目
+        const modelsListEl = card.querySelector(".provider-models-list");
+        if (modelsListEl && models.length > 0) {
+          models.forEach((m) => {
+            const chip = document.createElement("div");
+            chip.className = "official-model-chip";
+
+            const isInWhitelist = configService.isModelInWhitelist(pKey, m.id);
+            const contextWin = m.contextWindow
+              ? `${(m.contextWindow / 1000).toFixed(0)}k context`
+              : "";
+            const reasoningTag = m.reasoning
+              ? `<span class="flat-badge" style="color: #f59e0b; border-color: #f59e0b;">✦ 思考</span>`
+              : "";
+
+            chip.innerHTML = `
+              <div class="model-item-info">
+                <div class="model-item-header">
+                  <span class="model-item-name">${escapeHtml(m.name || m.id)}</span>
+                  ${reasoningTag}
+                </div>
+                <div class="model-item-meta">
+                  <span>ID: ${escapeHtml(m.id)}</span>
+                  ${contextWin ? `<span>· ${contextWin}</span>` : ""}
+                  ${m.maxTokens ? `<span>· max ${m.maxTokens} tokens</span>` : ""}
+                </div>
+              </div>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <button type="button" class="flat-btn ${isInWhitelist ? "flat-btn-secondary" : "flat-btn-primary"} mini btn-add-custom-whitelist" ${isInWhitelist ? "disabled" : ""}>
+                  ${isInWhitelist ? "✓ 已添加" : "+ 添加到当前列表"}
+                </button>
+                <button type="button" class="flat-btn flat-btn-secondary mini btn-delete-custom-model" style="color: #ef4444;" title="删除模型">删除</button>
+              </div>
+            `;
+
+            // 添加到当前列表
+            const addBtn = chip.querySelector(".btn-add-custom-whitelist");
+            if (addBtn && !isInWhitelist) {
+              addBtn.addEventListener("click", () => {
+                configService.addModelToWhitelist({
+                  id: m.id,
+                  name: m.name || m.id,
+                  provider: pKey,
+                  contextWindow: m.contextWindow || 64000,
+                  maxTokens: m.maxTokens || 4096,
+                  reasoning: !!m.reasoning,
+                  isCustom: true,
+                });
+                addBtn.textContent = "✓ 已添加";
+                addBtn.className = "flat-btn flat-btn-secondary mini";
+                addBtn.disabled = true;
+                renderWhitelistModels(piClient.currentModel);
+              });
+            }
+
+            // 删除单个模型
+            const delBtn = chip.querySelector(".btn-delete-custom-model");
+            if (delBtn) {
+              delBtn.addEventListener("click", async () => {
+                if (confirm(`确定要删除模型 [${m.name || m.id}] 吗？`)) {
+                  await configService.deleteCustomModel(pKey, m.id);
+                  configService.removeModelFromWhitelist(pKey, m.id);
+                  loadCustomProvidersConfig();
+                  renderWhitelistModels(piClient.currentModel);
+                }
+              });
+            }
+
+            modelsListEl.appendChild(chip);
+          });
+        }
+
+        customProvidersContainer.appendChild(card);
+      });
+    } catch (e) {
+      console.warn("[Main] Load custom providers failed:", e);
+    }
+  };
+
+  // 第一步：保存/更新自定义运营商
+  if (customProviderForm) {
+    customProviderForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const providerId = customProviderId.value.trim();
+      const apiType = customApiType.value.trim();
+      const baseUrl = customBaseUrl.value.trim();
+      const apiKey = customApiKey.value.trim() || null;
+
+      const saveBtn = document.getElementById("btn-save-custom-provider");
+      if (saveBtn) saveBtn.disabled = true;
+
+      try {
+        await configService.saveCustomProvider({
+          provider_id: providerId,
+          api_type: apiType,
+          base_url: baseUrl,
+          api_key: apiKey,
+        });
+
+        alert(`运营商 [${providerId.toUpperCase()}] 已成功保存！现在可以在下方“步骤 2”中为该运营商添加具体模型。`);
+        customProviderId.value = "";
+        customBaseUrl.value = "";
+        customApiKey.value = "";
+
+        loadCustomProvidersConfig();
+      } catch (err) {
+        console.error("Save custom provider failed:", err);
+        alert(`保存运营商失败: ${err}`);
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
+      }
+    });
+  }
+
+  // 初始加载
+  loadModelsAndState();
+
+  // ==========================================================================
+  // 6. 宿主与版本控制逻辑
   // ==========================================================================
   const updateHostUI = (statusPayload) => {
     const status = typeof statusPayload === "string" ? statusPayload : statusPayload?.status || "ready";
@@ -165,6 +975,9 @@ window.addEventListener("DOMContentLoaded", () => {
 
   piClient.addEventListener("status-change", (e) => {
     updateHostUI(e.detail);
+    if (e.detail?.status === "ready") {
+      loadModelsAndState();
+    }
   });
 
   if (btnRestartHost) {
@@ -213,7 +1026,7 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   // ==========================================================================
-  // 会话列表渲染与操作
+  // 7. 会话列表渲染与操作
   // ==========================================================================
   const loadSessions = async () => {
     if (!sessionsList) return;
@@ -251,7 +1064,6 @@ window.addEventListener("DOMContentLoaded", () => {
         try {
           await sessionService.switchSession(s.file_path);
           closeSettingsDrawer();
-          // 进入 Flow 模式
           setViewMode(VIEW_FLOW, true);
         } catch (err) {
           console.error("Failed to switch session:", err);
@@ -308,7 +1120,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   if (titlebar) {
     titlebar.addEventListener("dblclick", (e) => {
-      if (!e.target.closest(".titlebar-controls") && !e.target.closest(".flow-mini-brand")) {
+      if (!e.target.closest(".titlebar-controls") && !e.target.closest(".flow-mini-brand") && !e.target.closest(".flow-model-tag")) {
         invokeTauri("toggle_maximize_window");
       }
     });
@@ -348,15 +1160,19 @@ window.addEventListener("DOMContentLoaded", () => {
   };
 
   // ==========================================================================
-  // 流式消息与工具调用渲染中心
+  // 流式消息、工具调用与全链路错误渲染中心
   // ==========================================================================
   let thinkingStartTime = 0;
   let thinkingTimerInterval = null;
   let currentThinkingText = "";
   let currentResponseText = "";
+  let lastUserQuery = "";
+  let hasReceivedDelta = false;
   const renderedToolCards = new Map();
 
   const resetStreamState = (query) => {
+    lastUserQuery = query;
+    hasReceivedDelta = false;
     if (flowUserText) flowUserText.textContent = query;
     currentThinkingText = "";
     currentResponseText = "";
@@ -399,8 +1215,73 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   };
 
+  /**
+   * 渲染手绘草图风格异常诊断卡片并提供快捷操作
+   * @param {{ message: string, model?: string, provider?: string }} errDetail
+   */
+  const renderErrorCard = (errDetail) => {
+    finalizeStream();
+    if (!flowResponseContent) return;
+
+    const errMsg = errDetail?.message || "与模型服务通信中断或返回异常";
+    const activeModelName = errDetail?.model || piClient.currentModel?.id || "当前模型";
+
+    const cardHtml = `
+      <div class="sketch-error-card">
+        <div class="error-header">
+          <span class="error-icon">⚠️</span>
+          <span class="error-title">模型调用失败 [${escapeHtml(activeModelName)}]</span>
+        </div>
+        <div class="error-message-text">${escapeHtml(errMsg)}</div>
+        <div class="error-actions">
+          <button type="button" class="error-btn retry-btn" id="btn-err-retry">
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2.5 8a5.5 5.5 0 0 1 9.39-3.89L13.5 5.5" />
+              <path d="M13.5 2v3.5H10" />
+              <path d="M13.5 8a5.5 5.5 0 0 1-9.39 3.89L2.5 10.5" />
+              <path d="M2.5 14v-3.5H6" />
+            </svg>
+            重试当前提问
+          </button>
+          <button type="button" class="error-btn" id="btn-err-switch-model">
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="8" cy="8" r="3" />
+              <path d="M8 1v2M8 13v2M1 8h2M13 8h2" />
+            </svg>
+            切换其他模型
+          </button>
+        </div>
+      </div>
+    `;
+
+    // 如果未收到任何有效回答内容，直接替换错误卡片；若有部分内容，追加在末尾
+    if (!hasReceivedDelta) {
+      flowResponseContent.innerHTML = cardHtml;
+    } else {
+      flowResponseContent.insertAdjacentHTML("beforeend", cardHtml);
+    }
+
+    const btnRetry = document.getElementById("btn-err-retry");
+    const btnSwitch = document.getElementById("btn-err-switch-model");
+
+    if (btnRetry) {
+      btnRetry.addEventListener("click", () => {
+        if (lastUserQuery) {
+          handleFlowQuery(lastUserQuery);
+        }
+      });
+    }
+
+    if (btnSwitch) {
+      btnSwitch.addEventListener("click", () => {
+        openSettingsDrawer();
+      });
+    }
+  };
+
   // 绑定 PiClient 流式事件
   piClient.addEventListener("thinking-delta", (e) => {
+    hasReceivedDelta = true;
     currentThinkingText += e.detail;
     if (thinkingTextStream) {
       thinkingTextStream.textContent = currentThinkingText;
@@ -416,6 +1297,7 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   piClient.addEventListener("text-delta", (e) => {
+    hasReceivedDelta = true;
     currentResponseText += e.detail;
     if (flowResponseContent) {
       flowResponseContent.innerHTML = renderMarkdown(currentResponseText) + `<span class="streaming-cursor"></span>`;
@@ -424,6 +1306,7 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   piClient.addEventListener("tool-start", (e) => {
+    hasReceivedDelta = true;
     const data = e.detail;
     const toolCallId = data.toolCallId;
     const toolName = data.toolName || "tool";
@@ -482,7 +1365,20 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  piClient.addEventListener("agent-end", finalizeStream);
+  piClient.addEventListener("retry-status", (e) => {
+    const data = e.detail;
+    if (thinkingDuration && data.attempt) {
+      thinkingDuration.textContent = `自动重试中 (${data.attempt}/${data.maxAttempts || 3})...`;
+    }
+  });
+
+  piClient.addEventListener("agent-error", (e) => {
+    renderErrorCard(e.detail);
+  });
+
+  piClient.addEventListener("agent-end", () => {
+    finalizeStream();
+  });
 
   /**
    * 触发用户提问并向 Pi 下发指令
@@ -500,27 +1396,13 @@ window.addEventListener("DOMContentLoaded", () => {
       await piClient.sendPrompt(query);
     } catch (err) {
       console.error("Failed to send prompt to Pi:", err);
-      if (flowResponseContent) {
-        flowResponseContent.innerHTML = `<p class="sketch-callout" style="border-color:#ef4444;color:#ef4444;">⚠️ <em>发送失败：${escapeHtml(err.toString())}</em></p>`;
-      }
-      finalizeStream();
+      renderErrorCard({
+        message: err.toString(),
+      });
     }
   };
 
-  /**
-   * 简单 HTML 转义防 XSS
-   * @param {string} str
-   * @returns {string}
-   */
-  const escapeHtml = (str) => {
-    if (typeof str !== "string") return "";
-    return str
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  };
+
 
   // 表单回车提交
   searchForm.addEventListener("submit", (e) => {
@@ -709,7 +1591,12 @@ window.addEventListener("DOMContentLoaded", () => {
   // 焦点与失焦控制（点击外部空白区域主动取消输入框高亮）
   // ==========================================================================
   document.addEventListener("pointerdown", (e) => {
-    if (searchForm && !searchForm.contains(e.target) && !e.target.closest(".sketch-drawer")) {
+    if (
+      searchForm &&
+      !searchForm.contains(e.target) &&
+      !e.target.closest(".settings-view-stage") &&
+      !e.target.closest(".settings-btn")
+    ) {
       if (document.activeElement && typeof document.activeElement.blur === "function") {
         if (currentView === VIEW_DETAILED) {
           document.activeElement.blur();
@@ -718,9 +1605,17 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (currentView === VIEW_SETTINGS) {
+        closeSettingsView();
+      }
+    }
+  });
+
   // ==========================================================================
   // 全局右键行为规范：禁用上下文菜单，统一作为“返回上一步/回退 (Step Back)”
-  // 回退层级：关闭抽屉 -> Flow (界面3, abort) -> Focus (界面2) -> Detailed (界面1) -> 失焦/清空
+  // 回退层级：设置全页面 (settings) -> Flow (界面3, abort) -> Focus (界面2) -> Detailed (界面1) -> 失焦/清空
   // ==========================================================================
   const stepBackHandlers = [];
 
@@ -732,9 +1627,9 @@ window.addEventListener("DOMContentLoaded", () => {
     };
   };
 
-  // 注册抽屉关闭回退
+  // 注册设置页面回退
   registerStepBackHandler(() => {
-    return closeSettingsDrawer();
+    return closeSettingsView();
   });
 
   const handleGlobalStepBack = (e) => {

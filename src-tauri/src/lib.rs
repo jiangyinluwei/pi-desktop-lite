@@ -1,8 +1,16 @@
+pub mod config_manager;
 pub mod pi_runner;
 pub mod security;
 pub mod session;
 pub mod version_watcher;
 
+use config_manager::{
+    pi_add_custom_model, pi_add_custom_provider_model, pi_delete_custom_model,
+    pi_delete_custom_provider, pi_get_auth_config, pi_get_custom_models,
+    pi_get_official_models_catalog, pi_get_settings_config, pi_save_auth_config,
+    pi_save_custom_models, pi_save_custom_provider, pi_save_provider_api_key,
+    pi_save_settings_config,
+};
 use pi_runner::{FollowUpRequest, HostStatus, PiSupervisor, PromptRequest, SteerRequest};
 use session::{parse_session_entries, SessionEntrySummary, SessionIndexCache, SessionMetadata, SessionWatcher};
 use std::path::Path;
@@ -116,6 +124,35 @@ async fn pi_get_version(supervisor: State<'_, PiSupervisor>) -> Result<Option<St
     Ok(supervisor.get_version().await)
 }
 
+#[tauri::command]
+async fn pi_get_state(supervisor: State<'_, PiSupervisor>) -> Result<serde_json::Value, String> {
+    supervisor.get_session_state().await
+}
+
+#[tauri::command]
+async fn pi_get_available_models(
+    supervisor: State<'_, PiSupervisor>,
+) -> Result<serde_json::Value, String> {
+    supervisor.get_available_models().await
+}
+
+#[tauri::command]
+async fn pi_set_model(
+    supervisor: State<'_, PiSupervisor>,
+    provider: String,
+    model_id: String,
+) -> Result<serde_json::Value, String> {
+    supervisor.set_model(&provider, &model_id).await
+}
+
+#[tauri::command]
+async fn pi_set_thinking_level(
+    supervisor: State<'_, PiSupervisor>,
+    level: String,
+) -> Result<(), String> {
+    supervisor.set_thinking_level(&level).await
+}
+
 // ==========================================================================
 // 会话索引与树状历史指令
 // ==========================================================================
@@ -200,12 +237,29 @@ pub fn run() {
             pi_restart_host,
             pi_get_host_status,
             pi_get_version,
+            pi_get_state,
+            pi_get_available_models,
+            pi_set_model,
+            pi_set_thinking_level,
             pi_list_sessions,
             pi_get_session_tree,
             pi_switch_session,
             pi_new_session,
             pi_check_update,
             pi_get_cached_update,
+            pi_get_auth_config,
+            pi_save_auth_config,
+            pi_save_provider_api_key,
+            pi_get_custom_models,
+            pi_save_custom_models,
+            pi_add_custom_model,
+            pi_delete_custom_model,
+            pi_save_custom_provider,
+            pi_delete_custom_provider,
+            pi_add_custom_provider_model,
+            pi_get_settings_config,
+            pi_save_settings_config,
+            pi_get_official_models_catalog,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

@@ -13,6 +13,9 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::sync::{mpsc, Mutex, RwLock};
 
+use std::collections::HashMap;
+use tokio::sync::oneshot;
+
 const CRASH_WINDOW: Duration = Duration::from_secs(30);
 const MAX_RESTARTS_IN_WINDOW: usize = 2;
 
@@ -22,6 +25,7 @@ pub struct PiSupervisor {
     job_object: Arc<JobObjectManager>,
     status: Arc<RwLock<HostStatus>>,
     stdin_tx: Arc<Mutex<Option<mpsc::Sender<String>>>>,
+    pending_responses: Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>>,
     restart_history: Arc<Mutex<Vec<Instant>>>,
     resolved_binary_path: Arc<RwLock<Option<PathBuf>>>,
     pi_version: Arc<RwLock<Option<String>>>,
@@ -40,6 +44,7 @@ impl PiSupervisor {
             job_object,
             status: Arc::new(RwLock::new(HostStatus::Stopped)),
             stdin_tx: Arc::new(Mutex::new(None)),
+            pending_responses: Arc::new(Mutex::new(HashMap::new())),
             restart_history: Arc::new(Mutex::new(Vec::new())),
             resolved_binary_path: Arc::new(RwLock::new(None)),
             pi_version: Arc::new(RwLock::new(None)),
@@ -189,9 +194,20 @@ impl PiSupervisor {
         // 启动 Stdout 分帧与事件广播通道
         let (event_tx, mut event_rx) = mpsc::channel::<Value>(256);
         let app_handle_for_events = self.app_handle.clone();
+        let pending_responses_clone = self.pending_responses.clone();
 
         tokio::spawn(async move {
             while let Some(event_val) = event_rx.recv().await {
+                // 如果是 response 响应帧且携带 id，尝试唤醒对应的 oneshot 等待者
+                if event_val.get("type").and_then(|v| v.as_str()) == Some("response") {
+                    if let Some(id) = event_val.get("id").and_then(|v| v.as_str()) {
+                        let mut guard = pending_responses_clone.lock().await;
+                        if let Some(tx) = guard.remove(id) {
+                            let _ = tx.send(event_val.clone());
+                        }
+                    }
+                }
+
                 let _ = app_handle_for_events.emit("pi:event", event_val);
             }
         });
@@ -269,7 +285,7 @@ impl PiSupervisor {
         let _ = supervisor.start().await;
     }
 
-    /// 向 Pi 发送通用 RPC 指令
+    /// 向 Pi 发送通用 RPC 指令（无阻塞等待）
     pub async fn send_command(&self, command_val: Value) -> Result<(), String> {
         let sender = {
             let guard = self.stdin_tx.lock().await;
@@ -293,6 +309,118 @@ impl PiSupervisor {
         } else {
             Err("Pi host is not currently running or stdin is closed".to_string())
         }
+    }
+
+    /// 向 Pi 发送带有 ID 关联并同步等待结果响应的 RPC 指令
+    pub async fn send_command_with_response(
+        &self,
+        mut command_val: Value,
+        timeout_dur: Duration,
+    ) -> Result<Value, String> {
+        let id = format!(
+            "req_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        );
+
+        if let Some(obj) = command_val.as_object_mut() {
+            obj.insert("id".to_string(), Value::String(id.clone()));
+        } else {
+            return Err("Command must be a JSON object".to_string());
+        }
+
+        let (resp_tx, resp_rx) = oneshot::channel::<Value>();
+        {
+            let mut guard = self.pending_responses.lock().await;
+            guard.insert(id.clone(), resp_tx);
+        }
+
+        // 发送指令
+        if let Err(e) = self.send_command(command_val).await {
+            let mut guard = self.pending_responses.lock().await;
+            guard.remove(&id);
+            return Err(e);
+        }
+
+        // 等待响应返回
+        match tokio::time::timeout(timeout_dur, resp_rx).await {
+            Ok(Ok(response_val)) => {
+                let success = response_val
+                    .get("success")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                if success {
+                    Ok(response_val.get("data").cloned().unwrap_or(Value::Null))
+                } else {
+                    let err = response_val
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("RPC command returned failure");
+                    Err(err.to_string())
+                }
+            }
+            Ok(Err(_)) => {
+                let mut guard = self.pending_responses.lock().await;
+                guard.remove(&id);
+                Err("Response channel dropped before receiving response".to_string())
+            }
+            Err(_) => {
+                let mut guard = self.pending_responses.lock().await;
+                guard.remove(&id);
+                Err(format!("RPC command timed out after {:?}", timeout_dur))
+            }
+        }
+    }
+
+    /// 获取当前会话完整状态（包含当前模型、思考等级、会话ID等）
+    pub async fn get_session_state(&self) -> Result<Value, String> {
+        self.send_command_with_response(
+            serde_json::json!({
+                "type": "get_state"
+            }),
+            Duration::from_secs(8),
+        )
+        .await
+    }
+
+    /// 获取所有配置和可用的模型列表
+    pub async fn get_available_models(&self) -> Result<Value, String> {
+        self.send_command_with_response(
+            serde_json::json!({
+                "type": "get_available_models"
+            }),
+            Duration::from_secs(8),
+        )
+        .await
+    }
+
+    /// 切换当前使用的模型
+    pub async fn set_model(&self, provider: &str, model_id: &str) -> Result<Value, String> {
+        self.send_command_with_response(
+            serde_json::json!({
+                "type": "set_model",
+                "provider": provider,
+                "modelId": model_id
+            }),
+            Duration::from_secs(8),
+        )
+        .await
+    }
+
+    /// 切换思考推理等级
+    pub async fn set_thinking_level(&self, level: &str) -> Result<(), String> {
+        let _ = self
+            .send_command_with_response(
+                serde_json::json!({
+                    "type": "set_thinking_level",
+                    "level": level
+                }),
+                Duration::from_secs(8),
+            )
+            .await?;
+        Ok(())
     }
 
     /// 发送终止当前操作指令

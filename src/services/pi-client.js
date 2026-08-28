@@ -1,7 +1,55 @@
 /**
  * Pi Agent Tauri IPC 流式通信客户端 (pi-client.js)
- * 负责与 Rust 后端 supervisor 保持事件同步、分发流式消息与工具调用
+ * 负责与 Rust 后端 supervisor 保持事件同步、分发流式消息、工具调用、模型状态与全链路错误捕获
  */
+
+/**
+ * 递归解析并提炼复杂的错误信息（支持 JSON 字符串嵌套解析）
+ * @param {any} err
+ * @returns {string}
+ */
+export function parseErrorMessage(err) {
+  if (!err) return "发生未知错误";
+  if (typeof err === "object") {
+    if (err.message) return parseErrorMessage(err.message);
+    if (err.error?.message) return parseErrorMessage(err.error.message);
+    if (err.error && typeof err.error === "string") return parseErrorMessage(err.error);
+    return JSON.stringify(err);
+  }
+
+  let str = String(err).trim();
+
+  // 处理 401/429 等包含内嵌 JSON 的错误字符串
+  try {
+    const jsonMatch = str.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.error?.message) return parseErrorMessage(parsed.error.message);
+      if (parsed.error?.type && parsed.error?.message) {
+        return `[${parsed.error.type}] ${parsed.error.message}`;
+      }
+      if (parsed.message) return parseErrorMessage(parsed.message);
+    }
+  } catch (_) {
+    // 忽略嵌套 JSON 解析失败
+  }
+
+  // 常见错误中文友善提示
+  if (str.includes("Invalid bearer token") || str.includes("authentication_error") || str.includes("Unauthorized")) {
+    return "API 鉴权失败 (401)：未配置有效 API Key 或 Token 无效，请在 Pi CLI 或设置中配置 API Key。";
+  }
+  if (str.includes("CreditsError") || str.includes("No payment method") || str.includes("insufficient_quota")) {
+    return "账户额度不足或未绑定有效支付方式，请检查对应服务商账户账单。";
+  }
+  if (str.includes("rate_limit") || str.includes("429")) {
+    return "触发服务商请求速率限制 (429 Rate Limit)，请稍候重试。";
+  }
+  if (str.includes("Model not found") || str.includes("invalid_model")) {
+    return "当前模型不存在或未开通权限，请在设置中选择其他可用模型。";
+  }
+
+  return str;
+}
 
 class PiClient extends EventTarget {
   constructor() {
@@ -10,6 +58,8 @@ class PiClient extends EventTarget {
     this.piVersion = "unknown";
     this.isStreaming = false;
     this.activeTools = new Map();
+    this.currentModel = null;
+    this.currentThinkingLevel = "medium";
     this.unlistenCallbacks = [];
 
     this.initTauriListeners();
@@ -59,7 +109,7 @@ class PiClient extends EventTarget {
       });
       this.unlistenCallbacks.push(unlistenEvent);
 
-      // 初始化获取当前状态
+      // 初始化获取当前状态与模型
       const initialStatus = await this.invoke("pi_get_host_status");
       if (initialStatus) {
         this.hostStatus = initialStatus.status || "ready";
@@ -81,6 +131,17 @@ class PiClient extends EventTarget {
     // 广播原始事件
     this.dispatchEvent(new CustomEvent("raw-event", { detail: data }));
 
+    // 检查通用 RPC 失败响应
+    if (data.type === "response" && data.success === false) {
+      const errMsg = parseErrorMessage(data.error || "指令执行失败");
+      this.dispatchEvent(
+        new CustomEvent("agent-error", {
+          detail: { message: errMsg, raw: data },
+        })
+      );
+      return;
+    }
+
     switch (data.type) {
       case "agent_start":
         this.isStreaming = true;
@@ -90,6 +151,27 @@ class PiClient extends EventTarget {
       case "agent_end":
       case "agent_settled":
         this.isStreaming = false;
+        // 检查是否存在错误消息
+        if (data.messages && Array.isArray(data.messages)) {
+          const errMessage = data.messages.find(
+            (m) => m.stopReason === "error" || m.errorMessage
+          );
+          if (errMessage) {
+            const errMsg = parseErrorMessage(
+              errMessage.errorMessage || "模型调用发生异常"
+            );
+            this.dispatchEvent(
+              new CustomEvent("agent-error", {
+                detail: {
+                  message: errMsg,
+                  model: errMessage.model || this.currentModel?.id,
+                  provider: errMessage.provider || this.currentModel?.provider,
+                  raw: errMessage,
+                },
+              })
+            );
+          }
+        }
         this.dispatchEvent(new CustomEvent("agent-end", { detail: data }));
         break;
 
@@ -98,10 +180,36 @@ class PiClient extends EventTarget {
         break;
 
       case "turn_end":
+        if (data.message?.stopReason === "error" || data.message?.errorMessage) {
+          const errMsg = parseErrorMessage(data.message.errorMessage || "模型执行出错");
+          this.dispatchEvent(
+            new CustomEvent("agent-error", {
+              detail: {
+                message: errMsg,
+                model: data.message.model || this.currentModel?.id,
+                provider: data.message.provider || this.currentModel?.provider,
+                raw: data.message,
+              },
+            })
+          );
+        }
         this.dispatchEvent(new CustomEvent("turn-end", { detail: data }));
         break;
 
       case "message_start":
+        if (data.message?.stopReason === "error" || data.message?.errorMessage) {
+          const errMsg = parseErrorMessage(data.message.errorMessage || "模型调用失败");
+          this.dispatchEvent(
+            new CustomEvent("agent-error", {
+              detail: {
+                message: errMsg,
+                model: data.message.model || this.currentModel?.id,
+                provider: data.message.provider || this.currentModel?.provider,
+                raw: data.message,
+              },
+            })
+          );
+        }
         this.dispatchEvent(new CustomEvent("message-start", { detail: data }));
         break;
 
@@ -110,6 +218,19 @@ class PiClient extends EventTarget {
         break;
 
       case "message_end":
+        if (data.message?.stopReason === "error" || data.message?.errorMessage) {
+          const errMsg = parseErrorMessage(data.message.errorMessage || "模型执行失败");
+          this.dispatchEvent(
+            new CustomEvent("agent-error", {
+              detail: {
+                message: errMsg,
+                model: data.message.model || this.currentModel?.id,
+                provider: data.message.provider || this.currentModel?.provider,
+                raw: data.message,
+              },
+            })
+          );
+        }
         this.dispatchEvent(new CustomEvent("message-end", { detail: data }));
         break;
 
@@ -132,6 +253,22 @@ class PiClient extends EventTarget {
 
       case "bash_execution_update":
         this.dispatchEvent(new CustomEvent("bash-update", { detail: data }));
+        break;
+
+      case "auto_retry_start":
+      case "auto_retry_end":
+        this.dispatchEvent(new CustomEvent("retry-status", { detail: data }));
+        break;
+
+      case "extension_error":
+        this.dispatchEvent(
+          new CustomEvent("agent-error", {
+            detail: {
+              message: parseErrorMessage(data.error || "扩展插件运行异常"),
+              raw: data,
+            },
+          })
+        );
         break;
 
       case "extension_ui_request":
@@ -198,6 +335,75 @@ class PiClient extends EventTarget {
         streamingBehavior,
       },
     });
+  }
+
+  /**
+   * 获取当前会话状态（包括当前激活的模型与思考等级）
+   */
+  async getState() {
+    try {
+      const state = await this.invoke("pi_get_state");
+      if (state) {
+        if (state.model) this.currentModel = state.model;
+        if (state.thinkingLevel) this.currentThinkingLevel = state.thinkingLevel;
+        this.dispatchEvent(new CustomEvent("state-update", { detail: state }));
+      }
+      return state;
+    } catch (err) {
+      console.warn("[PiClient] Failed to get session state:", err);
+      return null;
+    }
+  }
+
+  /**
+   * 获取所有可用与已配置模型列表
+   * @returns {Promise<Array<any>>}
+   */
+  async getAvailableModels() {
+    try {
+      const res = await this.invoke("pi_get_available_models");
+      return res?.models || [];
+    } catch (err) {
+      console.warn("[PiClient] Failed to get available models:", err);
+      return [];
+    }
+  }
+
+  /**
+   * 切换当前激活使用的模型
+   * @param {string} provider
+   * @param {string} modelId
+   */
+  async setModel(provider, modelId) {
+    try {
+      const newModel = await this.invoke("pi_set_model", {
+        provider,
+        modelId,
+      });
+      if (newModel) {
+        this.currentModel = newModel;
+        this.dispatchEvent(new CustomEvent("model-change", { detail: newModel }));
+      }
+      return newModel;
+    } catch (err) {
+      console.error("[PiClient] Failed to switch model:", err);
+      throw err;
+    }
+  }
+
+  /**
+   * 切换当前思考推理深度等级
+   * @param {"off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"} level
+   */
+  async setThinkingLevel(level) {
+    try {
+      await this.invoke("pi_set_thinking_level", { level });
+      this.currentThinkingLevel = level;
+      this.dispatchEvent(new CustomEvent("thinking-level-change", { detail: level }));
+    } catch (err) {
+      console.error("[PiClient] Failed to set thinking level:", err);
+      throw err;
+    }
   }
 
   /**
