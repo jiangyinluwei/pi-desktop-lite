@@ -214,7 +214,22 @@ impl PiSupervisor {
             cmd.creation_flags(0x08000000);
         }
 
-        cmd.envs(std::env::vars());
+        // 1. 设置工作目录为用户主目录 (dirs::home_dir)，避免 Program Files 只读权限崩溃
+        if let Some(home) = dirs::home_dir() {
+            cmd.current_dir(home);
+        }
+
+        // 2. 补全 PATH 环境变量，将 binary_path 所在目录及用户工具目录加入 PATH
+        let mut env_map: HashMap<String, String> = std::env::vars().collect();
+        if let Some(bin_dir) = binary_path.parent() {
+            let split_char = if cfg!(windows) { ";" } else { ":" };
+            let current_path = env_map.get("PATH").cloned().unwrap_or_default();
+            let bin_dir_str = bin_dir.to_string_lossy().to_string();
+            if !current_path.split(if cfg!(windows) { ';' } else { ':' }).any(|p| p == bin_dir_str) {
+                env_map.insert("PATH".to_string(), format!("{}{}{}", bin_dir_str, split_char, current_path));
+            }
+        }
+        cmd.envs(env_map);
 
         let mut child = cmd
             .spawn()

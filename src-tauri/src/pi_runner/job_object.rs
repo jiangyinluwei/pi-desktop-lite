@@ -20,6 +20,7 @@ impl JobObjectManager {
             use windows_sys::Win32::System::JobObjects::{
                 CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
                 JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+                JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
             };
 
             unsafe {
@@ -29,7 +30,8 @@ impl JobObjectManager {
                 }
 
                 let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
-                info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                info.BasicLimitInformation.LimitFlags =
+                    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK;
 
                 let success = SetInformationJobObject(
                     handle,
