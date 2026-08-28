@@ -1,0 +1,321 @@
+use crate::pi_runner::framer::{run_stderr_logger, run_stdout_framer};
+use crate::pi_runner::job_object::JobObjectManager;
+use crate::pi_runner::protocol::HostStatus;
+use serde_json::Value;
+use std::future::Future;
+use std::path::{Path, PathBuf};
+use std::pin::Pin;
+use std::process::Stdio;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter};
+use tokio::io::AsyncWriteExt;
+use tokio::process::Command;
+use tokio::sync::{mpsc, Mutex, RwLock};
+
+const CRASH_WINDOW: Duration = Duration::from_secs(30);
+const MAX_RESTARTS_IN_WINDOW: usize = 2;
+
+#[derive(Clone)]
+pub struct PiSupervisor {
+    app_handle: AppHandle,
+    job_object: Arc<JobObjectManager>,
+    status: Arc<RwLock<HostStatus>>,
+    stdin_tx: Arc<Mutex<Option<mpsc::Sender<String>>>>,
+    restart_history: Arc<Mutex<Vec<Instant>>>,
+    resolved_binary_path: Arc<RwLock<Option<PathBuf>>>,
+    pi_version: Arc<RwLock<Option<String>>>,
+    is_stopping: Arc<RwLock<bool>>,
+}
+
+impl PiSupervisor {
+    pub fn new(app_handle: AppHandle) -> Self {
+        let job_object = Arc::new(JobObjectManager::new().unwrap_or_else(|err| {
+            log::warn!("[Supervisor] JobObject init failed: {}", err);
+            JobObjectManager::new().unwrap()
+        }));
+
+        Self {
+            app_handle,
+            job_object,
+            status: Arc::new(RwLock::new(HostStatus::Stopped)),
+            stdin_tx: Arc::new(Mutex::new(None)),
+            restart_history: Arc::new(Mutex::new(Vec::new())),
+            resolved_binary_path: Arc::new(RwLock::new(None)),
+            pi_version: Arc::new(RwLock::new(None)),
+            is_stopping: Arc::new(RwLock::new(false)),
+        }
+    }
+
+    /// 查找可用的 Pi 可执行文件路径
+    pub fn find_pi_binary() -> Option<PathBuf> {
+        // 1. 检查环境变量 PI_BINARY_PATH
+        if let Ok(env_path) = std::env::var("PI_BINARY_PATH") {
+            let p = PathBuf::from(env_path);
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+
+        // 2. 检查本地相对目录 (.mytools/pi-body/pi-windows-x64/pi.exe)
+        let candidate_relative_paths = [
+            ".mytools/pi-body/pi-windows-x64/pi.exe",
+            "../.mytools/pi-body/pi-windows-x64/pi.exe",
+            ".mytools/pi-body/pi-windows-x64/pi",
+            "../.mytools/pi-body/pi-windows-x64/pi",
+        ];
+
+        for rel in candidate_relative_paths {
+            if let Ok(cwd) = std::env::current_dir() {
+                let full = cwd.join(rel);
+                if full.is_file() {
+                    return Some(full);
+                }
+            }
+            if let Ok(exe) = std::env::current_exe() {
+                if let Some(parent) = exe.parent() {
+                    let full = parent.join(rel);
+                    if full.is_file() {
+                        return Some(full);
+                    }
+                }
+            }
+        }
+
+        // 3. 检查系统 PATH 中的 pi / pi.exe
+        if let Ok(path_var) = std::env::var("PATH") {
+            let split_char = if cfg!(windows) { ';' } else { ':' };
+            for dir in path_var.split(split_char) {
+                let dir_path = Path::new(dir);
+                let bin_name = if cfg!(windows) { "pi.exe" } else { "pi" };
+                let full = dir_path.join(bin_name);
+                if full.is_file() {
+                    return Some(full);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// 获取当前 Host 状态
+    pub async fn get_status(&self) -> HostStatus {
+        self.status.read().await.clone()
+    }
+
+    /// 获取检测到的 Pi 版本
+    pub async fn get_version(&self) -> Option<String> {
+        self.pi_version.read().await.clone()
+    }
+
+    /// 更新状态并向前端广播
+    async fn update_status(&self, new_status: HostStatus) {
+        {
+            let mut w = self.status.write().await;
+            *w = new_status.clone();
+        }
+        let _ = self.app_handle.emit("pi:status", &new_status);
+    }
+
+    /// 启动 Pi Agent Host 子进程
+    pub fn start(&self) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'static>> {
+        let this = self.clone();
+        Box::pin(async move {
+            *this.is_stopping.write().await = false;
+
+            let binary_path = Self::find_pi_binary()
+                .ok_or_else(|| "Could not find pi executable in .mytools or PATH".to_string())?;
+
+            *this.resolved_binary_path.write().await = Some(binary_path.clone());
+
+            let version_str = match Command::new(&binary_path).arg("--version").output().await {
+                Ok(out) if out.status.success() => {
+                    String::from_utf8_lossy(&out.stdout).trim().to_string()
+                }
+                _ => "unknown".to_string(),
+            };
+            *this.pi_version.write().await = Some(version_str.clone());
+
+            this.update_status(HostStatus::Starting).await;
+
+            this.spawn_child(binary_path, version_str).await
+        })
+    }
+
+    /// 内部拉起子进程并绑定监管通道
+    async fn spawn_child(&self, binary_path: PathBuf, pi_version: String) -> Result<(), String> {
+        let (stdin_tx, mut stdin_rx) = mpsc::channel::<String>(128);
+        {
+            let mut w = self.stdin_tx.lock().await;
+            *w = Some(stdin_tx);
+        }
+
+        let mut cmd = Command::new(&binary_path);
+        cmd.arg("--mode")
+            .arg("rpc")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        cmd.envs(std::env::vars());
+
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("Failed to spawn pi child process: {}", e))?;
+
+        #[cfg(windows)]
+        if let Some(raw_handle) = child.raw_handle() {
+            let _ = self.job_object.assign_process_usize(raw_handle as usize);
+        }
+
+        let stdin = child.stdin.take().ok_or_else(|| "Failed to capture stdin".to_string())?;
+        let stdout = child.stdout.take().ok_or_else(|| "Failed to capture stdout".to_string())?;
+        let stderr = child.stderr.take().ok_or_else(|| "Failed to capture stderr".to_string())?;
+
+        tokio::spawn(async move {
+            let mut stdin_writer = stdin;
+            while let Some(line) = stdin_rx.recv().await {
+                if let Err(err) = stdin_writer.write_all(line.as_bytes()).await {
+                    log::error!("[Supervisor] Failed writing to child stdin: {}", err);
+                    break;
+                }
+                if let Err(err) = stdin_writer.flush().await {
+                    log::error!("[Supervisor] Failed flushing child stdin: {}", err);
+                    break;
+                }
+            }
+        });
+
+        // 启动 Stdout 分帧与事件广播通道
+        let (event_tx, mut event_rx) = mpsc::channel::<Value>(256);
+        let app_handle_for_events = self.app_handle.clone();
+
+        tokio::spawn(async move {
+            while let Some(event_val) = event_rx.recv().await {
+                let _ = app_handle_for_events.emit("pi:event", event_val);
+            }
+        });
+
+        tokio::spawn(async move {
+            if let Err(err) = run_stdout_framer(stdout, event_tx).await {
+                log::error!("[Supervisor] Stdout framer error: {}", err);
+            }
+        });
+
+        tokio::spawn(async move {
+            let _ = run_stderr_logger(stderr).await;
+        });
+
+        // 启动独立监督生命周期任务
+        let self_clone = self.clone();
+        tokio::spawn(Self::monitor_child_lifecycle(self_clone, child));
+
+        self.update_status(HostStatus::Ready {
+            pi_version,
+        })
+        .await;
+
+        Ok(())
+    }
+
+    /// 独立监控子进程退出与自愈循环
+    async fn monitor_child_lifecycle(supervisor: PiSupervisor, mut child: tokio::process::Child) {
+        let exit_status = child.wait().await;
+        {
+            let mut w = supervisor.stdin_tx.lock().await;
+            *w = None;
+        }
+
+        let is_stopping = *supervisor.is_stopping.read().await;
+        if is_stopping {
+            supervisor.update_status(HostStatus::Stopped).await;
+            return;
+        }
+
+        let exit_code = exit_status.as_ref().ok().and_then(|s| s.code());
+        log::warn!("[Supervisor] Pi child exited with code {:?}", exit_code);
+
+        // 滑动窗口崩溃计数
+        let now = Instant::now();
+        let mut history = supervisor.restart_history.lock().await;
+        history.retain(|&t| now.duration_since(t) < CRASH_WINDOW);
+        history.push(now);
+
+        if history.len() > MAX_RESTARTS_IN_WINDOW {
+            let err_msg = format!(
+                "Pi host crashed repeatedly ({} times in {}s). Auto-restart suspended.",
+                history.len(),
+                CRASH_WINDOW.as_secs()
+            );
+            log::error!("[Supervisor] {}", err_msg);
+            supervisor
+                .update_status(HostStatus::Crashed {
+                    exit_code,
+                    error: err_msg,
+                })
+                .await;
+            return;
+        }
+
+        supervisor
+            .update_status(HostStatus::Crashed {
+                exit_code,
+                error: "Pi process exited unexpectedly. Restarting...".to_string(),
+            })
+            .await;
+
+        // 自动平滑自愈重启
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+        let _ = supervisor.start().await;
+    }
+
+    /// 向 Pi 发送通用 RPC 指令
+    pub async fn send_command(&self, command_val: Value) -> Result<(), String> {
+        let sender = {
+            let guard = self.stdin_tx.lock().await;
+            guard.clone()
+        };
+
+        if let Some(tx) = sender {
+            if !command_val.is_object() {
+                return Err("Command must be a JSON object".to_string());
+            }
+
+            let json_str = serde_json::to_string(&command_val)
+                .map_err(|e| format!("Failed to serialize command: {}", e))?;
+            let line = format!("{}\n", json_str);
+
+            tx.send(line)
+                .await
+                .map_err(|e| format!("Failed to queue command to Pi stdin: {}", e))?;
+
+            Ok(())
+        } else {
+            Err("Pi host is not currently running or stdin is closed".to_string())
+        }
+    }
+
+    /// 发送终止当前操作指令
+    pub async fn abort(&self) -> Result<(), String> {
+        self.send_command(serde_json::json!({
+            "type": "abort"
+        }))
+        .await
+    }
+
+    /// 停止 Pi Host
+    pub async fn stop(&self) {
+        *self.is_stopping.write().await = true;
+        let _ = self.abort().await;
+        let mut w = self.stdin_tx.lock().await;
+        *w = None;
+        self.update_status(HostStatus::Stopped).await;
+    }
+
+    /// 重启 Pi Host
+    pub async fn restart(&self) -> Result<(), String> {
+        self.stop().await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        self.start().await
+    }
+}

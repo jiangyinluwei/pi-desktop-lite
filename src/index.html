@@ -58,7 +58,7 @@
       <div class="flow-scroll-area" id="flow-scroll-area">
         <!-- 动态消息流将通过 JS 渲染注入此处 -->
         <div class="flow-conversation" id="flow-conversation">
-          <!-- 默认/当前交互项模板 -->
+          <!-- 初始默认交互项模板 -->
           <div class="flow-message-group" id="current-flow-group">
             <!-- 用户问题卡片 -->
             <div class="flow-user-prompt-card" id="flow-user-prompt">
@@ -85,22 +85,27 @@
                 </div>
               </div>
               <div class="thinking-body" id="thinking-body">
-                <ul class="thinking-steps">
-                  <li class="step-item done">
-                    <span class="step-marker">✓</span>
-                    <span class="step-text">解析意图与上下文：构建多态 Agent 交互视图</span>
-                  </li>
-                  <li class="step-item done">
-                    <span class="step-marker">✓</span>
-                    <span class="step-text">加载草图手绘风格主题与自适应双模纸质变量</span>
-                  </li>
-                  <li class="step-item in-progress">
-                    <span class="step-marker">✦</span>
-                    <span class="step-text">生成结构化响应：已完成状态机与右键回退流水线映射</span>
-                  </li>
-                </ul>
+                <div class="thinking-text-stream" id="thinking-text-stream">
+                  <ul class="thinking-steps">
+                    <li class="step-item done">
+                      <span class="step-marker">✓</span>
+                      <span class="step-text">解析意图与上下文：构建多态 Agent 交互视图</span>
+                    </li>
+                    <li class="step-item done">
+                      <span class="step-marker">✓</span>
+                      <span class="step-text">加载草图手绘风格主题与自适应双模纸质变量</span>
+                    </li>
+                    <li class="step-item in-progress">
+                      <span class="step-marker">✦</span>
+                      <span class="step-text">生成结构化响应：已完成状态机与右键回退流水线映射</span>
+                    </li>
+                  </ul>
+                </div>
               </div>
             </div>
+
+            <!-- 工具调用展示容器 -->
+            <div class="tool-calls-container" id="tool-calls-container"></div>
 
             <!-- AI Agent 输出响应内容区域 -->
             <div class="agent-response-card" id="agent-response-card">
@@ -150,7 +155,7 @@
       <!-- 搜索框与外部控制栏组合 -->
       <div class="search-box-row" id="search-box-row">
         <!-- 对话框外部左侧手绘齿轮设置按钮（透明底、无常态边框、hover显示边框） -->
-        <button type="button" id="settings-btn" class="icon-button settings-btn" aria-label="设置" title="设置">
+        <button type="button" id="settings-btn" class="icon-button settings-btn" aria-label="设置" title="设置与会话">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.4"
             stroke-linecap="round" stroke-linejoin="round">
             <path
@@ -158,6 +163,7 @@
             <path
               d="M12 9.1 C13.6 9.05, 14.95 10.4, 14.9 12 C14.85 13.65, 13.55 14.95, 12 14.9 C10.4 14.85, 9.05 13.55, 9.1 12 C9.15 10.45, 10.45 9.15, 12 9.1 Z" />
           </svg>
+          <span class="settings-badge" id="settings-badge"></span>
         </button>
 
         <!-- 手绘线条素描搜索框 -->
@@ -205,6 +211,72 @@
 
     </div>
   </main>
+
+  <!-- 手绘草图风格设置与会话抽屉 / 模态框 -->
+  <div class="sketch-drawer-backdrop" id="settings-backdrop" aria-hidden="true">
+    <div class="sketch-drawer" id="settings-drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+      <div class="drawer-header">
+        <div class="drawer-title-wrap">
+          <h2 class="drawer-title" id="drawer-title">设置 &amp; 会话</h2>
+          <span class="drawer-subtitle">Pi Agent Status &amp; Sessions</span>
+        </div>
+        <button type="button" class="icon-button drawer-close-btn" id="drawer-close-btn" aria-label="关闭" title="关闭 (Esc / 右键)">
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+            <line x1="5" y1="5" x2="15" y2="15" />
+            <line x1="15" y1="5" x2="5" y2="15" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="drawer-content">
+        <!-- 宿主与版本状态卡片 -->
+        <section class="drawer-section">
+          <h3 class="section-label">Agent 宿主内核</h3>
+          <div class="status-card">
+            <div class="status-card-row">
+              <div class="status-indicator-wrap">
+                <span class="status-dot status-ready" id="host-status-dot"></span>
+                <span class="status-text" id="host-status-text">Ready</span>
+              </div>
+              <span class="version-chip" id="host-version-text">v0.84.3</span>
+            </div>
+            <div class="status-actions">
+              <button type="button" class="sketch-btn" id="btn-restart-host">
+                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M2.5 8a5.5 5.5 0 0 1 9.39-3.89L13.5 5.5" />
+                  <path d="M13.5 2v3.5H10" />
+                  <path d="M13.5 8a5.5 5.5 0 0 1-9.39 3.89L2.5 10.5" />
+                  <path d="M2.5 14v-3.5H6" />
+                </svg>
+                重启 Host
+              </button>
+              <button type="button" class="sketch-btn" id="btn-check-update">
+                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M8 2v9M4 7l4 4 4-4M2 14h12" />
+                </svg>
+                检查更新
+              </button>
+            </div>
+            <div class="update-notice hidden" id="update-notice">
+              <span class="update-icon">✦</span>
+              <span class="update-msg" id="update-msg">发现新版本！</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- 会话历史列表 -->
+        <section class="drawer-section">
+          <div class="section-header-row">
+            <h3 class="section-label">会话记录 (<span id="session-count">0</span>)</h3>
+            <button type="button" class="sketch-btn mini-btn" id="btn-new-session">+ 新建会话</button>
+          </div>
+          <div class="sessions-list" id="sessions-list">
+            <div class="empty-sessions">暂无历史会话</div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
 
   <script type="module" src="/main.js"></script>
 </body>
