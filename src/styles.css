@@ -430,6 +430,58 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   line-height: 1.4;
 }
 
+/* 运行态 Inner-Skill 上下文注入胶囊 (手绘草图风格微徽章) */
+.flow-injection-capsule {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  padding: 4px 11px;
+  margin: 0 0 10px 2px;
+  font-size: 11.5px;
+  font-family: inherit;
+  color: var(--ink-muted);
+  background: var(--sketch-tag-bg);
+  border: 1px dashed var(--sketch-border-subtle);
+  border-radius: 255px 12px 225px 10px / 12px 225px 10px 255px;
+  box-shadow: 1px 1px 0px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: sketchCapsuleFadeIn 0.25s ease-out;
+}
+
+@keyframes sketchCapsuleFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.flow-injection-capsule.hidden {
+  display: none !important;
+}
+
+.flow-injection-capsule .capsule-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-primary);
+  opacity: 0.85;
+}
+
+.flow-injection-capsule .capsule-text {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.flow-injection-capsule:hover {
+  border-color: var(--sketch-border);
+  color: var(--ink-primary);
+}
+
 /* AI Agent 思考过程卡片（横平竖直边框） */
 .agent-thinking-card {
   background: var(--sketch-box-bg);

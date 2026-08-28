@@ -124,6 +124,12 @@ class PiClient extends EventTarget {
       });
       this.unlistenCallbacks.push(unlistenEvent);
 
+      // 3. 监听运行态上下文/Inner-Skill 强行注入事件
+      const unlistenInjected = await window.__TAURI__.event.listen("pi:context_injected", (event) => {
+        this.dispatchEvent(new CustomEvent("context-injected", { detail: event.payload }));
+      });
+      this.unlistenCallbacks.push(unlistenInjected);
+
       // 初始化获取当前状态与模型
       const initialStatus = await this.invoke("pi_get_host_status");
       if (initialStatus) {

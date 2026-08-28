@@ -16,6 +16,8 @@ use tokio::sync::{mpsc, Mutex, RwLock};
 use std::collections::HashMap;
 use tokio::sync::oneshot;
 
+use crate::pi_runner::inner_skills::{InjectedContextInfo, InnerSkillInjector};
+
 const CRASH_WINDOW: Duration = Duration::from_secs(30);
 const MAX_RESTARTS_IN_WINDOW: usize = 2;
 
@@ -30,6 +32,7 @@ pub struct PiSupervisor {
     resolved_binary_path: Arc<RwLock<Option<PathBuf>>>,
     pi_version: Arc<RwLock<Option<String>>>,
     is_stopping: Arc<RwLock<bool>>,
+    skill_injector: Arc<InnerSkillInjector>,
 }
 
 impl PiSupervisor {
@@ -49,6 +52,7 @@ impl PiSupervisor {
             resolved_binary_path: Arc::new(RwLock::new(None)),
             pi_version: Arc::new(RwLock::new(None)),
             is_stopping: Arc::new(RwLock::new(false)),
+            skill_injector: Arc::new(InnerSkillInjector::new()),
         }
     }
 
@@ -438,8 +442,37 @@ impl PiSupervisor {
 
     /// 重启 Pi Host
     pub async fn restart(&self) -> Result<(), String> {
+        self.reset_skill_turns();
         self.stop().await;
         tokio::time::sleep(Duration::from_millis(500)).await;
         self.start().await
     }
+
+    /// 对输入提示词进行运行态 Inner-Skills 上下文强行注入处理
+    pub fn inject_prompt(&self, message: &str) -> (String, InjectedContextInfo) {
+        self.skill_injector.process_prompt_with_info(message)
+    }
+
+    /// 重置 Inner-Skills 会话轮次计数器
+    pub fn reset_skill_turns(&self) {
+        self.skill_injector.reset_session();
+    }
+
+    /// 获取运行态内置规则定义清单
+    pub fn get_skill_rules(&self) -> &'static str {
+        self.skill_injector.get_rules_content()
+    }
+
+    /// 获取从 RULES.md 动态解析的 Skill 映射矩阵
+    pub fn get_skill_mappings(&self) -> Vec<crate::pi_runner::SkillMapping> {
+        self.skill_injector.get_skill_mappings()
+    }
+
+    /// 根据工具名动态查询其在 RULES.md 中绑定的 Inner-Skill
+    pub fn resolve_skill_for_tool(&self, tool_name: &str) -> Option<String> {
+        self.skill_injector.resolve_skill_for_tool(tool_name)
+    }
 }
+
+
+

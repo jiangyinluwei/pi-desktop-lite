@@ -76,6 +76,16 @@
               <p class="prompt-content" id="flow-user-text">探索手绘草图风格的 Agent 交互体验</p>
             </div>
 
+            <!-- 运行态上下文/Inner-Skill 注入胶囊标签 (仅在成功注入时显现) -->
+            <div class="flow-injection-capsule hidden" id="flow-injection-capsule" role="status" aria-live="polite">
+              <span class="capsule-icon" aria-hidden="true">
+                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M8.5 1.5 L3.5 9 L7.5 9 L6.5 14.5 L12.5 7 L8.5 7 Z" />
+                </svg>
+              </span>
+              <span class="capsule-text" id="flow-injection-text">已注入运行态技能：windows-bash-compatibility</span>
+            </div>
+
             <!-- AI Agent 思考过程卡片（手绘折叠与呼吸状态） -->
             <div class="agent-thinking-card open" id="agent-thinking-card">
               <div class="thinking-header" id="thinking-toggle-btn" role="button" tabindex="0" aria-expanded="true">

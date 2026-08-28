@@ -180,6 +180,18 @@ description: |
 - 滚动线速度保持在约 28~30px/s 恒定速度，维持克制、慢节奏阅读质感；
 - 跑马灯左右两端配合 `mask-image` 实现微柔和羽化；当用户键入任意内容时瞬时隐去，清空后优雅复显。
 
+### 8. 运行态技能注入胶囊设计规范 (Inner-Skill Injection Capsule Specification)
+- **视觉层级与定位**：位于 Flow 交互版中用户提问卡片下方、AI 思考过程卡片 (`.agent-thinking-card`) 正上方，以极简轻量的一行草图“胶囊（Capsule / Pill Badge）”示意当前已强行注入的运行态上下文；
+- **手绘纸质微徽章质感**：
+  - **草图虚线与有机圆角**：采用 `1px dashed var(--sketch-border-subtle)` 搭配有机不对称圆角 `border-radius: 255px 12px 225px 10px / 12px 225px 10px 255px;`；
+  - **双模纸质色彩**：底色采用 `var(--sketch-tag-bg)`，文字采用 `var(--ink-muted)`（字号 ~11.5px），手绘线框图标采用 `var(--ink-primary)`；
+  - **悬停微反馈**：鼠标悬浮时边框切换为实墨草图线 `var(--sketch-border)`，字体颜色同步加深；
+- **三态动态响应流**：
+  - **`Boost` (高危/命令意图)**：呈现 `⚡ 已注入运行态技能: windows-bash-compatibility (Windows Shell 兼容规范)`；
+  - **`PeriodicAnchor` (周期心跳刷新)**：呈现 `⚓ 已注入运行态锚点: windows-bash-compatibility (Windows 环境感知)`；
+  - **`Bypass` (纯净放行)**：纯问答或日常对话时胶囊处于隐藏（`display: none`）状态；
+  - **流式生命周期**：在每次 `resetStreamState`（新提问提交）时先瞬时隐去，待 Rust 后端分发 `pi:context_injected` 事件时平滑淡入（`animation: sketchCapsuleFadeIn 0.25s ease-out`）。
+
 ---
 
 ## 📋 交付前严格核查清单 (Pre-Ship Checklist)

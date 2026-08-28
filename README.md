@@ -423,14 +423,17 @@ pi-desktop-lite/
 ├── src-tauri/                  # Tauri (Rust) 高性能后端核心
 │   ├── Cargo.toml              # 依赖: tokio, serde, dashmap, notify, reqwest, regex, windows-sys
 │   ├── tauri.conf.json         # 窗口无边框、原生透明与安全策略配置
+│   ├── inner-skills/           # [核心] 桌面应用运行时动态注入 Pi Agent 的内置约束技能与规则 (RULES.md, windows-bash-compatibility)
 │   └── src/
 │       ├── lib.rs              # Tauri 状态初始化、命令注册、事件广播与托盘集成
 │       ├── main.rs             # 程序主入口
-│       ├── pi_runner/          # [核心] 进程管理、Win32 Job Object 孤儿收割、严格 LF 分帧器
+│       ├── pi_runner/          # [核心] 进程管理、Win32 Job Object 孤儿收割、严格 LF 分帧器、Inner-Skills 动态注入引擎
 │       ├── security/           # [核心] 正则脱敏中间件 (API Key / 用户隐私路径自动脱敏)
 │       ├── session/            # [核心] DashMap 内存会话索引与 notify 增量文件监视
 │       └── version_watcher/    # [核心] Jitter 随机抖动版本监测与双源更新探测
+
 ├── AGENTS.md                   # 项目规则与代理行为准则
 ├── README.md                   # 项目介绍与完整配置指南
 └── package.json
+
 ```

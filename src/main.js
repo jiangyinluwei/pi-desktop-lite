@@ -43,6 +43,9 @@ window.addEventListener("DOMContentLoaded", () => {
   const flowResponseContent = document.getElementById("flow-response-content");
   const flowModelTag = document.getElementById("flow-model-tag");
   const flowModelName = document.getElementById("flow-model-name");
+  const flowInjectionCapsule = document.getElementById("flow-injection-capsule");
+  const flowInjectionText = document.getElementById("flow-injection-text");
+
 
   // 设置独立全页面元素
   const btnSettingsBack = document.getElementById("btn-settings-back");
@@ -1407,6 +1410,10 @@ window.addEventListener("DOMContentLoaded", () => {
     currentResponseText = "";
     renderedToolCards.clear();
 
+    if (flowInjectionCapsule) {
+      flowInjectionCapsule.classList.add("hidden");
+    }
+
     if (thinkingTextStream) thinkingTextStream.innerHTML = "";
     if (toolCallsContainer) toolCallsContainer.innerHTML = "";
     if (flowResponseContent) {
@@ -1534,11 +1541,62 @@ window.addEventListener("DOMContentLoaded", () => {
     if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
   });
 
+  const activeToolSkillMappings = new Map();
+
+  const loadInnerSkillMappings = async () => {
+    try {
+      const mappings = await invokeTauri("pi_get_skill_mappings");
+      if (Array.isArray(mappings)) {
+        activeToolSkillMappings.clear();
+        mappings.forEach((item) => {
+          if (Array.isArray(item.tools) && item.skill_name) {
+            item.tools.forEach((t) => {
+              activeToolSkillMappings.set(t.toLowerCase(), {
+                skill: item.skill_name,
+                label: `⚡ 已激活运行态技能：${item.skill_name} (${item.skill_name === "windows-bash-compatibility" ? "Windows Shell 兼容规范" : "运行态约束"})`,
+              });
+            });
+          }
+        });
+      }
+    } catch (err) {
+      console.warn("[Main] Failed to load skill mappings from RULES.md:", err);
+      // 安全降级
+      activeToolSkillMappings.set("bash", { skill: "windows-bash-compatibility", label: "⚡ 已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)" });
+      activeToolSkillMappings.set("powershell", { skill: "windows-bash-compatibility", label: "⚡ 已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)" });
+      activeToolSkillMappings.set("terminal", { skill: "windows-bash-compatibility", label: "⚡ 已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)" });
+      activeToolSkillMappings.set("cmd", { skill: "windows-bash-compatibility", label: "⚡ 已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)" });
+    }
+  };
+
+  const showInnerSkillCapsuleForTool = (rawToolName) => {
+    if (!rawToolName || !flowInjectionCapsule || !flowInjectionText) return;
+    const nameLower = rawToolName.toString().toLowerCase().trim();
+    const mapped = activeToolSkillMappings.get(nameLower);
+    if (mapped) {
+      flowInjectionText.textContent = mapped.label || `⚡ 已激活运行态技能：${mapped.skill}`;
+      flowInjectionCapsule.classList.remove("hidden");
+      if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    }
+  };
+
+  loadInnerSkillMappings();
+
+  piClient.addEventListener("toolcall-delta-start", (e) => {
+    const evt = e.detail;
+    if (evt?.toolCall?.name) {
+      showInnerSkillCapsuleForTool(evt.toolCall.name);
+    }
+  });
+
   piClient.addEventListener("tool-start", (e) => {
     hasReceivedDelta = true;
     const data = e.detail;
     const toolCallId = data.toolCallId;
     const toolName = data.toolName || "tool";
+
+    // 当底层 Agent 触发调用映射工具（如 bash）时，即时显现运行态技能注入胶囊
+    showInnerSkillCapsuleForTool(toolName);
 
     const card = document.createElement("div");
     card.className = "tool-card running";
@@ -1562,6 +1620,10 @@ window.addEventListener("DOMContentLoaded", () => {
     }
     renderedToolCards.set(toolCallId, card);
     if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+  });
+
+  piClient.addEventListener("bash-update", () => {
+    showInnerSkillCapsuleForTool("bash");
   });
 
   piClient.addEventListener("tool-update", (e) => {

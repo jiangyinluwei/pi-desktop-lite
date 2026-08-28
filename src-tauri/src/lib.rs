@@ -57,9 +57,10 @@ async fn pi_send_prompt(
     supervisor: State<'_, PiSupervisor>,
     request: PromptRequest,
 ) -> Result<(), String> {
+    let (processed_message, _info) = supervisor.inject_prompt(&request.message);
     let mut val = serde_json::json!({
         "type": "prompt",
-        "message": request.message,
+        "message": processed_message,
     });
 
     if let Some(imgs) = request.images {
@@ -89,11 +90,32 @@ async fn pi_send_follow_up(
     supervisor: State<'_, PiSupervisor>,
     request: FollowUpRequest,
 ) -> Result<(), String> {
+    let (processed_message, _info) = supervisor.inject_prompt(&request.message);
     let val = serde_json::json!({
         "type": "follow_up",
-        "message": request.message,
+        "message": processed_message,
     });
     supervisor.send_command(val).await
+}
+
+#[tauri::command]
+fn pi_get_inner_skills_rules(supervisor: State<'_, PiSupervisor>) -> Result<String, String> {
+    Ok(supervisor.get_skill_rules().to_string())
+}
+
+#[tauri::command]
+fn pi_get_skill_mappings(
+    supervisor: State<'_, PiSupervisor>,
+) -> Result<Vec<pi_runner::SkillMapping>, String> {
+    Ok(supervisor.get_skill_mappings())
+}
+
+#[tauri::command]
+fn pi_resolve_tool_skill(
+    supervisor: State<'_, PiSupervisor>,
+    tool_name: String,
+) -> Result<Option<String>, String> {
+    Ok(supervisor.resolve_skill_for_tool(&tool_name))
 }
 
 #[tauri::command]
@@ -173,6 +195,7 @@ async fn pi_switch_session(
     supervisor: State<'_, PiSupervisor>,
     session_path: String,
 ) -> Result<(), String> {
+    supervisor.reset_skill_turns();
     let val = serde_json::json!({
         "type": "switch_session",
         "sessionPath": session_path
@@ -185,6 +208,7 @@ async fn pi_new_session(
     supervisor: State<'_, PiSupervisor>,
     parent_session: Option<String>,
 ) -> Result<(), String> {
+    supervisor.reset_skill_turns();
     let mut val = serde_json::json!({
         "type": "new_session"
     });
@@ -245,6 +269,9 @@ pub fn run() {
             pi_get_session_tree,
             pi_switch_session,
             pi_new_session,
+            pi_get_inner_skills_rules,
+            pi_get_skill_mappings,
+            pi_resolve_tool_skill,
             pi_check_update,
             pi_get_cached_update,
             pi_get_auth_config,

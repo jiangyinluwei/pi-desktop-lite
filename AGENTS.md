@@ -40,7 +40,7 @@
 4. **AI-Agent 四大基础界面规范与独立设置页面标准**：
    - **界面1：初始界面-详细版 (`detailed`)**：包含沉浸式标题栏、居中品牌 Logo 组（徽标+标题+副标题）、手绘齿轮设置按钮、输入框内部功能按钮（导入图标、清空按钮、Enter 引导）及底部草图标签；输入框内置灵感格言跑马灯引擎，当格言文本长度超过输入框宽度时，自适应启动从右向左无缝循环滚动，用户输入时瞬时隐去；
    - **界面2：初始界面-专注版 (`focus`)**：单击输入框自动进入，仅保留居中手绘 $\pi$ Logo 徽标与纯净输入框（保留格言跑马灯与自适应滚动能力），隐藏所有按钮与副标题；右键回退至界面1；
-   - **界面3：Flow 流式交互版 (`flow`)**：回车触发真实 Pi RPC 下发与流式通信，手绘 Logo 移至最左上方，主体区域展示思考过程卡片（可折叠、含步骤与实时耗时）、工具调用卡片（可折叠日志）与 Agent 回答卡片（Markdown 排版），输入框移至最下方并自适应拉长；右键中止当前 Agent 并回退至界面2；
+   - **界面3：Flow 流式交互版 (`flow`)**：回车触发真实 Pi RPC 下发与流式通信，手绘 Logo 移至最左上方；在用户提问卡片下方与思考过程卡片上方，在成功注入运行态技能时展示一行手绘草图“胶囊（Capsule）”标签（如 `⚡ 已注入运行态技能: windows-bash-compatibility`）；主体区域展示思考过程卡片（可折叠、含步骤与实时耗时）、工具调用卡片（可折叠日志）与 Agent 回答卡片（Markdown 排版），输入框移至最下方并自适应拉长；右键中止当前 Agent 并回退至界面2；
    - **界面4：项目设置独立全屏页面 (`settings`)**：
      - **非浮窗独立视图**：作为与详细版/专注版/Flow版平级的独立全屏视图，顶部常驻醒目导航条与操作指引：“**💡 提示：在任意位置点击鼠标右键或按 Esc 即可快速回退**”；
      - **几何工程设计**：**严格采用横平竖直、现代工程几何直角/微圆角（4px-8px）设计**，去除手绘草图不规则边框与抖动效果；
@@ -68,11 +68,14 @@
 
 ---
 
-## 🧭 Skills 映射
+## 🧭 Skills 架构体系与分层规范（严格界定）
 
-本项目定义了以下技能规范，Agent 在执行对应操作时需参考执行：
+本项目严格区分并定义了两类不同生命周期的 Skill，严禁混淆：
 
-| Skill 名称 | 路径 | 触发场景 |
+### 1. 项目开发级 Skills (`.agents/skills/`)
+> **作用对象**：协助本项目进行源码开发、迭代、重构与调试的 AI 编码助手（如 Antigravity / Pair-Programming Agent）。指导项目开发全生命周期的工程化标准。
+
+| Skill 名称 | 路径 | 触发与使用场景 |
 | :--- | :--- | :--- |
 | **`auto-compile-and-fix`** | [`.agents/skills/auto-compile-and-fix/SKILL.md`](file:///.agents/skills/auto-compile-and-fix/SKILL.md) | 任何任务或代码编写完成后触发，指导编译验证与错误自愈流程。 |
 | **`sketch-drafting-ui`** | [`.agents/skills/sketch-drafting-ui/SKILL.md`](file:///.agents/skills/sketch-drafting-ui/SKILL.md) | 参考 Anthropic Research 与 Pi.dev 设计美学，指导前端 UI 简约线条、手绘/工程绘图草图风格、大范围微渐变纸质背景及系统自适应明暗双色方案。 |
@@ -84,6 +87,23 @@
 | **`svg-asset-workflow`** | [`.agents/skills/svg-asset-workflow/SKILL.md`](file:///.agents/skills/svg-asset-workflow/SKILL.md) | 指导 SVG 矢量资产存放组织、currentColor 双模主题自适应、内联使用与无障碍交互规范。 |
 | **`desktop-rendering-optimization`** | [`.agents/skills/desktop-rendering-optimization/SKILL.md`](file:///.agents/skills/desktop-rendering-optimization/SKILL.md) | 桌面端与 Webview 渲染性能调优、窗口缩放白闪/黑屏排查、动画帧掉帧卡顿与重绘风暴根治规范。 |
 | **`clean-code-refactoring`** | [`.agents/skills/clean-code-refactoring/SKILL.md`](file:///.agents/skills/clean-code-refactoring/SKILL.md) | 指导在桌面端（Tauri/Rust）与 Web 前端混合项目中进行逻辑去重、结构精简、样板代码消除与架构轻量化重构。 |
+| **`inner-skills-injection`** | [`.agents/skills/inner-skills-injection/SKILL.md`](file:///.agents/skills/inner-skills-injection/SKILL.md) | 指导桌面端作为 Pi Agent 宿主代理时，运行态内置约束（Inner-Skills / RULES.md）的上下文强行注入架构、三态决策流水线、拓扑结构与前端反馈规范。 |
+
+
+### 2. 应用内置运行态约束级 Inner-Skills (`src-tauri/inner-skills/`)
+> **作用对象**：桌面应用被用户运行（Runtime）时，作为 Pi Agent 的可视化宿主/代理，由 Rust 后端监督器（`PiSupervisor` & `InnerSkillInjector`）在每次下发 Prompt/FollowUp 时进行智能嗅探与动态强行注入。
+
+- **`RULES.md` 映射总纲**：位于 [`src-tauri/inner-skills/RULES.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/RULES.md)，作为工具到运行态 Skill 映射关系的**唯一事实来源（Single Source of Truth）**，采用极简纯英文（< 80 Tokens）定义映射矩阵与 5 大执行铁律；
+- **两阶段动态映射与即时触发体系**：
+  1. **阶段一：背景持续静默注入 (`RULES.md` Silent Baseline)**：每轮提问透明封入精炼纯英文 `<runtime_context_rules>`（`RULES.md` 原文），静默无扰，常规问答不显现 UI 胶囊；
+  2. **阶段二：动态映射解析与即时激活呈现 (Just-In-Time Skill Feedback)**：Rust 引擎动态解析 `RULES.md` 矩阵生成映射表；当且仅当底层 Agent 触发调用命中映射的工具（如 `bash` 命中 `windows-bash-compatibility`）时，即时在思考卡片上方呈现手绘草图胶囊；未在 `RULES.md` 映射的工具（如 `read_file`）绝不误触；
+  3. **`<runtime_context_rules>` 信封隔离**：明确声明约束仅在触发工具调用时生效，保障正常对话生成的自然性。
+
+| 文件 / Skill 名称 | 路径 | 运行态注入机制与作用 |
+| :--- | :--- | :--- |
+| **`RULES.md`** | [`src-tauri/inner-skills/RULES.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/RULES.md) | 纯英文运行态 Skill 映射矩阵与 5 大基础约束总览（低 Token 消耗）。 |
+| **`windows-bash-compatibility`** | [`src-tauri/inner-skills/windows-bash-compatibility/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/windows-bash-compatibility/SKILL.md) | 在 Windows 环境下调用终端/Shell 工具时强行注入，约束统一采用正斜杠 `/`、强制非交互 `-y`、禁用 Pager 翻页防卡死、语法跨平台替换及 UTF-8 编码声明。 |
+
 
 ---
 
@@ -93,3 +113,4 @@
 - **构建测试（无需安装包打包）**：`npm run build:check`
 - **正式发布构建**：`npm run build`
 - **Rust 后端快速语法/类型检查**：`cargo check`（位于 `src-tauri` 目录）
+
