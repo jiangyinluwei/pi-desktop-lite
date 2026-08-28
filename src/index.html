@@ -468,19 +468,27 @@
             </div>
           </div>
 
-          <!-- 4. 自定义通道配置面板 (两步式：第一步新增运营商，第二步在运营商内新增与管理模型) -->
+          <!-- 4. 自定义通道配置面板 (顶部 Tab 切换：步骤1 新增运营商 / 步骤2 运营商列表与模型管理) -->
           <div class="tab-pane" id="pane-custom">
             <div class="pane-header">
               <h3 class="pane-title">自定义通道配置</h3>
-              <p class="pane-desc">支持两步式配置：先新增运营商（端点协议与 Key），再在运营商内新增模型（自动写入 ~/.pi/agent/models.json）。</p>
+              <p class="pane-desc">先在「步骤 1」新增运营商（端点协议与 Key），再切换至「步骤 2」在运营商内新增模型（自动写入 ~/.pi/agent/models.json）。</p>
             </div>
 
-            <!-- 第一步：新增或配置自定义运营商卡片 -->
-            <div class="custom-step-card">
-              <div class="step-card-header">
+            <!-- 内层顶部 Tab 导航 -->
+            <nav class="inner-tabs-nav" aria-label="自定义通道配置步骤">
+              <button type="button" class="inner-tab-btn active" data-inner-tab="inner-step1">
                 <span class="step-badge">步骤 1</span>
-                <h4 class="step-title">新增/配置自定义运营商</h4>
-              </div>
+                新增 / 配置运营商
+              </button>
+              <button type="button" class="inner-tab-btn" data-inner-tab="inner-step2">
+                <span class="step-badge">步骤 2</span>
+                运营商列表与模型管理
+              </button>
+            </nav>
+
+            <!-- 内层步骤1：新增或配置自定义运营商 -->
+            <div class="inner-tab-pane active" id="inner-step1">
               <form class="custom-provider-form" id="custom-provider-form">
                 <div class="form-grid-2">
                   <div class="form-field">
@@ -530,12 +538,8 @@
               </form>
             </div>
 
-            <!-- 第二步：运营商列表与模型管理 -->
-            <div class="custom-step-card" style="margin-top: 20px;">
-              <div class="step-card-header">
-                <span class="step-badge">步骤 2</span>
-                <h4 class="step-title">运营商列表与模型管理</h4>
-              </div>
+            <!-- 内层步骤2：运营商列表与模型管理 -->
+            <div class="inner-tab-pane" id="inner-step2">
               <p class="form-hint" style="margin-bottom: 12px;">在下方已配置的运营商卡片中修改配置、新增模型、查看或删除模型配置。</p>
               <div class="custom-providers-container" id="custom-providers-container">
                 <!-- 动态罗列已配置的运营商与模型卡片 -->

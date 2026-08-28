@@ -2154,6 +2154,81 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   gap: 10px;
 }
 
+/* ==========================================================================
+   自定义通道内层 Tab 导航 (inner-tabs-nav / inner-tab-btn / inner-tab-pane)
+   ========================================================================== */
+.inner-tabs-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-bottom: 1px solid var(--sketch-border-subtle);
+  margin-bottom: 14px;
+}
+
+.inner-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 7px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  position: relative;
+  bottom: -1px;
+  transition: color 0.15s ease, background 0.15s ease;
+  white-space: nowrap;
+}
+
+.inner-tab-btn:hover {
+  color: var(--ink-primary);
+  background: var(--sketch-tag-bg);
+}
+
+.inner-tab-btn.active {
+  color: var(--ink-primary);
+  font-weight: 600;
+  background: transparent;
+  border-color: var(--sketch-border-subtle);
+  border-bottom-color: var(--bg-base, #faf8f5);
+}
+
+@media (prefers-color-scheme: dark) {
+  .inner-tab-btn.active {
+    border-bottom-color: var(--bg-base, #141312);
+  }
+}
+
+:root[data-theme="dark"] .inner-tab-btn.active {
+  border-bottom-color: var(--bg-base, #141312);
+}
+
+:root[data-theme="light"] .inner-tab-btn.active {
+  border-bottom-color: var(--bg-base, #faf8f5);
+}
+
+.inner-tab-btn.active .step-badge {
+  border-color: var(--ink-primary);
+  color: var(--ink-primary);
+}
+
+.inner-tab-pane {
+  display: none;
+}
+
+.inner-tab-pane.active {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+
+
 .custom-provider-card {
   background: transparent;
   border: 1px solid var(--sketch-border-subtle);

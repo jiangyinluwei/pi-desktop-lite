@@ -281,6 +281,33 @@ window.addEventListener("DOMContentLoaded", () => {
 
   initSettingsTabs();
 
+  // 自定义通道配置内层 Tab 切换 (步骤1 / 步骤2)
+  const initInnerTabs = () => {
+    const innerTabBtns = document.querySelectorAll(".inner-tab-btn");
+    const innerTabPanes = document.querySelectorAll(".inner-tab-pane");
+
+    innerTabBtns.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const targetId = btn.getAttribute("data-inner-tab");
+        if (!targetId) return;
+
+        innerTabBtns.forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+
+        innerTabPanes.forEach((pane) => {
+          if (pane.id === targetId) {
+            pane.classList.add("active");
+          } else {
+            pane.classList.remove("active");
+          }
+        });
+      });
+    });
+  };
+
+  initInnerTabs();
+
   const openSettingsView = async () => {
     if (currentView !== VIEW_SETTINGS) {
       previousView = currentView;
