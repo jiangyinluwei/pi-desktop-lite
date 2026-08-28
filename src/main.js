@@ -19,6 +19,23 @@ export const escapeHtml = (str) => {
     .replace(/'/g, "&#039;");
 };
 
+/**
+ * 规范化手绘风格 SVG 矢量图元字典 (Theme-adaptive with currentColor)
+ */
+const ICONS = {
+  bolt: `<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 1.5 L3.5 9 L7.5 9 L6.5 14.5 L12.5 7 L8.5 7 Z" /></svg>`,
+  sparkle: `<svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor" stroke="none" aria-hidden="true"><path d="M8 1.2 C8 4.8, 8.5 7.5, 14.8 8 C8.5 8.5, 8 11.2, 8 14.8 C8 11.2, 7.5 8.5, 1.2 8 C7.5 7.5, 8 4.8, 8 1.2 Z" /></svg>`,
+  lock: `<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="7" width="9" height="7" rx="1.5" /><path d="M5.5 7 V4.5 C5.5 3.1, 6.6 2, 8 2 C9.4 2, 10.5 3.1, 10.5 4.5 V7" /><circle cx="8" cy="10.5" r="0.8" fill="currentColor" stroke="none" /></svg>`,
+  edit: `<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.5 2.5 L13.5 4.5 L4.5 13.5 L2 14 L2.5 11.5 Z" /><path d="M9.8 4.2 L11.8 6.2" /></svg>`,
+  close: `<svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><line x1="3.5" y1="3.5" x2="12.5" y2="12.5" /><line x1="12.5" y1="3.5" x2="3.5" y2="12.5" /></svg>`,
+  check: `<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5 L6.5 11.5 L12.5 4.5" /></svg>`,
+  dragHandle: `<svg viewBox="0 0 16 16" width="10" height="14" fill="currentColor" aria-hidden="true"><circle cx="5" cy="3.5" r="1.2" /><circle cx="11" cy="3.5" r="1.2" /><circle cx="5" cy="8" r="1.2" /><circle cx="11" cy="8" r="1.2" /><circle cx="5" cy="12.5" r="1.2" /><circle cx="11" cy="12.5" r="1.2" /></svg>`,
+  eye: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 8 C3.5 4.5, 12.5 4.5, 14.5 8 C12.5 11.5, 3.5 11.5, 1.5 8 Z" /><circle cx="8" cy="8" r="2.2" /></svg>`,
+  eyeOff: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2 L14 14" /><path d="M6.2 6.3 A2.2 2.2 0 0 0 9.7 9.8" /><path d="M4.5 4.8 C2.8 5.8, 1.8 7.2, 1.5 8 C3.5 11.5, 12.5 11.5, 14.5 8 C14.1 7.3, 13.3 6.3, 12.2 5.5" /><path d="M7 3.6 C7.3 3.5, 7.7 3.5, 8 3.5 C12.5 3.5, 14.5 8, 14.5 8" /></svg>`,
+  warning: `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2 L1.5 13.5 L14.5 13.5 Z" /><line x1="8" y1="6" x2="8" y2="9.5" /><circle cx="8" cy="11.5" r="0.6" fill="currentColor" stroke="none" /></svg>`,
+  tool: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.8 2.2 C9.2 1.6, 8.2 1.4, 7.5 1.8 L6.2 3.1 L8.9 5.8 L10.2 4.5 C10.6 3.8, 10.4 2.8, 9.8 2.2 Z" /><path d="M8.2 6.5 L3.2 11.5 C2.8 11.9, 2.5 12.6, 2.7 13.2 C2.9 13.5, 3.2 13.8, 3.5 14 C4.1 14.2, 4.8 13.9, 5.2 13.5 L10.2 8.5 Z" /></svg>`,
+};
+
 window.addEventListener("DOMContentLoaded", () => {
   const appContainer = document.getElementById("app-container");
   const searchInputWrapper = document.getElementById("search-input-wrapper");
@@ -39,6 +56,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const agentThinkingCard = document.getElementById("agent-thinking-card");
   const thinkingDuration = document.getElementById("thinking-duration");
   const thinkingTextStream = document.getElementById("thinking-text-stream");
+  const thinkingBody = document.getElementById("thinking-body");
   const toolCallsContainer = document.getElementById("tool-calls-container");
   const flowResponseContent = document.getElementById("flow-response-content");
   const flowModelTag = document.getElementById("flow-model-tag");
@@ -263,7 +281,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const contextWin = model.contextWindow
       ? `${(model.contextWindow / 1000).toFixed(0)}k context`
       : "";
-    const reasoningText = model.reasoning ? "支持深度推理 ✦" : "标准对话";
+    const reasoningText = model.reasoning ? "支持深度推理 (Reasoning)" : "标准对话";
 
     if (currentModelProvider) currentModelProvider.textContent = provider.toUpperCase();
     if (currentModelName) currentModelName.textContent = name;
@@ -309,15 +327,15 @@ window.addEventListener("DOMContentLoaded", () => {
         ? `${(m.contextWindow / 1000).toFixed(0)}k context`
         : "";
       const reasoningTag = m.reasoning
-        ? `<span class="flat-badge" style="color: #f59e0b; border-color: #f59e0b;">✦ 思考模型</span>`
+        ? `<span class="flat-badge flat-badge-reasoning" style="display: inline-flex; align-items: center; gap: 4px;"><span class="badge-icon">${ICONS.sparkle}</span> 思考模型</span>`
         : "";
       const customTag = m.isCustom
-        ? `<span class="flat-badge" style="color: #6366f1; border-color: #6366f1;">自定义端点</span>`
+        ? `<span class="flat-badge flat-badge-custom">自定义端点</span>`
         : "";
 
       item.innerHTML = `
         <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
-          <span class="drag-handle" title="按住鼠标拖动排序">⋮⋮</span>
+          <span class="drag-handle" title="按住鼠标拖动排序">${ICONS.dragHandle}</span>
           <div class="model-item-info">
             <div class="model-item-header">
               <span class="flat-badge">${escapeHtml(m.provider?.toUpperCase() || "OTHER")}</span>
@@ -335,10 +353,10 @@ window.addEventListener("DOMContentLoaded", () => {
         <div class="model-item-actions">
           ${
             isActive
-              ? `<span class="flat-badge" style="background-color: #10b981; color: #ffffff; border: none;">使用中</span>
-                 <button type="button" class="flat-btn flat-btn-secondary mini btn-remove-model" disabled style="opacity: 0.35; cursor: not-allowed;" title="当前使用中的模型禁止删除">🔒 锁定</button>`
+              ? `<span class="flat-badge flat-badge-active">使用中</span>
+                 <button type="button" class="flat-btn flat-btn-secondary mini btn-remove-model" disabled style="opacity: 0.35; cursor: not-allowed; display: inline-flex; align-items: center; gap: 4px;" title="当前使用中的模型禁止删除"><span class="btn-icon">${ICONS.lock}</span> 锁定</button>`
               : `<button type="button" class="flat-btn flat-btn-secondary mini btn-select-model">选用</button>
-                 <button type="button" class="flat-btn flat-btn-secondary mini btn-remove-model" title="从列表移除">✕</button>`
+                 <button type="button" class="flat-btn flat-btn-secondary mini btn-remove-model" title="从列表移除" aria-label="从列表移除" style="display: inline-flex; align-items: center; justify-content: center; padding: 4px 6px;">${ICONS.close}</button>`
           }
         </div>
       `;
@@ -560,7 +578,7 @@ window.addEventListener("DOMContentLoaded", () => {
           ? `${(m.context_window / 1000).toFixed(0)}k context`
           : "";
         const reasoningTag = m.reasoning
-          ? `<span class="flat-badge" style="color: #f59e0b; border-color: #f59e0b;">✦ 思考</span>`
+          ? `<span class="flat-badge flat-badge-reasoning" style="display: inline-flex; align-items: center; gap: 4px;"><span class="badge-icon">${ICONS.sparkle}</span> 思考</span>`
           : "";
 
         chip.innerHTML = `
@@ -574,8 +592,8 @@ window.addEventListener("DOMContentLoaded", () => {
               ${contextWin ? `<span>· ${contextWin}</span>` : ""}
             </div>
           </div>
-          <button type="button" class="flat-btn ${isInWhitelist ? "flat-btn-secondary" : "flat-btn-primary"} mini btn-add-official-model" ${isInWhitelist ? "disabled" : ""}>
-            ${isInWhitelist ? "✓ 已添加" : "+ 添加到当前列表"}
+          <button type="button" class="flat-btn ${isInWhitelist ? "flat-btn-secondary" : "flat-btn-primary"} mini btn-add-official-model" ${isInWhitelist ? "disabled" : ""} style="display: inline-flex; align-items: center; gap: 4px;">
+            ${isInWhitelist ? `<span class="btn-icon">${ICONS.check}</span> 已添加` : "+ 添加到当前列表"}
           </button>
         `;
 
@@ -591,7 +609,7 @@ window.addEventListener("DOMContentLoaded", () => {
               reasoning: m.reasoning,
               isCustom: false,
             });
-            addBtn.textContent = "✓ 已添加";
+            addBtn.innerHTML = `<span class="btn-icon">${ICONS.check}</span> 已添加`;
             addBtn.className = "flat-btn flat-btn-secondary mini";
             addBtn.disabled = true;
             renderWhitelistModels(piClient.currentModel);
@@ -641,7 +659,7 @@ window.addEventListener("DOMContentLoaded", () => {
     btnToggleKeyVisibility.addEventListener("click", () => {
       const isPwd = officialApiKeyInput.type === "password";
       officialApiKeyInput.type = isPwd ? "text" : "password";
-      btnToggleKeyVisibility.textContent = isPwd ? "🙈" : "👁";
+      btnToggleKeyVisibility.innerHTML = isPwd ? ICONS.eye : ICONS.eyeOff;
     });
   }
 
@@ -716,7 +734,7 @@ window.addEventListener("DOMContentLoaded", () => {
               <span class="provider-url-meta" title="${escapeHtml(provData.baseUrl || "")}">URL: ${escapeHtml(provData.baseUrl || "")}</span>
             </div>
             <div class="provider-card-actions">
-              <button type="button" class="flat-btn flat-btn-secondary mini btn-edit-provider" title="修改运营商接口协议、Base URL、Key 与兼容性配置">✏️ 修改配置</button>
+              <button type="button" class="flat-btn flat-btn-secondary mini btn-edit-provider" title="修改运营商接口协议、Base URL、Key 与兼容性配置" style="display: inline-flex; align-items: center; gap: 4px;"><span class="btn-icon">${ICONS.edit}</span> 修改配置</button>
               <button type="button" class="flat-btn flat-btn-primary mini btn-toggle-add-model">+ 新增模型</button>
               <button type="button" class="flat-btn flat-btn-secondary mini btn-delete-provider" style="color: #ef4444;" title="删除此运营商及所有模型">删除运营商</button>
             </div>
@@ -725,7 +743,7 @@ window.addEventListener("DOMContentLoaded", () => {
           <!-- 折叠修改运营商配置表单 -->
           <div class="inline-edit-provider-box hidden" id="inline-edit-prov-${pKey}">
             <div style="font-size: 12px; font-weight: 600; color: var(--ink-primary); display: flex; align-items: center; justify-content: space-between;">
-              <span>✏️ 修改运营商配置 [${escapeHtml(pKey.toUpperCase())}]</span>
+              <span style="display: inline-flex; align-items: center; gap: 4px;"><span class="header-icon">${ICONS.edit}</span> 修改运营商配置 [${escapeHtml(pKey.toUpperCase())}]</span>
               <span style="font-size: 11px; color: var(--ink-muted); font-weight: normal;">修改后自动热加载并写入 ~/.pi/agent/models.json</span>
             </div>
             <div class="form-grid-2">
@@ -982,7 +1000,7 @@ window.addEventListener("DOMContentLoaded", () => {
               ? `${(m.contextWindow / 1000).toFixed(0)}k context`
               : "";
             const reasoningTag = m.reasoning
-              ? `<span class="flat-badge" style="color: #f59e0b; border-color: #f59e0b;">✦ 思考</span>`
+              ? `<span class="flat-badge flat-badge-reasoning" style="display: inline-flex; align-items: center; gap: 4px;"><span class="badge-icon">${ICONS.sparkle}</span> 思考</span>`
               : "";
 
             chip.innerHTML = `
@@ -998,11 +1016,11 @@ window.addEventListener("DOMContentLoaded", () => {
                 </div>
               </div>
               <div style="display: flex; gap: 6px; align-items: center;">
-                <button type="button" class="flat-btn flat-btn-secondary mini btn-edit-custom-model" title="修改模型参数">✏️ 编辑</button>
-                <button type="button" class="flat-btn ${isInWhitelist ? "flat-btn-secondary" : "flat-btn-primary"} mini btn-add-custom-whitelist" ${isInWhitelist ? "disabled" : ""}>
-                  ${isInWhitelist ? "✓ 已添加" : "+ 添加到当前列表"}
+                <button type="button" class="flat-btn flat-btn-secondary mini btn-edit-custom-model" title="修改模型参数" style="display: inline-flex; align-items: center; gap: 4px;"><span class="btn-icon">${ICONS.edit}</span> 编辑</button>
+                <button type="button" class="flat-btn ${isInWhitelist ? "flat-btn-secondary" : "flat-btn-primary"} mini btn-add-custom-whitelist" ${isInWhitelist ? "disabled" : ""} style="display: inline-flex; align-items: center; gap: 4px;">
+                  ${isInWhitelist ? `<span class="btn-icon">${ICONS.check}</span> 已添加` : "+ 添加到当前列表"}
                 </button>
-                <button type="button" class="flat-btn flat-btn-secondary mini btn-delete-custom-model" style="color: #ef4444;" title="删除模型">删除</button>
+                <button type="button" class="flat-btn flat-btn-danger mini btn-delete-custom-model" title="删除模型">删除</button>
               </div>
             `;
 
@@ -1010,7 +1028,7 @@ window.addEventListener("DOMContentLoaded", () => {
             const modelEditBox = document.createElement("div");
             modelEditBox.className = "inline-add-model-box hidden";
             modelEditBox.innerHTML = `
-              <div style="font-size: 11px; font-weight: 600; color: var(--ink-primary);">✏️ 编辑模型 [${escapeHtml(m.id)}]</div>
+              <div style="font-size: 11px; font-weight: 600; color: var(--ink-primary); display: flex; align-items: center; gap: 4px;"><span class="header-icon">${ICONS.edit}</span> 编辑模型 [${escapeHtml(m.id)}]</div>
               <div class="form-grid-2">
                 <div class="form-field">
                   <label class="form-label">模型标识 (Model ID)</label>
@@ -1121,7 +1139,7 @@ window.addEventListener("DOMContentLoaded", () => {
                   reasoning: !!m.reasoning,
                   isCustom: true,
                 });
-                addBtn.textContent = "✓ 已添加";
+                addBtn.innerHTML = `<span class="btn-icon">${ICONS.check}</span> 已添加`;
                 addBtn.className = "flat-btn flat-btn-secondary mini";
                 addBtn.disabled = true;
                 renderWhitelistModels(piClient.currentModel);
@@ -1400,11 +1418,34 @@ window.addEventListener("DOMContentLoaded", () => {
   let currentResponseText = "";
   let lastUserQuery = "";
   let hasReceivedDelta = false;
+  let hasAutoCollapsedThinking = false;
   const renderedToolCards = new Map();
+
+  const collapseThinkingCard = () => {
+    if (agentThinkingCard && agentThinkingCard.classList.contains("open")) {
+      agentThinkingCard.classList.remove("open");
+      if (thinkingToggleBtn) thinkingToggleBtn.setAttribute("aria-expanded", "false");
+    }
+  };
+
+  const expandThinkingCard = () => {
+    if (agentThinkingCard && !agentThinkingCard.classList.contains("open")) {
+      agentThinkingCard.classList.add("open");
+      if (thinkingToggleBtn) thinkingToggleBtn.setAttribute("aria-expanded", "true");
+    }
+  };
+
+  const autoCollapseThinkingOnNextPhase = () => {
+    if (!hasAutoCollapsedThinking) {
+      hasAutoCollapsedThinking = true;
+      collapseThinkingCard();
+    }
+  };
 
   const resetStreamState = (query) => {
     lastUserQuery = query;
     hasReceivedDelta = false;
+    hasAutoCollapsedThinking = false;
     if (flowUserText) flowUserText.textContent = query;
     currentThinkingText = "";
     currentResponseText = "";
@@ -1420,10 +1461,7 @@ window.addEventListener("DOMContentLoaded", () => {
       flowResponseContent.innerHTML = `<span class="streaming-cursor"></span>`;
     }
 
-    if (agentThinkingCard) {
-      agentThinkingCard.classList.add("open");
-      if (thinkingToggleBtn) thinkingToggleBtn.setAttribute("aria-expanded", "true");
-    }
+    expandThinkingCard();
 
     thinkingStartTime = Date.now();
     if (thinkingTimerInterval) clearInterval(thinkingTimerInterval);
@@ -1465,7 +1503,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const cardHtml = `
       <div class="sketch-error-card">
         <div class="error-header">
-          <span class="error-icon">⚠️</span>
+          <span class="error-icon" aria-hidden="true">${ICONS.warning}</span>
           <span class="error-title">模型调用失败 [${escapeHtml(activeModelName)}]</span>
         </div>
         <div class="error-message-text">${escapeHtml(errMsg)}</div>
@@ -1516,11 +1554,19 @@ window.addEventListener("DOMContentLoaded", () => {
   };
 
   // 绑定 PiClient 流式事件
+  piClient.addEventListener("thinking-start", () => {
+    hasReceivedDelta = true;
+    expandThinkingCard();
+  });
+
   piClient.addEventListener("thinking-delta", (e) => {
     hasReceivedDelta = true;
     currentThinkingText += e.detail;
     if (thinkingTextStream) {
       thinkingTextStream.textContent = currentThinkingText;
+    }
+    if (thinkingBody) {
+      thinkingBody.scrollTop = thinkingBody.scrollHeight;
     }
     if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
   });
@@ -1530,10 +1576,17 @@ window.addEventListener("DOMContentLoaded", () => {
       const elapsed = ((Date.now() - thinkingStartTime) / 1000).toFixed(1);
       thinkingDuration.textContent = `已思考 ${elapsed} 秒`;
     }
+    autoCollapseThinkingOnNextPhase();
+  });
+
+  piClient.addEventListener("text-start", () => {
+    hasReceivedDelta = true;
+    autoCollapseThinkingOnNextPhase();
   });
 
   piClient.addEventListener("text-delta", (e) => {
     hasReceivedDelta = true;
+    autoCollapseThinkingOnNextPhase();
     currentResponseText += e.detail;
     if (flowResponseContent) {
       flowResponseContent.innerHTML = renderMarkdown(currentResponseText) + `<span class="streaming-cursor"></span>`;
@@ -1553,7 +1606,7 @@ window.addEventListener("DOMContentLoaded", () => {
             item.tools.forEach((t) => {
               activeToolSkillMappings.set(t.toLowerCase(), {
                 skill: item.skill_name,
-                label: `⚡ 已激活运行态技能：${item.skill_name} (${item.skill_name === "windows-bash-compatibility" ? "Windows Shell 兼容规范" : "运行态约束"})`,
+                label: `已激活运行态技能：${item.skill_name} (${item.skill_name === "windows-bash-compatibility" ? "Windows Shell 兼容规范" : "运行态约束"})`,
               });
             });
           }
@@ -1562,10 +1615,10 @@ window.addEventListener("DOMContentLoaded", () => {
     } catch (err) {
       console.warn("[Main] Failed to load skill mappings from RULES.md:", err);
       // 安全降级
-      activeToolSkillMappings.set("bash", { skill: "windows-bash-compatibility", label: "⚡ 已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)" });
-      activeToolSkillMappings.set("powershell", { skill: "windows-bash-compatibility", label: "⚡ 已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)" });
-      activeToolSkillMappings.set("terminal", { skill: "windows-bash-compatibility", label: "⚡ 已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)" });
-      activeToolSkillMappings.set("cmd", { skill: "windows-bash-compatibility", label: "⚡ 已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)" });
+      activeToolSkillMappings.set("bash", { skill: "windows-bash-compatibility", label: "已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)" });
+      activeToolSkillMappings.set("powershell", { skill: "windows-bash-compatibility", label: "已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)" });
+      activeToolSkillMappings.set("terminal", { skill: "windows-bash-compatibility", label: "已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)" });
+      activeToolSkillMappings.set("cmd", { skill: "windows-bash-compatibility", label: "已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)" });
     }
   };
 
@@ -1574,7 +1627,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const nameLower = rawToolName.toString().toLowerCase().trim();
     const mapped = activeToolSkillMappings.get(nameLower);
     if (mapped) {
-      flowInjectionText.textContent = mapped.label || `⚡ 已激活运行态技能：${mapped.skill}`;
+      flowInjectionText.textContent = mapped.label || `已激活运行态技能：${mapped.skill}`;
       flowInjectionCapsule.classList.remove("hidden");
       if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
     }
@@ -1583,6 +1636,7 @@ window.addEventListener("DOMContentLoaded", () => {
   loadInnerSkillMappings();
 
   piClient.addEventListener("toolcall-delta-start", (e) => {
+    autoCollapseThinkingOnNextPhase();
     const evt = e.detail;
     if (evt?.toolCall?.name) {
       showInnerSkillCapsuleForTool(evt.toolCall.name);
@@ -1591,6 +1645,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   piClient.addEventListener("tool-start", (e) => {
     hasReceivedDelta = true;
+    autoCollapseThinkingOnNextPhase();
     const data = e.detail;
     const toolCallId = data.toolCallId;
     const toolName = data.toolName || "tool";
@@ -1607,7 +1662,7 @@ window.addEventListener("DOMContentLoaded", () => {
     card.innerHTML = `
       <div class="tool-header">
         <div class="tool-title-group">
-          <span class="tool-icon">⚙</span>
+          <span class="tool-icon" aria-hidden="true">${ICONS.tool}</span>
           <span class="tool-name">${escapeHtml(toolName)}</span>
         </div>
         <span class="tool-status-badge">running</span>

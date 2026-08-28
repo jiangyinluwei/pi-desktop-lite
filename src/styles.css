@@ -550,6 +550,27 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   padding-top: 8px;
   border-top: 1px dashed var(--sketch-border-subtle);
   display: none;
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sketch-border-subtle) transparent;
+}
+
+.thinking-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.thinking-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.thinking-body::-webkit-scrollbar-thumb {
+  background: var(--sketch-border-subtle);
+  border-radius: 2px;
+}
+
+.thinking-body::-webkit-scrollbar-thumb:hover {
+  background: var(--sketch-border);
 }
 
 .agent-thinking-card.open .thinking-body {
@@ -578,9 +599,17 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 .step-item .step-marker {
-  font-family: ui-monospace, monospace;
-  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
   color: var(--ink-muted);
+  flex-shrink: 0;
+}
+
+.step-item .step-marker svg {
+  display: block;
 }
 
 .step-item.done .step-marker {
@@ -589,7 +618,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 
 .step-item.in-progress .step-marker {
   animation: spinMarker 3s linear infinite;
-  display: inline-block;
+  color: var(--ink-primary);
 }
 
 /* AI Agent 回复卡片（横平竖直边框） */
@@ -600,24 +629,6 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   box-shadow: 1px 2px 0px rgba(0, 0, 0, 0.04);
   padding: 16px 20px;
   animation: sketchFadeIn 0.3s ease-out;
-}
-
-.response-header {
-  display: flex;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.agent-badge {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, serif;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ink-primary);
-  background: var(--sketch-tag-bg);
-  border: 1px solid var(--sketch-tag-border);
-  padding: 2px 8px;
-  border-radius: 4px;
-  letter-spacing: -0.01em;
 }
 
 .response-content {
@@ -651,6 +662,21 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   border-radius: 0 6px 6px 0;
   font-size: 12.5px;
   color: var(--ink-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.callout-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-primary);
+  flex-shrink: 0;
+}
+
+.callout-icon svg {
+  display: block;
 }
 
 /* ==========================================================================
@@ -1130,10 +1156,10 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   position: absolute;
   top: 5px;
   right: 5px;
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background-color: #ef4444;
+  background-color: #9b3737;
   opacity: 0;
   transform: scale(0);
   transition: opacity 0.2s ease, transform 0.2s ease;
@@ -1170,20 +1196,20 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   width: 100%;
   height: 100%;
   flex: 1;
-  background-color: var(--bg-base);
+  background: transparent;
   animation: sketchFadeIn 0.2s ease-out;
   overflow: hidden;
 }
 
 /* 顶部醒目导航与右键回退提示条 */
 .settings-page-topbar {
-  height: 52px;
-  padding: 0 24px;
+  height: 48px;
+  padding: 0 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--sketch-border-subtle);
-  background-color: var(--sketch-box-bg);
+  background: transparent;
   flex-shrink: 0;
   gap: 16px;
 }
@@ -1191,17 +1217,27 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .topbar-left {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
 }
 
 .btn-back-main {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 12px;
+  padding: 4px 10px;
   font-size: 12px;
   font-weight: 500;
-  border-radius: 6px;
+  border-radius: 4px;
+  border: 1px solid var(--sketch-border-subtle);
+  background: transparent;
+  color: var(--ink-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-back-main:hover {
+  background: var(--sketch-tag-bg);
+  border-color: var(--sketch-border);
 }
 
 .topbar-title-group {
@@ -1211,7 +1247,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 .topbar-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--ink-primary);
   letter-spacing: -0.01em;
@@ -1226,38 +1262,31 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .topbar-hint-banner {
   display: flex;
   align-items: center;
-  gap: 8px;
-  background-color: var(--sketch-tag-bg);
+  gap: 6px;
+  background: transparent;
   border: 1px solid var(--sketch-border-subtle);
-  border-radius: 6px;
-  padding: 5px 12px;
-  font-size: 12px;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11.5px;
   color: var(--ink-muted);
   white-space: nowrap;
 }
 
+.hint-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-primary);
+  flex-shrink: 0;
+}
+
+.hint-icon svg {
+  display: block;
+}
+
 .topbar-hint-banner strong {
   color: var(--ink-primary);
-}
-
-.hint-pulse-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background-color: #10b981;
-  display: inline-block;
-  animation: pulseDot 2s infinite;
-}
-
-@keyframes pulseDot {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.4;
-    transform: scale(0.8);
-  }
+  font-weight: 600;
 }
 
 /* 设置页面主体：左侧 Tab 导航 + 右侧面板内容 */
@@ -1265,24 +1294,25 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   flex: 1;
   display: flex;
   overflow: hidden;
+  background: transparent;
 }
 
 /* 左侧 Tab 列表 */
 .settings-tabs-nav {
-  width: 190px;
-  min-width: 190px;
-  background-color: var(--sketch-tag-bg);
+  width: 176px;
+  min-width: 176px;
+  background: transparent;
   border-right: 1px solid var(--sketch-border-subtle);
-  padding: 16px 10px;
+  padding: 14px 8px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   overflow-y: auto;
 }
 
 .settings-tab-btn {
-  padding: 9px 12px;
-  border-radius: 6px;
+  padding: 8px 10px;
+  border-radius: 4px;
   border: 1px solid transparent;
   background: transparent;
   font-size: 12px;
@@ -1299,20 +1329,19 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 
 .settings-tab-btn .tab-icon {
   flex-shrink: 0;
-  opacity: 0.8;
+  opacity: 0.75;
 }
 
 .settings-tab-btn:hover {
   color: var(--ink-primary);
-  background-color: rgba(0, 0, 0, 0.04);
+  background: var(--sketch-tag-bg);
 }
 
 .settings-tab-btn.active {
   color: var(--ink-primary);
-  background-color: var(--sketch-box-bg);
+  background: var(--sketch-tag-bg);
   border-color: var(--sketch-border-subtle);
   font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .settings-tab-btn.active .tab-icon {
@@ -1323,16 +1352,16 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .settings-tab-content {
   flex: 1;
   overflow-y: auto;
-  padding: 24px 32px;
+  padding: 20px 28px;
   display: flex;
   flex-direction: column;
-  background-color: var(--sketch-box-bg);
+  background: transparent;
 }
 
 .tab-pane {
   display: none;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
 }
 
 .tab-pane.active {
@@ -1353,24 +1382,24 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 .pane-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--ink-primary);
   margin: 0;
 }
 
 .pane-desc {
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--ink-muted);
   line-height: 1.45;
-  margin: 4px 0 0 0;
+  margin: 2px 0 0 0;
 }
 
 /* 表单与分组 */
 .settings-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .group-label {
@@ -1386,7 +1415,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 .form-label .req {
-  color: #ef4444;
+  color: #9b3737;
 }
 
 .form-hint {
@@ -1398,7 +1427,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .theme-segmented-control {
   display: flex;
   gap: 8px;
-  max-width: 440px;
+  max-width: 400px;
 }
 
 .theme-option {
@@ -1407,10 +1436,10 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 9px 12px;
+  padding: 7px 10px;
   border: 1px solid var(--sketch-border-subtle);
-  border-radius: 6px;
-  background-color: var(--sketch-tag-bg);
+  border-radius: 4px;
+  background: transparent;
   color: var(--ink-muted);
   font-size: 12px;
   font-weight: 500;
@@ -1418,57 +1447,76 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   transition: all 0.15s ease;
 }
 
+.theme-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  transition: color 0.15s ease;
+}
+
+.theme-icon svg {
+  display: block;
+}
+
 .theme-option:hover {
   border-color: var(--sketch-border);
   color: var(--ink-primary);
 }
 
+.theme-option:hover .theme-icon {
+  color: var(--ink-primary);
+}
+
 .theme-option.active {
-  background-color: var(--sketch-box-bg);
-  border-color: var(--ink-primary);
+  background: transparent;
+  border: 1.5px solid var(--ink-primary);
   color: var(--ink-primary);
   font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.theme-option.active .theme-icon {
+  color: var(--ink-primary);
 }
 
 /* 横平竖直标准输入控件 */
 .flat-input,
 .flat-select {
   width: 100%;
-  padding: 7px 11px;
+  padding: 6px 10px;
   border: 1px solid var(--sketch-border-subtle);
-  border-radius: 6px;
-  background-color: var(--sketch-box-bg);
+  border-radius: 4px;
+  background: transparent;
   color: var(--ink-primary);
   font-size: 12px;
   font-family: inherit;
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease;
 }
 
 .flat-input:focus,
 .flat-select:focus {
   border-color: var(--ink-primary);
-  box-shadow: 0 0 0 2px rgba(120, 113, 106, 0.15);
 }
 
 .flat-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 7px 14px;
-  border-radius: 6px;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   border: 1px solid transparent;
   transition: all 0.15s ease;
   white-space: nowrap;
+  background: transparent;
 }
 
 .flat-btn.mini {
-  padding: 4px 8px;
+  padding: 3px 7px;
   font-size: 11px;
 }
 
@@ -1479,31 +1527,76 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 .flat-btn-primary:hover {
-  opacity: 0.9;
+  opacity: 0.88;
 }
 
 .flat-btn-secondary {
-  background-color: var(--sketch-tag-bg);
+  background: transparent;
   color: var(--ink-primary);
   border-color: var(--sketch-border-subtle);
 }
 
 .flat-btn-secondary:hover {
-  background-color: var(--sketch-tag-hover-bg);
+  background: var(--sketch-tag-bg);
   border-color: var(--sketch-border);
+}
+
+.flat-btn-danger {
+  background: transparent;
+  color: #9b3737;
+  border-color: transparent;
+}
+
+.flat-btn-danger:hover {
+  color: #842e2e;
+  background: var(--sketch-tag-bg);
+  border-color: rgba(155, 55, 55, 0.3);
+}
+
+@media (prefers-color-scheme: dark) {
+  .flat-btn-danger {
+    color: #c25858;
+  }
+  .flat-btn-danger:hover {
+    color: #d16b6b;
+    border-color: rgba(194, 88, 88, 0.35);
+  }
 }
 
 .flat-badge {
   display: inline-block;
-  padding: 2px 6px;
+  padding: 1px 5px;
   font-size: 10px;
   font-weight: 600;
   font-family: monospace;
-  border-radius: 4px;
+  border-radius: 3px;
   border: 1px solid var(--sketch-border-subtle);
-  background-color: var(--sketch-box-bg);
-  color: var(--ink-primary);
+  background: transparent;
+  color: var(--ink-muted);
   text-transform: uppercase;
+}
+
+.flat-badge.flat-badge-reasoning {
+  color: #8c6d37;
+  border-color: rgba(140, 109, 55, 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+  .flat-badge.flat-badge-reasoning {
+    color: #c9a05b;
+    border-color: rgba(201, 160, 91, 0.35);
+  }
+}
+
+.flat-badge.flat-badge-custom {
+  color: var(--ink-muted);
+  border-color: var(--sketch-border-subtle);
+}
+
+.flat-badge.flat-badge-active {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  font-weight: 600;
 }
 
 .flat-link {
@@ -1517,27 +1610,29 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   text-decoration: underline;
 }
 
-/* 当前激活模型预览卡片 */
+/* 当前激活模型预览卡片 (非多层嵌套，使用正常线条边框包裹) */
 .active-model-card {
-  padding: 12px 16px;
+  padding: 11px 14px;
   border: 1px solid var(--sketch-border);
   border-radius: 6px;
-  background-color: var(--sketch-tag-bg);
+  background: transparent;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
   position: relative;
 }
 
 .active-card-tag {
   position: absolute;
-  right: 14px;
-  top: 12px;
+  right: 12px;
+  top: 10px;
   font-size: 10px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background-color: #10b981;
-  color: #ffffff;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--sketch-border-subtle);
+  background: transparent;
+  color: var(--ink-primary);
+  font-family: monospace;
   font-weight: 500;
 }
 
@@ -1548,7 +1643,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 .active-card-title {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--ink-primary);
 }
@@ -1563,22 +1658,22 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .models-list-container {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   max-height: 380px;
   overflow-y: auto;
   padding-right: 2px;
 }
 
 .whitelist-model-item {
-  padding: 10px 14px;
+  padding: 8px 12px;
   border: 1px solid var(--sketch-border-subtle);
   border-radius: 6px;
-  background-color: var(--sketch-box-bg);
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
   position: relative;
   user-select: none;
 }
@@ -1589,17 +1684,16 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 
 .whitelist-model-item.dragging {
   opacity: 0.35;
-  transform: scale(0.98);
-  border: 1px dashed #6366f1;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+  border: 1px dashed var(--sketch-border);
+  background: transparent;
 }
 
 .whitelist-model-item.drag-over-top {
-  border-top: 2px solid #6366f1;
+  border-top: 2px solid var(--sketch-border);
 }
 
 .whitelist-model-item.drag-over-bottom {
-  border-bottom: 2px solid #6366f1;
+  border-bottom: 2px solid var(--sketch-border);
 }
 
 .drag-handle {
@@ -1608,9 +1702,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   opacity: 0.5;
   display: flex;
   align-items: center;
-  padding: 2px 4px;
-  font-size: 14px;
-  letter-spacing: -2px;
+  padding: 2px;
   transition: opacity 0.15s ease, color 0.15s ease;
 }
 
@@ -1621,12 +1713,12 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 
 .whitelist-model-item:hover {
   border-color: var(--sketch-border);
-  background-color: var(--sketch-tag-bg);
+  background: transparent;
 }
 
 .whitelist-model-item.active {
-  border-color: #10b981;
-  background-color: rgba(16, 185, 129, 0.05);
+  border-color: var(--sketch-border);
+  background: var(--sketch-tag-bg);
 }
 
 .model-item-info {
@@ -1643,7 +1735,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 .model-item-name {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--ink-primary);
 }
@@ -1663,15 +1755,15 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   gap: 6px;
 }
 
-/* 官方通道卡片 */
+/* 官方通道卡片 (单层线框包裹，内部透明) */
 .provider-config-box {
-  padding: 14px;
+  padding: 12px 14px;
   border: 1px solid var(--sketch-border-subtle);
   border-radius: 6px;
-  background-color: var(--sketch-tag-bg);
+  background: transparent;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .provider-header-row {
@@ -1718,7 +1810,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .official-models-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .section-sub-header {
@@ -1728,7 +1820,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 .sub-title {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--ink-primary);
   margin: 0;
@@ -1742,48 +1834,54 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .official-models-grid {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
   max-height: 260px;
   overflow-y: auto;
 }
 
 .official-model-chip {
-  padding: 8px 12px;
+  padding: 7px 10px;
   border: 1px solid var(--sketch-border-subtle);
   border-radius: 6px;
-  background-color: var(--sketch-box-bg);
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   font-size: 12px;
+  transition: border-color 0.15s ease;
+}
+
+.official-model-chip:hover {
+  border-color: var(--sketch-border);
 }
 
 /* ==========================================================================
    两步式自定义通道样式 (Step 1: Provider, Step 2: Models under Provider)
    ========================================================================== */
 .custom-step-card {
-  background-color: var(--sketch-tag-bg);
+  background: transparent;
   border: 1px solid var(--sketch-border-subtle);
-  border-radius: 8px;
-  padding: 16px 20px;
+  border-radius: 6px;
+  padding: 14px 16px;
 }
 
 .step-card-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .step-badge {
-  font-size: 10px;
-  font-weight: 700;
-  background-color: #6366f1;
-  color: #ffffff;
-  padding: 2px 7px;
-  border-radius: 4px;
-  letter-spacing: 0.5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  font-family: monospace;
+  background: transparent;
+  color: var(--ink-muted);
+  padding: 1px 6px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 3px;
 }
 
 .step-title {
@@ -1796,20 +1894,20 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .custom-provider-form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .custom-providers-container {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .custom-provider-card {
-  background-color: var(--sketch-box-bg);
+  background: transparent;
   border: 1px solid var(--sketch-border-subtle);
   border-radius: 6px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1855,10 +1953,10 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 /* 运营商卡片内部模型列表 */
 .provider-models-wrapper {
   border-top: 1px dashed var(--sketch-border-subtle);
-  padding-top: 10px;
+  padding-top: 8px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .provider-models-title {
@@ -1873,20 +1971,20 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .provider-models-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
-/* 运营商内部折叠/新增模型与编辑运营商表单 */
+/* 运营商内部折叠/新增模型与编辑运营商表单 (虚线线框，透明背景) */
 .inline-add-model-box,
 .inline-edit-provider-box {
-  background-color: var(--sketch-tag-bg);
-  border: 1px solid var(--sketch-border-subtle);
+  background: transparent;
+  border: 1px dashed var(--sketch-border-subtle);
   border-radius: 6px;
-  padding: 12px 14px;
-  margin-top: 8px;
+  padding: 10px 12px;
+  margin-top: 6px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   animation: sketchFadeIn 0.15s ease-out;
 }
 
@@ -1898,13 +1996,13 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .form-grid-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 10px;
 }
 
 .form-grid-3 {
   display: grid;
   grid-template-columns: 1fr 1fr 1.2fr;
-  gap: 12px;
+  gap: 10px;
   align-items: flex-end;
 }
 
@@ -1917,7 +2015,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .checkbox-field {
   display: flex;
   align-items: center;
-  height: 34px;
+  height: 32px;
 }
 
 .checkbox-label {
@@ -1932,33 +2030,33 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .form-actions {
   display: flex;
   justify-content: flex-end;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .existing-custom-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 6px;
+  margin-top: 6px;
 }
 
 .custom-models-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
   max-height: 180px;
   overflow-y: auto;
 }
 
 /* 宿主状态卡片与会话列表 */
 .status-card {
-  padding: 14px 16px;
+  padding: 12px 14px;
   border-radius: 6px;
   border: 1px solid var(--sketch-border-subtle);
-  background-color: var(--sketch-tag-bg);
+  background: transparent;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .status-card-row {
@@ -1974,24 +2072,29 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background-color: var(--ink-muted);
 }
 
 .status-dot.status-ready {
-  background-color: #10b981;
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+  background-color: #52796f;
+}
+
+@media (prefers-color-scheme: dark) {
+  .status-dot.status-ready {
+    background-color: #6b9080;
+  }
 }
 
 .status-dot.status-starting {
-  background-color: #f59e0b;
+  background-color: #8c6d37;
   animation: pulseDot 1.2s infinite;
 }
 
 .status-dot.status-crashed {
-  background-color: #ef4444;
+  background-color: #9b3737;
 }
 
 .status-dot.status-stopped {
@@ -1999,7 +2102,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 .status-text {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
   color: var(--ink-primary);
   text-transform: capitalize;
@@ -2008,7 +2111,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .version-chip {
   font-size: 11px;
   font-family: monospace;
-  padding: 2px 6px;
+  padding: 1px 5px;
   border-radius: 3px;
   border: 1px solid var(--sketch-border-subtle);
   color: var(--ink-muted);
@@ -2021,14 +2124,32 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 
 .update-notice {
   font-size: 12px;
-  padding: 8px 10px;
+  padding: 7px 10px;
   border-radius: 4px;
   border: 1px dashed var(--sketch-border);
-  background-color: var(--sketch-box-bg);
+  background: transparent;
   display: flex;
   align-items: center;
   gap: 6px;
   color: var(--ink-primary);
+}
+
+.update-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #8c6d37;
+  flex-shrink: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .update-icon {
+    color: #c9a05b;
+  }
+}
+
+.update-icon svg {
+  display: block;
 }
 
 .update-notice.hidden {
@@ -2038,7 +2159,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .sessions-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   max-height: 380px;
   overflow-y: auto;
 }
@@ -2052,27 +2173,26 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 .session-item {
-  padding: 10px 12px;
+  padding: 9px 12px;
   border-radius: 6px;
-  border: 1px solid transparent;
-  background-color: var(--sketch-tag-bg);
+  border: 1px solid var(--sketch-border-subtle);
+  background: transparent;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 4px;
   text-align: left;
-  transition: all 0.16s ease;
+  transition: border-color 0.16s ease, background-color 0.16s ease;
 }
 
 .session-item:hover {
-  border-color: var(--sketch-border-subtle);
-  background-color: var(--sketch-tag-hover-bg);
-  box-shadow: 1px 2px 0px rgba(0, 0, 0, 0.04);
+  border-color: var(--sketch-border);
+  background: var(--sketch-tag-bg);
 }
 
 .session-item.active {
   border-color: var(--sketch-border);
-  background-color: var(--sketch-tag-hover-bg);
+  background: var(--sketch-tag-bg);
 }
 
 .session-title-line {
@@ -2083,7 +2203,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 .session-name {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
   color: var(--ink-primary);
   white-space: nowrap;
@@ -2141,8 +2261,14 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 .tool-icon {
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--ink-muted);
+}
+
+.tool-icon svg {
+  display: block;
 }
 
 .tool-name {
@@ -2283,8 +2409,15 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 .flow-model-icon {
-  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
   opacity: 0.85;
+}
+
+.flow-model-icon svg {
+  display: block;
 }
 
 .flow-model-name {
@@ -2328,7 +2461,21 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 .error-icon {
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #dc2626;
+  flex-shrink: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .error-icon {
+    color: #ef4444;
+  }
+}
+
+.error-icon svg {
+  display: block;
 }
 
 .error-message-text {
@@ -2380,4 +2527,24 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .error-btn:active {
   transform: translateY(0) scale(0.96);
 }
+
+/* ==========================================================================
+   通用手绘图元辅助类 (Badge / Button / Header SVG Helpers)
+   ========================================================================== */
+.badge-icon,
+.btn-icon,
+.header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+
+.badge-icon svg,
+.btn-icon svg,
+.header-icon svg,
+.drag-handle svg {
+  display: block;
+}
+
 

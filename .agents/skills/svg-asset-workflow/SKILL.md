@@ -21,12 +21,25 @@ pi-desktop-lite/
         ├── logo.svg           # 程序手绘 Π+ 主徽标
         ├── logo.ico           # 多尺寸 Windows 原生应用图标
         └── svg/
-            ├── ic_logo.svg        # 规范化手绘主徽标源文件
-            ├── ic_import.svg      # 导入图标
-            ├── ic_settings.svg    # 手绘齿轮设置图标
-            ├── ic_search.svg      # 搜索图标
-            ├── ic_clear.svg       # 清空/重置图标
-            └── ic_<name>.svg      # 其他语义化命名的图标
+            ├── ic_logo.svg          # 规范化手绘主徽标源文件
+            ├── ic_bolt.svg          # 手绘折线闪电 (模型/快速/运行态)
+            ├── ic_lightbulb.svg     # 手绘灯泡提示 (Tips/Hints)
+            ├── ic_theme_system.svg  # 手绘跟随系统主题图标
+            ├── ic_theme_light.svg   # 手绘浅色模式暖阳图标
+            ├── ic_theme_dark.svg    # 手绘暗色模式月牙图标
+            ├── ic_eye.svg           # 手绘明眸密码可见图标
+            ├── ic_eye_off.svg       # 手绘斜划线密码隐藏图标
+            ├── ic_lock.svg          # 手绘挂锁锁定图标 (激活模型锁定)
+            ├── ic_edit.svg          # 手绘素描铅笔编辑图标
+            ├── ic_warning.svg       # 手绘圆角警告三角 (错误诊断)
+            ├── ic_tool.svg          # 手绘工具扳手 (运行时工具调用)
+            ├── ic_sparkle.svg       # 手绘思维火花星标 (思考模型/新版)
+            ├── ic_check.svg         # 手绘对勾完成图标 (步骤/已添加)
+            ├── ic_close.svg         # 手绘交叉关闭/移除图标
+            ├── ic_external_link.svg # 手绘右上角折角外链箭头
+            ├── ic_drag_handle.svg   # 手绘 6 点阵拖拽把手
+            ├── ic_import.svg        # 导入图标
+            └── ic_settings.svg      # 手绘齿轮设置图标
 ```
 
 - **命名规范**：

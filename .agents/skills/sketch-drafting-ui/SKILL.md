@@ -171,8 +171,9 @@ description: |
 }
 ```
 
-### 4. 设置与复杂表单界面的现代工程横平竖直规范 (Settings & Form Exception)
-- **设置弹出界面 (Settings Modal)** 与密集数据录入表单**不采用**不规则草图边框，统一采用**横平竖直、现代几何平直边框（标准 4px~8px 圆角与 1px 细边框）**；
+### 4. 设置与复杂表单界面的现代工程横平竖直规范 (Settings & Form Specification)
+- **配色与主界面统一**：设置界面完全继承主界面的纸质微渐变与素描墨水变量，全面禁止使用高饱和鲜艳颜色（如刺眼的亮蓝、高饱和紫、荧光绿、鲜艳大红），功能标识统一使用低饱和度功能色；
+- **非嵌套纯净线框布局**：杜绝多层卡片嵌套（Card-in-card Shading）与冗余胶囊 Tips，外层容器一律采用标准细边框（`1px solid var(--sketch-border-subtle)` / 4px~6px 圆角）包裹，内部所有子项与输入控件统一采用透明背景（`background: transparent`），呈现极简绘图纸工程质感；
 - 保证多选项卡 Tab 导航、API Key 输入、下拉选择及模型参数配置在清晰、高对比度的规整网格中呈现，兼顾工程实用性与现代审美。
 
 ### 5. 灵感格言自适应跑马灯规范 (Input Motto Marquee Specification)
