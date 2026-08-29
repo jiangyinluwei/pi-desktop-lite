@@ -2529,133 +2529,16 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   // --------------------------------------------------------------------------
-  // 方案二：基于硬件 VSync (requestAnimationFrame) 的历史讯息抽屉渐出与渐隐引擎
+  // 纯 CSS 硬件加速过渡：历史讯息抽屉展开/收起
+  // 级联渐出（各行延迟1秒渐出）与移出平滑渐隐（2秒）完全由 GPU 合成器处理，彻底消除闪烁
   // --------------------------------------------------------------------------
-  let drawerRafId = null;
-  let isDrawerHovered = false;
-  const ROW_FADE_IN_DURATION = 1000; // 每行平滑渐出 1000ms (1秒)
-  const FADE_OUT_DURATION = 2000;    // 移出全局平滑渐隐 2000ms (2秒)
-  const MAX_OPACITY = 0.999;         // 保持 0.999 锁定 GPU 合成通道，彻底阻断 1.0 时合成器销毁图层造成的闪烁
-  const MIN_OPACITY = 0.001;         // 保持 0.001 锁定图层驻留，彻底阻断 0 时图层反复申请销毁造成的闪烁
-
-  // 柔和匀速平滑缓动曲线
-  const easeOutQuad = (t) => t * (2 - t);
-
-  const startDrawerFadeIn = () => {
-    if (!messagesExpandedWrap) return;
-    if (drawerRafId) cancelAnimationFrame(drawerRafId);
-
-    const rows = messagesExpandedWrap.querySelectorAll(".messages-expanded-row");
-    if (rows.length === 0) return;
-
-    messagesExpandedWrap.style.visibility = "visible";
-    messagesExpandedWrap.classList.add("expanded");
-    messagesExpandedWrap.style.opacity = String(MAX_OPACITY);
-    messagesExpandedWrap.style.pointerEvents = "auto";
-
-    // 记录各行当前透明度
-    const currentOpacities = Array.from(rows).map((row) => {
-      const val = parseFloat(row.style.opacity);
-      return isNaN(val) ? MIN_OPACITY : Math.max(MIN_OPACITY, Math.min(MAX_OPACITY, val));
-    });
-
-    const startTime = performance.now();
-
-    const animateFadeIn = (now) => {
-      const elapsed = now - startTime;
-      let allDone = true;
-
-      rows.forEach((row, index) => {
-        const rowStart = index * ROW_FADE_IN_DURATION;
-        const rowElapsed = elapsed - rowStart;
-        const startOpacity = currentOpacities[index];
-
-        if (rowElapsed <= 0) {
-          row.style.opacity = String(startOpacity);
-          row.style.pointerEvents = startOpacity > 0.05 ? "auto" : "none";
-          allDone = false;
-        } else if (rowElapsed < ROW_FADE_IN_DURATION) {
-          const t = rowElapsed / ROW_FADE_IN_DURATION;
-          const currentVal = startOpacity + (MAX_OPACITY - startOpacity) * easeOutQuad(t);
-          row.style.opacity = String(Math.min(MAX_OPACITY, Math.max(MIN_OPACITY, currentVal)));
-          row.style.pointerEvents = "auto";
-          allDone = false;
-        } else {
-          row.style.opacity = String(MAX_OPACITY);
-          row.style.pointerEvents = "auto";
-        }
-      });
-
-      if (!allDone && isDrawerHovered) {
-        drawerRafId = requestAnimationFrame(animateFadeIn);
-      } else {
-        drawerRafId = null;
-      }
-    };
-
-    drawerRafId = requestAnimationFrame(animateFadeIn);
-  };
-
-  const startDrawerFadeOut = () => {
-    if (!messagesExpandedWrap) return;
-    if (drawerRafId) cancelAnimationFrame(drawerRafId);
-
-    const rows = messagesExpandedWrap.querySelectorAll(".messages-expanded-row");
-    if (rows.length === 0) {
-      messagesExpandedWrap.classList.remove("expanded");
-      messagesExpandedWrap.style.visibility = "hidden";
-      return;
-    }
-
-    messagesExpandedWrap.style.pointerEvents = "none";
-
-    const wrapStartOpacity = parseFloat(messagesExpandedWrap.style.opacity) || MAX_OPACITY;
-    const rowStartOpacities = Array.from(rows).map((row) => {
-      const val = parseFloat(row.style.opacity);
-      return isNaN(val) ? MIN_OPACITY : Math.max(MIN_OPACITY, Math.min(MAX_OPACITY, val));
-    });
-
-    const startTime = performance.now();
-
-    const animateFadeOut = (now) => {
-      const elapsed = now - startTime;
-      const progress = Math.min(1, elapsed / FADE_OUT_DURATION);
-      const easeProgress = easeOutQuad(progress);
-      const factor = 1 - easeProgress;
-
-      messagesExpandedWrap.style.opacity = String(Math.max(MIN_OPACITY, wrapStartOpacity * factor));
-
-      rows.forEach((row, index) => {
-        const val = Math.max(MIN_OPACITY, rowStartOpacities[index] * factor);
-        row.style.opacity = String(val);
-      });
-
-      if (progress < 1 && !isDrawerHovered) {
-        drawerRafId = requestAnimationFrame(animateFadeOut);
-      } else if (!isDrawerHovered) {
-        messagesExpandedWrap.style.opacity = String(MIN_OPACITY);
-        rows.forEach((row) => {
-          row.style.opacity = String(MIN_OPACITY);
-          row.style.pointerEvents = "none";
-        });
-        messagesExpandedWrap.style.visibility = "hidden";
-        messagesExpandedWrap.classList.remove("expanded");
-        drawerRafId = null;
-      }
-    };
-
-    drawerRafId = requestAnimationFrame(animateFadeOut);
-  };
-
   if (sketchMessagesDrawer) {
     sketchMessagesDrawer.addEventListener("mouseenter", () => {
-      isDrawerHovered = true;
-      startDrawerFadeIn();
+      sketchMessagesDrawer.classList.add("is-hovered");
     });
 
     sketchMessagesDrawer.addEventListener("mouseleave", () => {
-      isDrawerHovered = false;
-      startDrawerFadeOut();
+      sketchMessagesDrawer.classList.remove("is-hovered");
     });
   }
 

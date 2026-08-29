@@ -1126,7 +1126,11 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   max-width: 600px;
   margin-top: 20px;
   position: relative;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              margin 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              padding 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
 }
 
@@ -1150,20 +1154,18 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   left: 0;
   right: 0;
   width: 100%;
-  max-height: 0;
-  opacity: 0;
+  max-height: calc(100vh - 380px);
   overflow: hidden;
   pointer-events: none;
   padding-top: 8px;
   padding-bottom: 6px;
-  transform: translateZ(0);
-  backface-visibility: hidden;
   z-index: 10;
 }
 
-/* rAF 引擎激活展开状态 */
-.messages-expanded-wrap.expanded {
-  max-height: calc(100vh - 380px);
+/* 抽屉悬浮展开态下，允许包装层接收鼠标事件 */
+.sketch-messages-drawer:hover .messages-expanded-wrap,
+.sketch-messages-drawer.is-hovered .messages-expanded-wrap {
+  pointer-events: auto;
 }
 
 /* 下方展开区域行列表容器 */
@@ -1174,7 +1176,8 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   width: 100%;
 }
 
-/* 下方展开行：每行 4 个讯息方框，由 rAF 硬件垂直同步引擎精准控制透明度 */
+/* 下方展开行：默认常态（移出渐隐态）
+   耗时 2 秒从完全显示平滑淡出至完全透明，无延迟，反向平滑过渡，GPU 合成器原生渲染绝无闪烁 */
 .messages-expanded-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1182,10 +1185,18 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   width: 100%;
   opacity: 0;
   pointer-events: none;
-  transform: translateZ(0);
-  backface-visibility: hidden;
+  transition: opacity 2s cubic-bezier(0.16, 1, 0.3, 1) 0s;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* 悬浮展开态：每行耗时 1 秒，依据 --row-delay 依次级联渐出（第2行0s~1s, 第3行1s~2s, 第4行2s~3s...）
+   到达 1.0 后自然锁定终态，绝无 JS rAF 终止引发的重绘闪烁 */
+.sketch-messages-drawer:hover .messages-expanded-row,
+.sketch-messages-drawer.is-hovered .messages-expanded-row {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 1s cubic-bezier(0.16, 1, 0.3, 1) var(--row-delay, 0s);
 }
 
 /* 单个讯息方框卡片（手绘纸质质感） */
