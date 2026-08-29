@@ -60,6 +60,16 @@ pub fn pi_save_app_config(config_data: Value) -> Result<(), String> {
     write_pi_dl_json("config.json", &config_data)
 }
 
+/// 检查用户是否配置了“不再提醒更新”（若为 true 则直接跳过启动自检与后台自动轮询）
+pub fn is_update_notification_ignored() -> bool {
+    if let Ok(config) = read_pi_dl_json("config.json", json!({})) {
+        if let Some(ignored) = config.get("ignoreUpdateNotification").and_then(|v| v.as_bool()) {
+            return ignored;
+        }
+    }
+    false
+}
+
 /// 通用安全读取 ~/.pi/agent/ 下的 JSON 配置文件
 pub fn read_agent_json(filename: &str, default_val: Value) -> Result<Value, String> {
     let agent_dir = get_pi_agent_dir()?;
