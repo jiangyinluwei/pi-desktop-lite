@@ -56,7 +56,23 @@ fn clean_html_text(text: &str) -> String {
 }
 
 /// 构建请求 URL
-fn build_catalog_url(
+fn url_encode(s: &str) -> String {
+    let mut encoded = String::with_capacity(s.len() * 3);
+    for byte in s.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'@' => {
+                encoded.push(byte as char);
+            }
+            b' ' => encoded.push('+'),
+            _ => {
+                encoded.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+    encoded
+}
+
+pub fn build_catalog_url(
     query: Option<&str>,
     pkg_type: Option<&str>,
     sort: Option<&str>,
@@ -66,19 +82,19 @@ fn build_catalog_url(
     if let Some(q) = query {
         let trimmed = q.trim();
         if !trimmed.is_empty() {
-            params.push(format!("name={}", urlencoding::encode(trimmed)));
+            params.push(format!("name={}", url_encode(trimmed)));
         }
     }
     if let Some(t) = pkg_type {
         let trimmed = t.trim();
         if !trimmed.is_empty() && trimmed != "all" {
-            params.push(format!("type={}", urlencoding::encode(trimmed)));
+            params.push(format!("type={}", url_encode(trimmed)));
         }
     }
     if let Some(s) = sort {
         let trimmed = s.trim();
         if !trimmed.is_empty() {
-            params.push(format!("sort={}", urlencoding::encode(trimmed)));
+            params.push(format!("sort={}", url_encode(trimmed)));
         }
     }
     if page > 1 {
@@ -89,24 +105,6 @@ fn build_catalog_url(
         "https://pi.dev/packages".to_string()
     } else {
         format!("https://pi.dev/packages?{}", params.join("&"))
-    }
-}
-
-mod urlencoding {
-    pub fn encode(s: &str) -> String {
-        let mut encoded = String::with_capacity(s.len() * 3);
-        for byte in s.bytes() {
-            match byte {
-                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'@' => {
-                    encoded.push(byte as char);
-                }
-                b' ' => encoded.push('+'),
-                _ => {
-                    encoded.push_str(&format!("%{:02X}", byte));
-                }
-            }
-        }
-        encoded
     }
 }
 

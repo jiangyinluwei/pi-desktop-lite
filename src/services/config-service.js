@@ -21,7 +21,6 @@ class ConfigService extends EventTarget {
     this.modelWhitelist = [];
     this.ignoreUpdateNotification = false;
     this.mediaQueryDark = window.matchMedia("(prefers-color-scheme: dark)");
-    this._appConfigLoaded = false;
   }
 
   /**
@@ -64,7 +63,6 @@ class ConfigService extends EventTarget {
         } else {
           this.ignoreUpdateNotification = localStorage.getItem(STORAGE_KEY_IGNORE_UPDATE) === "true";
         }
-        this._appConfigLoaded = true;
         return config;
       }
     } catch (e) {

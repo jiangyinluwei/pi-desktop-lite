@@ -400,10 +400,17 @@ class PiClient extends EventTarget {
   }
 
   /**
-   * 获取当前 Pi 版本
+   * 销毁客户端并注销所有事件监听
    */
-  async getVersion() {
-    return await this.invoke("pi_get_version");
+  destroy() {
+    for (const unlisten of this.unlistenCallbacks) {
+      if (typeof unlisten === "function") {
+        try {
+          unlisten();
+        } catch (_) {}
+      }
+    }
+    this.unlistenCallbacks = [];
   }
 }
 

@@ -26,10 +26,9 @@ pub fn get_pi_dl_dir() -> Result<PathBuf, String> {
     Ok(pi_dl_dir)
 }
 
-/// 通用安全读取 ~/.pi-dl/ 下的 JSON 配置文件
-pub fn read_pi_dl_json(filename: &str, default_val: Value) -> Result<Value, String> {
-    let pi_dl_dir = get_pi_dl_dir()?;
-    let path = pi_dl_dir.join(filename);
+/// 通用底层读取指定目录下的 JSON 配置文件
+fn read_json_in(dir: PathBuf, filename: &str, default_val: Value) -> Result<Value, String> {
+    let path = dir.join(filename);
     if !path.exists() {
         return Ok(default_val);
     }
@@ -38,14 +37,23 @@ pub fn read_pi_dl_json(filename: &str, default_val: Value) -> Result<Value, Stri
     Ok(serde_json::from_str(&content).unwrap_or(default_val))
 }
 
-/// 通用安全写入 ~/.pi-dl/ 下的 JSON 配置文件
-pub fn write_pi_dl_json(filename: &str, data: &Value) -> Result<(), String> {
-    let pi_dl_dir = get_pi_dl_dir()?;
-    let path = pi_dl_dir.join(filename);
+/// 通用底层写入指定目录下的 JSON 配置文件
+fn write_json_in(dir: PathBuf, filename: &str, data: &Value) -> Result<(), String> {
+    let path = dir.join(filename);
     let content = serde_json::to_string_pretty(data)
         .map_err(|e| format!("Failed to serialize {}: {}", filename, e))?;
     fs::write(&path, content)
         .map_err(|e| format!("Failed to write {}: {}", filename, e))
+}
+
+/// 通用安全读取 ~/.pi-dl/ 下的 JSON 配置文件
+pub fn read_pi_dl_json(filename: &str, default_val: Value) -> Result<Value, String> {
+    read_json_in(get_pi_dl_dir()?, filename, default_val)
+}
+
+/// 通用安全写入 ~/.pi-dl/ 下的 JSON 配置文件
+pub fn write_pi_dl_json(filename: &str, data: &Value) -> Result<(), String> {
+    write_json_in(get_pi_dl_dir()?, filename, data)
 }
 
 /// 读取 ~/.pi-dl/config.json 应用全局持久化配置
@@ -72,24 +80,12 @@ pub fn is_update_notification_ignored() -> bool {
 
 /// 通用安全读取 ~/.pi/agent/ 下的 JSON 配置文件
 pub fn read_agent_json(filename: &str, default_val: Value) -> Result<Value, String> {
-    let agent_dir = get_pi_agent_dir()?;
-    let path = agent_dir.join(filename);
-    if !path.exists() {
-        return Ok(default_val);
-    }
-    let content = fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read {}: {}", filename, e))?;
-    Ok(serde_json::from_str(&content).unwrap_or(default_val))
+    read_json_in(get_pi_agent_dir()?, filename, default_val)
 }
 
 /// 通用安全写入 ~/.pi/agent/ 下的 JSON 配置文件
 pub fn write_agent_json(filename: &str, data: &Value) -> Result<(), String> {
-    let agent_dir = get_pi_agent_dir()?;
-    let path = agent_dir.join(filename);
-    let content = serde_json::to_string_pretty(data)
-        .map_err(|e| format!("Failed to serialize {}: {}", filename, e))?;
-    fs::write(&path, content)
-        .map_err(|e| format!("Failed to write {}: {}", filename, e))
+    write_json_in(get_pi_agent_dir()?, filename, data)
 }
 
 /// 读取 auth.json
@@ -143,11 +139,15 @@ fn ensure_providers_map_mut(custom_config: &mut Value) -> &mut serde_json::Map<S
     if !custom_config.is_object() {
         *custom_config = json!({ "providers": {} });
     }
-    let root_obj = custom_config.as_object_mut().unwrap();
-    if !root_obj.contains_key("providers") || !root_obj["providers"].is_object() {
-        root_obj.insert("providers".to_string(), json!({}));
+    if let Some(root_obj) = custom_config.as_object_mut() {
+        if !root_obj.contains_key("providers") || !root_obj["providers"].is_object() {
+            root_obj.insert("providers".to_string(), json!({}));
+        }
     }
-    root_obj.get_mut("providers").unwrap().as_object_mut().unwrap()
+    custom_config
+        .get_mut("providers")
+        .and_then(|v| v.as_object_mut())
+        .expect("providers must be a map")
 }
 
 /// 保存或更新自定义运营商 (第一步)
@@ -260,10 +260,10 @@ pub fn pi_add_custom_provider_model(entry: CustomProviderModelEntry) -> Result<(
         .and_then(|v| v.as_object_mut())
         .ok_or_else(|| format!("未找到运营商 [{}], 请先创建该运营商", provider_key))?;
 
-    if !p_obj.contains_key("models") || !p_obj["models"].is_array() {
-        p_obj.insert("models".to_string(), json!([]));
-    }
-    let models_arr = p_obj.get_mut("models").unwrap().as_array_mut().unwrap();
+    let models_arr = match p_obj.get_mut("models").and_then(|v| v.as_array_mut()) {
+        Some(arr) => arr,
+        None => return Err("models 字段不是合法数组".to_string()),
+    };
 
     let mut found = false;
     for m in models_arr.iter_mut() {
@@ -319,20 +319,20 @@ pub fn pi_add_custom_model(entry: CustomModelEntry) -> Result<(), String> {
 #[tauri::command]
 pub fn pi_delete_custom_model(provider_id: String, model_id: Option<String>) -> Result<(), String> {
     let mut custom_config = pi_get_custom_models().unwrap_or_else(|_| json!({ "providers": {} }));
-    let providers = match custom_config.get_mut("providers").and_then(|p| p.as_object_mut()) {
-        Some(p) => p,
-        None => return Ok(()),
-    };
+    let providers = ensure_providers_map_mut(&mut custom_config);
+    let p_key = provider_id.trim();
 
-    let provider_key = provider_id.trim().to_lowercase();
-    if let Some(m_id) = model_id {
-        if let Some(provider_val) = providers.get_mut(&provider_key) {
-            if let Some(models_arr) = provider_val.get_mut("models").and_then(|m| m.as_array_mut()) {
-                models_arr.retain(|m| m.get("id").and_then(|v| v.as_str()) != Some(&m_id));
+    if let Some(target_mid) = model_id {
+        let m_key = target_mid.trim();
+        if let Some(p_val) = providers.get_mut(p_key).and_then(|v| v.as_object_mut()) {
+            if let Some(models_arr) = p_val.get_mut("models").and_then(|v| v.as_array_mut()) {
+                models_arr.retain(|m| {
+                    m.get("id").and_then(|id_v| id_v.as_str()) != Some(m_key)
+                });
             }
         }
     } else {
-        providers.remove(&provider_key);
+        providers.remove(p_key);
     }
 
     pi_save_custom_models(custom_config)
@@ -352,6 +352,7 @@ pub fn pi_save_settings_config(settings_data: Value) -> Result<(), String> {
 
 /// 官方通道与模型基础元数据目录
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OfficialProviderMeta {
     pub id: String,
     pub name: String,
@@ -362,6 +363,7 @@ pub struct OfficialProviderMeta {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OfficialModelMeta {
     pub id: String,
     pub name: String,
@@ -369,29 +371,17 @@ pub struct OfficialModelMeta {
     pub context_window: u64,
     pub max_tokens: u64,
     pub reasoning: bool,
+    #[serde(default)]
     pub is_default: bool,
 }
 
-/// 获取官方支持的服务商与其罗列的可用模型清单（合并本地 models-store.json 与内置目录）
+/// 获取官方支持的服务商与其罗列的可用模型清单（合并本地 models.json 与内置目录）
 #[tauri::command]
 pub fn pi_get_official_models_catalog() -> Result<Vec<OfficialProviderMeta>, String> {
-    // 尝试读取本地 ~/.pi/agent/models-store.json 进行补充
-    let agent_dir = get_pi_agent_dir().ok();
-    let models_store: Option<Value> = agent_dir.and_then(|dir| {
-        let store_path = dir.join("models-store.json");
-        if store_path.exists() {
-            fs::read_to_string(&store_path)
-                .ok()
-                .and_then(|s| serde_json::from_str(&s).ok())
-        } else {
-            None
-        }
-    });
+    let mut catalog = get_builtin_official_catalog().to_vec();
 
-    let mut catalog = get_builtin_official_catalog();
-
-    if let Some(store) = models_store {
-        if let Some(store_obj) = store.as_object() {
+    if let Ok(custom_val) = pi_get_custom_models() {
+        if let Some(store_obj) = custom_val.get("providers").and_then(|p| p.as_object()) {
             for (provider_key, provider_val) in store_obj {
                 if let Some(models_arr) = provider_val.get("models").and_then(|m| m.as_array()) {
                     let target_provider = catalog.iter_mut().find(|p| p.id.eq_ignore_ascii_case(provider_key));
@@ -439,7 +429,12 @@ pub fn pi_get_official_models_catalog() -> Result<Vec<OfficialProviderMeta>, Str
     Ok(catalog)
 }
 
-fn get_builtin_official_catalog() -> Vec<OfficialProviderMeta> {
+fn get_builtin_official_catalog() -> &'static [OfficialProviderMeta] {
+    static CATALOG: std::sync::OnceLock<Vec<OfficialProviderMeta>> = std::sync::OnceLock::new();
+    CATALOG.get_or_init(build_builtin_official_catalog)
+}
+
+fn build_builtin_official_catalog() -> Vec<OfficialProviderMeta> {
     vec![
         OfficialProviderMeta {
             id: "anthropic".to_string(),

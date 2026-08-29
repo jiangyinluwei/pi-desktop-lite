@@ -60,7 +60,7 @@ impl VersionScheduler {
                     let current_ver = supervisor
                         .get_version()
                         .await
-                        .unwrap_or_else(|| "0.84.3".to_string());
+                        .unwrap_or_else(|| crate::version_watcher::checker::FALLBACK_PI_VERSION.to_string());
                     let res = self.check_now(&current_ver).await;
                     if res.has_update {
                         log::info!(

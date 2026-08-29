@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// 编译期内嵌默认规则清单（保障打包发布与离线环境下的可用性）
-const EMBEDDED_RULES_MD: &str = include_str!("../../../src-tauri/inner-skills/RULES.md");
+const EMBEDDED_RULES_MD: &str = include_str!("../../inner-skills/RULES.md");
 
 /// 规则映射定义项
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

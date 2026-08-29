@@ -96,10 +96,8 @@ pub async fn perform_kernel_update(
 ) -> Result<KernelUpdateResult, String> {
     let _lock = KERNEL_UPDATE_MUTEX.lock().await;
 
-    if IS_UPDATING.swap(true, Ordering::SeqCst) {
-        return Err("Another kernel update is already in progress".to_string());
-    }
     CANCEL_REQUESTED.store(false, Ordering::SeqCst);
+    IS_UPDATING.store(true, Ordering::SeqCst);
 
     let result = do_update(&app_handle, &supervisor, &target_version).await;
     IS_UPDATING.store(false, Ordering::SeqCst);

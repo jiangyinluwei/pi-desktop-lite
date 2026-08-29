@@ -1,6 +1,8 @@
 use super::models::{InstalledPackage, PackageProgressPayload, PackageUpdateInfo};
 use crate::config_manager::get_pi_agent_dir;
 use crate::pi_runner::supervisor::PiSupervisor;
+use crate::version_watcher::checker::is_newer;
+use futures_util::future::join_all;
 use once_cell::sync::Lazy;
 use serde_json::Value;
 use std::fs;
@@ -409,33 +411,7 @@ pub async fn uninstall_package(
     Ok(format!("Uninstalled {}", pkg_name))
 }
 
-/// 解析 SemVer 字符串为数字三元组 (major, minor, patch)
-fn parse_semver(v: &str) -> Option<(u64, u64, u64)> {
-    let clean = v.trim().trim_start_matches('v').trim_start_matches('^').trim_start_matches('~');
-    let main_part = clean.split('-').next().unwrap_or(clean);
-    let parts: Vec<&str> = main_part.split('.').collect();
-    if parts.len() < 3 {
-        return None;
-    }
-    let major = parts[0].parse::<u64>().ok()?;
-    let minor = parts[1].parse::<u64>().ok()?;
-    let patch = parts[2].parse::<u64>().ok()?;
-    Some((major, minor, patch))
-}
-
-/// 检查版本 a 是否小于版本 b (即 b 是否为更新版本)
-fn is_newer(current: &str, latest: &str) -> bool {
-    match (parse_semver(current), parse_semver(latest)) {
-        (Some((c_maj, c_min, c_pat)), Some((l_maj, l_min, l_pat))) => {
-            (l_maj > c_maj)
-                || (l_maj == c_maj && l_min > c_min)
-                || (l_maj == c_maj && l_min == c_min && l_pat > c_pat)
-        }
-        _ => false,
-    }
-}
-
-/// 检查已安装组件的最新版本可用性
+/// 检查已安装组件的最新版本可用性（并发请求 npm registry）
 pub async fn check_package_updates() -> Result<Vec<PackageUpdateInfo>, String> {
     let installed = get_installed_packages()?;
     if installed.is_empty() {
@@ -448,34 +424,36 @@ pub async fn check_package_updates() -> Result<Vec<PackageUpdateInfo>, String> {
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
-    let mut update_results = Vec::new();
+    let futures = installed.into_iter().map(|pkg| {
+        let client = client.clone();
+        async move {
+            let registry_url = format!("https://registry.npmjs.org/{}/latest", pkg.name);
+            let mut latest_version = pkg.version.clone();
+            let mut has_update = false;
 
-    for pkg in installed {
-        let registry_url = format!("https://registry.npmjs.org/{}/latest", pkg.name);
-        let mut latest_version = pkg.version.clone();
-        let mut has_update = false;
-
-        if let Ok(resp) = client.get(&registry_url).send().await {
-            if resp.status().is_success() {
-                if let Ok(json_body) = resp.json::<Value>().await {
-                    if let Some(ver_str) = json_body.get("version").and_then(|v| v.as_str()) {
-                        latest_version = ver_str.to_string();
-                        if pkg.version != "unknown" && is_newer(&pkg.version, &latest_version) {
-                            has_update = true;
+            if let Ok(resp) = client.get(&registry_url).send().await {
+                if resp.status().is_success() {
+                    if let Ok(json_body) = resp.json::<Value>().await {
+                        if let Some(ver_str) = json_body.get("version").and_then(|v| v.as_str()) {
+                            latest_version = ver_str.to_string();
+                            if pkg.version != "unknown" && is_newer(&pkg.version, &latest_version) {
+                                has_update = true;
+                            }
                         }
                     }
                 }
             }
+
+            PackageUpdateInfo {
+                name: pkg.name,
+                current_version: pkg.version,
+                latest_version,
+                has_update,
+            }
         }
+    });
 
-        update_results.push(PackageUpdateInfo {
-            name: pkg.name,
-            current_version: pkg.version,
-            latest_version,
-            has_update,
-        });
-    }
-
+    let update_results = join_all(futures).await;
     Ok(update_results)
 }
 

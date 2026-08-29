@@ -2,9 +2,7 @@ use crate::pi_runner::framer::{run_stderr_logger, run_stdout_framer};
 use crate::pi_runner::job_object::JobObjectManager;
 use crate::pi_runner::protocol::HostStatus;
 use serde_json::Value;
-use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::pin::Pin;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -29,7 +27,6 @@ pub struct PiSupervisor {
     stdin_tx: Arc<Mutex<Option<mpsc::Sender<String>>>>,
     pending_responses: Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>>,
     restart_history: Arc<Mutex<Vec<Instant>>>,
-    resolved_binary_path: Arc<RwLock<Option<PathBuf>>>,
     pi_version: Arc<RwLock<Option<String>>>,
     is_stopping: Arc<RwLock<bool>>,
     skill_injector: Arc<InnerSkillInjector>,
@@ -50,7 +47,6 @@ impl PiSupervisor {
             stdin_tx: Arc::new(Mutex::new(None)),
             pending_responses: Arc::new(Mutex::new(HashMap::new())),
             restart_history: Arc::new(Mutex::new(Vec::new())),
-            resolved_binary_path: Arc::new(RwLock::new(None)),
             pi_version: Arc::new(RwLock::new(None)),
             is_stopping: Arc::new(RwLock::new(false)),
             skill_injector: Arc::new(InnerSkillInjector::new()),
@@ -175,15 +171,13 @@ impl PiSupervisor {
     }
 
     /// 启动 Pi Agent Host 子进程
-    pub fn start(&self) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'static>> {
+    pub fn start(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send + 'static>> {
         let this = self.clone();
         Box::pin(async move {
             *this.is_stopping.write().await = false;
 
             let binary_path = Self::find_pi_binary(Some(&this.app_handle))
                 .ok_or_else(|| "Could not find pi executable in bundled resources, .mytools or PATH".to_string())?;
-
-            *this.resolved_binary_path.write().await = Some(binary_path.clone());
 
             let mut ver_cmd = Command::new(&binary_path);
             ver_cmd.arg("--version");
@@ -237,10 +231,10 @@ impl PiSupervisor {
 
         // 2. 补全 PATH 环境变量（使用 std::env::var 自动大小写兼容，避免 Windows 环境块冲突）
         if let Some(bin_dir) = binary_path.parent() {
-            let split_char = if cfg!(windows) { ";" } else { ":" };
+            let split_char = if cfg!(windows) { ';' } else { ':' };
             let existing_path = std::env::var("PATH").unwrap_or_default();
             let bin_dir_str = bin_dir.to_string_lossy().to_string();
-            if !existing_path.split(if cfg!(windows) { ';' } else { ':' }).any(|p| p == bin_dir_str) {
+            if !existing_path.split(split_char).any(|p| p.eq_ignore_ascii_case(&bin_dir_str)) {
                 let new_path = format!("{}{}{}", bin_dir_str, split_char, existing_path);
                 cmd.env("PATH", new_path);
             }
@@ -345,6 +339,7 @@ impl PiSupervisor {
                 history.len(),
                 CRASH_WINDOW.as_secs()
             );
+            drop(history);
             log::error!("[Supervisor] {}", err_msg);
             supervisor
                 .update_status(HostStatus::Crashed {
@@ -354,6 +349,7 @@ impl PiSupervisor {
                 .await;
             return;
         }
+        drop(history);
 
         supervisor
             .update_status(HostStatus::Crashed {

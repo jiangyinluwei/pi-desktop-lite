@@ -40,7 +40,7 @@
    - **界面1：初始界面-详细版 (`detailed`)**：包含沉浸式标题栏、居中品牌 Logo 组（徽标+标题+副标题）、手绘齿轮设置按钮、输入框内部功能按钮（导入图标、清空按钮、Enter 引导）及底部动态手绘历史讯息方框抽屉（替代旧静态标签）；输入框内置灵感格言跑马灯引擎，当格言文本长度超过输入框宽度时，自适应启动从右向左无缝循环滚动，用户输入时瞬时隐去；
    - **历史对话沉淀与讯息方框交互 (`Sketch Messages Drawer & MRU Flow Recovery`)**：
      - Flow 界面完成的对话自动沉淀快照至业务记忆服务（`conversationHistoryService`）；
-     - 详细界面输入框下方常态展示第 1 行（最多 3 个讯息方框）；鼠标悬浮时向下平滑渐出展开更多（下方每行 4 个），高度自适应当前软件框体裁剪，超出高度自动隐藏不溢出；
+     - 详细界面输入框下方常态展示第 1 行（最多 3 个讯息方框）；鼠标悬浮时绝对定位向下平滑展开（消除界面整体上移），下方每行（4个）延迟 1 秒依次级联渐出（每行耗时 1 秒从透明至完全显示，第 2 行 0s~1s, 第 3 行 1s~2s, 第 4 行 2s~3s...）；鼠标移出范围时触发 2 秒平滑渐隐（耗时 2 秒从完全显示平滑淡出至完全透明，随后收起），高度自适应当前软件框体裁剪，超出高度自动隐藏不溢出；
      - 讯息按最近“浏览/点开”时间（MRU `lastViewedAt`）降序排列，点击任一方框即刻刷新时间戳并重排至首位，同时无缝恢复提问、思考折叠链、工具调用与回答至 Flow 模式；
      - 讯息方框悬浮在右上角显现手绘「×」关闭按钮，点击仅在 UI 中隐藏该条目（保留底层会话文件与持久化数据）；
      - 提供标准业务记忆接口层，预留随时挂载 Pi 官方/社区 Memory 扩展（`pi-memory` / NPM 组件）的插件钩子。
@@ -114,6 +114,7 @@
 | **`settings-view-pattern`** | [`.agents/skills/settings-view-pattern/SKILL.md`](file:///.agents/skills/settings-view-pattern/SKILL.md) | 指导桌面端 (Tauri 2 + Web 前端) 中项目设置独立全屏页面（Settings View - 第 4 态独立视图）的工程化实现与交互设计。涵盖非浮窗全屏视图状态机、3 秒定时平滑渐隐指引、~/.pi-dl/config.json 应用全局配置持久化与 ~/.pi/agent/ 双层映射、当前模型列表 MRU 最近选用自动排序与锁定保护、自定义模型 Token 规范智能吸附、手绘草图表单几何工程美学及全域右键/Esc 回退流水线规范。当用户提出"设置界面"、"配置页面"、"设置页写法"、"settings view"、"模型配置界面"、"持久化配置"、"设置规范"时使用此技能。 |
 | **`desktop-kernel-lifecycle`** | [`.agents/skills/desktop-kernel-lifecycle/SKILL.md`](file:///.agents/skills/desktop-kernel-lifecycle/SKILL.md) | 指导桌面端 (Tauri 2 + Rust) 作为 CLI/Agent 内核宿主时的进程生命周期管控、多环境自适应寻址、Release 安装包资源打包规范与 Windows 运行时六大踩坑归因与排查治理。当涉及"内核崩溃"、"进程反复重启"、"resource_dir"、"打包后无法运行"、"子进程黑框"、"CWD权限"、"环境变量丢失"、"JobObject"时使用此技能。 |
 | **`flow-interaction-pattern`** | [`.agents/skills/flow-interaction-pattern/SKILL.md`](file:///.agents/skills/flow-interaction-pattern/SKILL.md) | 指导 Flow 流式交互界面（界面3）的三大核心交互逻辑实现规范：①过程框体（思考卡片/工具调用卡片）可手动折叠展开；②"当前最下方框体展开、出现下一框时自动收起"的级联自动收起流水线；③Flow 界面任意区域滚轮事件委托至最外层滚动容器。当用户提出"flow界面交互"、"思考卡片折叠"、"工具调用卡折叠"、"自动收起"、"滚轮滚动"、"flow滚动条"、"卡片收起"时使用此技能。 |
+| **`code-hazards-remediation`** | [`.doc/code-hazards-remediation/SKILL.md`](file:///.doc/code-hazards-remediation/SKILL.md) | 针对项目全量代码健康度检查中定位的已知隐患矩阵（H1~H24）进行故障排查与自愈。当系统出现异常、挂死、数据丢失或性能瓶颈时，参照此隐患列表快速定位根因；一旦命中了某条隐患并完成修复，即从列表中剔除核销，直至所有已知隐患清零。 |
 
 
 ### 2. 应用内置运行态约束级 Inner-Skills (`src-tauri/inner-skills/`)

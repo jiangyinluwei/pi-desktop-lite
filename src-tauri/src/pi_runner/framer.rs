@@ -38,7 +38,7 @@ pub async fn run_stdout_framer<R: AsyncRead + Unpin>(
         match serde_json::from_slice::<Value>(trimmed) {
             Ok(json_val) => {
                 let redacted = redact_json(&json_val);
-                if let Err(_) = event_tx.send(redacted).await {
+                if event_tx.send(redacted).await.is_err() {
                     log::debug!("[Framer] Event channel receiver dropped, exiting framer loop.");
                     break;
                 }

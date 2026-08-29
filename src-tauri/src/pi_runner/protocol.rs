@@ -11,33 +11,6 @@ pub enum HostStatus {
     Crashed { exit_code: Option<i32>, error: String },
 }
 
-/// 通用 RPC 指令发送结构
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RpcCommand {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    #[serde(rename = "type")]
-    pub command_type: String,
-    #[serde(flatten)]
-    pub payload: Value,
-}
-
-/// RPC 响应结构
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RpcResponse {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    #[serde(rename = "type")]
-    pub resp_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub command: Option<String>,
-    pub success: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
 /// 前端向 Agent 提交 Prompt 专用参数
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptRequest {

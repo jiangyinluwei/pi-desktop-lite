@@ -25,27 +25,30 @@ struct PackagePresetRoot {
     pub presets: Vec<PackagePreset>,
 }
 
-/// 获取所有已内嵌的组件推荐配置映射
-pub fn get_all_presets() -> Vec<PackagePreset> {
-    match serde_json::from_str::<PackagePresetRoot>(PACKAGE_PRESETS_RAW) {
-        Ok(root) => root.presets,
-        Err(err) => {
-            log::error!("[PackagePresets] Failed to parse embedded package-presets.json: {}", err);
-            Vec::new()
+/// 获取所有已内嵌的组件推荐配置映射 (基于 OnceLock 全局缓存，避免重复反序列化)
+pub fn get_all_presets() -> &'static [PackagePreset] {
+    static PRESETS: std::sync::OnceLock<Vec<PackagePreset>> = std::sync::OnceLock::new();
+    PRESETS.get_or_init(|| {
+        match serde_json::from_str::<PackagePresetRoot>(PACKAGE_PRESETS_RAW) {
+            Ok(root) => root.presets,
+            Err(err) => {
+                log::error!("[PackagePresets] Failed to parse embedded package-presets.json: {}", err);
+                Vec::new()
+            }
         }
-    }
+    })
 }
 
 /// 根据包名匹配对应的预设配置定义
 pub fn find_preset_for_package(package_name: &str) -> Option<PackagePreset> {
     let clean_name = package_name.trim().trim_start_matches("npm:");
     let presets = get_all_presets();
-    presets.into_iter().find(|preset| {
+    presets.iter().find(|preset| {
         preset.package_names.iter().any(|name| {
             let clean_p_name = name.trim().trim_start_matches("npm:");
             clean_p_name.eq_ignore_ascii_case(clean_name)
         })
-    })
+    }).cloned()
 }
 
 /// 将包含 `~` 占位符的配置文件路径解析为绝对系统路径

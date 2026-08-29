@@ -81,6 +81,7 @@ window.addEventListener("DOMContentLoaded", () => {
   // 底部手绘历史讯息抽屉元素
   const sketchMessagesDrawer = document.getElementById("sketch-messages-drawer");
   const messagesPrimaryRow = document.getElementById("messages-primary-row");
+  const messagesExpandedWrap = document.getElementById("messages-expanded-wrap");
   const messagesExpandedGrid = document.getElementById("messages-expanded-grid");
 
   // 设置独立全页面元素
@@ -2505,14 +2506,158 @@ window.addEventListener("DOMContentLoaded", () => {
       messagesPrimaryRow.appendChild(createMessageCard(conv));
     });
 
-    expandedItems.forEach((conv) => {
-      messagesExpandedGrid.appendChild(createMessageCard(conv));
-    });
+    // 下方展开区域：每 4 个切分为一行，每行渐出耗时 1 秒，前一行完全显现后下一行再启动渐出 (--row-delay: 0s, 1s, 2s...)
+    const rowChunkSize = 4;
+    for (let i = 0; i < expandedItems.length; i += rowChunkSize) {
+      const chunk = expandedItems.slice(i, i + rowChunkSize);
+      const rowIndex = Math.floor(i / rowChunkSize); // 0: 第2行(0s~1s), 1: 第3行(1s~2s), 2: 第4行(2s~3s)...
+      const rowEl = document.createElement("div");
+      rowEl.className = "messages-expanded-row";
+      rowEl.dataset.rowIndex = String(rowIndex);
+      rowEl.style.setProperty("--row-delay", `${rowIndex * 1}s`);
+
+      chunk.forEach((conv) => {
+        rowEl.appendChild(createMessageCard(conv));
+      });
+
+      messagesExpandedGrid.appendChild(rowEl);
+    }
   };
 
   conversationHistoryService.addEventListener("conversations-change", () => {
     renderConversationMessages();
   });
+
+  // --------------------------------------------------------------------------
+  // 方案二：基于硬件 VSync (requestAnimationFrame) 的历史讯息抽屉渐出与渐隐引擎
+  // --------------------------------------------------------------------------
+  let drawerRafId = null;
+  let isDrawerHovered = false;
+  const ROW_FADE_IN_DURATION = 1000; // 每行平滑渐出 1000ms (1秒)
+  const FADE_OUT_DURATION = 2000;    // 移出全局平滑渐隐 2000ms (2秒)
+  const MAX_OPACITY = 0.999;         // 保持 0.999 锁定 GPU 合成通道，彻底阻断 1.0 时合成器销毁图层造成的闪烁
+  const MIN_OPACITY = 0.001;         // 保持 0.001 锁定图层驻留，彻底阻断 0 时图层反复申请销毁造成的闪烁
+
+  // 柔和匀速平滑缓动曲线
+  const easeOutQuad = (t) => t * (2 - t);
+
+  const startDrawerFadeIn = () => {
+    if (!messagesExpandedWrap) return;
+    if (drawerRafId) cancelAnimationFrame(drawerRafId);
+
+    const rows = messagesExpandedWrap.querySelectorAll(".messages-expanded-row");
+    if (rows.length === 0) return;
+
+    messagesExpandedWrap.style.visibility = "visible";
+    messagesExpandedWrap.classList.add("expanded");
+    messagesExpandedWrap.style.opacity = String(MAX_OPACITY);
+    messagesExpandedWrap.style.pointerEvents = "auto";
+
+    // 记录各行当前透明度
+    const currentOpacities = Array.from(rows).map((row) => {
+      const val = parseFloat(row.style.opacity);
+      return isNaN(val) ? MIN_OPACITY : Math.max(MIN_OPACITY, Math.min(MAX_OPACITY, val));
+    });
+
+    const startTime = performance.now();
+
+    const animateFadeIn = (now) => {
+      const elapsed = now - startTime;
+      let allDone = true;
+
+      rows.forEach((row, index) => {
+        const rowStart = index * ROW_FADE_IN_DURATION;
+        const rowElapsed = elapsed - rowStart;
+        const startOpacity = currentOpacities[index];
+
+        if (rowElapsed <= 0) {
+          row.style.opacity = String(startOpacity);
+          row.style.pointerEvents = startOpacity > 0.05 ? "auto" : "none";
+          allDone = false;
+        } else if (rowElapsed < ROW_FADE_IN_DURATION) {
+          const t = rowElapsed / ROW_FADE_IN_DURATION;
+          const currentVal = startOpacity + (MAX_OPACITY - startOpacity) * easeOutQuad(t);
+          row.style.opacity = String(Math.min(MAX_OPACITY, Math.max(MIN_OPACITY, currentVal)));
+          row.style.pointerEvents = "auto";
+          allDone = false;
+        } else {
+          row.style.opacity = String(MAX_OPACITY);
+          row.style.pointerEvents = "auto";
+        }
+      });
+
+      if (!allDone && isDrawerHovered) {
+        drawerRafId = requestAnimationFrame(animateFadeIn);
+      } else {
+        drawerRafId = null;
+      }
+    };
+
+    drawerRafId = requestAnimationFrame(animateFadeIn);
+  };
+
+  const startDrawerFadeOut = () => {
+    if (!messagesExpandedWrap) return;
+    if (drawerRafId) cancelAnimationFrame(drawerRafId);
+
+    const rows = messagesExpandedWrap.querySelectorAll(".messages-expanded-row");
+    if (rows.length === 0) {
+      messagesExpandedWrap.classList.remove("expanded");
+      messagesExpandedWrap.style.visibility = "hidden";
+      return;
+    }
+
+    messagesExpandedWrap.style.pointerEvents = "none";
+
+    const wrapStartOpacity = parseFloat(messagesExpandedWrap.style.opacity) || MAX_OPACITY;
+    const rowStartOpacities = Array.from(rows).map((row) => {
+      const val = parseFloat(row.style.opacity);
+      return isNaN(val) ? MIN_OPACITY : Math.max(MIN_OPACITY, Math.min(MAX_OPACITY, val));
+    });
+
+    const startTime = performance.now();
+
+    const animateFadeOut = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / FADE_OUT_DURATION);
+      const easeProgress = easeOutQuad(progress);
+      const factor = 1 - easeProgress;
+
+      messagesExpandedWrap.style.opacity = String(Math.max(MIN_OPACITY, wrapStartOpacity * factor));
+
+      rows.forEach((row, index) => {
+        const val = Math.max(MIN_OPACITY, rowStartOpacities[index] * factor);
+        row.style.opacity = String(val);
+      });
+
+      if (progress < 1 && !isDrawerHovered) {
+        drawerRafId = requestAnimationFrame(animateFadeOut);
+      } else if (!isDrawerHovered) {
+        messagesExpandedWrap.style.opacity = String(MIN_OPACITY);
+        rows.forEach((row) => {
+          row.style.opacity = String(MIN_OPACITY);
+          row.style.pointerEvents = "none";
+        });
+        messagesExpandedWrap.style.visibility = "hidden";
+        messagesExpandedWrap.classList.remove("expanded");
+        drawerRafId = null;
+      }
+    };
+
+    drawerRafId = requestAnimationFrame(animateFadeOut);
+  };
+
+  if (sketchMessagesDrawer) {
+    sketchMessagesDrawer.addEventListener("mouseenter", () => {
+      isDrawerHovered = true;
+      startDrawerFadeIn();
+    });
+
+    sketchMessagesDrawer.addEventListener("mouseleave", () => {
+      isDrawerHovered = false;
+      startDrawerFadeOut();
+    });
+  }
 
   // 初始渲染讯息方框
   renderConversationMessages();
@@ -2864,6 +3009,25 @@ window.addEventListener("DOMContentLoaded", () => {
     return isPackageRunning(pkgName) || isPackageInQueue(pkgName);
   };
 
+  // 实时更新队列提示徽章
+  const updateQueueBadge = () => {
+    if (!packageQueueBadge) return;
+    if (packageTaskQueue.length > 0) {
+      packageQueueBadge.textContent = `队列待执行: ${packageTaskQueue.length}`;
+      packageQueueBadge.classList.remove("hidden");
+    } else {
+      packageQueueBadge.classList.add("hidden");
+    }
+  };
+
+  // 统一刷新已安装组件列表与扩展市场卡片视图
+  const refreshPackageViews = () => {
+    renderInstalledPackages();
+    if (currentCatalogResult?.packages) {
+      renderCatalogGrid(currentCatalogResult.packages);
+    }
+  };
+
   if (btnClosePackageProgress && packageProgressFloatCard) {
     btnClosePackageProgress.addEventListener("click", () => {
       if (floatCardDismissTimer) clearTimeout(floatCardDismissTimer);
@@ -2939,14 +3103,7 @@ window.addEventListener("DOMContentLoaded", () => {
       if (packageProgressMessage) packageProgressMessage.textContent = message || "";
 
       // 实时更新队列提示徽章
-      if (packageQueueBadge) {
-        if (packageTaskQueue.length > 0) {
-          packageQueueBadge.textContent = `队列待执行: ${packageTaskQueue.length}`;
-          packageQueueBadge.classList.remove("hidden");
-        } else {
-          packageQueueBadge.classList.add("hidden");
-        }
-      }
+      updateQueueBadge();
 
       // 当单项任务结束且队列为空时，平滑渐隐
       if (
@@ -3409,17 +3566,8 @@ window.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    if (packageQueueBadge) {
-      if (packageTaskQueue.length > 0) {
-        packageQueueBadge.textContent = `队列待执行: ${packageTaskQueue.length}`;
-        packageQueueBadge.classList.remove("hidden");
-      } else {
-        packageQueueBadge.classList.add("hidden");
-      }
-    }
-
-    renderInstalledPackages();
-    if (currentCatalogResult?.packages) renderCatalogGrid(currentCatalogResult.packages);
+    updateQueueBadge();
+    refreshPackageViews();
 
     processPackageQueue();
   };
@@ -3435,16 +3583,8 @@ window.addEventListener("DOMContentLoaded", () => {
         stepper.stopTimer();
         packageSteppersMap.delete(packageName.toLowerCase());
       }
-      if (packageQueueBadge) {
-        if (packageTaskQueue.length > 0) {
-          packageQueueBadge.textContent = `队列待执行: ${packageTaskQueue.length}`;
-          packageQueueBadge.classList.remove("hidden");
-        } else {
-          packageQueueBadge.classList.add("hidden");
-        }
-      }
-      renderInstalledPackages();
-      if (currentCatalogResult?.packages) renderCatalogGrid(currentCatalogResult.packages);
+      updateQueueBadge();
+      refreshPackageViews();
     }
   };
 
@@ -3454,8 +3594,7 @@ window.addEventListener("DOMContentLoaded", () => {
     if (packageTaskQueue.length === 0) {
       currentRunningTask = null;
       if (packageQueueBadge) packageQueueBadge.classList.add("hidden");
-      renderInstalledPackages();
-      if (currentCatalogResult?.packages) renderCatalogGrid(currentCatalogResult.packages);
+      refreshPackageViews();
       return;
     }
 
@@ -3468,17 +3607,8 @@ window.addEventListener("DOMContentLoaded", () => {
       action === "uninstall" ? "uninstalling" : action === "update" ? "updating" : "installing"
     );
 
-    if (packageQueueBadge) {
-      if (packageTaskQueue.length > 0) {
-        packageQueueBadge.textContent = `队列待执行: ${packageTaskQueue.length}`;
-        packageQueueBadge.classList.remove("hidden");
-      } else {
-        packageQueueBadge.classList.add("hidden");
-      }
-    }
-
-    renderInstalledPackages();
-    if (currentCatalogResult?.packages) renderCatalogGrid(currentCatalogResult.packages);
+    updateQueueBadge();
+    refreshPackageViews();
 
     try {
       if (action === "install") {
@@ -3506,15 +3636,13 @@ window.addEventListener("DOMContentLoaded", () => {
       }
       setTimeout(() => {
         packageProgressMap.delete(packageName);
-        renderInstalledPackages();
-        if (currentCatalogResult?.packages) renderCatalogGrid(currentCatalogResult.packages);
+        refreshPackageViews();
       }, 1500);
 
       currentRunningTask = null;
       isProcessingQueue = false;
 
-      renderInstalledPackages();
-      if (currentCatalogResult?.packages) renderCatalogGrid(currentCatalogResult.packages);
+      refreshPackageViews();
 
       // 自动出队继续执行下一个任务
       if (packageTaskQueue.length > 0) {

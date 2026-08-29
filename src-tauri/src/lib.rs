@@ -57,25 +57,41 @@ fn close_window(window: tauri::WebviewWindow) {
 // Pi Agent 核心 RPC 与监督控制指令
 // ==========================================================================
 
+async fn send_prompt_internal(
+    supervisor: &PiSupervisor,
+    cmd_type: &str,
+    message: &str,
+    images: Option<Vec<serde_json::Value>>,
+    streaming_behavior: Option<String>,
+) -> Result<(), String> {
+    let (processed_message, _info) = supervisor.inject_prompt(message);
+    let mut val = serde_json::json!({
+        "type": cmd_type,
+        "message": processed_message,
+    });
+
+    if let Some(imgs) = images {
+        val["images"] = serde_json::Value::Array(imgs);
+    }
+    if let Some(sb) = streaming_behavior {
+        val["streamingBehavior"] = serde_json::Value::String(sb);
+    }
+
+    supervisor.send_command(val).await
+}
+
 #[tauri::command]
 async fn pi_send_prompt(
     supervisor: State<'_, PiSupervisor>,
     request: PromptRequest,
 ) -> Result<(), String> {
-    let (processed_message, _info) = supervisor.inject_prompt(&request.message);
-    let mut val = serde_json::json!({
-        "type": "prompt",
-        "message": processed_message,
-    });
-
-    if let Some(imgs) = request.images {
-        val["images"] = serde_json::Value::Array(imgs);
-    }
-    if let Some(sb) = request.streaming_behavior {
-        val["streamingBehavior"] = serde_json::Value::String(sb);
-    }
-
-    supervisor.send_command(val).await
+    send_prompt_internal(
+        &supervisor,
+        "prompt",
+        &request.message,
+        request.images,
+        request.streaming_behavior,
+    ).await
 }
 
 #[tauri::command]
@@ -95,12 +111,13 @@ async fn pi_send_follow_up(
     supervisor: State<'_, PiSupervisor>,
     request: FollowUpRequest,
 ) -> Result<(), String> {
-    let (processed_message, _info) = supervisor.inject_prompt(&request.message);
-    let val = serde_json::json!({
-        "type": "follow_up",
-        "message": processed_message,
-    });
-    supervisor.send_command(val).await
+    send_prompt_internal(
+        &supervisor,
+        "follow_up",
+        &request.message,
+        None,
+        None,
+    ).await
 }
 
 #[tauri::command]
@@ -250,7 +267,7 @@ async fn pi_check_update(
     let current_ver = supervisor
         .get_version()
         .await
-        .unwrap_or_else(|| "0.84.3".to_string());
+        .unwrap_or_else(|| crate::version_watcher::checker::FALLBACK_PI_VERSION.to_string());
     Ok(scheduler.check_now(&current_ver).await)
 }
 

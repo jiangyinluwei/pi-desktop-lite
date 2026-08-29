@@ -1143,37 +1143,49 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   transition: all 0.25s ease;
 }
 
-/* 下方展开包装层：常态收起，悬浮时平滑展开 */
+/* 下方展开包装层：常态收起，绝对定位向下展开（避免撑高容器导致整体上移） */
 .messages-expanded-wrap {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
   width: 100%;
   max-height: 0;
   opacity: 0;
   overflow: hidden;
   pointer-events: none;
-  transform: translateY(-4px);
-  transition: max-height 0.32s cubic-bezier(0.16, 1, 0.3, 1),
-              opacity 0.26s ease,
-              transform 0.26s cubic-bezier(0.16, 1, 0.3, 1),
-              margin-top 0.26s ease;
-  margin-top: 0;
+  padding-top: 8px;
+  padding-bottom: 6px;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  z-index: 10;
 }
 
-/* 鼠标悬停抽屉时展开 */
-.sketch-messages-drawer:hover .messages-expanded-wrap {
-  max-height: calc(100vh - 430px);
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
-  margin-top: 8px;
+/* rAF 引擎激活展开状态 */
+.messages-expanded-wrap.expanded {
+  max-height: calc(100vh - 380px);
 }
 
-/* 下方展开网格：每行 4 个讯息方框 */
+/* 下方展开区域行列表容器 */
 .messages-expanded-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+/* 下方展开行：每行 4 个讯息方框，由 rAF 硬件垂直同步引擎精准控制透明度 */
+.messages-expanded-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   width: 100%;
-  padding-bottom: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* 单个讯息方框卡片（手绘纸质质感） */
@@ -1189,14 +1201,21 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   justify-content: center;
   min-height: 48px;
   box-shadow: 1px 2px 0px rgba(0, 0, 0, 0.04);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   transition: background-color 0.18s ease,
               border-color 0.18s ease,
               transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.18s ease,
-              opacity 0.2s ease;
+              box-shadow 0.18s ease;
   text-align: left;
   outline: none;
   overflow: hidden;
+}
+
+.sketch-message-card.removing {
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  opacity: 0 !important;
+  transform: scale(0.95);
 }
 
 .sketch-message-card:hover {
@@ -1209,22 +1228,6 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .sketch-message-card:active {
   transform: translateY(0);
   box-shadow: 1px 1px 0px rgba(0, 0, 0, 0.04);
-}
-
-/* 展开区域中的卡片淡入动画 */
-.messages-expanded-grid .sketch-message-card {
-  animation: messageFadeIn 0.25s ease-out forwards;
-}
-
-@keyframes messageFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 /* 卡片内部标题与时间 */
