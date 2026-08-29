@@ -10,7 +10,7 @@ use config_manager::{
     pi_delete_custom_provider, pi_get_app_config, pi_get_auth_config, pi_get_custom_models,
     pi_get_official_models_catalog, pi_get_settings_config, pi_save_app_config,
     pi_save_auth_config, pi_save_custom_models, pi_save_custom_provider,
-    pi_save_provider_api_key, pi_save_settings_config, pi_translate_text,
+    pi_save_provider_api_key, pi_save_settings_config,
 };
 use package_manager::{
     pi_check_package_updates, pi_get_installed_packages, pi_install_package, pi_search_packages,
@@ -330,7 +330,6 @@ pub fn run() {
             pi_uninstall_package,
             pi_check_package_updates,
             pi_update_package,
-            pi_translate_text,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

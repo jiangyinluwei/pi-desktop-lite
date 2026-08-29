@@ -47,7 +47,6 @@ const ICONS = {
   warning: `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2 L1.5 13.5 L14.5 13.5 Z" /><line x1="8" y1="6" x2="8" y2="9.5" /><circle cx="8" cy="11.5" r="0.6" fill="currentColor" stroke="none" /></svg>`,
   tool: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.8 2.2 C9.2 1.6, 8.2 1.4, 7.5 1.8 L6.2 3.1 L8.9 5.8 L10.2 4.5 C10.6 3.8, 10.4 2.8, 9.8 2.2 Z" /><path d="M8.2 6.5 L3.2 11.5 C2.8 11.9, 2.5 12.6, 2.7 13.2 C2.9 13.5, 3.2 13.8, 3.5 14 C4.1 14.2, 4.8 13.9, 5.2 13.5 L10.2 8.5 Z" /></svg>`,
   chevronDown: `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6 L8 10 L12 6" /></svg>`,
-  translate: `<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 3h7M5 3v1.5M2.5 4.5c.5 2.5 2 4.5 4 5.5M4.5 7c-.8 1.2-2 2-3 2.5" /><path d="M8.5 13.5l3.5-8 3.5 8M9.8 11h4.4" /></svg>`,
 };
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -103,7 +102,6 @@ window.addEventListener("DOMContentLoaded", () => {
   const changelogVersionTag = document.getElementById("changelog-version-tag");
   const btnCloseChangelog = document.getElementById("btn-close-changelog");
   const kernelChangelogContent = document.getElementById("kernel-changelog-content");
-  const btnTranslateChangelog = document.getElementById("btn-translate-changelog");
   const btnNewSession = document.getElementById("btn-new-session");
   const sessionsList = document.getElementById("sessions-list");
   const sessionCount = document.getElementById("session-count");
@@ -1465,40 +1463,19 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // 更新日志翻译缓存与视图状态
-  const changelogTranslationCache = {};
-  let isShowingTranslatedChangelog = false;
-
   // 展开/收起更新日志抽屉
   if (btnToggleChangelog && kernelChangelogDrawer) {
     btnToggleChangelog.addEventListener("click", () => {
       const isHidden = kernelChangelogDrawer.classList.toggle("hidden");
       if (!isHidden && latestUpdateInfo) {
-        const versionKey = latestUpdateInfo.latest_version || "latest";
         if (changelogVersionTag) {
           changelogVersionTag.textContent = latestUpdateInfo.latest_version
             ? `v${latestUpdateInfo.latest_version}`
             : "最新版本";
         }
         if (kernelChangelogContent) {
-          if (isShowingTranslatedChangelog && changelogTranslationCache[versionKey]) {
-            kernelChangelogContent.textContent = changelogTranslationCache[versionKey];
-            if (btnTranslateChangelog) {
-              btnTranslateChangelog.innerHTML = `${ICONS.translate} <span class="btn-translate-text">查看原文</span>`;
-              btnTranslateChangelog.title = "点击切换回英文原文";
-            }
-          } else {
-            kernelChangelogContent.textContent =
-              latestUpdateInfo.release_notes?.trim() || "暂无该版本的更新日志详情。";
-            isShowingTranslatedChangelog = false;
-            if (btnTranslateChangelog) {
-              btnTranslateChangelog.innerHTML = `${ICONS.translate} <span class="btn-translate-text">翻译中文</span>`;
-              btnTranslateChangelog.title = "使用当前挂载的模型翻译为中文";
-            }
-          }
-        }
-        if (btnTranslateChangelog) {
-          btnTranslateChangelog.disabled = false;
+          kernelChangelogContent.textContent =
+            latestUpdateInfo.release_notes?.trim() || "暂无该版本的更新日志详情。";
         }
       }
     });
@@ -1507,68 +1484,6 @@ window.addEventListener("DOMContentLoaded", () => {
   if (btnCloseChangelog && kernelChangelogDrawer) {
     btnCloseChangelog.addEventListener("click", () => {
       kernelChangelogDrawer.classList.add("hidden");
-    });
-  }
-
-  // 翻译更新日志为中文 (使用当前挂载/选中的模型)
-  if (btnTranslateChangelog && kernelChangelogContent) {
-    btnTranslateChangelog.addEventListener("click", async () => {
-      const rawNotes = latestUpdateInfo?.release_notes?.trim();
-      if (!rawNotes) {
-        alert("暂无可翻译的更新日志详情");
-        return;
-      }
-
-      const versionKey = latestUpdateInfo?.latest_version || "latest";
-
-      // 1. 如果当前已经是翻译状态，点击切换回英文原文
-      if (isShowingTranslatedChangelog) {
-        kernelChangelogContent.textContent = rawNotes;
-        isShowingTranslatedChangelog = false;
-        btnTranslateChangelog.innerHTML = `${ICONS.translate} <span class="btn-translate-text">翻译中文</span>`;
-        btnTranslateChangelog.title = "使用当前挂载的模型翻译为中文";
-        return;
-      }
-
-      // 2. 如果已有缓存的翻译结果，直接展示并切换状态
-      if (changelogTranslationCache[versionKey]) {
-        kernelChangelogContent.textContent = changelogTranslationCache[versionKey];
-        isShowingTranslatedChangelog = true;
-        btnTranslateChangelog.innerHTML = `${ICONS.translate} <span class="btn-translate-text">查看原文</span>`;
-        btnTranslateChangelog.title = "点击切换回英文原文";
-        return;
-      }
-
-      // 3. 开始调用当前挂载的模型进行翻译
-      const originalHtml = btnTranslateChangelog.innerHTML;
-      btnTranslateChangelog.disabled = true;
-      btnTranslateChangelog.innerHTML = `<span class="translating-spinner"></span> <span class="btn-translate-text">正在翻译...</span>`;
-
-      try {
-        // 获取当前挂载或选中的模型
-        const selected = configService.getSelectedModel();
-        const active = piClient.currentModel || selected;
-        const provider = active?.provider || null;
-        const modelId = active?.id || active?.modelId || null;
-
-        const translated = await configService.translateText(rawNotes, provider, modelId);
-        if (!translated || !translated.trim()) {
-          throw new Error("翻译返回内容为空");
-        }
-
-        changelogTranslationCache[versionKey] = translated.trim();
-        kernelChangelogContent.textContent = translated.trim();
-        isShowingTranslatedChangelog = true;
-        btnTranslateChangelog.disabled = false;
-        btnTranslateChangelog.innerHTML = `${ICONS.translate} <span class="btn-translate-text">查看原文</span>`;
-        btnTranslateChangelog.title = "点击切换回英文原文";
-      } catch (err) {
-        console.error("Changelog translation failed:", err);
-        btnTranslateChangelog.disabled = false;
-        btnTranslateChangelog.innerHTML = originalHtml;
-        const errMsg = err?.message || err?.toString() || "未知错误";
-        alert(`模型调用失败: ${errMsg}`);
-      }
     });
   }
 

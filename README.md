@@ -27,7 +27,7 @@
   - 🛡️ **`pi_runner` (进程监督与孤儿收割)**：Windows 原生 Win32 Job Object 内核级级联收割，杜绝僵尸进程；严格 `\n` (LF) 字节流分帧器；滑动窗口崩溃自愈（30s 内超 2 次熔断保护）；`default-area` 默认隔离工作区自动探测与工作目录锁定（源码工作区优先 + 独立 `AGENTS.md` 防穿透规则与自动播种保障，打包时完整打包至 Release 资源目录，预留动态切换接口）；
   - 🧩 **`package_manager` (官方组件市场与生命周期)**：连通 Pi 官方 Package Catalog (pi.dev/packages)，基于轻量正则解析与 15min TTL 缓存提取结构化组件；精确探测本地已安装组件及版本；内置全局单任务互斥锁（Mutex）与 FIFO 异步任务队列，支持批量连续点击加入队列并自动按序出队执行；接入 `ProgressStepper` 平滑步进引擎（阶段等待期间每 2s 自动 +1% 直到下个阶段 - 1%，新阶段触发立即跳变响应）；调用 `pi install/remove npm:<pkg> -a` 执行非阻塞安装与卸载；并发查询 npm registry API 进行 SemVer 版本比对与一键更新；
   - 🔒 **`security` (正则数据脱敏中间件)**：过滤 API Key / Token / 凭据并脱敏本地私有路径为 `[USER_HOME]`；
-  - 🔄 **`version_watcher & kernel_updater` (抗抖动版本监测与一键内核更新引擎)**：启动延迟 30s 自检，6h 周期轮询带 ±8% Jitter 随机抖动与 15s Watchdog 超时熔断；支持在设置页一键检测官方最新版本、折叠预览 Changelog 更新日志、利用当前挂载的大模型一键翻译更新日志为中文（`pi_translate_text` 接口，支持查看原文/翻译中文双向无缝切换与失败自愈提醒）、支持“不再提醒更新”持久化（写入 `~/.pi-dl/config.json`，主动点击“检查更新”时重置）与提示框 8 秒平滑自动渐隐；支持流式 HTTP 管道下载与 `ProgressStepper` 平滑步进引擎（仅保留最右侧百分比，阶段等待期间每 2s 自动 +1% 直到下个阶段 - 1%，新阶段触发立即跳变响应）、支持一键取消更新（`pi_cancel_kernel_update` 安全终止下载流与清理临时文件），在 `~/.pi-dl/` 执行 staging 暂存、`--version` 预检校验、原子备份替换旧内核并热重启 `PiSupervisor`，实现零提权免安装无感热升级；
+  - 🔄 **`version_watcher & kernel_updater` (抗抖动版本监测与一键内核更新引擎)**：启动延迟 30s 自检，6h 周期轮询带 ±8% Jitter 随机抖动与 15s Watchdog 超时熔断；支持在设置页一键检测官方最新版本、折叠预览 Changelog 更新日志、支持“不再提醒更新”持久化（写入 `~/.pi-dl/config.json`，主动点击“检查更新”时重置）与提示框 8 秒平滑自动渐隐；支持流式 HTTP 管道下载与 `ProgressStepper` 平滑步进引擎（仅保留最右侧百分比，阶段等待期间每 2s 自动 +1% 直到下个阶段 - 1%，新阶段触发立即跳变响应）、支持一键取消更新（`pi_cancel_kernel_update` 安全终止下载流与清理临时文件），在 `~/.pi-dl/` 执行 staging 暂存、`--version` 预检校验、原子备份替换旧内核并热重启 `PiSupervisor`，实现零提权免安装无感热升级；
   - 📁 **`session` (并发内存索引与监听)**：基于 `DashMap` 并发内存缓存与 `notify` 监听 `~/.pi/sessions/`，实现毫秒级会话检索与分支树导航；
   - ⚙️ **`config_manager` (配置管理与目录映射)**：双向管理 `~/.pi-dl/config.json` 及 `~/.pi/agent/` 下的 `auth.json`、`models.json`、`settings.json`；
 - ⚙️ **工程级独立设置全页面与模型配置系统 (Settings View)**：
@@ -39,7 +39,7 @@
   - 🛠️ **两步式自定义通道配置与规范吸附**：
     - **步骤 1（新增/配置运营商）**：配置 Provider ID、接口类型（支持 `openai-completions` (OpenAI Chat / 聚合代理 / 硅基 / 火山 / DeepSeek)、`openai-responses` (OpenAI Responses API / Azure)、`anthropic-messages`、`google-generative-ai`、`ollama`）、Base URL、API Key 及 developer role / reasoning 兼容参数；
     - **步骤 2（运营商配置修改与模型管理）**：在各运营商卡片内**支持一键修改运营商配置 (API 类型/URL/Key/兼容开关)**、新增与编辑挂载模型（模型 ID、显示名称、上下文窗口、输出上限及思考能力），**新增模型时思考推理选项默认勾选，输出上限输入任意数字在回车/失焦/保存时自动吸附匹配最接近的标准 Token 规范值**，**自动映射写入 `~/.pi/agent/models.json`** 并同步加入当前模型列表；
-  - 🧩 **内核与扩展组件管理 (`Package Catalog & Kernel Runtime`)**：顶部集成底层 Pi 内核状态监控、软件版本、一键重启内核、检查更新与**一键内核热更新**（支持流式下载进度条、Changelog 折叠预览与当前模型一键中文翻译）；连通 Pi 官方 Package Catalog，支持按关键词、类型（extension/skill/theme/prompt）与热度排序检索，折叠展示本地已安装扩展列表，提供多阶段手绘草图进度条与 `ProgressStepper` 引擎（解析 ➔ npm下载 ➔ 解压编译 ➔ 写入注册，等待期间每 2s 自动 +1% 直到下个阶段 - 1%），支持一键安装、批量检查更新、单包更新与卸载；
+  - 🧩 **内核与扩展组件管理 (`Package Catalog & Kernel Runtime`)**：顶部集成底层 Pi 内核状态监控、软件版本、一键重启内核、检查更新与**一键内核热更新**（支持流式下载进度条与 Changelog 折叠预览）；连通 Pi 官方 Package Catalog，支持按关键词、类型（extension/skill/theme/prompt）与热度排序检索，折叠展示本地已安装扩展列表，提供多阶段手绘草图进度条与 `ProgressStepper` 引擎（解析 ➔ npm下载 ➔ 解压编译 ➔ 写入注册，等待期间每 2s 自动 +1% 直到下个阶段 - 1%），支持一键安装、批量检查更新、单包更新与卸载；
   - 📁 **会话历史管理**：支持历史会话列表展示、新建会话与毫秒级会话切换。
 - 🔄 **全域右键“返回上一步 (Step Back)”层级流水线**：
   - 在任意位置点击右键：退出设置全屏视图 ➔ `Flow (界面3, 触发 abort 中止)` ➔ 回退至 `专注版 (界面2)` ➔ 回退至 `详细版 (界面1)` ➔ 输入框失焦/清空；

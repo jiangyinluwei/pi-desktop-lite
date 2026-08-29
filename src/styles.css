@@ -2656,53 +2656,6 @@ input::-ms-reveal {
   border-bottom: 1px dashed var(--sketch-border-subtle);
 }
 
-.changelog-header-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.btn-translate-changelog {
-  font-size: 11px;
-  padding: 1px 6px;
-  height: 20px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border-radius: 3px;
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--ink-muted);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.btn-translate-changelog:hover:not(:disabled) {
-  border-color: var(--sketch-border-subtle);
-  background: var(--sketch-tag-bg);
-  color: var(--ink-primary);
-}
-
-.btn-translate-changelog:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.translating-spinner {
-  display: inline-block;
-  width: 9px;
-  height: 9px;
-  border: 1.5px solid var(--sketch-border-subtle);
-  border-top-color: var(--ink-primary);
-  border-radius: 50%;
-  animation: spin-translate 0.8s linear infinite;
-}
-
-@keyframes spin-translate {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
 .drawer-close-btn {
   display: inline-flex;
   align-items: center;
