@@ -109,14 +109,20 @@ pub fn pi_save_provider_api_key(provider: String, api_key: String) -> Result<(),
     let trimmed_key = api_key.trim();
     if trimmed_key.is_empty() {
         map.remove(&provider);
+        if provider == "opencode-zen" || provider == "opencode-go" {
+            if !map.contains_key("opencode-zen") && !map.contains_key("opencode-go") {
+                map.remove("opencode");
+            }
+        }
     } else {
-        map.insert(
-            provider,
-            json!({
-                "type": "api_key",
-                "key": trimmed_key
-            }),
-        );
+        let auth_obj = json!({
+            "type": "api_key",
+            "key": trimmed_key
+        });
+        map.insert(provider.clone(), auth_obj.clone());
+        if provider == "opencode-zen" || provider == "opencode-go" {
+            map.insert("opencode".to_string(), auth_obj);
+        }
     }
 
     pi_save_auth_config(current_auth)
@@ -375,11 +381,292 @@ pub struct OfficialModelMeta {
     pub is_default: bool,
 }
 
-/// 获取官方支持的服务商与其罗列的可用模型清单（合并本地 models.json 与内置目录）
+/// 解析字符串格式的 Token 数量（如 "1M", "200K", "65.5K", "128000"）
+pub fn parse_token_count(s: &str) -> u64 {
+    let s = s.trim().to_uppercase();
+    if let Some(num_str) = s.strip_suffix('M') {
+        if let Ok(num) = num_str.parse::<f64>() {
+            return (num * 1_000_000.0) as u64;
+        }
+    }
+    if let Some(num_str) = s.strip_suffix('K') {
+        if let Ok(num) = num_str.parse::<f64>() {
+            return (num * 1_000.0) as u64;
+        }
+    }
+    s.parse::<u64>().unwrap_or(8192)
+}
+
+/// 格式化模型显示名称
+pub fn format_model_display_name(model_id: &str) -> String {
+    let parts: Vec<&str> = model_id.split('-').collect();
+    let formatted: Vec<String> = parts
+        .iter()
+        .map(|p| {
+            let lower = p.to_lowercase();
+            if lower == "gpt" || lower == "glm" || lower == "r1" || lower == "v3" || lower == "v4" || lower == "k3" || lower == "m3" || lower == "lpu" || lower == "api" {
+                p.to_uppercase()
+            } else if p.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                p.to_string()
+            } else {
+                let mut c = p.chars();
+                match c.next() {
+                    None => String::new(),
+                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                }
+            }
+        })
+        .collect();
+    formatted.join(" ")
+}
+
+/// 从本地 Pi 内核动态执行 `pi --list-models` 获取实时发现的全部模型
+pub fn fetch_models_from_pi_cli(app_handle: Option<&tauri::AppHandle>) -> Vec<OfficialModelMeta> {
+    let pi_path = match crate::pi_runner::supervisor::PiSupervisor::find_pi_binary(app_handle) {
+        Some(p) => p,
+        None => return Vec::new(),
+    };
+
+    let mut cmd = std::process::Command::new(&pi_path);
+    cmd.arg("--list-models");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let output = match cmd.output() {
+        Ok(out) => out,
+        Err(_) => return Vec::new(),
+    };
+
+    let stdout_str = String::from_utf8_lossy(&output.stdout);
+    let mut results = Vec::new();
+
+    for line in stdout_str.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with("provider") || line.starts_with("---") {
+            continue;
+        }
+        let cols: Vec<&str> = line.split_whitespace().collect();
+        if cols.len() >= 4 {
+            let provider_raw = cols[0];
+            let model_id = cols[1].to_string();
+            let context_str = cols[2];
+            let max_out_str = cols[3];
+            let thinking_str = cols.get(4).copied().unwrap_or("no");
+
+            let context_window = parse_token_count(context_str);
+            let max_tokens = parse_token_count(max_out_str);
+            let reasoning = thinking_str.eq_ignore_ascii_case("yes");
+            let name = format_model_display_name(&model_id);
+
+            results.push(OfficialModelMeta {
+                id: model_id,
+                name,
+                provider: provider_raw.to_string(),
+                context_window,
+                max_tokens,
+                reasoning,
+                is_default: false,
+            });
+        }
+    }
+
+    results
+}
+
+/// 从远程官方 API 或 Pi 动态自省拉取指定服务商的最新可用模型并持久化缓存
+#[tauri::command]
+pub async fn pi_fetch_official_models(
+    app: tauri::AppHandle,
+    provider_id: String,
+) -> Result<Vec<OfficialModelMeta>, String> {
+    let provider_key = provider_id.trim().to_lowercase();
+    let mut fetched_models: Vec<OfficialModelMeta> = Vec::new();
+
+    // 1. 先通过 Pi 引擎自省读取已注册和可用模型
+    let cli_models = fetch_models_from_pi_cli(Some(&app));
+    for m in cli_models {
+        if provider_key.starts_with("opencode") {
+            if m.provider.eq_ignore_ascii_case("opencode") {
+                if provider_key == "opencode-go" {
+                    let id_lower = m.id.to_lowercase();
+                    if id_lower.contains("deepseek")
+                        || id_lower.contains("kimi")
+                        || id_lower.contains("glm")
+                        || id_lower.contains("qwen")
+                        || id_lower.contains("minimax")
+                        || id_lower.contains("pickle")
+                        || id_lower.contains("hy3")
+                        || id_lower.contains("mimo")
+                        || id_lower.contains("muse")
+                        || id_lower.contains("nemotron")
+                    {
+                        fetched_models.push(m);
+                    }
+                } else {
+                    fetched_models.push(m);
+                }
+            }
+        } else if m.provider.eq_ignore_ascii_case(&provider_key) {
+            fetched_models.push(m);
+        }
+    }
+
+    // 2. 针对 OpenRouter 官方公开端点直接请求最新列表
+    if provider_key == "openrouter" {
+        if let Ok(resp) = reqwest::Client::new()
+            .get("https://openrouter.ai/api/v1/models")
+            .header("User-Agent", "pi-desktop-lite")
+            .timeout(std::time::Duration::from_secs(6))
+            .send()
+            .await
+        {
+            if let Ok(json_data) = resp.json::<Value>().await {
+                if let Some(arr) = json_data.get("data").and_then(|d| d.as_array()) {
+                    for item in arr {
+                        if let Some(id) = item.get("id").and_then(|i| i.as_str()) {
+                            let name = item.get("name").and_then(|n| n.as_str()).unwrap_or(id).to_string();
+                            let context_window = item.get("context_length").and_then(|c| c.as_u64()).unwrap_or(128000);
+                            let max_tokens = item.get("top_provider")
+                                .and_then(|tp| tp.get("max_completion_tokens"))
+                                .and_then(|m| m.as_u64())
+                                .unwrap_or(8192);
+                            let id_lower = id.to_lowercase();
+                            let reasoning = id_lower.contains("reasoning")
+                                || id_lower.contains("r1")
+                                || id_lower.contains("o1")
+                                || id_lower.contains("o3")
+                                || id_lower.contains("thinking")
+                                || id_lower.contains("sonnet");
+
+                            if !fetched_models.iter().any(|m| m.id == id) {
+                                fetched_models.push(OfficialModelMeta {
+                                    id: id.to_string(),
+                                    name,
+                                    provider: "openrouter".to_string(),
+                                    context_window,
+                                    max_tokens,
+                                    reasoning,
+                                    is_default: false,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. 针对配置了 API Key 的官方服务商（OpenAI, DeepSeek, Groq 等），尝试请求官方 models 接口
+    let auth = pi_get_auth_config().unwrap_or_else(|_| json!({}));
+    let api_key = auth.get(&provider_key)
+        .or_else(|| {
+            if provider_key.starts_with("opencode") {
+                auth.get("opencode")
+            } else {
+                None
+            }
+        })
+        .and_then(|v| {
+            if v.is_string() {
+                v.as_str().map(|s| s.to_string())
+            } else {
+                v.get("key").and_then(|k| k.as_str()).map(|s| s.to_string())
+            }
+        });
+
+    if let Some(key) = api_key {
+        let (url, auth_header) = match provider_key.as_str() {
+            "openai" => ("https://api.openai.com/v1/models", format!("Bearer {}", key)),
+            "deepseek" => ("https://api.deepseek.com/models", format!("Bearer {}", key)),
+            "groq" => ("https://api.groq.com/openai/v1/models", format!("Bearer {}", key)),
+            "xai" => ("https://api.x.ai/v1/models", format!("Bearer {}", key)),
+            _ => ("", String::new()),
+        };
+
+        if !url.is_empty() {
+            if let Ok(resp) = reqwest::Client::new()
+                .get(url)
+                .header("Authorization", auth_header)
+                .header("User-Agent", "pi-desktop-lite")
+                .timeout(std::time::Duration::from_secs(6))
+                .send()
+                .await
+            {
+                if let Ok(json_data) = resp.json::<Value>().await {
+                    if let Some(arr) = json_data.get("data").and_then(|d| d.as_array()) {
+                        for item in arr {
+                            if let Some(id) = item.get("id").and_then(|i| i.as_str()) {
+                                if !fetched_models.iter().any(|m| m.id == id) {
+                                    let id_lower = id.to_lowercase();
+                                    let reasoning = id_lower.contains("o1")
+                                        || id_lower.contains("o3")
+                                        || id_lower.contains("reasoner")
+                                        || id_lower.contains("r1")
+                                        || id_lower.contains("thinking");
+                                    fetched_models.push(OfficialModelMeta {
+                                        id: id.to_string(),
+                                        name: format_model_display_name(id),
+                                        provider: provider_key.clone(),
+                                        context_window: 128000,
+                                        max_tokens: 8192,
+                                        reasoning,
+                                        is_default: false,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. 持久化缓存至 ~/.pi-dl/official_models_cache.json
+    if !fetched_models.is_empty() {
+        let mut cache = read_pi_dl_json("official_models_cache.json", json!({})).unwrap_or_else(|_| json!({}));
+        if let Some(cache_map) = cache.as_object_mut() {
+            cache_map.insert(provider_key.clone(), json!(fetched_models));
+        }
+        let _ = write_pi_dl_json("official_models_cache.json", &cache);
+    }
+
+    // 5. 如果拉取结果为空，返回内置保底列表
+    if fetched_models.is_empty() {
+        let catalog = get_builtin_official_catalog();
+        if let Some(prov) = catalog.iter().find(|p| p.id.eq_ignore_ascii_case(&provider_key)) {
+            return Ok(prov.models.clone());
+        }
+    }
+
+    Ok(fetched_models)
+}
+
+/// 获取官方支持的服务商与其罗列的可用模型清单（合并本地 models.json、动态缓存与内置目录）
 #[tauri::command]
 pub fn pi_get_official_models_catalog() -> Result<Vec<OfficialProviderMeta>, String> {
     let mut catalog = get_builtin_official_catalog().to_vec();
 
+    // 合并持久化缓存的官方拉取模型 (~/.pi-dl/official_models_cache.json)
+    if let Ok(cache_val) = read_pi_dl_json("official_models_cache.json", json!({})) {
+        if let Some(cache_obj) = cache_val.as_object() {
+            for (prov_id, models_v) in cache_obj {
+                if let Ok(models_list) = serde_json::from_value::<Vec<OfficialModelMeta>>(models_v.clone()) {
+                    if let Some(prov) = catalog.iter_mut().find(|p| p.id.eq_ignore_ascii_case(prov_id)) {
+                        for m in models_list {
+                            if !prov.models.iter().any(|item| item.id == m.id) {
+                                prov.models.push(m);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 合并 models.json 中用户自定义的挂载模型
     if let Ok(custom_val) = pi_get_custom_models() {
         if let Some(store_obj) = custom_val.get("providers").and_then(|p| p.as_object()) {
             for (provider_key, provider_val) in store_obj {
@@ -585,6 +872,186 @@ fn build_builtin_official_catalog() -> Vec<OfficialProviderMeta> {
                     context_window: 2097152,
                     max_tokens: 8192,
                     reasoning: false,
+                    is_default: false,
+                },
+            ],
+        },
+        OfficialProviderMeta {
+            id: "opencode-zen".to_string(),
+            name: "OpenCode Zen".to_string(),
+            desc: "OpenCode Zen 按量计费服务，按需调用 Claude、GPT-5、Gemini 3.7、DeepSeek 等顶尖模型".to_string(),
+            placeholder: "sk-...".to_string(),
+            doc_url: "https://opencode.ai/zen".to_string(),
+            models: vec![
+                OfficialModelMeta {
+                    id: "claude-sonnet-4-5".to_string(),
+                    name: "Claude Sonnet 4.5".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 1000000,
+                    max_tokens: 64000,
+                    reasoning: true,
+                    is_default: true,
+                },
+                OfficialModelMeta {
+                    id: "claude-opus-4-5".to_string(),
+                    name: "Claude Opus 4.5".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 200000,
+                    max_tokens: 64000,
+                    reasoning: true,
+                    is_default: false,
+                },
+                OfficialModelMeta {
+                    id: "claude-haiku-4-5".to_string(),
+                    name: "Claude Haiku 4.5".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 200000,
+                    max_tokens: 64000,
+                    reasoning: true,
+                    is_default: false,
+                },
+                OfficialModelMeta {
+                    id: "gemini-3.7-flash".to_string(),
+                    name: "Gemini 3.7 Flash (Hybrid Thinking)".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 1048576,
+                    max_tokens: 65536,
+                    reasoning: true,
+                    is_default: false,
+                },
+                OfficialModelMeta {
+                    id: "gemini-3.5-flash".to_string(),
+                    name: "Gemini 3.5 Flash".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 1048576,
+                    max_tokens: 65536,
+                    reasoning: true,
+                    is_default: false,
+                },
+                OfficialModelMeta {
+                    id: "gpt-5.4".to_string(),
+                    name: "GPT-5.4 (Reasoning)".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 272000,
+                    max_tokens: 128000,
+                    reasoning: true,
+                    is_default: false,
+                },
+                OfficialModelMeta {
+                    id: "gpt-5.2".to_string(),
+                    name: "GPT-5.2".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 400000,
+                    max_tokens: 128000,
+                    reasoning: true,
+                    is_default: false,
+                },
+                OfficialModelMeta {
+                    id: "gpt-5.1-codex".to_string(),
+                    name: "GPT-5.1 Codex (Code Specialized)".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 400000,
+                    max_tokens: 128000,
+                    reasoning: true,
+                    is_default: false,
+                },
+                OfficialModelMeta {
+                    id: "deepseek-v4-pro".to_string(),
+                    name: "DeepSeek V4 Pro".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 1000000,
+                    max_tokens: 384000,
+                    reasoning: true,
+                    is_default: false,
+                },
+                OfficialModelMeta {
+                    id: "grok-4.6".to_string(),
+                    name: "Grok 4.6".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 500000,
+                    max_tokens: 500000,
+                    reasoning: true,
+                    is_default: false,
+                },
+            ],
+        },
+        OfficialProviderMeta {
+            id: "opencode-go".to_string(),
+            name: "OpenCode Go".to_string(),
+            desc: "OpenCode Go 月费订阅服务 ($10/月)，高频/低成本调用精选开源前沿代码模型".to_string(),
+            placeholder: "sk-...".to_string(),
+            doc_url: "https://opencode.ai/go".to_string(),
+            models: vec![
+                OfficialModelMeta {
+                    id: "deepseek-v4-flash".to_string(),
+                    name: "DeepSeek V4 Flash (Fast)".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 1000000,
+                    max_tokens: 384000,
+                    reasoning: true,
+                    is_default: true,
+                },
+                OfficialModelMeta {
+                    id: "deepseek-v4-pro".to_string(),
+                    name: "DeepSeek V4 Pro".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 1000000,
+                    max_tokens: 384000,
+                    reasoning: true,
+                    is_default: false,
+                },
+                OfficialModelMeta {
+                    id: "kimi-k3".to_string(),
+                    name: "Kimi K3 (1M Context)".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 1000000,
+                    max_tokens: 131072,
+                    reasoning: true,
+                    is_default: false,
+                },
+                OfficialModelMeta {
+                    id: "kimi-k2.7-code".to_string(),
+                    name: "Kimi K2.7 Code".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 262144,
+                    max_tokens: 262144,
+                    reasoning: true,
+                    is_default: false,
+                },
+                OfficialModelMeta {
+                    id: "glm-5.2".to_string(),
+                    name: "GLM 5.2 (1M Context)".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 1000000,
+                    max_tokens: 131072,
+                    reasoning: true,
+                    is_default: false,
+                },
+                OfficialModelMeta {
+                    id: "qwen3.6-plus".to_string(),
+                    name: "Qwen 3.6 Plus".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 262144,
+                    max_tokens: 65536,
+                    reasoning: true,
+                    is_default: false,
+                },
+                OfficialModelMeta {
+                    id: "minimax-m3".to_string(),
+                    name: "MiniMax M3".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 512000,
+                    max_tokens: 128000,
+                    reasoning: true,
+                    is_default: false,
+                },
+                OfficialModelMeta {
+                    id: "big-pickle".to_string(),
+                    name: "Big Pickle (Reasoning)".to_string(),
+                    provider: "opencode".to_string(),
+                    context_window: 200000,
+                    max_tokens: 32000,
+                    reasoning: true,
                     is_default: false,
                 },
             ],

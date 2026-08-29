@@ -62,7 +62,7 @@
        - 模型列表限制最大高度（240px）与极简滚动条，**第一行始终固定为当前激活选中的模型（锁定且禁止删除）**；新增模型自动插入在当前选中模型之后（index 1），绝不挤占首位；选用任一模型即自动移至首位生效；
        - 列表下方集成「官方通道配置 - 展开」与「自定义通道配置 - 展开」（统一复用下拉框手绘 `ic_chevron_down.svg` 矢量微箭头）操作栏，默认处于隐藏状态；
        - 点击展开任一通道配置后，模型列表自动折叠仅显示当前生效的选中项，按钮动态切换为「收起」（微箭头平滑旋转 180° 朝上）与通道切换按钮，支持自由切换通道与一键收起恢复；
-     - **官方通道配置**：API Key 自动映射写入 `~/.pi/agent/auth.json`，并可拉取官方目录一键添加；
+     - **官方通道配置与动态模型拉取**：支持 Anthropic, OpenAI, DeepSeek, Google Gemini, OpenCode Zen, OpenCode Go, OpenRouter 等官方通道，API Key 自动映射写入 `~/.pi/agent/auth.json`，并支持点击「从官网拉取最新模型」实时连通官方 API / Pi 内核自省拉取最新模型，并持久化缓存至 `~/.pi-dl/official_models_cache.json`，支持一键添加至当前模型列表；
      - **两步式自定义通道配置与规范吸附**：
        - 第一步：新增/配置运营商（Provider ID、接口协议[含 `openai-completions`、`openai-responses` 等]、Base URL、API Key 及 developer role / reasoning 兼容参数）；
        - 第二步：在运营商卡片内**支持一键修改运营商配置**、新增/编辑挂载模型（Model ID、显示名称、Context Window、Max Tokens、Reasoning），自动映射写入 `~/.pi/agent/models.json` 并添加至“当前模型列表”。**新增模型时思考推理选项默认勾选；输出上限输入任意数字在按回车、失焦或保存时自动吸附匹配最接近的标准 Token 规范值**；

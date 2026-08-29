@@ -143,6 +143,8 @@ window.addEventListener("DOMContentLoaded", () => {
   const btnSaveOfficialKey = document.getElementById("btn-save-official-key");
   const officialKeyStatus = document.getElementById("official-key-status");
   const officialModelsGrid = document.getElementById("official-models-grid");
+  const btnFetchOfficialModels = document.getElementById("btn-fetch-official-models");
+  const btnFetchOfficialModelsText = document.getElementById("btn-fetch-official-models-text");
 
   // 自定义通道两步式元素
   const customProviderForm = document.getElementById("custom-provider-form");
@@ -764,7 +766,13 @@ window.addEventListener("DOMContentLoaded", () => {
       officialProviderDoc.style.display = provMeta.doc_url ? "inline" : "none";
     }
 
-    const authEntry = currentOfficialAuth[provMeta.id];
+    const authEntry =
+      currentOfficialAuth[provMeta.id] ||
+      (provMeta.id.startsWith("opencode")
+        ? currentOfficialAuth["opencode-zen"] ||
+          currentOfficialAuth["opencode-go"] ||
+          currentOfficialAuth["opencode"]
+        : null);
     const existingKey = typeof authEntry === "string" ? authEntry : authEntry?.key || "";
 
     if (officialApiKeyInput) {
@@ -902,6 +910,43 @@ window.addEventListener("DOMContentLoaded", () => {
         alert(`保存失败: ${err}`);
       } finally {
         btnSaveOfficialKey.disabled = false;
+      }
+    });
+  }
+
+  if (btnFetchOfficialModels && officialProviderSelect) {
+    btnFetchOfficialModels.addEventListener("click", async () => {
+      const provider = officialProviderSelect.value;
+      if (!provider) return;
+
+      btnFetchOfficialModels.disabled = true;
+      if (btnFetchOfficialModelsText) {
+        btnFetchOfficialModelsText.textContent = "正在拉取...";
+      }
+
+      try {
+        const fetchedModels = await configService.fetchOfficialModels(provider);
+        if (Array.isArray(fetchedModels) && fetchedModels.length > 0) {
+          const provMeta = officialCatalog.find((p) => p.id === provider);
+          if (provMeta) {
+            provMeta.models = fetchedModels;
+          }
+          renderOfficialProviderDetails(provider);
+          if (officialKeyStatus) {
+            officialKeyStatus.textContent = `● 成功从官网/内核拉取并同步 ${fetchedModels.length} 个最新可用模型`;
+            officialKeyStatus.style.color = "#10b981";
+          }
+        } else {
+          alert(`未从官网拉取到新模型，已保持当前目录。`);
+        }
+      } catch (err) {
+        console.error("[Main] Fetch official models failed:", err);
+        alert(`从官网拉取模型失败: ${err}`);
+      } finally {
+        btnFetchOfficialModels.disabled = false;
+        if (btnFetchOfficialModelsText) {
+          btnFetchOfficialModelsText.textContent = "从官网拉取最新模型";
+        }
       }
     });
   }

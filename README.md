@@ -49,7 +49,7 @@
     - 模型列表限制最大高度（240px）与隐藏式极简滚动条，**第一行始终固定为当前激活选中的模型（锁定且禁止删除）**；新增模型自动插入在当前选中模型之后（index 1），绝不挤占首位；点击选用立即生效并移至首位；
     - 列表下方内置「官方通道配置 - 展开」与「自定义通道配置 - 展开」（统一复用下拉框手绘 `ic_chevron_down.svg` 矢量微箭头）操作栏，默认处于隐藏状态；
     - 点击展开任一通道配置后，模型列表自动折叠仅显示当前生效的选中项，按钮动态切换为「收起」（微箭头平滑旋转 180° 朝上）与通道切换按钮，支持自由切换通道与一键收起恢复；
-  - ⚡ **官方通道配置 (API Key 自动映射与模型拉取)**：支持 Anthropic Claude, OpenAI, DeepSeek, Google Gemini, OpenRouter, 通义千问 Qwen, 月之暗面 Kimi, MiniMax, Groq, xAI Grok 等官方通道，配置 API Key **自动写入 `~/.pi/agent/auth.json`**，并可一键自动拉取官方可用模型添加到列表；
+  - ⚡ **官方通道配置与动态模型拉取 (`Official Providers & Dynamic Model Pulling`)**：支持 Anthropic Claude, OpenAI, DeepSeek, Google Gemini, OpenCode Zen, OpenCode Go, OpenRouter, 通义千问 Qwen, 月之暗面 Kimi, MiniMax, Groq, xAI Grok 等官方通道，配置 API Key **自动写入 `~/.pi/agent/auth.json`**；支持点击「从官网拉取最新模型」实时连通服务商官方 API / Pi 内核自省拉取最新模型，并持久化缓存至 `~/.pi-dl/official_models_cache.json`，支持一键添加至当前模型列表；
   - 🛠️ **两步式自定义通道配置与规范吸附**：
     - **步骤 1（新增/配置运营商）**：配置 Provider ID、接口类型（支持 `openai-completions` (OpenAI Chat / 聚合代理 / 硅基 / 火山 / DeepSeek)、`openai-responses` (OpenAI Responses API / Azure)、`anthropic-messages`、`google-generative-ai`、`ollama`）、Base URL、API Key 及 developer role / reasoning 兼容参数；
     - **步骤 2（运营商配置修改与模型管理）**：在各运营商卡片内**支持一键修改运营商配置 (API 类型/URL/Key/兼容开关)**、新增与编辑挂载模型（模型 ID、显示名称、上下文窗口、输出上限及思考能力），**新增模型时思考推理选项默认勾选，输出上限输入任意数字在回车/失焦/保存时自动吸附匹配最接近的标准 Token 规范值**，**自动映射写入 `~/.pi/agent/models.json`** 并同步加入当前模型列表；
@@ -106,6 +106,7 @@ Pi 的全局凭据保存在用户主目录的 `~/.pi/agent/auth.json` 中（Wind
   "openai": { "type": "api_key", "key": "sk-..." },
   "deepseek": { "type": "api_key", "key": "sk-..." },
   "google": { "type": "api_key", "key": "AIzaSy..." },
+  "opencode": { "type": "api_key", "key": "sk-..." },
   "openrouter": { "type": "api_key", "key": "sk-or-v1-..." },
   "qwen-token-plan": { "type": "api_key", "key": "sk-sp-..." },
   "kimi-coding": { "type": "api_key", "key": "..." },
@@ -131,6 +132,7 @@ Pi 的全局凭据保存在用户主目录的 `~/.pi/agent/auth.json` 中（Wind
 | **OpenAI (GPT-4o/o3)** | `OPENAI_API_KEY` | `openai` |
 | **DeepSeek** | `DEEPSEEK_API_KEY` | `deepseek` |
 | **Google Gemini** | `GEMINI_API_KEY` | `google` |
+| **OpenCode (Zen / Go)** | `OPENCODE_API_KEY` | `opencode` |
 | **OpenRouter** | `OPENROUTER_API_KEY` | `openrouter` |
 | **xAI (Grok)** | `XAI_API_KEY` | `xai` |
 | **Mistral** | `MISTRAL_API_KEY` | `mistral` |

@@ -7,9 +7,9 @@ pub mod version_watcher;
 
 use config_manager::{
     pi_add_custom_model, pi_add_custom_provider_model, pi_delete_custom_model,
-    pi_delete_custom_provider, pi_get_app_config, pi_get_auth_config, pi_get_custom_models,
-    pi_get_official_models_catalog, pi_get_settings_config, pi_save_app_config,
-    pi_save_auth_config, pi_save_custom_models, pi_save_custom_provider,
+    pi_delete_custom_provider, pi_fetch_official_models, pi_get_app_config, pi_get_auth_config,
+    pi_get_custom_models, pi_get_official_models_catalog, pi_get_settings_config,
+    pi_save_app_config, pi_save_auth_config, pi_save_custom_models, pi_save_custom_provider,
     pi_save_provider_api_key, pi_save_settings_config,
 };
 use package_manager::{
@@ -536,6 +536,7 @@ pub fn run() {
             pi_get_app_config,
             pi_save_app_config,
             pi_get_official_models_catalog,
+            pi_fetch_official_models,
             pi_get_recommended_plugins,
             pi_search_packages,
             pi_get_installed_packages,
