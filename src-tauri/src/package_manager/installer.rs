@@ -88,11 +88,22 @@ pub fn get_installed_packages() -> Result<Vec<InstalledPackage>, String> {
             }
         }
 
+        let (has_preset, is_preset_applied, preset_title) = match super::presets::find_preset_for_package(&pkg_name) {
+            Some(preset) => {
+                let applied = super::presets::is_preset_applied(&preset);
+                (true, applied, Some(preset.title))
+            }
+            None => (false, false, None),
+        };
+
         installed_list.push(InstalledPackage {
             name: pkg_name,
             version,
             description,
             source: source_spec,
+            has_preset,
+            is_preset_applied,
+            preset_title,
         });
     }
 
@@ -256,13 +267,44 @@ pub async fn install_package(
     }
 
     log::info!("[PackageManager] Successfully installed {}", pkg_name);
+
+    // 检查并自动应用推荐配置预设
+    let auto_preset_applied = if let Some(preset) = super::presets::find_preset_for_package(&pkg_name) {
+        match super::presets::apply_preset(&preset) {
+            Ok(_) => {
+                log::info!(
+                    "[PackageManager] Auto-applied preset '{}' for package '{}'",
+                    preset.title,
+                    pkg_name
+                );
+                true
+            }
+            Err(e) => {
+                log::warn!(
+                    "[PackageManager] Failed to auto-apply preset for package '{}': {}",
+                    pkg_name,
+                    e
+                );
+                false
+            }
+        }
+    } else {
+        false
+    };
+
+    let completed_msg = if auto_preset_applied {
+        format!("组件 {} 安装成功，已自动应用推荐配置！", pkg_name)
+    } else {
+        format!("组件 {} 安装成功！", pkg_name)
+    };
+
     let _ = app_handle.emit(
         "package-progress",
         PackageProgressPayload {
             package_name: pkg_name.clone(),
             stage: "completed".to_string(),
             percent: 100,
-            message: format!("组件 {} 安装成功！", pkg_name),
+            message: completed_msg,
         },
     );
 

@@ -13,8 +13,8 @@ use config_manager::{
     pi_save_provider_api_key, pi_save_settings_config,
 };
 use package_manager::{
-    pi_check_package_updates, pi_get_installed_packages, pi_install_package, pi_search_packages,
-    pi_uninstall_package, pi_update_package,
+    pi_apply_package_preset, pi_check_package_updates, pi_get_installed_packages,
+    pi_install_package, pi_search_packages, pi_uninstall_package, pi_update_package,
 };
 use pi_runner::{FollowUpRequest, HostStatus, PiSupervisor, PromptRequest, SteerRequest};
 use session::{parse_session_entries, SessionEntrySummary, SessionIndexCache, SessionMetadata, SessionWatcher};
@@ -330,6 +330,7 @@ pub fn run() {
             pi_uninstall_package,
             pi_check_package_updates,
             pi_update_package,
+            pi_apply_package_preset,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

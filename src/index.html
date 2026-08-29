@@ -242,17 +242,16 @@
         </form>
       </div>
 
-      <!-- 底部手绘风快捷草图标签 -->
-      <div class="sketch-tags-container" id="sketch-tags-container">
-        <button type="button" class="sketch-tag" data-query="Anthropic Research">
-          <span class="tag-marker">~</span> Anthropic Research
-        </button>
-        <button type="button" class="sketch-tag" data-query="Pi.dev Engineering">
-          <span class="tag-marker">~</span> Pi.dev Engineering
-        </button>
-        <button type="button" class="sketch-tag" data-query="Tauri v2 Docs">
-          <span class="tag-marker">~</span> Tauri v2 Docs
-        </button>
+      <!-- 底部手绘风历史会话讯息方框容器 (常态展示第1行3个，鼠标悬浮在下方进一步渐出展开每行4个) -->
+      <div class="sketch-messages-drawer hidden" id="sketch-messages-drawer" aria-label="最近对话讯息">
+        <div class="messages-primary-row" id="messages-primary-row">
+          <!-- 动态渲染：第 1 行（最多 3 个讯息方框） -->
+        </div>
+        <div class="messages-expanded-wrap" id="messages-expanded-wrap">
+          <div class="messages-expanded-grid" id="messages-expanded-grid">
+            <!-- 动态渲染：下方悬浮展开区域（每行 4 个讯息方框） -->
+          </div>
+        </div>
       </div>
 
     </div>

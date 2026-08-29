@@ -2,6 +2,7 @@ import { piClient } from "./services/pi-client.js";
 import { sessionService } from "./services/session-service.js";
 import { versionService } from "./services/version-service.js";
 import { configService } from "./services/config-service.js";
+import { conversationHistoryService } from "./services/conversation-history.js";
 import { invokeTauri } from "./services/tauri-bridge.js";
 import { enhanceAllSelects, enhanceSelect } from "./services/sketch-select.js";
 import { ProgressStepper } from "./services/progress-stepper.js";
@@ -77,6 +78,10 @@ window.addEventListener("DOMContentLoaded", () => {
   const flowInjectionCapsule = document.getElementById("flow-injection-capsule");
   const flowInjectionText = document.getElementById("flow-injection-text");
 
+  // 底部手绘历史讯息抽屉元素
+  const sketchMessagesDrawer = document.getElementById("sketch-messages-drawer");
+  const messagesPrimaryRow = document.getElementById("messages-primary-row");
+  const messagesExpandedGrid = document.getElementById("messages-expanded-grid");
 
   // 设置独立全页面元素
   const topbarHintBanner = document.getElementById("topbar-hint-banner");
@@ -1891,6 +1896,46 @@ window.addEventListener("DOMContentLoaded", () => {
   let hasAutoCollapsedThinking = false;
   const renderedToolCards = new Map();
 
+  /**
+   * 折叠单张工具卡片
+   * @param {HTMLElement} card
+   */
+  const collapseToolCard = (card) => {
+    if (card && !card.classList.contains("collapsed")) {
+      card.classList.add("collapsed");
+      const header = card.querySelector(".tool-header");
+      if (header) header.setAttribute("aria-expanded", "false");
+    }
+  };
+
+  /**
+   * 展开单张工具卡片
+   * @param {HTMLElement} card
+   */
+  const expandToolCard = (card) => {
+    if (card && card.classList.contains("collapsed")) {
+      card.classList.remove("collapsed");
+      const header = card.querySelector(".tool-header");
+      if (header) header.setAttribute("aria-expanded", "true");
+    }
+  };
+
+  /** 收起所有工具卡片（不包括 running 状态） */
+  const collapseAllDoneToolCards = () => {
+    renderedToolCards.forEach((card) => {
+      if (!card.classList.contains("running")) {
+        collapseToolCard(card);
+      }
+    });
+  };
+
+  /** 收起所有工具卡片（包括 running） */
+  const collapseAllToolCards = () => {
+    renderedToolCards.forEach((card) => {
+      collapseToolCard(card);
+    });
+  };
+
   const collapseThinkingCard = () => {
     if (agentThinkingCard && agentThinkingCard.classList.contains("open")) {
       agentThinkingCard.classList.remove("open");
@@ -1956,6 +2001,27 @@ window.addEventListener("DOMContentLoaded", () => {
     if (flowResponseContent) {
       const cursor = flowResponseContent.querySelector(".streaming-cursor");
       if (cursor) cursor.remove();
+    }
+
+    // 记录并沉淀本次完成的对话至记忆服务
+    if (lastUserQuery && (currentResponseText || currentThinkingText)) {
+      const toolCallsSnapshot = [];
+      renderedToolCards.forEach((cardEl, id) => {
+        toolCallsSnapshot.push({
+          id,
+          html: cardEl.outerHTML,
+        });
+      });
+
+      conversationHistoryService.recordConversation({
+        query: lastUserQuery,
+        thinkingText: currentThinkingText,
+        responseText: currentResponseText,
+        toolCalls: toolCallsSnapshot,
+        thinkingDuration: thinkingDuration ? thinkingDuration.textContent : null,
+        modelId: piClient.currentModel?.id || "",
+        sessionPath: "",
+      });
     }
   };
 
@@ -2026,7 +2092,11 @@ window.addEventListener("DOMContentLoaded", () => {
   // 绑定 PiClient 流式事件
   piClient.addEventListener("thinking-start", () => {
     hasReceivedDelta = true;
-    expandThinkingCard();
+    // 若尚未自动收起过（第一轮思考创始），才展开；
+    // 工具调用后的二次思考不再重新展开思考卡片
+    if (!hasAutoCollapsedThinking) {
+      expandThinkingCard();
+    }
   });
 
   piClient.addEventListener("thinking-delta", (e) => {
@@ -2052,6 +2122,8 @@ window.addEventListener("DOMContentLoaded", () => {
   piClient.addEventListener("text-start", () => {
     hasReceivedDelta = true;
     autoCollapseThinkingOnNextPhase();
+    // 文本输出开始时，收起所有已完成的工具卡片
+    collapseAllDoneToolCards();
   });
 
   piClient.addEventListener("text-delta", (e) => {
@@ -2120,6 +2192,9 @@ window.addEventListener("DOMContentLoaded", () => {
     const toolCallId = data.toolCallId;
     const toolName = data.toolName || "tool";
 
+    // 新工具卡片出现时，自动收起所有已完成的旧工具卡片
+    collapseAllDoneToolCards();
+
     // 当底层 Agent 触发调用映射工具（如 bash）时，即时显现运行态技能注入胶囊
     showInnerSkillCapsuleForTool(toolName);
 
@@ -2130,15 +2205,41 @@ window.addEventListener("DOMContentLoaded", () => {
     const argsStr = data.args ? JSON.stringify(data.args, null, 2) : "";
 
     card.innerHTML = `
-      <div class="tool-header">
+      <div class="tool-header" role="button" tabindex="0" aria-expanded="true">
         <div class="tool-title-group">
           <span class="tool-icon" aria-hidden="true">${ICONS.tool}</span>
           <span class="tool-name">${escapeHtml(toolName)}</span>
         </div>
-        <span class="tool-status-badge">running</span>
+        <div class="tool-header-right">
+          <span class="tool-status-badge">running</span>
+          <span class="tool-collapse-arrow" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+              <polyline points="4 6 8 10 12 6" />
+            </svg>
+          </span>
+        </div>
       </div>
       <div class="tool-body">${escapeHtml(argsStr)}</div>
     `;
+
+    // 点击 header 切换折叠/展开
+    const header = card.querySelector(".tool-header");
+    if (header) {
+      const toggle = () => {
+        if (card.classList.contains("collapsed")) {
+          expandToolCard(card);
+        } else {
+          collapseToolCard(card);
+        }
+      };
+      header.addEventListener("click", toggle);
+      header.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          toggle();
+        }
+      });
+    }
 
     if (toolCallsContainer) {
       toolCallsContainer.appendChild(card);
@@ -2193,6 +2294,8 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   piClient.addEventListener("agent-end", () => {
+    // 完成后收起所有工具卡片（最终输出卡不收起）
+    collapseAllToolCards();
     finalizeStream();
   });
 
@@ -2229,16 +2332,190 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // 手绘草图快捷标签点击
-  const sketchTags = document.querySelectorAll(".sketch-tag");
-  sketchTags.forEach((tag) => {
-    tag.addEventListener("click", () => {
-      const query = tag.getAttribute("data-query");
-      if (query) {
-        handleFlowQuery(query);
+  // ==========================================================================
+  // Flow 界面全局滚轮委托：window capture 阶段拦截，将滚动委托给 flow-scroll-area。
+  // 仅在 flow 视图激活时生效；若目标在独立可滚动子区域（thinking-body/tool-body）
+  // 且该区域本身仍有剩余滚动空间，则不拦截，让其自然滚动。
+  // ==========================================================================
+  if (flowScrollArea) {
+    window.addEventListener("wheel", (e) => {
+      // 仅在 flow 视图激活时处理
+      if (currentView !== VIEW_FLOW) return;
+
+      // 检测是否在独立可滚动子区域内且该子区域仍有剩余滚动空间
+      const scrollableInner = e.target.closest(".thinking-body") ||
+        e.target.closest(".tool-body");
+      if (scrollableInner) {
+        const canScrollUp = e.deltaY < 0 && scrollableInner.scrollTop > 0;
+        const canScrollDown = e.deltaY > 0 &&
+          scrollableInner.scrollTop < scrollableInner.scrollHeight - scrollableInner.clientHeight - 1;
+        if (canScrollUp || canScrollDown) return; // 子区域还能滚，不拦截
       }
+
+      // 将滚动量全部委托给 flow-scroll-area
+      e.preventDefault();
+      flowScrollArea.scrollTop += e.deltaY;
+    }, { passive: false, capture: true });
+  }
+
+  // ==========================================================================
+  // 详细界面历史对话讯息方框交互引擎 (Sketch Message Drawer & MRU Flow Recovery)
+  // 1. 常态展示第 1 行（3 个），悬浮向下平滑渐出展示更多（下方每行 4 个）；
+  // 2. 讯息按最近浏览时间（lastViewedAt）排序，点击即刷新该时间重排至第 1 位；
+  // 3. 点击讯息方框即可恢复该次对话（问题、思考链、工具调用与回答完整恢复至 Flow 模式）；
+  // 4. 悬浮出现右上角 "×" 按钮，点击仅在 UI 中隐藏该条目，保留底层数据。
+  // ==========================================================================
+  const formatRelativeTime = (timestamp) => {
+    if (!timestamp) return "";
+    const diffMs = Date.now() - Number(timestamp);
+    if (diffMs < 60000) return "刚刚";
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 60) return `${diffMin} 分钟前`;
+    const diffHour = Math.floor(diffMin / 60);
+    if (diffHour < 24) return `${diffHour} 小时前`;
+    const diffDay = Math.floor(diffHour / 24);
+    if (diffDay === 1) return "昨天";
+    if (diffDay < 7) return `${diffDay} 天前`;
+    const d = new Date(timestamp);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  };
+
+  const restoreConversationToFlow = (conv) => {
+    if (!conv) return;
+
+    // 1. 刷新该讯息的浏览时间戳（MRU 刷新排序至第 1 位）
+    conversationHistoryService.touchConversation(conv.id);
+
+    // 2. 恢复 Flow 界面内容
+    lastUserQuery = conv.query || "";
+    if (flowUserText) flowUserText.textContent = conv.query || "";
+    currentThinkingText = conv.thinkingText || "";
+    currentResponseText = conv.responseText || "";
+
+    if (thinkingTextStream) {
+      thinkingTextStream.textContent = conv.thinkingText || "";
+    }
+
+    if (thinkingDuration) {
+      thinkingDuration.textContent = conv.thinkingDuration || "已完成思考";
+    }
+
+    if (flowResponseContent) {
+      flowResponseContent.innerHTML = renderMarkdown(conv.responseText || "");
+    }
+
+    if (toolCallsContainer) {
+      toolCallsContainer.innerHTML = "";
+      if (Array.isArray(conv.toolCalls) && conv.toolCalls.length > 0) {
+        conv.toolCalls.forEach((tc) => {
+          if (tc.html) {
+            toolCallsContainer.insertAdjacentHTML("beforeend", tc.html);
+          }
+        });
+      }
+    }
+
+    if (conv.responseText && conv.responseText.trim().length > 0) {
+      collapseThinkingCard();
+    } else {
+      expandThinkingCard();
+    }
+
+    // 3. 切换至 Flow 模式
+    setViewMode(VIEW_FLOW, true);
+
+    // 4. 若关联底层 Pi 会话路径，则同步切换底层 Pi 会话
+    if (conv.sessionPath) {
+      sessionService.switchSession(conv.sessionPath).catch((err) => {
+        console.warn("[Main] Session sync switch warning:", err);
+      });
+    }
+  };
+
+  const renderConversationMessages = () => {
+    if (!sketchMessagesDrawer || !messagesPrimaryRow || !messagesExpandedGrid) return;
+
+    const conversations = conversationHistoryService.getVisibleConversations();
+    if (!conversations || conversations.length === 0) {
+      sketchMessagesDrawer.classList.add("hidden");
+      messagesPrimaryRow.innerHTML = "";
+      messagesExpandedGrid.innerHTML = "";
+      return;
+    }
+
+    sketchMessagesDrawer.classList.remove("hidden");
+    messagesPrimaryRow.innerHTML = "";
+    messagesExpandedGrid.innerHTML = "";
+
+    // 第 1 行：前 3 个项目
+    const primaryItems = conversations.slice(0, 3);
+    // 下方展开区域：第 4 个及之后的项目（下方每行 4 个）
+    const expandedItems = conversations.slice(3);
+
+    const createMessageCard = (conv) => {
+      const card = document.createElement("div");
+      card.className = "sketch-message-card";
+      card.setAttribute("role", "button");
+      card.setAttribute("tabindex", "0");
+      card.dataset.id = conv.id;
+
+      const timeStr = formatRelativeTime(conv.lastViewedAt || conv.createdAt);
+
+      card.innerHTML = `
+        <button type="button" class="message-card-close-btn" title="不在列表中显示" aria-label="隐藏讯息">
+          ${ICONS.close}
+        </button>
+        <div class="message-card-title" title="${escapeHtml(conv.query || conv.title)}">${escapeHtml(conv.title || conv.query)}</div>
+        <div class="message-card-meta">
+          <span class="message-card-time">${escapeHtml(timeStr)}</span>
+        </div>
+      `;
+
+      // 绑定点击卡片恢复对话事件
+      card.addEventListener("click", (e) => {
+        if (e.target.closest(".message-card-close-btn")) return;
+        restoreConversationToFlow(conv);
+      });
+
+      card.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          if (!e.target.closest(".message-card-close-btn")) {
+            e.preventDefault();
+            restoreConversationToFlow(conv);
+          }
+        }
+      });
+
+      // 绑定关闭 "×" 按钮事件 (仅在 UI 中隐藏，不删除底层数据)
+      const closeBtn = card.querySelector(".message-card-close-btn");
+      if (closeBtn) {
+        closeBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          card.classList.add("removing");
+          setTimeout(() => {
+            conversationHistoryService.hideConversation(conv.id);
+          }, 160);
+        });
+      }
+
+      return card;
+    };
+
+    primaryItems.forEach((conv) => {
+      messagesPrimaryRow.appendChild(createMessageCard(conv));
     });
+
+    expandedItems.forEach((conv) => {
+      messagesExpandedGrid.appendChild(createMessageCard(conv));
+    });
+  };
+
+  conversationHistoryService.addEventListener("conversations-change", () => {
+    renderConversationMessages();
   });
+
+  // 初始渲染讯息方框
+  renderConversationMessages();
 
   // 控制清空按钮显隐与格言跑马灯层可见性
   const updateInputState = () => {
@@ -2845,7 +3122,15 @@ window.addEventListener("DOMContentLoaded", () => {
           </button>
         `;
       } else {
+        const hasUnappliedPreset = pkg.hasPreset && !pkg.isPresetApplied;
         actionsHtml = `
+          ${
+            hasUnappliedPreset
+              ? `<button type="button" class="flat-btn flat-btn-secondary mini btn-preset-pkg" data-name="${escapeHtml(pkg.name)}" title="应用推荐配置：${escapeHtml(pkg.presetTitle || '推荐配置')}">
+                   推荐配置
+                 </button>`
+              : ""
+          }
           ${
             updateInfo?.hasUpdate
               ? `<button type="button" class="flat-btn flat-btn-primary mini btn-update-pkg" data-name="${escapeHtml(pkg.name)}">
@@ -2871,6 +3156,15 @@ window.addEventListener("DOMContentLoaded", () => {
           ${actionsHtml}
         </div>
       `;
+
+      // 绑定应用推荐配置
+      const btnPreset = item.querySelector(".btn-preset-pkg");
+      if (btnPreset) {
+        btnPreset.addEventListener("click", (e) => {
+          e.stopPropagation();
+          handleApplyPackagePreset(pkg.name, btnPreset);
+        });
+      }
 
       // 绑定卸载
       const btnUninstall = item.querySelector(".btn-uninstall-pkg");
@@ -3227,6 +3521,25 @@ window.addEventListener("DOMContentLoaded", () => {
         processPackageQueue();
       } else {
         if (packageQueueBadge) packageQueueBadge.classList.add("hidden");
+      }
+    }
+  };
+
+  // 应用推荐配置预设
+  const handleApplyPackagePreset = async (packageName, btnElement) => {
+    if (btnElement) {
+      btnElement.disabled = true;
+      btnElement.textContent = "配置中...";
+    }
+    try {
+      await configService.applyPackagePreset(packageName);
+      await loadInstalledPackages();
+    } catch (err) {
+      console.error(`[PackageManager] Failed to apply preset for ${packageName}:`, err);
+      alert(`应用组件【${packageName}】推荐配置失败：\n${err?.toString() || "未知错误"}`);
+      if (btnElement) {
+        btnElement.disabled = false;
+        btnElement.textContent = "推荐配置";
       }
     }
   };

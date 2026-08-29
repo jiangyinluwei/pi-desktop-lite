@@ -367,7 +367,7 @@ body::-webkit-scrollbar-thumb:active,
   overflow: hidden;
 }
 
-.app-container[data-view="focus"] .sketch-tags-container {
+.app-container[data-view="focus"] .sketch-messages-drawer {
   opacity: 0;
   max-height: 0;
   margin: 0;
@@ -418,8 +418,8 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   overflow: hidden;
 }
 
-.app-container[data-view="flow"] .sketch-tags-container {
-  display: none;
+.app-container[data-view="flow"] .sketch-messages-drawer {
+  display: none !important;
 }
 
 .app-container[data-view="flow"] .search-section {
@@ -635,6 +635,11 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .agent-thinking-card.open .thinking-body {
   display: block;
   animation: sketchFadeIn 0.25s ease-out;
+}
+
+/* 思考卡片呼吸脉冲仅在展开运行中显示 */
+.agent-thinking-card:not(.open) .thinking-dot {
+  animation: none;
 }
 
 .thinking-steps {
@@ -1109,54 +1114,190 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 /* ==========================================================================
-   底部手绘草图标签
+   底部手绘草图历史讯息抽屉 (Sketch Message Drawer)
+   常态展示第 1 行（3 个），鼠标悬浮向下平滑渐出展示更多（下方每行 4 个）
+   高度自适应当前软件框体，超出高度自动裁剪不显示
    ========================================================================== */
-.sketch-tags-container {
+.sketch-messages-drawer {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
+  width: 100%;
+  max-width: 600px;
+  margin-top: 20px;
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+
+.sketch-messages-drawer.hidden {
+  display: none !important;
+}
+
+/* 第 1 行：常态展示最多 3 个讯息方框 */
+.messages-primary-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
-  margin-top: 22px;
+  width: 100%;
   transition: all 0.25s ease;
 }
 
-.sketch-tag {
+/* 下方展开包装层：常态收起，悬浮时平滑展开 */
+.messages-expanded-wrap {
+  width: 100%;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: max-height 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.26s ease,
+              transform 0.26s cubic-bezier(0.16, 1, 0.3, 1),
+              margin-top 0.26s ease;
+  margin-top: 0;
+}
+
+/* 鼠标悬停抽屉时展开 */
+.sketch-messages-drawer:hover .messages-expanded-wrap {
+  max-height: calc(100vh - 430px);
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  margin-top: 8px;
+}
+
+/* 下方展开网格：每行 4 个讯息方框 */
+.messages-expanded-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  width: 100%;
+  padding-bottom: 2px;
+}
+
+/* 单个讯息方框卡片（手绘纸质质感） */
+.sketch-message-card {
+  position: relative;
   background: var(--sketch-tag-bg);
   border: 1px solid var(--sketch-tag-border);
-  /* 手绘自然微弧度 */
-  border-radius: 255px 12px 225px 10px / 12px 225px 10px 255px;
-  padding: 6px 14px;
-  font-size: 13px;
-  font-family: inherit;
-  font-weight: 500;
-  color: var(--ink-muted);
+  border-radius: 255px 10px 225px 8px / 8px 225px 10px 255px;
+  padding: 8px 10px;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 48px;
   box-shadow: 1px 2px 0px rgba(0, 0, 0, 0.04);
-  transition: all 0.18s ease;
+  transition: background-color 0.18s ease,
+              border-color 0.18s ease,
+              transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.18s ease,
+              opacity 0.2s ease;
+  text-align: left;
   outline: none;
+  overflow: hidden;
 }
 
-.sketch-tag .tag-marker {
-  font-family: ui-monospace, monospace;
-  font-weight: 700;
-  opacity: 0.6;
-}
-
-.sketch-tag:hover {
+.sketch-message-card:hover {
   background: var(--sketch-tag-hover-bg);
-  color: var(--ink-primary);
   border-color: var(--sketch-border);
-  transform: translateY(-1px);
-  box-shadow: 1.5px 2.5px 0px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1.5px);
+  box-shadow: 1.5px 3px 0px rgba(0, 0, 0, 0.08);
 }
 
-.sketch-tag:active {
+.sketch-message-card:active {
   transform: translateY(0);
   box-shadow: 1px 1px 0px rgba(0, 0, 0, 0.04);
+}
+
+/* 展开区域中的卡片淡入动画 */
+.messages-expanded-grid .sketch-message-card {
+  animation: messageFadeIn 0.25s ease-out forwards;
+}
+
+@keyframes messageFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 卡片内部标题与时间 */
+.message-card-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 14px;
+}
+
+.message-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--ink-muted);
+}
+
+.message-card-time {
+  font-size: 10px;
+  color: var(--ink-muted);
+  opacity: 0.85;
+}
+
+/* 卡片右上角悬浮显示关闭/隐藏 "×" 按钮 */
+.message-card-close-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  z-index: 2;
+  padding: 0;
+}
+
+.sketch-message-card:hover .message-card-close-btn {
+  opacity: 0.65;
+  pointer-events: auto;
+}
+
+.message-card-close-btn:hover {
+  opacity: 1 !important;
+  color: var(--ink-primary);
+  background: var(--sketch-box-bg);
+  border-color: var(--sketch-border-subtle);
+  transform: scale(1.15);
+}
+
+.message-card-close-btn:active {
+  transform: scale(0.95);
+}
+
+/* 卡片移除淡出微动效 */
+.sketch-message-card.removing {
+  opacity: 0 !important;
+  transform: scale(0.85) translateY(4px) !important;
+  pointer-events: none;
 }
 
 /* ==========================================================================
@@ -2921,6 +3062,26 @@ input::-ms-reveal {
   color: var(--ink-primary);
 }
 
+/* 工具卡片右侧：状态徽章 + 折叠箭头 */
+.tool-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tool-collapse-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--ink-muted);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+/* 默认展开（箭头朝下），折叠后旋转朝上 */
+.tool-card.collapsed .tool-collapse-arrow {
+  transform: rotate(-90deg);
+}
+
 .tool-status-badge {
   font-size: 10px;
   font-family: monospace;
@@ -2957,6 +3118,12 @@ input::-ms-reveal {
   background-color: var(--sketch-box-bg);
   white-space: pre-wrap;
   word-break: break-all;
+  animation: sketchFadeIn 0.2s ease-out;
+}
+
+/* 折叠状态下隐藏 tool-body */
+.tool-card.collapsed .tool-body {
+  display: none;
 }
 
 /* ==========================================================================
@@ -3348,6 +3515,20 @@ input::-ms-reveal {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+}
+
+.btn-preset-pkg {
+  font-size: 11px;
+  color: var(--ink-secondary);
+  border-color: var(--sketch-border-subtle);
+  background: transparent;
+  transition: all 0.15s ease;
+}
+
+.btn-preset-pkg:hover {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  background: var(--sketch-tag-bg);
 }
 
 .packages-empty-hint {

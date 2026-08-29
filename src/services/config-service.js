@@ -568,6 +568,15 @@ class ConfigService extends EventTarget {
   async updatePackage(packageName) {
     return this.invoke("pi_update_package", { packageName });
   }
+
+  /**
+   * 为指定组件应用推荐配置预设
+   * @param {string} packageName
+   * @returns {Promise<boolean>}
+   */
+  async applyPackagePreset(packageName) {
+    return this.invoke("pi_apply_package_preset", { packageName });
+  }
 }
 
 export const configService = new ConfigService();

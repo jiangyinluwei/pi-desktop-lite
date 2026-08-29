@@ -36,6 +36,9 @@ pub struct InstalledPackage {
     pub version: String,
     pub description: String,
     pub source: String,
+    pub has_preset: bool,
+    pub is_preset_applied: bool,
+    pub preset_title: Option<String>,
 }
 
 /// 组件更新检查结果

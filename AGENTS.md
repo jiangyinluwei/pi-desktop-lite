@@ -37,8 +37,13 @@
    - 右键行为统一作为“返回上一步 (Step Back)”：
      - **四态界面层级流**：`设置全页面 (界面4: settings)` ➔ 右键立即返回进入前的原界面；`Flow 交互版 (界面3)` ➔ 右键回退至 `专注版 (界面2)` ➔ 右键回退至 `详细版 (界面1)` 并失焦；
      - **基础层回退**：详细版下优先失焦高亮组件 ➔ 清空当前输入 ➔ 触发业务回退分发。所有新功能模块必须接入 `window.__piRegisterStepBack`；
-4. **AI-Agent 四大基础界面规范与独立设置页面标准**：
-   - **界面1：初始界面-详细版 (`detailed`)**：包含沉浸式标题栏、居中品牌 Logo 组（徽标+标题+副标题）、手绘齿轮设置按钮、输入框内部功能按钮（导入图标、清空按钮、Enter 引导）及底部草图标签；输入框内置灵感格言跑马灯引擎，当格言文本长度超过输入框宽度时，自适应启动从右向左无缝循环滚动，用户输入时瞬时隐去；
+   - **界面1：初始界面-详细版 (`detailed`)**：包含沉浸式标题栏、居中品牌 Logo 组（徽标+标题+副标题）、手绘齿轮设置按钮、输入框内部功能按钮（导入图标、清空按钮、Enter 引导）及底部动态手绘历史讯息方框抽屉（替代旧静态标签）；输入框内置灵感格言跑马灯引擎，当格言文本长度超过输入框宽度时，自适应启动从右向左无缝循环滚动，用户输入时瞬时隐去；
+   - **历史对话沉淀与讯息方框交互 (`Sketch Messages Drawer & MRU Flow Recovery`)**：
+     - Flow 界面完成的对话自动沉淀快照至业务记忆服务（`conversationHistoryService`）；
+     - 详细界面输入框下方常态展示第 1 行（最多 3 个讯息方框）；鼠标悬浮时向下平滑渐出展开更多（下方每行 4 个），高度自适应当前软件框体裁剪，超出高度自动隐藏不溢出；
+     - 讯息按最近“浏览/点开”时间（MRU `lastViewedAt`）降序排列，点击任一方框即刻刷新时间戳并重排至首位，同时无缝恢复提问、思考折叠链、工具调用与回答至 Flow 模式；
+     - 讯息方框悬浮在右上角显现手绘「×」关闭按钮，点击仅在 UI 中隐藏该条目（保留底层会话文件与持久化数据）；
+     - 提供标准业务记忆接口层，预留随时挂载 Pi 官方/社区 Memory 扩展（`pi-memory` / NPM 组件）的插件钩子。
    - **界面2：初始界面-专注版 (`focus`)**：单击输入框自动进入，仅保留居中手绘 $\pi$ Logo 徽标与纯净输入框（保留格言跑马灯与自适应滚动能力），隐藏所有按钮与副标题；右键回退至界面1；
    - **界面3：Flow 流式交互版 (`flow`)**：回车触发真实 Pi RPC 下发与流式通信，手绘 Logo 移至最左上方；在用户提问卡片下方与思考过程卡片上方，在成功注入运行态技能时展示一行手绘草图“胶囊（Capsule）”标签（如 `已注入运行态技能: windows-bash-compatibility`）；主体区域展示思考过程卡片（最新一轮默认展开、限高滚动、随输出触发自动收起、可手动折叠、含步骤与实时耗时）、工具调用卡片（可折叠日志）与 Agent 回答卡片（Markdown 排版，无冗余头部胶囊），输入框移至最下方并自适应拉长；右键中止当前 Agent 并回退至界面2；
    - **界面4：项目设置独立全屏页面 (`settings`)**：
@@ -78,7 +83,7 @@
 10. **Pi 进程与数据交互六大子系统规范**：
    - **`pi_runner` (进程监督与生命周期)**：集成 Win32 Job Object 孤儿进程自动收割、严格 LF (`\n`) 字节流分帧器、滑动窗口崩溃抑制（30s 内超 2 次熔断告警）、内核多层自适应寻址管道（`PI_BINARY_PATH` > 用户一键更新内核目录 `~/.pi-dl/kernel/pi-windows-x64/` > 源码工作区 `.mytools` > Release 目录 `exe_dir` > 安装包资源 `resource_dir` > 系统 `PATH`）、Release 安装包内置内核资源自适应寻址（`bundle.resources` / `resource_dir`）、`default-area` 默认隔离工作区自动探测与工作目录严格锁定（优先锁定源码 `default-area` 杜绝临时产物干扰，并在目录内维护独立的 `AGENTS.md` 运行时自我描述与隔离规则，彻底阻断 Pi 内核向开发根目录 `AGENTS.md` 穿透溯源，打包时通过 `tauri.conf.json` 自动完整迁移至 Release 资源目录，预留动态切换接口）；
    - **`config_manager` (配置管理与目录映射)**：负责 `~/.pi/agent/` 目录下 `auth.json`、`models.json`、`settings.json` 的双向读写映射、官方可用模型目录拉取与模型白名单持久化；
-   - **`package_manager` (组件目录检索、一键安装/卸载与版本更新)**：连通 Pi 官方 Package Catalog (pi.dev/packages)，基于轻量正则 HTML 解析与 15min TTL 缓存提取结构化组件信息；读取 `~/.pi/agent/settings.json` 与 `node_modules` 精确探测本地已安装组件及版本；调用 `pi install/remove npm:<pkg> -a` 执行非阻塞安装与卸载；内置全局单任务互斥锁（Mutex）与前端 FIFO 异步任务队列，支持连续点击加入队列并自动按序出队执行，杜绝并发冲突；接入 `ProgressStepper` 平滑步进引擎（阶段等待期间每 2s 自动 +1% 直到下个阶段 - 1%，新阶段触发立即跳变响应）；并发查询 npm registry API 进行 SemVer 版本比对与一键更新；
+   - **`package_manager` (组件目录检索、一键安装/卸载与版本更新、插件默认配置预设)**：连通 Pi 官方 Package Catalog (pi.dev/packages)，基于轻量正则 HTML 解析与 15min TTL 缓存提取结构化组件信息；读取 `~/.pi/agent/settings.json` 与 `node_modules` 精确探测本地已安装组件及版本；调用 `pi install/remove npm:<pkg> -a` 执行非阻塞安装与卸载；内置全局单任务互斥锁（Mutex）与前端 FIFO 异步任务队列，支持连续点击加入队列并自动按序出队执行，杜绝并发冲突；接入 `ProgressStepper` 平滑步进引擎（阶段等待期间每 2s 自动 +1% 直到下个阶段 - 1%，新阶段触发立即跳变响应）；并发查询 npm registry API 进行 SemVer 版本比对与一键更新；内置 **插件默认配置预设映射系统 (`presets.json` 编译内嵌)**：支持包名别名匹配与目标配置文件智能写入校验；当软件触发组件安装时，自动检测并应用命中的推荐配置（如 `pi-web-access` 自动写入后台静默搜索与自动摘要模式 `workflow: auto-summary, autoOpenBrowser: false` 至 `~/.pi/web-search.json` 并回读校验）；在设置页已安装组件列表中，对存在映射但未生效的组件在「卸载」按钮左侧动态显现「推荐配置」手绘线框按钮，支持手动一键应用与校验；
    - **`security` (安全与脱敏中间件)**：全量上行下行数据经过正则脱敏过滤器（API Key、Token 与本地私有目录自动掩码）；
    - **`version_watcher & kernel_updater` (抗抖动版本监测与一键内核更新引擎)**：启动延迟 2s 自检，6h 轮询带 ±8% Jitter 随机抖动与 15s Watchdog 超时熔断；支持“不再提醒更新”持久化（写入 `~/.pi-dl/config.json`，生效后直接跳过启动自检与后台自动轮询，不发网络请求；在设置页主动点击“检查更新”时自动重置恢复）；支持在设置页一键获取官方最新版本、折叠预览 Changelog 更新日志与提示框 8 秒自动平滑渐隐；支持流式 HTTP 管道下载与 `ProgressStepper` 平滑步进引擎（仅保留最右侧百分比，阶段等待期间每 2s 自动 +1% 直到下个阶段 - 1%，新阶段触发立即跳变响应）、支持一键取消更新（`pi_cancel_kernel_update` 安全终止下载流与清理临时文件），在 `~/.pi-dl/` 执行 staging 暂存、`--version` 预检校验、原子备份替换旧内核并热重启 `PiSupervisor`，实现零提权免安装无感热升级；
    - **`session` (并发内存会话索引与监听)**：基于 `DashMap` 并发内存缓存与 `notify` 文件监听提供毫秒级会话列表与分支树检索；
@@ -108,6 +113,7 @@
 | **`inner-skills-injection`** | [`.agents/skills/inner-skills-injection/SKILL.md`](file:///.agents/skills/inner-skills-injection/SKILL.md) | 指导桌面端作为 Pi Agent 宿主代理时，运行态内置约束（Inner-Skills / RULES.md）的上下文强行注入架构、三态决策流水线、拓扑结构与前端反馈规范。 |
 | **`settings-view-pattern`** | [`.agents/skills/settings-view-pattern/SKILL.md`](file:///.agents/skills/settings-view-pattern/SKILL.md) | 指导桌面端 (Tauri 2 + Web 前端) 中项目设置独立全屏页面（Settings View - 第 4 态独立视图）的工程化实现与交互设计。涵盖非浮窗全屏视图状态机、3 秒定时平滑渐隐指引、~/.pi-dl/config.json 应用全局配置持久化与 ~/.pi/agent/ 双层映射、当前模型列表 MRU 最近选用自动排序与锁定保护、自定义模型 Token 规范智能吸附、手绘草图表单几何工程美学及全域右键/Esc 回退流水线规范。当用户提出"设置界面"、"配置页面"、"设置页写法"、"settings view"、"模型配置界面"、"持久化配置"、"设置规范"时使用此技能。 |
 | **`desktop-kernel-lifecycle`** | [`.agents/skills/desktop-kernel-lifecycle/SKILL.md`](file:///.agents/skills/desktop-kernel-lifecycle/SKILL.md) | 指导桌面端 (Tauri 2 + Rust) 作为 CLI/Agent 内核宿主时的进程生命周期管控、多环境自适应寻址、Release 安装包资源打包规范与 Windows 运行时六大踩坑归因与排查治理。当涉及"内核崩溃"、"进程反复重启"、"resource_dir"、"打包后无法运行"、"子进程黑框"、"CWD权限"、"环境变量丢失"、"JobObject"时使用此技能。 |
+| **`flow-interaction-pattern`** | [`.agents/skills/flow-interaction-pattern/SKILL.md`](file:///.agents/skills/flow-interaction-pattern/SKILL.md) | 指导 Flow 流式交互界面（界面3）的三大核心交互逻辑实现规范：①过程框体（思考卡片/工具调用卡片）可手动折叠展开；②"当前最下方框体展开、出现下一框时自动收起"的级联自动收起流水线；③Flow 界面任意区域滚轮事件委托至最外层滚动容器。当用户提出"flow界面交互"、"思考卡片折叠"、"工具调用卡折叠"、"自动收起"、"滚轮滚动"、"flow滚动条"、"卡片收起"时使用此技能。 |
 
 
 ### 2. 应用内置运行态约束级 Inner-Skills (`src-tauri/inner-skills/`)
