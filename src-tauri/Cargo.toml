@@ -37,10 +37,12 @@ zip = { version = "2.2", default-features = false, features = ["deflate"] }
 futures-util = "0.3"
 
 [target.'cfg(windows)'.dependencies]
+tauri-winrt-notification = "0.7"
 windows-sys = { version = "0.59", features = [
     "Win32_System_JobObjects",
     "Win32_Foundation",
     "Win32_Security",
-    "Win32_System_Threading"
+    "Win32_System_Threading",
+    "Win32_UI_Shell"
 ] }
 

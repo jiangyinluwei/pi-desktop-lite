@@ -57,10 +57,12 @@
   - 📁 **会话历史管理**：支持历史会话列表展示、新建会话与毫秒级会话切换。
 - 🔔 **失焦 Windows 系统通知与多任务并行调度 (`Blur-Trigger Windows Notification & Multi-Task Scheduler`)**：
   - **失焦触发铁律**：仅在软件处于**失去焦点 (Blurred / Background)** 状态时才会触发通知，窗口聚焦操作时保持绝对静默，绝不打扰用户；
+  - **程序身份与手绘 Logo 绑定**：启动时自动设置进程 AUMID 为 `com.pidl.desktop` 并在注册表绑定应用名称 `pi-dl` 与手绘 Logo 图标，弹窗标题彻底告别系统默认的 `Windows PowerShell`，直接展示 **程序 Logo 图标 + 文本 “pi-dl”**；
   - **需要人工回归**：当模型或扩展插件请求人工交互与确认（如 `extension-ui` 等）时，立即弹出 Windows 原生 Toast 通知与系统默认提示音；
   - **报错终止**：当模型调用发生异常中断、RPC 错误或致命异常终止时，立即弹出通知；
   - **输出完成**：模型生成完成时智能检查并发任务池（如包管理器安装/更新队列、内核升级等），若仍有任务在运行则暂不通知，当**所有任务全部完成**后统一弹出“所有任务已完成”通知；
-  - 基于 `tauri-plugin-notification = "2"`、`tauri-winrt-notification` 与前端 `NotificationService` 多维焦点交叉验证引擎驱动。
+  - **点击通知唤醒与 Flow 自动定位**：在 Windows 桌面或操作中心点击任一通知，自动唤醒/取消最小化置顶主窗口、退出可能处于的设置页并无缝切换定位至该段对话的 Flow 流式交互视图；
+  - 基于 `tauri-winrt-notification` / `tauri-plugin-notification = "2"` 与前端 `NotificationService` 多维焦点交叉验证引擎驱动。
 - 🔄 **全域右键“返回上一步 (Step Back)”层级流水线**：
   - 在任意位置点击右键：退出设置全屏视图 ➔ `Flow (界面3, 触发 abort 中止)` ➔ 回退至 `专注版 (界面2)` ➔ 回退至 `详细版 (界面1)` ➔ 输入框失焦/清空；
 

@@ -98,10 +98,12 @@
    - **`model_management & error_handling` (模型切换与异常自愈)**：支持通过 `pi_get_state`、`pi_get_available_models`、`pi_set_model`、`pi_set_thinking_level` 进行运行时模型感知与切换，捕获全链路 RPC 报错并渲染手绘异常诊断卡片提供一键重试与模型切换。
 11. **Windows 系统通知与失焦调度铁律 (`Windows Native Toast Notification & Blur-Trigger Pipeline`)**：
    - **失焦触发铁律**：仅在软件处于**失去焦点 (Blurred / Background)** 状态时才会触发通知；当软件处于焦点状态 (Focused) 时，绝不打扰用户；
+   - **身份与 Logo 绑定**：启动时自动设置进程 AUMID 为 `com.pidl.desktop`，并在用户注册表（`HKCU\Software\Classes\AppUserModelId\com.pidl.desktop`）写入应用名称 `pi-dl` 与持久化手绘 Logo 图标路径（`~/.pi-dl/icons/app-logo.png`），彻底杜绝开发态（`npm run dev`）Toast 顶部被系统误显示为 `Windows PowerShell`；仅在通知左上角保留精致手绘小 Logo 标识与 `pi-dl` 应用名，文本下方保持纯净无冗余大图；
    - **人工回归立即通知**：当触发模型需要人工介入/确认（如 `extension-ui` 请求）时，立即弹出 Windows 原生 Toast 通知与系统默认提示音；
    - **报错终止立即通知**：当模型执行异常中断、RPC 报错或发生致命错误终止时，立即弹出通知；
    - **输出完成与多任务并行调度**：若模型输出完成时仍有其他任务在并行运行（如包管理器安装/更新队列、内核升级等），暂不弹出通知；当**所有任务全部完成**后，统一弹出“所有任务已完成”通知；
-   - **底层架构实现**：后端基于 `tauri-plugin-notification = "2"` 与 `tauri-winrt-notification`（Windows 原生 Toast 通知，自带默认通知音），前端通过 `NotificationService` 结合 `document.hasFocus()`、`window.onfocus / onblur`、`visibilitychange` 与 Tauri `window-focus-change` 进行全方位交叉验证，配合并发任务池 `TaskTracker` 进行精确的任务生命周期管理。
+   - **通知点击唤醒与 Flow 自动定位**：当用户在 Windows 桌面或通知中心点击通知时，后端通过 `on_activated` 自动唤醒、取消最小化并置顶聚焦主窗口，前端捕获 `notification-clicked` 自动退出设置全屏页、切换至该段对话的 Flow 流式交互模式并滚动定位到底部；
+   - **底层架构实现**：后端基于 `tauri-winrt-notification` / `tauri-plugin-notification = "2"`（Windows 原生 WinRT Toast 通知，自带默认通知音），前端通过 `NotificationService` 结合 `document.hasFocus()`、`window.onfocus / onblur`、`visibilitychange` 与 Tauri `window-focus-change` 进行全方位交叉验证，配合并发任务池 `TaskTracker` 进行精确的任务生命周期管理。
 
 ---
 

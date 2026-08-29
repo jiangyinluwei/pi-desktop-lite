@@ -167,18 +167,83 @@ fn close_window(window: tauri::WebviewWindow) {
 }
 
 // ==========================================================================
-// Windows 系统通知指令 (基于系统 Toast 与原生提示音)
+// Windows 系统通知指令 (基于系统 Toast 与原生提示音，自动绑定 pi-dl AUMID 与应用 Logo)
 // ==========================================================================
 
+#[cfg(windows)]
+pub fn init_windows_notification_identity() {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let aumid = "com.pidl.desktop";
+
+    // 1. 设置当前进程的显式 AUMID
+    unsafe {
+        use std::ffi::OsStr;
+        use std::os::windows::ffi::OsStrExt;
+        let wide: Vec<u16> = OsStr::new(aumid).encode_wide().chain(std::iter::once(0)).collect();
+        let _ = windows_sys::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID(wide.as_ptr());
+    }
+
+    // 2. 提取并持久化应用高清 Logo 图标至 ~/.pi-dl/icons/app-logo.png
+    if let Some(user_dirs) = dirs::home_dir() {
+        let icon_dir = user_dirs.join(".pi-dl").join("icons");
+        let _ = std::fs::create_dir_all(&icon_dir);
+        let target_icon = icon_dir.join("app-logo.png");
+
+        // 编译期内嵌 128x128 高清手绘 Logo
+        let icon_bytes = include_bytes!("../icons/128x128.png");
+        let _ = std::fs::write(&target_icon, icon_bytes);
+
+        // 3. 在 HKCU\Software\Classes\AppUserModelId\com.pidl.desktop 注册 DisplayName 与 IconUri
+        // 彻底解决在开发环境 (npm run dev / cargo run) 下 Toast 顶部显示 "Windows PowerShell" 的问题
+        let reg_key = format!("HKCU\\Software\\Classes\\AppUserModelId\\{}", aumid);
+        let icon_path_str = target_icon.to_string_lossy().to_string();
+
+        let mut cmd_name = std::process::Command::new("reg");
+        cmd_name.args(["add", &reg_key, "/v", "DisplayName", "/d", "pi-dl", "/f"]);
+        cmd_name.creation_flags(CREATE_NO_WINDOW);
+        let _ = cmd_name.output();
+
+        let mut cmd_icon = std::process::Command::new("reg");
+        cmd_icon.args(["add", &reg_key, "/v", "IconUri", "/d", &icon_path_str, "/f"]);
+        cmd_icon.creation_flags(CREATE_NO_WINDOW);
+        let _ = cmd_icon.output();
+    }
+}
+
 #[tauri::command]
-fn pi_show_notification(app: tauri::AppHandle, title: String, body: String) -> Result<(), String> {
-    use tauri_plugin_notification::NotificationExt;
-    app.notification()
-        .builder()
-        .title(title)
-        .body(body)
-        .show()
-        .map_err(|e| e.to_string())
+fn pi_show_notification(_app: tauri::AppHandle, title: String, body: String) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use tauri_winrt_notification::{Toast, Sound};
+        let aumid = "com.pidl.desktop";
+
+        let mut toast = Toast::new(aumid);
+        toast = toast.title(&title);
+        toast = toast.text1(&body);
+        toast = toast.sound(Some(Sound::Default));
+
+        let app_handle_clone = _app.clone();
+        toast = toast.on_activated(move |_action| {
+            show_and_focus_main_window(&app_handle_clone);
+            if let Some(window) = app_handle_clone.get_webview_window("main") {
+                let _ = window.emit("notification-clicked", ());
+            }
+            Ok(())
+        });
+
+        toast.show().map_err(|e| e.to_string())
+    }
+    #[cfg(not(windows))]
+    {
+        use tauri_plugin_notification::NotificationExt;
+        app.notification()
+            .builder()
+            .title(title)
+            .body(body)
+            .show()
+            .map_err(|e| e.to_string())
+    }
 }
 
 // ==========================================================================
@@ -487,6 +552,10 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
             }
+
+            // 0. 初始化 Windows 通知身份（注册 AUMID 与 Logo 图标，消除 PowerShell 标题）
+            #[cfg(windows)]
+            init_windows_notification_identity();
 
             // 1. 初始化 Pi Supervisor
             let supervisor = PiSupervisor::new(app.handle().clone());

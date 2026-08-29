@@ -500,6 +500,15 @@ window.addEventListener("DOMContentLoaded", () => {
     window.__TAURI__.event.listen("navigate-settings", () => {
       openSettingsView();
     });
+
+    // 监听用户点击系统通知事件：自动退出设置全屏页、切换至 Flow 模式并滚动到底部
+    window.__TAURI__.event.listen("notification-clicked", () => {
+      closeSettingsView();
+      setViewMode(VIEW_FLOW, true);
+      if (flowScrollArea) {
+        flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+      }
+    });
   }
 
   // ==========================================================================
@@ -1693,7 +1702,7 @@ window.addEventListener("DOMContentLoaded", () => {
         if (btnCheckUpdate) btnCheckUpdate.disabled = false;
         if (btnCancelUpdate) btnCancelUpdate.disabled = false;
         notificationService.notifyError({
-          title: "Pi Desktop Lite",
+          title: "pi-dl",
           message: `内核更新失败：${String(err)}`,
           taskId: "kernel-update",
         });
@@ -1744,7 +1753,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
       // 触发全任务完成通知
       notificationService.notifyIfAllCompleted({
-        title: "Pi Desktop Lite",
+        title: "pi-dl",
         message: `Pi 内核已成功更新至最新版本 v${p.target_version}！`,
         taskId: "kernel-update",
       });
@@ -1788,7 +1797,7 @@ window.addEventListener("DOMContentLoaded", () => {
       if (btnCancelUpdate) btnCancelUpdate.disabled = false;
 
       notificationService.notifyError({
-        title: "Pi Desktop Lite",
+        title: "pi-dl",
         message: `内核更新失败：${p.message || "更新发生异常"}`,
         taskId: "kernel-update",
       });
@@ -2103,7 +2112,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
     // 软件失焦时立即弹出报错终止通知 (带 Windows 默认提示音)
     notificationService.notifyError({
-      title: "Pi Desktop Lite",
+      title: "pi-dl",
       message: `模型调用异常终止：${errMsg.length > 80 ? errMsg.slice(0, 77) + "..." : errMsg}`,
       taskId: "agent-prompt",
     });
@@ -2397,7 +2406,7 @@ window.addEventListener("DOMContentLoaded", () => {
   piClient.addEventListener("extension-ui", () => {
     // 扩展插件请求 UI 交互/人工确认：失焦时立即弹出人工介入通知 (带 Windows 默认提示音)
     notificationService.notifyHumanIntervention({
-      title: "Pi Desktop Lite",
+      title: "pi-dl",
       message: "模型/扩展插件请求人工介入处理，请返回确认操作。",
     });
   });
@@ -2413,7 +2422,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
     // 触发模型输出完成通知（多任务并行判断：若仍有其他任务运行则暂不通知，全部完成时通知）
     notificationService.notifyAgentCompleted({
-      title: "Pi Desktop Lite",
+      title: "pi-dl",
       message: "所有任务已全部处理完成。",
       taskId: "agent-prompt",
     });
@@ -3871,7 +3880,7 @@ window.addEventListener("DOMContentLoaded", () => {
       currentRunningTask = null;
       if (packageQueueBadge) packageQueueBadge.classList.add("hidden");
       notificationService.notifyIfAllCompleted({
-        title: "Pi Desktop Lite",
+        title: "pi-dl",
         message: "扩展组件安装与更新任务已全部完成。",
         taskId: "package-queue",
       });
@@ -3932,7 +3941,7 @@ window.addEventListener("DOMContentLoaded", () => {
         if (packageQueueBadge) packageQueueBadge.classList.add("hidden");
         // 队列全部清空且当前无任务，注销任务并触发全任务完成判定通知
         notificationService.notifyIfAllCompleted({
-          title: "Pi Desktop Lite",
+          title: "pi-dl",
           message: "扩展组件安装与更新任务已全部完成。",
           taskId: "package-queue",
         });

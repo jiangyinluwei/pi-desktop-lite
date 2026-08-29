@@ -145,7 +145,7 @@ export class NotificationService {
 
     try {
       await invokeTauri("pi_show_notification", {
-        title: title || "Pi Desktop Lite",
+        title: title || "pi-dl",
         body: body || "",
       });
       return true;
@@ -161,7 +161,7 @@ export class NotificationService {
    * @returns {Promise<boolean>}
    */
   async notifyHumanIntervention(options = {}) {
-    const title = options.title || "Pi Desktop Lite";
+    const title = options.title || "pi-dl";
     const body = options.message || "模型需要人工介入或确认操作，请返回查看。";
     return await this.showSystemToast(title, body);
   }
@@ -175,7 +175,7 @@ export class NotificationService {
     if (options.taskId) {
       this.unregisterTask(options.taskId);
     }
-    const title = options.title || "Pi Desktop Lite";
+    const title = options.title || "pi-dl";
     const body = options.message || "任务执行发生异常已终止，请返回查看详情。";
     return await this.showSystemToast(title, body);
   }
@@ -196,7 +196,7 @@ export class NotificationService {
     }
 
     // 所有任务全部完成，且软件失焦，弹出完成通知
-    const title = options.title || "Pi Desktop Lite";
+    const title = options.title || "pi-dl";
     const body = options.message || "所有任务已全部处理完成。";
     return await this.showSystemToast(title, body);
   }
@@ -215,7 +215,7 @@ export class NotificationService {
       return false;
     }
 
-    const title = options.title || "Pi Desktop Lite";
+    const title = options.title || "pi-dl";
     const body = options.message || "所有任务已全部处理完成。";
     return await this.showSystemToast(title, body);
   }
