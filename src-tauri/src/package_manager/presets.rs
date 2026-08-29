@@ -167,3 +167,28 @@ pub fn apply_preset_for_package(package_name: &str) -> Result<bool, String> {
         Ok(false)
     }
 }
+
+/// 静态内嵌在二进制 exe 中的推荐扩展组件列表
+const RECOMMENDED_PLUGINS_RAW: &str = include_str!("../../presets/recommended-plugins.json");
+
+/// 推荐插件 JSON 根对象
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RecommendedPluginsRoot {
+    #[serde(default)]
+    pub plugins: Vec<super::models::RecommendedPlugin>,
+}
+
+/// 获取所有已内嵌的推荐扩展组件列表 (基于 OnceLock 全局缓存，避免重复反序列化)
+pub fn get_recommended_plugins() -> &'static [super::models::RecommendedPlugin] {
+    static RECOMMENDED: std::sync::OnceLock<Vec<super::models::RecommendedPlugin>> = std::sync::OnceLock::new();
+    RECOMMENDED.get_or_init(|| {
+        match serde_json::from_str::<RecommendedPluginsRoot>(RECOMMENDED_PLUGINS_RAW) {
+            Ok(root) => root.plugins,
+            Err(err) => {
+                log::error!("[PackagePresets] Failed to parse embedded recommended-plugins.json: {}", err);
+                Vec::new()
+            }
+        }
+    })
+}
+

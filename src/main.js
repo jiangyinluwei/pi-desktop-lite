@@ -317,6 +317,7 @@ window.addEventListener("DOMContentLoaded", () => {
             pane.classList.add("active");
             if (targetTab === "tab-packages") {
               if (typeof loadInstalledPackages === "function") loadInstalledPackages();
+              if (typeof loadRecommendedPlugins === "function") loadRecommendedPlugins();
               if (typeof loadCatalogPackages === "function" && !hasLoadedCatalogOnce) {
                 loadCatalogPackages(1);
               }
@@ -466,6 +467,7 @@ window.addEventListener("DOMContentLoaded", () => {
     loadOfficialProvidersConfig();
     loadCustomProvidersConfig();
     loadInstalledPackages();
+    loadRecommendedPlugins();
     if (!hasLoadedCatalogOnce) {
       loadCatalogPackages(1);
     }
@@ -3117,6 +3119,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const installedSectionToggle = document.getElementById("installed-section-toggle");
   const installedPackagesCount = document.getElementById("installed-packages-count");
   const installedPackagesList = document.getElementById("installed-packages-list");
+  const btnInstallRecommendedPackages = document.getElementById("btn-install-recommended-packages");
   const btnCheckAllPackageUpdates = document.getElementById("btn-check-all-package-updates");
 
   const packagesSearchInput = document.getElementById("packages-search-input");
@@ -3142,6 +3145,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const btnClosePackageProgress = document.getElementById("btn-close-package-progress");
 
   let installedPackages = [];
+  let recommendedPlugins = [];
   let packageUpdatesMap = new Map(); // packageName -> { latestVersion, hasUpdate }
   let packageOperationMap = new Map(); // packageName -> 'installing' | 'uninstalling' | 'updating'
   let packageProgressMap = new Map(); // packageName -> { stage, percent, message }
@@ -3193,6 +3197,7 @@ window.addEventListener("DOMContentLoaded", () => {
   // 统一刷新已安装组件列表与扩展市场卡片视图
   const refreshPackageViews = () => {
     renderInstalledPackages();
+    updateRecommendedButtonVisibility();
     if (currentCatalogResult?.packages) {
       renderCatalogGrid(currentCatalogResult.packages);
     }
@@ -3386,6 +3391,37 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // 动态更新“安装推荐插件”按钮可见性（若全部推荐插件均已安装，则自动隐藏）
+  const updateRecommendedButtonVisibility = () => {
+    if (!btnInstallRecommendedPackages) return;
+    if (!recommendedPlugins || recommendedPlugins.length === 0) {
+      btnInstallRecommendedPackages.classList.add("hidden");
+      return;
+    }
+
+    const uninstalled = recommendedPlugins.filter(
+      (p) => !isPackageInstalled(p.name)
+    );
+
+    if (uninstalled.length === 0) {
+      btnInstallRecommendedPackages.classList.add("hidden");
+    } else {
+      btnInstallRecommendedPackages.classList.remove("hidden");
+      btnInstallRecommendedPackages.title = `一键队列安装推荐扩展插件 (待安装 ${uninstalled.length} 个)`;
+    }
+  };
+
+  // 加载内嵌推荐插件列表
+  const loadRecommendedPlugins = async () => {
+    try {
+      const list = await configService.getRecommendedPlugins();
+      recommendedPlugins = Array.isArray(list) ? list : [];
+      updateRecommendedButtonVisibility();
+    } catch (err) {
+      console.warn("[PackageManager] Failed to load recommended plugins:", err);
+    }
+  };
+
   // 加载已安装组件
   const loadInstalledPackages = async () => {
     try {
@@ -3395,6 +3431,7 @@ window.addEventListener("DOMContentLoaded", () => {
         installedPackagesCount.textContent = installedPackages.length.toString();
       }
       renderInstalledPackages();
+      updateRecommendedButtonVisibility();
       if (currentCatalogResult && currentCatalogResult.packages) {
         renderCatalogGrid(currentCatalogResult.packages);
       }
@@ -3896,6 +3933,33 @@ window.addEventListener("DOMContentLoaded", () => {
       btnCheckAllPackageUpdates.innerHTML = origText;
     }
   };
+
+  // 一键队列安装推荐扩展插件
+  const handleInstallRecommendedPackages = () => {
+    if (!recommendedPlugins || recommendedPlugins.length === 0) return;
+
+    // 过滤出尚未安装且未在排队/运行中的推荐插件
+    const toInstall = recommendedPlugins.filter(
+      (p) => !isPackageInstalled(p.name) && !isPackageBusy(p.name)
+    );
+
+    if (toInstall.length === 0) {
+      updateRecommendedButtonVisibility();
+      return;
+    }
+
+    // 依次加入 FIFO 安装任务队列
+    toInstall.forEach((p) => {
+      enqueuePackageTask(p.name, "install");
+    });
+  };
+
+  if (btnInstallRecommendedPackages) {
+    btnInstallRecommendedPackages.addEventListener("click", (e) => {
+      e.stopPropagation();
+      handleInstallRecommendedPackages();
+    });
+  }
 
   if (btnCheckAllPackageUpdates) {
     btnCheckAllPackageUpdates.addEventListener("click", (e) => {

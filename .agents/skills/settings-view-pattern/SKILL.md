@@ -277,6 +277,7 @@ const setupOutputTokensAutoSnap = (inputEl) => {
   - 读取 `~/.pi/agent/settings.json` 与 `node_modules` 探测本地包名与版本，提供批量检查更新、单包更新与卸载能力；
   - **插件默认配置预设映射**：二进制内嵌 `package-presets.json`，安装时自动应用推荐配置（如 `pi-web-access` 静默后台搜索与禁用弹窗）；
   - **动态「推荐配置」按钮**：对存在映射但本地未生效的组件，在卡片右上角卸载按钮左侧显现「推荐配置」手绘线框按钮，支持手动一键应用与校验；
+  - **推荐插件内嵌与一键安装 (`recommended-plugins.json`)**：二进制内嵌 `recommended-plugins.json`（含 `pi-subagents`、`pi-web-access`、`pi-docparser`、`deword`、`@quintinshaw/pi-dynamic-workflows`、`pi-memory`、`pi-ocr`），在「检查组件更新」按钮左侧动态展示「安装推荐插件」按钮；点击后过滤跳过已安装项，批量加入 FIFO 队列自动逐一安装；当所有推荐插件均已安装时，按钮自动隐藏；
 - **手绘进度条与平滑步进引擎 (ProgressStepper Engine)**：
   - 内核更新与扩展组件安装/更新/卸载接入 `ProgressStepper` 引擎；
   - **阶段百分比平滑步进**：当位于某阶段百分比（如 15%）时，立即跳至该百分比；在等待期间每隔 2 秒自动增加 1%，直到 `(下个阶段 - 1)%`（例如下个阶段为 35%，则伪百分比最多增长至 34% 停止）；

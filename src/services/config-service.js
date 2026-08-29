@@ -575,6 +575,14 @@ class ConfigService extends EventTarget {
   async applyPackagePreset(packageName) {
     return this.invoke("pi_apply_package_preset", { packageName });
   }
+
+  /**
+   * 获取内嵌的推荐扩展组件列表
+   * @returns {Promise<Array<{name: string, description?: string, source?: string}>>}
+   */
+  async getRecommendedPlugins() {
+    return this.invoke("pi_get_recommended_plugins");
+  }
 }
 
 export const configService = new ConfigService();

@@ -7,13 +7,24 @@ pub use catalog::search_catalog;
 pub use installer::{
     check_package_updates, get_installed_packages, install_package, uninstall_package, update_package,
 };
-pub use models::{InstalledPackage, PackageInfo, PackageSearchResult, PackageUpdateInfo};
-pub use presets::{apply_preset_for_package, find_preset_for_package, is_preset_applied, PackagePreset};
+pub use models::{
+    InstalledPackage, PackageInfo, PackageSearchResult, PackageUpdateInfo, RecommendedPlugin,
+};
+pub use presets::{
+    apply_preset_for_package, find_preset_for_package, get_recommended_plugins, is_preset_applied,
+    PackagePreset,
+};
+
+#[tauri::command]
+pub fn pi_get_recommended_plugins() -> Result<Vec<RecommendedPlugin>, String> {
+    Ok(get_recommended_plugins().to_vec())
+}
 
 #[tauri::command]
 pub fn pi_apply_package_preset(package_name: String) -> Result<bool, String> {
     apply_preset_for_package(&package_name)
 }
+
 
 #[tauri::command]
 pub async fn pi_search_packages(

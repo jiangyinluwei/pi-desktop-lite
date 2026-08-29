@@ -61,3 +61,15 @@ pub struct PackageProgressPayload {
     pub message: String,
 }
 
+/// 推荐扩展组件定义
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecommendedPlugin {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub source: Option<String>,
+}
+
+
