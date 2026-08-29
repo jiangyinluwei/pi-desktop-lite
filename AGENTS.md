@@ -20,7 +20,7 @@
 
 每次在完成任何代码修改、功能新增、重构或配置调整后，**必须遵循自动编译闭环流程**：
 
-1. **自动触发编译**：在结束任务前，主动运行构建/编译校验命令（如 `npm run build -- --no-bundle --debug` 或 `cargo check`）。
+1. **自动触发极速编译校验**：在结束任务前，优先运行快速编译校验命令（如 `npm run check` 或 `cargo check`，通常仅需 ~1 秒；若涉及 Tauri 配置或底层 ABI 修改，可选用 `npm run build:check`）。
 2. **失败自愈与循环修复**：若编译遇到错误，不得直接交付或向用户报停，必须分析错误日志、定位根因并自动修复，然后重新尝试编译，**直至编译成功（Exit Code 0）**。
 3. **交付标准**：只有在编译完全通过后，方可向用户交付并输出最终回复。
 
@@ -73,11 +73,11 @@
      - **左键单击 / 双击**：唤醒、取消最小化并置顶聚焦主窗口；
      - **右键菜单**：提供 `打开`（唤醒并聚焦窗口）、`设置`（唤醒窗口并派发设置事件）、`退出`（调用 `app.exit(0)` 彻底杀死后台完全退出应用）。
 10. **Pi 进程与数据交互六大子系统规范**：
-   - **`pi_runner` (进程监督与生命周期)**：集成 Win32 Job Object 孤儿进程自动收割、严格 LF (`\n`) 字节流分帧器、滑动窗口崩溃抑制（30s 内超 2 次熔断告警）、Release 安装包内置内核资源自适应寻址（`bundle.resources` / `resource_dir`）、`default-area` 默认隔离工作区自动探测与工作目录严格锁定（优先锁定源码 `default-area` 杜绝临时产物干扰，并在目录内维护独立的 `AGENTS.md` 运行时自我描述与隔离规则，彻底阻断 Pi 内核向开发根目录 `AGENTS.md` 穿透溯源，打包时通过 `tauri.conf.json` 自动完整迁移至 Release 资源目录，预留动态切换接口）；
+   - **`pi_runner` (进程监督与生命周期)**：集成 Win32 Job Object 孤儿进程自动收割、严格 LF (`\n`) 字节流分帧器、滑动窗口崩溃抑制（30s 内超 2 次熔断告警）、内核多层自适应寻址管道（`PI_BINARY_PATH` > 用户一键更新内核目录 `~/.pi-dl/kernel/pi-windows-x64/` > 源码工作区 `.mytools` > Release 目录 `exe_dir` > 安装包资源 `resource_dir` > 系统 `PATH`）、Release 安装包内置内核资源自适应寻址（`bundle.resources` / `resource_dir`）、`default-area` 默认隔离工作区自动探测与工作目录严格锁定（优先锁定源码 `default-area` 杜绝临时产物干扰，并在目录内维护独立的 `AGENTS.md` 运行时自我描述与隔离规则，彻底阻断 Pi 内核向开发根目录 `AGENTS.md` 穿透溯源，打包时通过 `tauri.conf.json` 自动完整迁移至 Release 资源目录，预留动态切换接口）；
    - **`config_manager` (配置管理与目录映射)**：负责 `~/.pi/agent/` 目录下 `auth.json`、`models.json`、`settings.json` 的双向读写映射、官方可用模型目录拉取与模型白名单持久化；
    - **`package_manager` (组件目录检索、一键安装/卸载与版本更新)**：连通 Pi 官方 Package Catalog (pi.dev/packages)，基于轻量正则 HTML 解析与 15min TTL 缓存提取结构化组件信息；读取 `~/.pi/agent/settings.json` 与 `node_modules` 精确探测本地已安装组件及版本；调用 `pi install/remove npm:<pkg> -a` 执行非阻塞安装与卸载；内置全局单任务互斥锁（Mutex）与前端 FIFO 异步任务队列，支持连续点击加入队列并自动按序出队执行，杜绝并发冲突；并发查询 npm registry API 进行 SemVer 版本比对与一键更新；
    - **`security` (安全与脱敏中间件)**：全量上行下行数据经过正则脱敏过滤器（API Key、Token 与本地私有目录自动掩码）；
-   - **`version_watcher` (抗抖动版本监测引擎)**：启动延迟 30s 自检，6h 轮询带 ±8% Jitter 随机抖动与 15s Watchdog 超时熔断；
+   - **`version_watcher & kernel_updater` (抗抖动版本监测与一键内核更新引擎)**：启动延迟 30s 自检，6h 轮询带 ±8% Jitter 随机抖动与 15s Watchdog 超时熔断；支持在设置页一键获取官方最新版本、折叠预览 Changelog 更新日志，通过流式 HTTP 管道下载目标架构预编译二进制包（`pi-windows-x64.zip` 等），在 `~/.pi-dl/` 执行 staging 暂存、`--version` 预检校验、原子备份替换旧内核并热重启 `PiSupervisor`，实现零提权免安装无感热升级；
    - **`session` (并发内存会话索引与监听)**：基于 `DashMap` 并发内存缓存与 `notify` 文件监听提供毫秒级会话列表与分支树检索；
    - **`model_management & error_handling` (模型切换与异常自愈)**：支持通过 `pi_get_state`、`pi_get_available_models`、`pi_set_model`、`pi_set_thinking_level` 进行运行时模型感知与切换，捕获全链路 RPC 报错并渲染手绘异常诊断卡片提供一键重试与模型切换。
 
@@ -126,8 +126,9 @@
 
 ## ⚙️ 常用命令速查
 
+- **极速编译检查（推荐首选，~1s）**：`npm run check`
 - **桌面端开发运行**：`npm run dev`
-- **构建测试（无需安装包打包）**：`npm run build:check`
-- **正式发布构建**：`npm run build`
+- **构建测试（生成二进制，无需打包）**：`npm run build:check`
+- **正式发布构建（生成安装包）**：`npm run build`
 - **Rust 后端快速语法/类型检查**：`cargo check`（位于 `src-tauri` 目录）
 

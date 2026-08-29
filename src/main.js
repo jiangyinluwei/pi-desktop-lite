@@ -77,6 +77,18 @@ window.addEventListener("DOMContentLoaded", () => {
   const btnCheckUpdate = document.getElementById("btn-check-update");
   const updateNotice = document.getElementById("update-notice");
   const updateMsg = document.getElementById("update-msg");
+  const updateNoticeActions = document.getElementById("update-notice-actions");
+  const btnToggleChangelog = document.getElementById("btn-toggle-changelog");
+  const btnUpdateKernel = document.getElementById("btn-update-kernel");
+  const kernelUpdateProgressWrap = document.getElementById("kernel-update-progress-wrap");
+  const kernelProgressStage = document.getElementById("kernel-progress-stage");
+  const kernelProgressPercent = document.getElementById("kernel-progress-percent");
+  const kernelProgressFill = document.getElementById("kernel-progress-fill");
+  const kernelProgressSubMsg = document.getElementById("kernel-progress-sub-msg");
+  const kernelChangelogDrawer = document.getElementById("kernel-changelog-drawer");
+  const changelogVersionTag = document.getElementById("changelog-version-tag");
+  const btnCloseChangelog = document.getElementById("btn-close-changelog");
+  const kernelChangelogContent = document.getElementById("kernel-changelog-content");
   const btnNewSession = document.getElementById("btn-new-session");
   const sessionsList = document.getElementById("sessions-list");
   const sessionCount = document.getElementById("session-count");
@@ -1288,8 +1300,10 @@ window.addEventListener("DOMContentLoaded", () => {
   loadModelsAndState();
 
   // ==========================================================================
-  // 6. 内核与版本控制逻辑
+  // 6. 内核与版本控制逻辑 (包含一键更新与 Changelog 抽屉)
   // ==========================================================================
+  let latestUpdateInfo = null;
+
   const updateHostUI = (statusPayload) => {
     const status = typeof statusPayload === "string" ? statusPayload : statusPayload?.status || "ready";
     if (hostStatusText) hostStatusText.textContent = status;
@@ -1303,6 +1317,36 @@ window.addEventListener("DOMContentLoaded", () => {
 
     if (statusPayload?.pi_version && hostVersionText) {
       hostVersionText.textContent = `v${statusPayload.pi_version}`;
+    }
+  };
+
+  const applyUpdateInfoToUI = (info) => {
+    latestUpdateInfo = info;
+    if (!info) return;
+
+    if (info.has_update) {
+      if (updateNotice) updateNotice.classList.remove("hidden");
+      if (updateNoticeActions) updateNoticeActions.classList.remove("hidden");
+      if (updateMsg) {
+        updateMsg.textContent = `发现新版本 v${info.latest_version} (当前: v${info.current_version})！`;
+      }
+      if (btnUpdateKernel) {
+        btnUpdateKernel.innerHTML = `
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 2v8M4 6l4 4 4-4M2 13h12" />
+          </svg>
+          一键更新到 v${info.latest_version}
+        `;
+      }
+      if (settingsBadge) settingsBadge.classList.add("visible");
+    } else {
+      if (updateNotice) updateNotice.classList.remove("hidden");
+      if (updateNoticeActions) updateNoticeActions.classList.add("hidden");
+      if (kernelChangelogDrawer) kernelChangelogDrawer.classList.add("hidden");
+      if (updateMsg) {
+        updateMsg.textContent = `已是最新版本 (v${info.current_version || "0.84.3"})`;
+      }
+      if (settingsBadge) settingsBadge.classList.remove("visible");
     }
   };
 
@@ -1333,14 +1377,7 @@ window.addEventListener("DOMContentLoaded", () => {
       btnCheckUpdate.disabled = true;
       try {
         const res = await versionService.checkUpdate();
-        if (res && res.has_update) {
-          if (updateNotice) updateNotice.classList.remove("hidden");
-          if (updateMsg) updateMsg.textContent = `发现新版本 v${res.latest_version}！`;
-          if (settingsBadge) settingsBadge.classList.add("visible");
-        } else {
-          if (updateNotice) updateNotice.classList.remove("hidden");
-          if (updateMsg) updateMsg.textContent = `已是最新版本 (v${res?.current_version || "0.84.3"})`;
-        }
+        applyUpdateInfoToUI(res);
       } catch (err) {
         console.error("Check update failed:", err);
       } finally {
@@ -1349,13 +1386,129 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  versionService.addEventListener("update-available", (e) => {
-    const info = e.detail;
-    if (info && info.has_update) {
-      if (settingsBadge) settingsBadge.classList.add("visible");
-      if (updateNotice) updateNotice.classList.remove("hidden");
-      if (updateMsg) updateMsg.textContent = `发现新版本 v${info.latest_version}！`;
+  // 展开/收起更新日志抽屉
+  if (btnToggleChangelog && kernelChangelogDrawer) {
+    btnToggleChangelog.addEventListener("click", () => {
+      const isHidden = kernelChangelogDrawer.classList.toggle("hidden");
+      if (!isHidden && latestUpdateInfo) {
+        if (changelogVersionTag) {
+          changelogVersionTag.textContent = latestUpdateInfo.latest_version
+            ? `v${latestUpdateInfo.latest_version}`
+            : "最新版本";
+        }
+        if (kernelChangelogContent) {
+          kernelChangelogContent.textContent =
+            latestUpdateInfo.release_notes?.trim() || "暂无该版本的更新日志详情。";
+        }
+      }
+    });
+  }
+
+  if (btnCloseChangelog && kernelChangelogDrawer) {
+    btnCloseChangelog.addEventListener("click", () => {
+      kernelChangelogDrawer.classList.add("hidden");
+    });
+  }
+
+  // 一键更新内核逻辑
+  if (btnUpdateKernel) {
+    btnUpdateKernel.addEventListener("click", async () => {
+      const targetVer = latestUpdateInfo?.latest_version;
+      if (!targetVer) {
+        alert("未找到可用更新版本");
+        return;
+      }
+
+      // 禁用操作按钮防止重复触发
+      btnUpdateKernel.disabled = true;
+      if (btnRestartHost) btnRestartHost.disabled = true;
+      if (btnCheckUpdate) btnCheckUpdate.disabled = true;
+
+      // 显示进度卡片
+      if (kernelUpdateProgressWrap) {
+        kernelUpdateProgressWrap.classList.remove("hidden");
+        if (kernelProgressFill) kernelProgressFill.style.width = "0%";
+        if (kernelProgressPercent) kernelProgressPercent.textContent = "0%";
+        if (kernelProgressStage) kernelProgressStage.textContent = "正在准备下载内核...";
+        if (kernelProgressSubMsg) kernelProgressSubMsg.textContent = "正在连接 GitHub Releases...";
+      }
+
+      try {
+        await versionService.updateKernel(targetVer);
+      } catch (err) {
+        console.error("Kernel update failed:", err);
+        if (kernelProgressStage) kernelProgressStage.textContent = "内核更新失败";
+        if (kernelProgressSubMsg) kernelProgressSubMsg.textContent = String(err);
+        btnUpdateKernel.disabled = false;
+        if (btnRestartHost) btnRestartHost.disabled = false;
+        if (btnCheckUpdate) btnCheckUpdate.disabled = false;
+      }
+    });
+  }
+
+  // 监听内核更新流式进度事件
+  versionService.addEventListener("kernel-update-progress", (e) => {
+    const p = e.detail;
+    if (!p) return;
+
+    if (kernelUpdateProgressWrap) {
+      kernelUpdateProgressWrap.classList.remove("hidden");
     }
+    if (kernelProgressFill) {
+      kernelProgressFill.style.width = `${Math.min(100, Math.max(0, p.percent))}%`;
+    }
+    if (kernelProgressPercent) {
+      kernelProgressPercent.textContent = `${p.percent}%`;
+    }
+    if (kernelProgressStage) {
+      kernelProgressStage.textContent = p.message || "正在处理内核更新...";
+    }
+    if (kernelProgressSubMsg) {
+      if (p.stage === "downloading" && p.total_bytes > 0) {
+        const mbDown = (p.downloaded_bytes / (1024 * 1024)).toFixed(1);
+        const mbTot = (p.total_bytes / (1024 * 1024)).toFixed(1);
+        kernelProgressSubMsg.textContent = `流式下载中: ${mbDown} MB / ${mbTot} MB (${p.percent}%)`;
+      } else {
+        kernelProgressSubMsg.textContent = p.message;
+      }
+    }
+
+    if (p.stage === "completed") {
+      if (hostVersionText) {
+        hostVersionText.textContent = `v${p.target_version}`;
+      }
+      if (updateNoticeActions) {
+        updateNoticeActions.classList.add("hidden");
+      }
+      if (kernelChangelogDrawer) {
+        kernelChangelogDrawer.classList.add("hidden");
+      }
+      if (updateMsg) {
+        updateMsg.textContent = `Pi 内核已成功更新至最新版本 v${p.target_version}！`;
+      }
+      if (settingsBadge) {
+        settingsBadge.classList.remove("visible");
+      }
+
+      if (btnUpdateKernel) btnUpdateKernel.disabled = false;
+      if (btnRestartHost) btnRestartHost.disabled = false;
+      if (btnCheckUpdate) btnCheckUpdate.disabled = false;
+
+      // 3.5秒后自动隐去进度卡片
+      setTimeout(() => {
+        if (kernelUpdateProgressWrap) {
+          kernelUpdateProgressWrap.classList.add("hidden");
+        }
+      }, 3500);
+    } else if (p.stage === "error") {
+      if (btnUpdateKernel) btnUpdateKernel.disabled = false;
+      if (btnRestartHost) btnRestartHost.disabled = false;
+      if (btnCheckUpdate) btnCheckUpdate.disabled = false;
+    }
+  });
+
+  versionService.addEventListener("update-available", (e) => {
+    applyUpdateInfoToUI(e.detail);
   });
 
   // ==========================================================================

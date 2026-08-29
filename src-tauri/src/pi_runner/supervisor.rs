@@ -68,7 +68,22 @@ impl PiSupervisor {
             }
         }
 
-        // 2. 优先检查当前源码与工作区目录 (.mytools/pi-body/pi-windows-x64/pi.exe)
+        // 2. 检查用户级一键更新内核目录 (~/.pi-dl/kernel/pi-windows-x64/pi.exe)
+        if let Some(home) = dirs::home_dir() {
+            let user_kernel_candidates = [
+                home.join(".pi-dl").join("kernel").join("pi-windows-x64").join("pi.exe"),
+                home.join(".pi-dl").join("kernel").join("pi-windows-x64").join("pi"),
+                home.join(".pi-dl").join("kernel").join("pi.exe"),
+                home.join(".pi-dl").join("kernel").join("pi"),
+            ];
+            for candidate in &user_kernel_candidates {
+                if candidate.is_file() {
+                    return Some(candidate.clone());
+                }
+            }
+        }
+
+        // 3. 检查当前源码与开发工作区目录 (.mytools/pi-body/pi-windows-x64/pi.exe)
         if let Ok(curr_dir) = std::env::current_dir() {
             let curr_candidates = [
                 curr_dir.join(".mytools/pi-body/pi-windows-x64/pi.exe"),

@@ -584,12 +584,56 @@
                   </div>
                 </div>
                 <div class="update-notice hidden" id="update-notice">
-                  <span class="update-icon" aria-hidden="true">
-                    <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" stroke="none">
-                      <path d="M8 1.2 C8 4.8, 8.5 7.5, 14.8 8 C8.5 8.5, 8 11.2, 8 14.8 C8 11.2, 7.5 8.5, 1.2 8 C7.5 7.5, 8 4.8, 8 1.2 Z" />
-                    </svg>
-                  </span>
-                  <span class="update-msg" id="update-msg">发现新版本！</span>
+                  <div class="update-notice-main">
+                    <span class="update-icon" aria-hidden="true">
+                      <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" stroke="none">
+                        <path d="M8 1.2 C8 4.8, 8.5 7.5, 14.8 8 C8.5 8.5, 8 11.2, 8 14.8 C8 11.2, 7.5 8.5, 1.2 8 C7.5 7.5, 8 4.8, 8 1.2 Z" />
+                      </svg>
+                    </span>
+                    <span class="update-msg" id="update-msg">发现新版本！</span>
+                  </div>
+                  <div class="update-notice-actions hidden" id="update-notice-actions">
+                    <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-toggle-changelog" title="查看新版本特性与更新日志">
+                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 3h10v10H3z" />
+                        <path d="M6 6h4M6 9h4M6 12h2" />
+                      </svg>
+                      更新日志
+                    </button>
+                    <button type="button" class="flat-btn flat-btn-primary mini" id="btn-update-kernel">
+                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M8 2v8M4 6l4 4 4-4M2 13h12" />
+                      </svg>
+                      一键更新内核
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 内核更新多阶段进度条 -->
+                <div class="kernel-update-progress-wrap hidden" id="kernel-update-progress-wrap">
+                  <div class="kernel-update-progress-header">
+                    <span class="progress-stage-text" id="kernel-progress-stage">正在准备下载内核...</span>
+                    <span class="progress-percent-text" id="kernel-progress-percent">0%</span>
+                  </div>
+                  <div class="sketch-progress-bar">
+                    <div class="sketch-progress-fill" id="kernel-progress-fill" style="width: 0%;"></div>
+                  </div>
+                  <div class="kernel-progress-sub-msg" id="kernel-progress-sub-msg">正在连接 GitHub Releases...</div>
+                </div>
+
+                <!-- 版本更新日志折叠抽屉 -->
+                <div class="kernel-changelog-drawer hidden" id="kernel-changelog-drawer">
+                  <div class="changelog-drawer-header">
+                    <span class="changelog-title">版本更新日志 (<span id="changelog-version-tag">最新</span>)</span>
+                    <button type="button" class="drawer-close-btn" id="btn-close-changelog" title="收起更新日志" aria-label="关闭更新日志">
+                      <svg viewBox="0 0 14 14" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 3l8 8M11 3l-8 8" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="changelog-content" id="kernel-changelog-content">
+                    暂无更新日志
+                  </div>
                 </div>
               </div>
             </div>

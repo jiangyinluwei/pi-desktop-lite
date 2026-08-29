@@ -25,7 +25,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager, State, WindowEvent,
 };
-use version_watcher::{VersionCheckResult, VersionScheduler};
+use version_watcher::{pi_update_kernel, VersionCheckResult, VersionScheduler};
 
 // ==========================================================================
 // 窗口控制指令
@@ -307,6 +307,7 @@ pub fn run() {
             pi_resolve_tool_skill,
             pi_check_update,
             pi_get_cached_update,
+            pi_update_kernel,
             pi_get_auth_config,
             pi_save_auth_config,
             pi_save_provider_api_key,

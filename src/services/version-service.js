@@ -19,6 +19,19 @@ class VersionService extends EventTarget {
         this.dispatchEvent(new CustomEvent("update-available", { detail: this.latestUpdate }));
       });
 
+      await window.__TAURI__.event.listen("kernel-update-progress", (event) => {
+        const payload = event.payload;
+        this.dispatchEvent(new CustomEvent("kernel-update-progress", { detail: payload }));
+        if (payload?.stage === "completed") {
+          this.latestUpdate = {
+            ...(this.latestUpdate || {}),
+            current_version: payload.target_version,
+            has_update: false,
+          };
+          this.dispatchEvent(new CustomEvent("kernel-updated", { detail: payload }));
+        }
+      });
+
       // 尝试获取缓存的更新状态
       const cached = await invokeTauri("pi_get_cached_update");
       if (cached) {
@@ -43,6 +56,23 @@ class VersionService extends EventTarget {
     } catch (err) {
       console.error("[VersionService] Failed to check update:", err);
       return null;
+    }
+  }
+
+  /**
+   * 触发 Pi 内核一键更新
+   * @param {string} targetVersion 目标版本号 (如 "0.84.4")
+   */
+  async updateKernel(targetVersion) {
+    if (!targetVersion) {
+      throw new Error("Target version cannot be empty");
+    }
+    try {
+      const res = await invokeTauri("pi_update_kernel", { targetVersion });
+      return res;
+    } catch (err) {
+      console.error("[VersionService] Failed to update kernel:", err);
+      throw err;
     }
   }
 }

@@ -254,7 +254,7 @@ const setupOutputTokensAutoSnap = (inputEl) => {
 
 ## 🧩 7. 内核与扩展组件管理规范 (Package Catalog & Kernel Runtime Pattern)
 
-- **内核顶部状态卡片**：在面板顶部展示底层 Pi 内核进程状态（Ready / Starting / Stopped / Crashed）、版本号及一键重启内核与软件检查更新；
+- **内核顶部状态卡片与一键热更新**：在面板顶部展示底层 Pi 内核进程状态（Ready / Starting / Stopped / Crashed）、版本号、一键重启内核、检查更新与**一键内核热更新**（支持流式下载进度条与 Changelog 折叠预览抽屉）；
 - **连通官方目录**：通过 Rust `package_manager` 模块异步抓取 `pi.dev/packages`，基于正则提取 `data-package-*` 属性，设置 15min TTL 内存缓存；
 - **已安装组件折叠面板**：读取 `~/.pi/agent/settings.json` 与 `node_modules` 探测本地包名与版本，提供批量检查更新、单包更新与卸载能力；
 - **组件市场卡片与手绘进度条 (Sketch Progress Bar)**：

@@ -28,11 +28,15 @@ flowchart TD
 ### 1. 触发编译检查
 在每次完成用户的编码需求或修改后，根据项目类型主动执行对应的编译/校验命令：
 
-- **Tauri / 前端桌面项目**：
+- **Tauri / 前端桌面项目 (pi-desktop-lite)**：
   ```bash
-  npm run build:check
-  # 或在 Rust 层面快速检查
+  # ⚡ 极速校验（首选推荐，~1s，快速检查 Rust 语法、类型系统与借用检查）
+  npm run check
+  # 或直接在 Rust 层面快速检查
   cd src-tauri && cargo check
+
+  # 🔍 涉及底层二进制产物或 Tauri 配置变更时（~10s）
+  npm run build:check
   ```
 - **Web / Node.js 项目**：
   ```bash
@@ -51,6 +55,7 @@ flowchart TD
 
 | 错误类别 | 典型表现 | 常见根因与解决方案 |
 | :--- | :--- | :--- |
+| **Windows 文件独占锁定** | `failed to remove target\debug\pi-dl.exe`, `拒绝访问 (os error 5)` | `npm run dev` 正在后台运行，Windows 系统对正在执行的 `.exe` 施加了独占锁，导致构建链接器无法覆写。<br>👉 **解决方案**：优先使用 `npm run check`（`node scripts/check.js` ➔ `cargo check`，仅执行快速语法/类型/借用检查，不生成二进制，耗时仅 ~0.3s 且绝不与运行中的 dev 冲突）；若需做全量发布打包，需先停止正在运行的 dev 实例。 |
 | **环境变量 / 路径问题** | `program not found: cargo`, `cmd not recognized` | 检查 `%USERPROFILE%\.cargo\bin` 或相关 CLI 是否在当前环境变量 `PATH` 中，并在 runner 脚本或命令中补充注入。 |
 | **依赖 / 原生模块缺失** | `Cannot find native binding`, `ERR_DLOPEN_FAILED` | 检查可选依赖或平台绑定包（如 `@tauri-apps/cli-win32-x64-msvc`），显式执行 `npm install -D <package>`。 |
 | **语法 / 类型错误** | `syntax error`, `mismatched types`, `cannot find value` | 定位具体报错文件和行号，审查 AST / 类型定义并修改源码。 |

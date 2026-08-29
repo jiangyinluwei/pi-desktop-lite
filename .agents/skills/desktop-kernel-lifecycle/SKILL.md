@@ -24,15 +24,17 @@ description: 指导桌面端 (Tauri 2 + Rust) 作为 CLI/Agent 内核宿主时�
 flowchart TD
     Start["开始寻找内核路径 find_pi_binary"] --> Step1{"1. 检查环境变量 PI_BINARY_PATH ?"}
     Step1 -- 存在且为有效文件 --> ReturnPath["✅ 返回该路径"]
-    Step1 -- 无 --> Step2{"2. 检查源码/工作区相对路径 (.mytools) ?"}
-    Step2 -- 存在 (开发模式优先) --> ReturnPath
-    Step2 -- 无 --> Step3{"3. 检查当前 EXE 所在目录及 resources 子目录 ?"}
-    Step3 -- 存在 (便携/绿色版) --> ReturnPath
-    Step3 -- 无 --> Step4{"4. 检查 Tauri Resource 目录 (app.path().resource_dir()) ?"}
-    Step4 -- 存在 (正式安装版) --> ReturnPath
-    Step4 -- 无 --> Step5{"5. 检查系统 PATH 环境变量 ?"}
-    Step5 -- 存在 --> ReturnPath
-    Step5 -- 全无 --> ReturnNone["❌ 返回 None，抛出未找到内核异常"]
+    Step1 -- 无 --> Step2{"2. 检查用户一键更新内核目录 (~/.pi-dl/kernel) ?"}
+    Step2 -- 存在 (已升级最新版优先) --> ReturnPath
+    Step2 -- 无 --> Step3{"3. 检查源码/工作区相对路径 (.mytools) ?"}
+    Step3 -- 存在 (开发模式优先) --> ReturnPath
+    Step3 -- 无 --> Step4{"4. 检查当前 EXE 所在目录及 resources 子目录 ?"}
+    Step4 -- 存在 (便携/绿色版) --> ReturnPath
+    Step4 -- 无 --> Step5{"5. 检查 Tauri Resource 目录 (app.path().resource_dir()) ?"}
+    Step5 -- 存在 (正式安装版) --> ReturnPath
+    Step5 -- 无 --> Step6{"6. 检查系统 PATH 环境变量 ?"}
+    Step6 -- 存在 --> ReturnPath
+    Step6 -- 全无 --> ReturnNone["❌ 返回 None，抛出未找到内核异常"]
 ```
 
 ```rust
@@ -43,7 +45,20 @@ pub fn find_pi_binary(app_handle: Option<&AppHandle>) -> Option<PathBuf> {
         if p.is_file() { return Some(p); }
     }
 
-    // 2. 优先检查当前源码与工作区目录（开发模式下 100% 优先保证加载完好的原始内核）
+    // 2. 检查用户级一键更新内核目录 (~/.pi-dl/kernel/pi-windows-x64/pi.exe)
+    if let Some(home) = dirs::home_dir() {
+        let user_kernel_candidates = [
+            home.join(".pi-dl").join("kernel").join("pi-windows-x64").join("pi.exe"),
+            home.join(".pi-dl").join("kernel").join("pi-windows-x64").join("pi"),
+            home.join(".pi-dl").join("kernel").join("pi.exe"),
+            home.join(".pi-dl").join("kernel").join("pi"),
+        ];
+        for candidate in &user_kernel_candidates {
+            if candidate.is_file() { return Some(candidate.clone()); }
+        }
+    }
+
+    // 3. 检查当前源码与工作区开发目录 (.mytools/pi-body/pi-windows-x64/pi.exe)
     if let Ok(curr_dir) = std::env::current_dir() {
         let curr_candidates = [
             curr_dir.join(".mytools/pi-body/pi-windows-x64/pi.exe"),
@@ -191,6 +206,19 @@ pub fn find_pi_binary(app_handle: Option<&AppHandle>) -> Option<PathBuf> {
 
 ---
 
+### 7. 坑点七：大文件流式下载客户端超时截断与断流解码异常 (`error decoding response body`)
+- **故障现象**：调用 `response.chunk().await` 流式下载内核压缩包（~45MB）时中途报错：`Error while downloading kernel bytes: error decoding response body`。
+- **底层根因**：
+  1. `reqwest::Client` 设置的全局 `timeout(Duration::from_secs(60))` 作用于整个请求全生命周期。官方内核包在网速慢或跨国 CDN 延迟较高时，下载耗时一旦超过 60 秒即被客户端强行截断连接；
+  2. GitHub Releases (AWS S3) 在国内直连经常丢包或遭遇 TCP RST 连接重置；
+  3. 未显式声明 `Accept-Encoding: identity` 时，反向代理可能与客户端发生压缩传输头协商异常。
+- **治理标准**：
+  1. **超时解耦与长连接配置**：将流式下载总超时放宽至 `600s`（10分钟），并设置 `15s` 短连接超时；
+  2. **强制原始二进制直传**：显式注入 `.header(reqwest::header::ACCEPT_ENCODING, "identity")`；
+  3. **高可用镜像候选链与自动断流重试 (Multi-Source Mirror Fallback)**：配置官方直连与加速镜像候选链（`GitHub Direct` ➔ `ghproxy.net` ➔ `gh-proxy.com` ➔ `mirror.ghproxy.com`），下载中断时自动清理临时文件并无缝切换至下一节点重试。
+
+---
+
 ## 🛠️ 三、交付与排查核对清单 (Checklist)
 
 在开发与交付包含内置内核的桌面端应用时，必须执行以下核对：
@@ -201,3 +229,5 @@ pub fn find_pi_binary(app_handle: Option<&AppHandle>) -> Option<PathBuf> {
 - [ ] 子进程 PATH 追加是否使用 `std::env::var("PATH")` 与 `cmd.env("PATH", ...)` 避免环境块大小写损坏？
 - [ ] 内核寻址探测优先级是否将源码工作区（`.mytools`）置于 `target/debug` 之前？
 - [ ] Win32 Job Object 是否配置了 `JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK`？
+- [ ] 内核大文件下载是否配置了长超时（600s）、`Accept-Encoding: identity` 及多镜像节点容灾切换？
+

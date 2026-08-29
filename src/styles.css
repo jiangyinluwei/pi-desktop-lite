@@ -2482,8 +2482,26 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   background: transparent;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 8px;
   color: var(--ink-primary);
+  flex-wrap: wrap;
+}
+
+.update-notice-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.update-notice-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.update-notice-actions.hidden {
+  display: none !important;
 }
 
 .update-icon {
@@ -2506,6 +2524,131 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 
 .update-notice.hidden {
   display: none;
+}
+
+/* 内核更新多阶段进度条 */
+.kernel-update-progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 4px;
+  background: var(--sketch-tag-bg);
+}
+
+.kernel-update-progress-wrap.hidden {
+  display: none !important;
+}
+
+.kernel-update-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+}
+
+.progress-stage-text {
+  font-weight: 500;
+  color: var(--ink-primary);
+}
+
+.progress-percent-text {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-primary);
+}
+
+.sketch-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--sketch-box-bg);
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.sketch-progress-fill {
+  height: 100%;
+  background: var(--ink-primary);
+  border-radius: 2px;
+  transition: width 0.2s ease-out;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 5px,
+    rgba(255, 255, 255, 0.15) 5px,
+    rgba(255, 255, 255, 0.15) 10px
+  );
+}
+
+.kernel-progress-sub-msg {
+  font-size: 11px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 版本更新日志抽屉 */
+.kernel-changelog-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 4px;
+  background: transparent;
+  max-height: 200px;
+  overflow: hidden;
+}
+
+.kernel-changelog-drawer.hidden {
+  display: none !important;
+}
+
+.changelog-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  padding-bottom: 4px;
+  border-bottom: 1px dashed var(--sketch-border-subtle);
+}
+
+.drawer-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--ink-muted);
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.drawer-close-btn:hover {
+  border-color: var(--sketch-border-subtle);
+  color: var(--ink-primary);
+  background: var(--sketch-tag-bg);
+}
+
+.changelog-content {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ink-muted);
+  max-height: 150px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding-right: 4px;
 }
 
 .sessions-list {
