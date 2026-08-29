@@ -213,6 +213,14 @@ pub fn init_windows_notification_identity() {
 
 #[tauri::command]
 fn pi_show_notification(_app: tauri::AppHandle, title: String, body: String) -> Result<(), String> {
+    // 双重焦点防护铁律：若主窗口当前处于操作系统聚焦/前台激活状态，直接拦截丢弃，绝不打扰用户
+    if let Some(window) = _app.get_webview_window("main") {
+        if let Ok(true) = window.is_focused() {
+            log::debug!("[Notification] Main window is currently focused, suppressing notification");
+            return Ok(());
+        }
+    }
+
     #[cfg(windows)]
     {
         use tauri_winrt_notification::{Toast, Sound};
@@ -237,7 +245,7 @@ fn pi_show_notification(_app: tauri::AppHandle, title: String, body: String) -> 
     #[cfg(not(windows))]
     {
         use tauri_plugin_notification::NotificationExt;
-        app.notification()
+        _app.notification()
             .builder()
             .title(title)
             .body(body)

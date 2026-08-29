@@ -2449,12 +2449,39 @@ window.addEventListener("DOMContentLoaded", () => {
     notificationService.registerTask("agent-prompt", { type: "agent" });
   });
 
-  piClient.addEventListener("extension-ui", () => {
-    // 扩展插件请求 UI 交互/人工确认：失焦时立即弹出人工介入通知 (带 Windows 默认提示音)
-    notificationService.notifyHumanIntervention({
-      title: "pi-dl",
-      message: "模型/扩展插件请求人工介入处理，请返回确认操作。",
-    });
+  piClient.addEventListener("extension-ui", (e) => {
+    const data = e?.detail || {};
+    const method = String(data.method || "").toLowerCase();
+
+    // 仅当扩展插件发出真正需要人工介入与交互确认的请求（如 confirm/prompt/select/input/form 等）时，
+    // 且处于非聚焦状态才触发系统通知；常规的 setWidget / setStatus / notify(info) 等被动组件更新绝不触发人工介入通知
+    const INTERACTIVE_METHODS = [
+      "confirm",
+      "prompt",
+      "select",
+      "input",
+      "editor",
+      "form",
+      "ask_user",
+      "human_intervention",
+      "decision",
+    ];
+    const isInteractive =
+      INTERACTIVE_METHODS.includes(method) ||
+      data.interactive === true ||
+      data.requiresConfirmation === true;
+
+    if (isInteractive) {
+      const msg =
+        data.message ||
+        data.title ||
+        data.prompt ||
+        "模型/扩展插件请求人工介入处理，请返回确认操作。";
+      notificationService.notifyHumanIntervention({
+        title: "pi-dl",
+        message: msg,
+      });
+    }
   });
 
   piClient.addEventListener("agent-error", (e) => {
