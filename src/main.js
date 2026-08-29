@@ -522,6 +522,25 @@ window.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    // 确保当前选中的激活模型始终固定在第一行 (index 0)
+    const curActive = activeModel || piClient.currentModel || (configService.getSelectedModel() ? {
+      id: configService.getSelectedModel().modelId,
+      provider: configService.getSelectedModel().provider
+    } : null);
+
+    if (curActive && curActive.id && curActive.provider) {
+      const activeIdx = whitelist.findIndex(
+        (m) =>
+          m.id?.toLowerCase() === curActive.id?.toLowerCase() &&
+          m.provider?.toLowerCase() === curActive.provider?.toLowerCase()
+      );
+      if (activeIdx > 0) {
+        const [activeItem] = whitelist.splice(activeIdx, 1);
+        whitelist.unshift(activeItem);
+        configService.saveModelWhitelist(whitelist);
+      }
+    }
+
     whitelistModelsList.innerHTML = "";
 
     whitelist.forEach((m, index) => {
@@ -530,9 +549,9 @@ window.addEventListener("DOMContentLoaded", () => {
       item.setAttribute("data-index", index.toString());
 
       const isActive =
-        activeModel &&
-        activeModel.id?.toLowerCase() === m.id?.toLowerCase() &&
-        activeModel.provider?.toLowerCase() === m.provider?.toLowerCase();
+        curActive &&
+        curActive.id?.toLowerCase() === m.id?.toLowerCase() &&
+        curActive.provider?.toLowerCase() === m.provider?.toLowerCase();
 
       if (isActive) {
         item.classList.add("active");
@@ -1144,7 +1163,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 reasoning: reasoningVal,
               });
 
-              // 自动添加到白名单 (插入到首位)
+              // 自动添加到白名单 (首位固定为当前选中模型，新模型插入其后)
               configService.addModelToWhitelist({
                 id: modelIdVal,
                 name: modelNameVal,

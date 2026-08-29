@@ -341,6 +341,17 @@ class ConfigService extends EventTarget {
       const [item] = list.splice(index, 1);
       list.unshift(item);
       this.saveModelWhitelist(list);
+    } else if (index === -1) {
+      list.unshift({
+        id: modelId,
+        name: modelId,
+        provider: provider,
+        contextWindow: 64000,
+        maxTokens: 4096,
+        reasoning: false,
+        isCustom: false,
+      });
+      this.saveModelWhitelist(list);
     }
   }
 
@@ -368,7 +379,7 @@ class ConfigService extends EventTarget {
   }
 
   /**
-   * 添加模型到白名单（插入到首位作为最新模型）
+   * 添加模型到白名单（固定第一行为当前选中的模型，新增模型插入到当前选中模型之后）
    * @param {Object} model
    */
   addModelToWhitelist(model) {
@@ -390,12 +401,39 @@ class ConfigService extends EventTarget {
       isCustom: !!model.isCustom,
     };
 
+    const selected = this.getSelectedModel();
+    const isThisModelSelected = selected &&
+      selected.provider?.toLowerCase() === model.provider.toLowerCase() &&
+      selected.modelId?.toLowerCase() === model.id.toLowerCase();
+
     if (existsIndex >= 0) {
-      // 存在则更新并提到最前面
-      list.splice(existsIndex, 1);
-      list.unshift(modelObj);
+      // 存在则原地更新属性
+      list[existsIndex] = { ...list[existsIndex], ...modelObj };
+      // 如果当前编辑/更新的模型正是已选中的模型，确保其在首位
+      if (isThisModelSelected && existsIndex > 0) {
+        const [item] = list.splice(existsIndex, 1);
+        list.unshift(item);
+      }
     } else {
-      list.unshift(modelObj);
+      // 新增模型
+      if (list.length === 0 || isThisModelSelected) {
+        list.unshift(modelObj);
+      } else {
+        // 第一行必须固定为当前选中的模型！新增模型插入到当前选中模型之后 (index 1)
+        if (selected) {
+          const activeIdx = list.findIndex(
+            (m) =>
+              m.id.toLowerCase() === selected.modelId?.toLowerCase() &&
+              m.provider.toLowerCase() === selected.provider?.toLowerCase()
+          );
+          if (activeIdx > 0) {
+            const [activeItem] = list.splice(activeIdx, 1);
+            list.unshift(activeItem);
+          }
+        }
+        // 插入到首位选中的模型之后（index 1）
+        list.splice(1, 0, modelObj);
+      }
     }
 
     this.saveModelWhitelist(list);
