@@ -279,11 +279,21 @@ if (flowScrollArea) {
 
 ---
 
+## 📌 5. 输入历史记录上下翻阅与草稿暂存规范 (Prompt History Navigation & Draft Preservation)
+
+### 5.1 交互设计与触发条件
+1. **草稿暂存 (Draft Preservation)**：首次按 `ArrowUp` 离开当前正在输入的文本时，自动将当前输入暂存为 `draft`，按 `ArrowDown` 翻回到最新之后时无缝恢复；
+2. **光标位置与智能触发**：输入框为空、光标在最前（`selectionStart === 0`）或全部选中时按 `ArrowUp` 触发向上翻阅；切换历史后光标自动移至末尾并触发 `updateInputState` 同步跑马灯与清空按钮；
+3. **数据源联动**：通过 `promptHistoryNavigator` 维护历史队列，冷启动时从 `conversationHistoryService` 及本地会话历史同步，每次提问提交时自动压栈并去重。
+
+---
+
 ## 📎 关联文件索引
 
 | 文件 | 关键内容 |
 |---|---|
-| [`src/main.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/main.js) | `resetStreamState`、`collapseThinkingCard`、`collapseToolCard`、`autoCollapseThinkingOnNextPhase`、`piClient` 事件监听、window wheel 委托、通知接入 |
+| [`src/services/prompt-history.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/prompt-history.js) | `PromptHistoryNavigator` 历史记录栈、草稿暂存与指针控制 |
+| [`src/main.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/main.js) | `resetStreamState`、`collapseThinkingCard`、`collapseToolCard`、`autoCollapseThinkingOnNextPhase`、`piClient` 事件监听、window wheel 委托、`searchInput` 键盘历史翻阅与通知接入 |
 | [`src/services/notification-service.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/notification-service.js) | 全局焦点追踪器、任务池追踪器、Windows 原生 Toast 通知分发 |
 | [`src-tauri/src/lib.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/lib.rs) | `tauri-plugin-notification` 初始化、`pi_show_notification`、`WindowEvent::Focused` 广播 |
 | [`src/styles.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles.css) | `.agent-thinking-card`、`.tool-card`、`.tool-collapse-arrow`、`.flow-stage`、`.flow-scroll-area` |

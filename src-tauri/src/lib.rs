@@ -415,6 +415,25 @@ fn pi_list_sessions(session_cache: State<'_, SessionIndexCache>) -> Result<Vec<S
 }
 
 #[tauri::command]
+fn pi_get_prompt_history(session_cache: State<'_, SessionIndexCache>) -> Result<Vec<String>, String> {
+    let sessions = session_cache.list_all();
+    let mut all_prompts = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    // 会话列表按修改时间倒序排列，逆序遍历以获得从旧到新的历史提问栈
+    for s in sessions.iter().rev() {
+        let p = Path::new(&s.file_path);
+        let prompts = crate::session::extract_user_prompts_from_session(p);
+        for prompt in prompts {
+            if !prompt.is_empty() && seen.insert(prompt.clone()) {
+                all_prompts.push(prompt);
+            }
+        }
+    }
+    Ok(all_prompts)
+}
+
+#[tauri::command]
 fn pi_get_session_tree(session_path: String) -> Result<Vec<SessionEntrySummary>, String> {
     let path = Path::new(&session_path);
     parse_session_entries(path)
@@ -511,6 +530,7 @@ pub fn run() {
             pi_get_workspace,
             pi_set_workspace,
             pi_list_sessions,
+            pi_get_prompt_history,
             pi_get_session_tree,
             pi_switch_session,
             pi_new_session,

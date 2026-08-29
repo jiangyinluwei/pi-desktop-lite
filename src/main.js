@@ -3,6 +3,7 @@ import { sessionService } from "./services/session-service.js";
 import { versionService } from "./services/version-service.js";
 import { configService } from "./services/config-service.js";
 import { conversationHistoryService } from "./services/conversation-history.js";
+import { promptHistoryNavigator } from "./services/prompt-history.js";
 import { invokeTauri } from "./services/tauri-bridge.js";
 import { enhanceAllSelects, enhanceSelect } from "./services/sketch-select.js";
 import { ProgressStepper } from "./services/progress-stepper.js";
@@ -2527,6 +2528,10 @@ window.addEventListener("DOMContentLoaded", () => {
       }
     }
 
+    if (query && query.trim()) {
+      promptHistoryNavigator.push(query.trim());
+    }
+
     searchInput.value = "";
     clearAttachedFiles();
     updateInputState();
@@ -2964,18 +2969,46 @@ window.addEventListener("DOMContentLoaded", () => {
   clearBtn.addEventListener("click", () => {
     searchInput.value = "";
     clearAttachedFiles();
+    promptHistoryNavigator.resetIndex();
     updateInputState();
     searchInput.focus();
   });
+
+  const applyNavigatedValue = (val) => {
+    searchInput.value = val;
+    searchInput.setSelectionRange(val.length, val.length);
+    updateInputState();
+  };
 
   searchInput.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       if (searchInput.value.length > 0 || attachedFiles.length > 0) {
         searchInput.value = "";
         clearAttachedFiles();
+        promptHistoryNavigator.resetIndex();
         updateInputState();
       } else {
         searchInput.blur();
+      }
+    } else if (e.key === "ArrowUp") {
+      const isCaretAtStart = searchInput.selectionStart === 0 && searchInput.selectionEnd === 0;
+      const isEmpty = searchInput.value.length === 0;
+      const isAllSelected = searchInput.selectionStart === 0 && searchInput.selectionEnd === searchInput.value.length;
+
+      if (isEmpty || isCaretAtStart || isAllSelected || promptHistoryNavigator.isNavigating) {
+        const res = promptHistoryNavigator.getPrevious(searchInput.value);
+        if (res.changed) {
+          e.preventDefault();
+          applyNavigatedValue(res.value);
+        }
+      }
+    } else if (e.key === "ArrowDown") {
+      if (promptHistoryNavigator.isNavigating) {
+        const res = promptHistoryNavigator.getNext(searchInput.value);
+        if (res.changed) {
+          e.preventDefault();
+          applyNavigatedValue(res.value);
+        }
       }
     }
   });

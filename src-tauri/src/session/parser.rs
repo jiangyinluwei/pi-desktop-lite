@@ -172,3 +172,64 @@ pub fn parse_session_entries(path: &Path) -> Result<Vec<SessionEntrySummary>, St
 
     Ok(entries)
 }
+
+fn clean_user_prompt(text: &str) -> String {
+    let mut raw = text;
+    if let Some(pos) = raw.find("\n\n[附带本地文件绝对路径]:") {
+        raw = &raw[..pos];
+    }
+    raw.trim().to_string()
+}
+
+/// 从单个 .jsonl 会话文件中提取所有真实用户提问 (role: "user")
+pub fn extract_user_prompts_from_session(path: &Path) -> Vec<String> {
+    let file = match File::open(path) {
+        Ok(f) => f,
+        Err(_) => return Vec::new(),
+    };
+    let reader = BufReader::new(file);
+    let mut prompts = Vec::new();
+
+    for (idx, line_res) in reader.lines().enumerate() {
+        if idx == 0 {
+            continue; // Skip header
+        }
+        let line = match line_res {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if let Ok(val) = serde_json::from_str::<Value>(trimmed) {
+            let entry_type = val.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            if entry_type == "message" {
+                if let Some(msg_obj) = val.get("message") {
+                    let role = msg_obj.get("role").and_then(|v| v.as_str()).unwrap_or("");
+                    if role == "user" {
+                        if let Some(content) = msg_obj.get("content") {
+                            if let Some(text) = content.as_str() {
+                                let clean = clean_user_prompt(text);
+                                if !clean.is_empty() {
+                                    prompts.push(clean);
+                                }
+                            } else if let Some(arr) = content.as_array() {
+                                for item in arr {
+                                    if let Some(t) = item.get("text").and_then(|v| v.as_str()) {
+                                        let clean = clean_user_prompt(t);
+                                        if !clean.is_empty() {
+                                            prompts.push(clean);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    prompts
+}
