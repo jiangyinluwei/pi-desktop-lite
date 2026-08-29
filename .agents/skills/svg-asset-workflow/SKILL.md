@@ -39,6 +39,7 @@ pi-desktop-lite/
             ├── ic_external_link.svg # 手绘右上角折角外链箭头
             ├── ic_drag_handle.svg   # 手绘 6 点阵拖拽把手
             ├── ic_import.svg        # 导入图标
+            ├── ic_chevron_down.svg  # 手绘向下折叠微箭头 (下拉框/抽屉展开/折叠面板，支持旋转)
             └── ic_settings.svg      # 手绘齿轮设置图标
 ```
 

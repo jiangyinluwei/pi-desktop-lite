@@ -1979,9 +1979,120 @@ input::-ms-reveal {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 460px;
+  max-height: 240px;
   overflow-y: auto;
   padding-right: 2px;
+  transition: all 0.2s ease;
+}
+
+.models-list-container.collapsed-single {
+  max-height: none;
+  overflow-y: visible;
+}
+
+.models-list-container.collapsed-single .whitelist-model-item:not(.active) {
+  display: none !important;
+}
+
+.models-list-container.collapsed-single:not(:has(.whitelist-model-item.active)) .whitelist-model-item:nth-child(n+2) {
+  display: none !important;
+}
+
+/* 折叠通道操作栏 */
+.channel-toggle-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+  flex-wrap: wrap;
+}
+
+.channel-toggle-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 4px;
+  border: 1px solid var(--sketch-border-subtle);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.channel-toggle-btn:hover {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  background: var(--sketch-tag-bg);
+}
+
+.channel-toggle-btn.active {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  background: var(--sketch-tag-bg);
+  font-weight: 600;
+}
+
+.channel-toggle-btn svg {
+  flex-shrink: 0;
+  display: block;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.15s ease;
+}
+
+.channel-toggle-btn.active svg {
+  transform: rotate(180deg);
+}
+
+/* 折叠抽屉容器 */
+.channel-config-drawers {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.channel-drawer-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-top: 1px dashed var(--sketch-border-subtle);
+  padding-top: 14px;
+  animation: fadeInDrawer 0.2s ease;
+}
+
+.channel-drawer-pane.hidden {
+  display: none !important;
+}
+
+.drawer-inner-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.drawer-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  margin: 0;
+}
+
+.drawer-desc {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+@keyframes fadeInDrawer {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .whitelist-model-item {

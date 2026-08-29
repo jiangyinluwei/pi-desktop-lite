@@ -297,20 +297,7 @@
               <rect x="3" y="4" width="14" height="12" rx="2" />
               <path d="M7 8h6M7 12h4" />
             </svg>
-            当前模型列表
-          </button>
-          <button type="button" class="settings-tab-btn" data-tab="tab-official">
-            <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="11 2 4 11 9 11 8 18 16 8 11 8 11 2" />
-            </svg>
-            官方通道配置
-          </button>
-          <button type="button" class="settings-tab-btn" data-tab="tab-custom">
-            <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l1.6-1.6a1 1 0 0 0 0-1.4l-1.6-1.6a1 1 0 0 0-1.4 0l-1.6 1.6z" />
-              <path d="M10 4.5l5.5 5.5-9 9H2v-4.5l8-10z" />
-            </svg>
-            自定义通道配置
+            模型配置
           </button>
           <button type="button" class="settings-tab-btn" data-tab="tab-packages">
             <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -387,12 +374,12 @@
             </div>
           </div>
 
-          <!-- 2. 当前模型列表面板 -->
+          <!-- 2. 模型配置面板 (包含当前模型列表与折叠式官方/自定义通道配置) -->
           <div class="tab-pane" id="pane-current-models">
             <div class="pane-header-row">
               <div>
-                <h3 class="pane-title">当前模型列表</h3>
-                <p class="pane-desc">罗列已添加的模型。自动按照最近选用的顺序排序（新的在前，旧的在后），点击任一模型即可直接选用生效。</p>
+                <h3 class="pane-title">模型配置</h3>
+                <p class="pane-desc">管理与选用模型列表，或展开下方通道配置以新增更多模型。</p>
               </div>
             </div>
 
@@ -400,150 +387,165 @@
             <div class="models-list-container" id="whitelist-models-list">
               <!-- 动态注入模型卡片 -->
             </div>
-          </div>
 
-          <!-- 3. 官方通道配置面板 -->
-          <div class="tab-pane" id="pane-official">
-            <div class="pane-header">
-              <h3 class="pane-title">官方通道配置</h3>
-              <p class="pane-desc">配置官方通道 API Key（自动映射写入 ~/.pi/agent/auth.json），并可拉取官方可用模型添加到列表。</p>
+            <!-- 通道配置折叠操作栏 -->
+            <div class="channel-toggle-bar" id="channel-toggle-bar">
+              <button type="button" class="flat-btn channel-toggle-btn" id="btn-toggle-official">
+                <span>官方通道配置 - 展开</span>
+                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6 L8 10 L12 6" /></svg>
+              </button>
+              <button type="button" class="flat-btn channel-toggle-btn" id="btn-toggle-custom">
+                <span>自定义通道配置 - 展开</span>
+                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6 L8 10 L12 6" /></svg>
+              </button>
             </div>
 
-            <!-- 服务商选择下拉/选择器 -->
-            <div class="settings-group">
-              <label for="official-provider-select" class="group-label">选择官方服务商</label>
-              <select id="official-provider-select" class="flat-select">
-                <option value="anthropic" selected>Anthropic Claude</option>
-                <option value="openai">OpenAI (ChatGPT / Codex)</option>
-                <option value="deepseek">DeepSeek</option>
-                <option value="google">Google Gemini</option>
-                <option value="openrouter">OpenRouter</option>
-                <option value="qwen">通义千问 Qwen</option>
-                <option value="kimi">月之暗面 Kimi</option>
-                <option value="minimax">MiniMax</option>
-                <option value="groq">Groq</option>
-                <option value="xai">xAI Grok</option>
-              </select>
-            </div>
-
-            <!-- 服务商配置卡片 -->
-            <div class="provider-config-box" id="official-provider-box">
-              <div class="provider-header-row">
-                <div class="provider-meta">
-                  <span class="provider-title" id="official-provider-title">Anthropic Claude</span>
-                  <span class="provider-desc" id="official-provider-desc">Claude 3.7 / 3.5 系列大模型</span>
+            <!-- 折叠通道配置抽屉容器 (默认隐藏) -->
+            <div class="channel-config-drawers" id="channel-config-drawers">
+              <!-- 官方通道配置抽屉 -->
+              <div class="channel-drawer-pane hidden" id="channel-config-official">
+                <div class="drawer-inner-header">
+                  <h4 class="drawer-title">官方通道配置</h4>
+                  <span class="drawer-desc">配置官方通道 API Key（自动写入 ~/.pi/agent/auth.json），并可拉取官方可用模型添加到列表</span>
                 </div>
-                <a href="#" target="_blank" rel="noreferrer" class="flat-link" id="official-provider-doc">
-                  <span>获取 API Key</span>
-                  <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M6 3.5h6.5V10M12.5 3.5L4 12" />
-                  </svg>
-                </a>
+
+                <!-- 服务商选择下拉/选择器 -->
+                <div class="settings-group">
+                  <label for="official-provider-select" class="group-label">选择官方服务商</label>
+                  <select id="official-provider-select" class="flat-select">
+                    <option value="anthropic" selected>Anthropic Claude</option>
+                    <option value="openai">OpenAI (ChatGPT / Codex)</option>
+                    <option value="deepseek">DeepSeek</option>
+                    <option value="google">Google Gemini</option>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="qwen">通义千问 Qwen</option>
+                    <option value="kimi">月之暗面 Kimi</option>
+                    <option value="minimax">MiniMax</option>
+                    <option value="groq">Groq</option>
+                    <option value="xai">xAI Grok</option>
+                  </select>
+                </div>
+
+                <!-- 服务商配置卡片 -->
+                <div class="provider-config-box" id="official-provider-box">
+                  <div class="provider-header-row">
+                    <div class="provider-meta">
+                      <span class="provider-title" id="official-provider-title">Anthropic Claude</span>
+                      <span class="provider-desc" id="official-provider-desc">Claude 3.7 / 3.5 系列大模型</span>
+                    </div>
+                    <a href="#" target="_blank" rel="noreferrer" class="flat-link" id="official-provider-doc">
+                      <span>获取 API Key</span>
+                      <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M6 3.5h6.5V10M12.5 3.5L4 12" />
+                      </svg>
+                    </a>
+                  </div>
+
+                  <!-- API Key 输入框 -->
+                  <div class="form-row">
+                    <label class="form-label" for="official-api-key-input">API Key：</label>
+                    <div class="input-with-action">
+                      <input type="password" id="official-api-key-input" class="flat-input" placeholder="输入 API Key (如 sk-ant-...)" autocomplete="off" />
+                      <button type="button" class="flat-btn flat-btn-secondary" id="btn-toggle-key-visibility" title="显示/隐藏" aria-label="显示/隐藏">
+                        <svg id="icon-key-visibility" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M1.5 8 C3.5 4.5, 12.5 4.5, 14.5 8 C12.5 11.5, 3.5 11.5, 1.5 8 Z" />
+                          <circle cx="8" cy="8" r="2.2" />
+                        </svg>
+                      </button>
+                      <button type="button" class="flat-btn flat-btn-primary" id="btn-save-official-key">保存 Key</button>
+                    </div>
+                    <span class="key-status-text" id="official-key-status">状态：未配置</span>
+                  </div>
+                </div>
+
+                <!-- 官方可用模型罗列 -->
+                <div class="official-models-section">
+                  <div class="section-sub-header">
+                    <h4 class="sub-title">官方可用模型列表</h4>
+                    <span class="sub-hint">点击可一键添加至“当前模型列表”</span>
+                  </div>
+                  <div class="official-models-grid" id="official-models-grid">
+                    <!-- 动态罗列官方模型 -->
+                  </div>
+                </div>
               </div>
 
-              <!-- API Key 输入框 -->
-              <div class="form-row">
-                <label class="form-label" for="official-api-key-input">API Key：</label>
-                <div class="input-with-action">
-                  <input type="password" id="official-api-key-input" class="flat-input" placeholder="输入 API Key (如 sk-ant-...)" autocomplete="off" />
-                  <button type="button" class="flat-btn flat-btn-secondary" id="btn-toggle-key-visibility" title="显示/隐藏" aria-label="显示/隐藏">
-                    <svg id="icon-key-visibility" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M1.5 8 C3.5 4.5, 12.5 4.5, 14.5 8 C12.5 11.5, 3.5 11.5, 1.5 8 Z" />
-                      <circle cx="8" cy="8" r="2.2" />
-                    </svg>
+              <!-- 自定义通道配置抽屉 -->
+              <div class="channel-drawer-pane hidden" id="channel-config-custom">
+                <div class="drawer-inner-header">
+                  <h4 class="drawer-title">自定义通道配置</h4>
+                  <span class="drawer-desc">先在「步骤 1」新增运营商，再切换至「步骤 2」在运营商内新增模型（自动写入 ~/.pi/agent/models.json）</span>
+                </div>
+
+                <!-- 内层顶部 Tab 导航 -->
+                <nav class="inner-tabs-nav" aria-label="自定义通道配置步骤">
+                  <button type="button" class="inner-tab-btn active" data-inner-tab="inner-step1">
+                    <span class="step-badge">步骤 1</span>
+                    新增 / 配置运营商
                   </button>
-                  <button type="button" class="flat-btn flat-btn-primary" id="btn-save-official-key">保存 Key</button>
-                </div>
-                <span class="key-status-text" id="official-key-status">状态：未配置</span>
-              </div>
-            </div>
+                  <button type="button" class="inner-tab-btn" data-inner-tab="inner-step2">
+                    <span class="step-badge">步骤 2</span>
+                    运营商列表与模型管理
+                  </button>
+                </nav>
 
-            <!-- 官方可用模型罗列 -->
-            <div class="official-models-section">
-              <div class="section-sub-header">
-                <h4 class="sub-title">官方可用模型列表</h4>
-                <span class="sub-hint">点击可一键添加至“当前模型列表”</span>
-              </div>
-              <div class="official-models-grid" id="official-models-grid">
-                <!-- 动态罗列官方模型 -->
-              </div>
-            </div>
-          </div>
+                <!-- 内层步骤1：新增或配置自定义运营商 -->
+                <div class="inner-tab-pane active" id="inner-step1">
+                  <form class="custom-provider-form" id="custom-provider-form">
+                    <div class="form-grid-2">
+                      <div class="form-field">
+                        <label for="custom-provider-id" class="form-label">运营商标识 (Provider ID) <span class="req">*</span></label>
+                        <input type="text" id="custom-provider-id" class="flat-input" placeholder="如 siliconflow, ollama, oneapi, volcengine" required />
+                      </div>
+                      <div class="form-field">
+                        <label for="custom-api-type" class="form-label">接口类型 (API Protocol) <span class="req">*</span></label>
+                        <select id="custom-api-type" class="flat-select" required>
+                          <option value="openai-completions" selected>openai-completions</option>
+                          <option value="openai-responses">openai-responses</option>
+                          <option value="anthropic">anthropic</option>
+                          <option value="ollama">ollama</option>
+                        </select>
+                      </div>
+                    </div>
 
-          <!-- 4. 自定义通道配置面板 (顶部 Tab 切换：步骤1 新增运营商 / 步骤2 运营商列表与模型管理) -->
-          <div class="tab-pane" id="pane-custom">
-            <div class="pane-header">
-              <h3 class="pane-title">自定义通道配置</h3>
-              <p class="pane-desc">先在「步骤 1」新增运营商（端点协议与 Key），再切换至「步骤 2」在运营商内新增模型（自动写入 ~/.pi/agent/models.json）。</p>
-            </div>
+                    <div class="form-field">
+                      <label for="custom-base-url" class="form-label">接口地址 (Base URL) <span class="req">*</span></label>
+                      <input type="url" id="custom-base-url" class="flat-input" placeholder="如 https://api.siliconflow.cn/v1 或 http://localhost:11434/v1" required />
+                    </div>
 
-            <!-- 内层顶部 Tab 导航 -->
-            <nav class="inner-tabs-nav" aria-label="自定义通道配置步骤">
-              <button type="button" class="inner-tab-btn active" data-inner-tab="inner-step1">
-                <span class="step-badge">步骤 1</span>
-                新增 / 配置运营商
-              </button>
-              <button type="button" class="inner-tab-btn" data-inner-tab="inner-step2">
-                <span class="step-badge">步骤 2</span>
-                运营商列表与模型管理
-              </button>
-            </nav>
+                    <div class="form-field">
+                      <label for="custom-api-key" class="form-label">API Key (可选 / 支持 $ENV_VAR 环境变量插值)</label>
+                      <input type="password" id="custom-api-key" class="flat-input" placeholder="sk-... (Ollama 可留空或填 ollama)" />
+                    </div>
 
-            <!-- 内层步骤1：新增或配置自定义运营商 -->
-            <div class="inner-tab-pane active" id="inner-step1">
-              <form class="custom-provider-form" id="custom-provider-form">
-                <div class="form-grid-2">
-                  <div class="form-field">
-                    <label for="custom-provider-id" class="form-label">运营商标识 (Provider ID) <span class="req">*</span></label>
-                    <input type="text" id="custom-provider-id" class="flat-input" placeholder="如 siliconflow, ollama, oneapi, volcengine" required />
-                  </div>
-                  <div class="form-field">
-                    <label for="custom-api-type" class="form-label">接口类型 (API Protocol) <span class="req">*</span></label>
-                    <select id="custom-api-type" class="flat-select" required>
-                      <option value="openai-completions" selected>openai-completions</option>
-                      <option value="openai-responses">openai-responses</option>
-                      <option value="anthropic">anthropic</option>
-                      <option value="ollama">ollama</option>
-                    </select>
-                  </div>
-                </div>
+                    <div class="form-grid-2" style="margin-top: 2px;">
+                      <div class="form-field checkbox-field">
+                        <label class="checkbox-label" title="开启后以 developer role 发送系统提示词。国内/聚合平台如 DeepSeek、火山方舟等请勿勾选，否则会导致 400 invalid developer role 错误。">
+                          <input type="checkbox" id="custom-supports-dev-role" />
+                          <span>启用 developer 角色 (兼容端点请勿勾)</span>
+                        </label>
+                      </div>
+                      <div class="form-field checkbox-field">
+                        <label class="checkbox-label" title="是否支持 reasoning_effort 思考参数">
+                          <input type="checkbox" id="custom-supports-reasoning-effort" />
+                          <span>支持 reasoning_effort 思考参数</span>
+                        </label>
+                      </div>
+                    </div>
 
-                <div class="form-field">
-                  <label for="custom-base-url" class="form-label">接口地址 (Base URL) <span class="req">*</span></label>
-                  <input type="url" id="custom-base-url" class="flat-input" placeholder="如 https://api.siliconflow.cn/v1 或 http://localhost:11434/v1" required />
+                    <div class="form-actions">
+                      <button type="submit" class="flat-btn flat-btn-primary" id="btn-save-custom-provider">+ 保存/更新运营商</button>
+                    </div>
+                  </form>
                 </div>
 
-                <div class="form-field">
-                  <label for="custom-api-key" class="form-label">API Key (可选 / 支持 $ENV_VAR 环境变量插值)</label>
-                  <input type="password" id="custom-api-key" class="flat-input" placeholder="sk-... (Ollama 可留空或填 ollama)" />
-                </div>
-
-                <div class="form-grid-2" style="margin-top: 2px;">
-                  <div class="form-field checkbox-field">
-                    <label class="checkbox-label" title="开启后以 developer role 发送系统提示词。国内/聚合平台如 DeepSeek、火山方舟等请勿勾选，否则会导致 400 invalid developer role 错误。">
-                      <input type="checkbox" id="custom-supports-dev-role" />
-                      <span>启用 developer 角色 (兼容端点请勿勾)</span>
-                    </label>
-                  </div>
-                  <div class="form-field checkbox-field">
-                    <label class="checkbox-label" title="是否支持 reasoning_effort 思考参数">
-                      <input type="checkbox" id="custom-supports-reasoning-effort" />
-                      <span>支持 reasoning_effort 思考参数</span>
-                    </label>
+                <!-- 内层步骤2：运营商列表与模型管理 -->
+                <div class="inner-tab-pane" id="inner-step2">
+                  <p class="form-hint" style="margin-bottom: 12px;">在下方已配置的运营商卡片中修改配置、新增模型、查看或删除模型配置。</p>
+                  <div class="custom-providers-container" id="custom-providers-container">
+                    <!-- 动态罗列已配置的运营商与模型卡片 -->
                   </div>
                 </div>
-
-                <div class="form-actions">
-                  <button type="submit" class="flat-btn flat-btn-primary" id="btn-save-custom-provider">+ 保存/更新运营商</button>
-                </div>
-              </form>
-            </div>
-
-            <!-- 内层步骤2：运营商列表与模型管理 -->
-            <div class="inner-tab-pane" id="inner-step2">
-              <p class="form-hint" style="margin-bottom: 12px;">在下方已配置的运营商卡片中修改配置、新增模型、查看或删除模型配置。</p>
-              <div class="custom-providers-container" id="custom-providers-container">
-                <!-- 动态罗列已配置的运营商与模型卡片 -->
               </div>
             </div>
           </div>

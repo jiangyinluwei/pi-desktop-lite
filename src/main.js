@@ -46,7 +46,6 @@ const ICONS = {
   eye: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 8 C3.5 4.5, 12.5 4.5, 14.5 8 C12.5 11.5, 3.5 11.5, 1.5 8 Z" /><circle cx="8" cy="8" r="2.2" /></svg>`,
   eyeOff: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2 L14 14" /><path d="M6.2 6.3 A2.2 2.2 0 0 0 9.7 9.8" /><path d="M4.5 4.8 C2.8 5.8, 1.8 7.2, 1.5 8 C3.5 11.5, 12.5 11.5, 14.5 8 C14.1 7.3, 13.3 6.3, 12.2 5.5" /><path d="M7 3.6 C7.3 3.5, 7.7 3.5, 8 3.5 C12.5 3.5, 14.5 8, 14.5 8" /></svg>`,
   warning: `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2 L1.5 13.5 L14.5 13.5 Z" /><line x1="8" y1="6" x2="8" y2="9.5" /><circle cx="8" cy="11.5" r="0.6" fill="currentColor" stroke="none" /></svg>`,
-  tool: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.8 2.2 C9.2 1.6, 8.2 1.4, 7.5 1.8 L6.2 3.1 L8.9 5.8 L10.2 4.5 C10.6 3.8, 10.4 2.8, 9.8 2.2 Z" /><path d="M8.2 6.5 L3.2 11.5 C2.8 11.9, 2.5 12.6, 2.7 13.2 C2.9 13.5, 3.2 13.8, 3.5 14 C4.1 14.2, 4.8 13.9, 5.2 13.5 L10.2 8.5 Z" /></svg>`,
   chevronDown: `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6 L8 10 L12 6" /></svg>`,
 };
 
@@ -113,6 +112,11 @@ window.addEventListener("DOMContentLoaded", () => {
   const currentModelInfo = document.getElementById("current-model-info");
   const thinkingSelectDropdown = document.getElementById("thinking-select-dropdown");
   const whitelistModelsList = document.getElementById("whitelist-models-list");
+  const btnToggleOfficial = document.getElementById("btn-toggle-official");
+  const btnToggleCustom = document.getElementById("btn-toggle-custom");
+  const channelConfigOfficial = document.getElementById("channel-config-official");
+  const channelConfigCustom = document.getElementById("channel-config-custom");
+  const channelConfigDrawers = document.getElementById("channel-config-drawers");
 
   // 官方通道设置元素
   const officialProviderSelect = document.getElementById("official-provider-select");
@@ -340,6 +344,83 @@ window.addEventListener("DOMContentLoaded", () => {
 
   initInnerTabs();
 
+  // ==========================================================================
+  // 模型配置面板内折叠通道抽屉 (官方通道配置 / 自定义通道配置)
+  // ==========================================================================
+  let expandedChannel = null; // null | 'official' | 'custom'
+
+  const setExpandedChannel = (channel) => {
+    expandedChannel = channel;
+
+    if (channel === "official") {
+      if (whitelistModelsList) whitelistModelsList.classList.add("collapsed-single");
+      if (channelConfigOfficial) channelConfigOfficial.classList.remove("hidden");
+      if (channelConfigCustom) channelConfigCustom.classList.add("hidden");
+
+      if (btnToggleOfficial) {
+        btnToggleOfficial.innerHTML = `<span>收起</span>${ICONS.chevronDown}`;
+        btnToggleOfficial.classList.add("active");
+      }
+      if (btnToggleCustom) {
+        btnToggleCustom.innerHTML = `<span>自定义通道配置</span>${ICONS.chevronDown}`;
+        btnToggleCustom.classList.remove("active");
+      }
+    } else if (channel === "custom") {
+      if (whitelistModelsList) whitelistModelsList.classList.add("collapsed-single");
+      if (channelConfigOfficial) channelConfigOfficial.classList.add("hidden");
+      if (channelConfigCustom) channelConfigCustom.classList.remove("hidden");
+
+      if (btnToggleOfficial) {
+        btnToggleOfficial.innerHTML = `<span>官方通道配置</span>${ICONS.chevronDown}`;
+        btnToggleOfficial.classList.remove("active");
+      }
+      if (btnToggleCustom) {
+        btnToggleCustom.innerHTML = `<span>收起</span>${ICONS.chevronDown}`;
+        btnToggleCustom.classList.add("active");
+      }
+    } else {
+      // 收起全部抽屉，恢复模型列表完整展示
+      if (whitelistModelsList) whitelistModelsList.classList.remove("collapsed-single");
+      if (channelConfigOfficial) channelConfigOfficial.classList.add("hidden");
+      if (channelConfigCustom) channelConfigCustom.classList.add("hidden");
+
+      if (btnToggleOfficial) {
+        btnToggleOfficial.innerHTML = `<span>官方通道配置 - 展开</span>${ICONS.chevronDown}`;
+        btnToggleOfficial.classList.remove("active");
+      }
+      if (btnToggleCustom) {
+        btnToggleCustom.innerHTML = `<span>自定义通道配置 - 展开</span>${ICONS.chevronDown}`;
+        btnToggleCustom.classList.remove("active");
+      }
+    }
+  };
+
+  const initChannelDrawers = () => {
+    if (btnToggleOfficial) {
+      btnToggleOfficial.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (expandedChannel === "official") {
+          setExpandedChannel(null);
+        } else {
+          setExpandedChannel("official");
+        }
+      });
+    }
+
+    if (btnToggleCustom) {
+      btnToggleCustom.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (expandedChannel === "custom") {
+          setExpandedChannel(null);
+        } else {
+          setExpandedChannel("custom");
+        }
+      });
+    }
+  };
+
+  initChannelDrawers();
+
   const openSettingsView = async () => {
     if (currentView !== VIEW_SETTINGS) {
       previousView = currentView;
@@ -427,10 +508,17 @@ window.addEventListener("DOMContentLoaded", () => {
 
   const renderWhitelistModels = (activeModel) => {
     if (!whitelistModelsList) return;
+
+    if (expandedChannel) {
+      whitelistModelsList.classList.add("collapsed-single");
+    } else {
+      whitelistModelsList.classList.remove("collapsed-single");
+    }
+
     let whitelist = configService.loadModelWhitelist();
 
     if (!whitelist || whitelist.length === 0) {
-      whitelistModelsList.innerHTML = `<div class="empty-sessions">暂无已添加的模型，请前往“官方通道”或“自定义通道”添加模型。</div>`;
+      whitelistModelsList.innerHTML = `<div class="empty-sessions">暂无已添加的模型，请展开下方“官方通道”或“自定义通道”添加模型。</div>`;
       return;
     }
 
