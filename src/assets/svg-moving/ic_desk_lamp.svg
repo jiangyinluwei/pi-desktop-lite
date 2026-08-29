@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 手绘机械关节台灯 -->
+  <!-- 台灯椭圆底座 -->
+  <path d="M4.2 21.2 C4.2 20.2, 7.8 19.5, 11.5 19.5 C15.2 19.5, 18.8 20.2, 18.8 21.2 Z" />
+  <!-- 底座开关按钮 -->
+  <circle cx="14.5" cy="20.4" r="0.5" fill="currentColor" />
+  <!-- 下臂连杆 -->
+  <path d="M8.2 19.5 L9.8 12.2" />
+  <circle cx="9.8" cy="12.2" r="1.1" />
+  <!-- 上臂连杆 -->
+  <path d="M9.8 12.2 L14.5 6.8" />
+  <circle cx="14.5" cy="6.8" r="1.1" />
+  <!-- 灯罩灯头与调节顶钮 -->
+  <path d="M14.5 6.8 L16.8 5.2" />
+  <path d="M13.2 4.2 L19.2 8.5 L15.5 11.2 L11.2 5.8 Z" />
+  <!-- 灯泡与光芒虚线 -->
+  <path d="M14.8 9.2 C15.5 9.8, 16.5 9.8, 17.2 9.2" />
+  <path d="M17.5 12.5 L19.2 14.5" stroke-dasharray="1 1.5" />
+  <path d="M14.2 14.2 L15.2 16.8" stroke-dasharray="1 1.5" />
+  <path d="M20.2 11.2 L22.5 12.5" stroke-dasharray="1 1.5" />
+</svg>

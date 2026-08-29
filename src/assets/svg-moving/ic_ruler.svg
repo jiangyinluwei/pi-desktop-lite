@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 手绘倾斜直尺 -->
+  <!-- 尺身外框 -->
+  <path d="M4.2 21.2 L2.8 19.8 L18.4 4.2 C19.2 3.4, 20.6 3.4, 21.4 4.2 C22.2 5, 22.2 6.4, 21.4 7.2 L5.8 22.8 C5 23.6, 3.6 23.6, 2.8 22.8" />
+  <!-- 悬挂圆孔 -->
+  <circle cx="19.2" cy="6.4" r="1.1" />
+  <!-- 刻度线 (长短交替) -->
+  <path d="M5.8 17.2 L7.6 19" />
+  <path d="M7.4 14.2 L8.6 15.4" />
+  <path d="M9.2 12.4 L11 14.2" />
+  <path d="M10.8 9.4 L12 10.6" />
+  <path d="M12.6 7.6 L14.4 9.4" />
+  <path d="M14.2 4.6 L15.4 5.8" />
+  <path d="M16 2.8 L17.8 4.6" />
+</svg>
