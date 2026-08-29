@@ -5,6 +5,7 @@ import { configService } from "./services/config-service.js";
 import { invokeTauri } from "./services/tauri-bridge.js";
 import { enhanceAllSelects, enhanceSelect } from "./services/sketch-select.js";
 import { ProgressStepper } from "./services/progress-stepper.js";
+import { startFloatingIcons, stopFloatingIcons } from "./services/floating-icons.js";
 
 /**
  * 简单 HTML 转义防 XSS
@@ -2378,6 +2379,19 @@ window.addEventListener("DOMContentLoaded", () => {
   initPlaceholderRotation();
   enhanceAllSelects();
   loadOfficialProvidersConfig();
+
+  // 启动边框图标飘荡特效（仅在 detailed / focus 模式下活跃）
+  startFloatingIcons(appContainer);
+
+  // 视图切换时暂停/恢复飘荡特效
+  window.addEventListener("pi:view-change", (e) => {
+    const mode = e.detail?.mode;
+    if (mode === "flow" || mode === "settings") {
+      stopFloatingIcons();
+    } else {
+      startFloatingIcons(appContainer);
+    }
+  });
 
   // ==========================================================================
   // 焦点与失焦控制（点击外部空白区域主动取消输入框高亮）

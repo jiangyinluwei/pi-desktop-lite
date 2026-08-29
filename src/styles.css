@@ -3719,6 +3719,61 @@ input::-ms-reveal {
   text-overflow: ellipsis;
 }
 
+/* ==========================================================================
+   边框图标飘荡特效 (Floating Edge Icons)
+   ========================================================================== */
+
+.floating-icons-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.floating-icon {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  color: var(--ink-faint);
+  opacity: 0;
+  pointer-events: auto;
+  cursor: default;
+  will-change: transform, opacity, left, top;
+  transition: filter 0.25s ease, color 0.25s ease;
+  filter: drop-shadow(0 0 0 transparent);
+}
+
+.floating-icon:hover {
+  color: var(--ink-muted);
+  filter: drop-shadow(0 1px 3px rgba(28, 26, 23, 0.15));
+}
+
+:root[data-theme="dark"] .floating-icon:hover,
+:root[data-theme="system"] .floating-icon:hover {
+  filter: drop-shadow(0 1px 4px rgba(243, 239, 230, 0.12));
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .floating-icon:hover {
+    filter: drop-shadow(0 1px 4px rgba(243, 239, 230, 0.12));
+  }
+}
+
+/* Flow/Settings 态下隐藏飘荡特效 */
+.app-container[data-view="flow"] .floating-icons-layer,
+.app-container[data-view="settings"] .floating-icons-layer {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+
+.app-container[data-view="detailed"] .floating-icons-layer,
+.app-container[data-view="focus"] .floating-icons-layer {
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+
 /* 全局隐藏工具类 */
 .hidden {
   display: none !important;
