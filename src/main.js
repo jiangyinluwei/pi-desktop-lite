@@ -7,6 +7,7 @@ import { invokeTauri } from "./services/tauri-bridge.js";
 import { enhanceAllSelects, enhanceSelect } from "./services/sketch-select.js";
 import { ProgressStepper } from "./services/progress-stepper.js";
 import { startFloatingIcons, stopFloatingIcons } from "./services/floating-icons.js";
+import { notificationService } from "./services/notification-service.js";
 
 /**
  * 简单 HTML 转义防 XSS
@@ -1653,6 +1654,12 @@ window.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
+      // 注册内核更新任务
+      notificationService.registerTask("kernel-update", {
+        targetVer,
+        type: "kernel",
+      });
+
       // 禁用操作按钮防止重复触发
       btnUpdateKernel.disabled = true;
       if (btnRestartHost) btnRestartHost.disabled = true;
@@ -1685,6 +1692,11 @@ window.addEventListener("DOMContentLoaded", () => {
         if (btnRestartHost) btnRestartHost.disabled = false;
         if (btnCheckUpdate) btnCheckUpdate.disabled = false;
         if (btnCancelUpdate) btnCancelUpdate.disabled = false;
+        notificationService.notifyError({
+          title: "Pi Desktop Lite",
+          message: `内核更新失败：${String(err)}`,
+          taskId: "kernel-update",
+        });
       }
     });
   }
@@ -1730,6 +1742,13 @@ window.addEventListener("DOMContentLoaded", () => {
       if (btnCheckUpdate) btnCheckUpdate.disabled = false;
       if (btnCancelUpdate) btnCancelUpdate.disabled = false;
 
+      // 触发全任务完成通知
+      notificationService.notifyIfAllCompleted({
+        title: "Pi Desktop Lite",
+        message: `Pi 内核已成功更新至最新版本 v${p.target_version}！`,
+        taskId: "kernel-update",
+      });
+
       // "更新成功" 的提醒框 弹出8秒后自动渐隐
       showUpdateNoticeAutoFade(8000);
 
@@ -1751,6 +1770,8 @@ window.addEventListener("DOMContentLoaded", () => {
       if (btnCheckUpdate) btnCheckUpdate.disabled = false;
       if (btnCancelUpdate) btnCancelUpdate.disabled = false;
 
+      notificationService.unregisterTask("kernel-update");
+
       setTimeout(() => {
         if (kernelUpdateProgressWrap) {
           kernelUpdateProgressWrap.classList.add("hidden");
@@ -1765,6 +1786,12 @@ window.addEventListener("DOMContentLoaded", () => {
       if (btnRestartHost) btnRestartHost.disabled = false;
       if (btnCheckUpdate) btnCheckUpdate.disabled = false;
       if (btnCancelUpdate) btnCancelUpdate.disabled = false;
+
+      notificationService.notifyError({
+        title: "Pi Desktop Lite",
+        message: `内核更新失败：${p.message || "更新发生异常"}`,
+        taskId: "kernel-update",
+      });
     } else {
       // 正常多阶段推进：立即跳至 p.percent，并在等待期间每 2s 步进 +1% 直到下个阶段 - 1%
       kernelUpdateStepper.step(p.percent, {
@@ -2072,9 +2099,17 @@ window.addEventListener("DOMContentLoaded", () => {
    */
   const renderErrorCard = (errDetail) => {
     finalizeStream();
+    const errMsg = errDetail?.message || "与模型服务通信中断或返回异常";
+
+    // 软件失焦时立即弹出报错终止通知 (带 Windows 默认提示音)
+    notificationService.notifyError({
+      title: "Pi Desktop Lite",
+      message: `模型调用异常终止：${errMsg.length > 80 ? errMsg.slice(0, 77) + "..." : errMsg}`,
+      taskId: "agent-prompt",
+    });
+
     if (!flowResponseContent) return;
 
-    const errMsg = errDetail?.message || "与模型服务通信中断或返回异常";
     const activeModelName = errDetail?.model || piClient.currentModel?.id || "当前模型";
     const isMultiModalIssue = isMultimodalError(errMsg);
 
@@ -2355,6 +2390,18 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  piClient.addEventListener("agent-start", () => {
+    notificationService.registerTask("agent-prompt", { type: "agent" });
+  });
+
+  piClient.addEventListener("extension-ui", () => {
+    // 扩展插件请求 UI 交互/人工确认：失焦时立即弹出人工介入通知 (带 Windows 默认提示音)
+    notificationService.notifyHumanIntervention({
+      title: "Pi Desktop Lite",
+      message: "模型/扩展插件请求人工介入处理，请返回确认操作。",
+    });
+  });
+
   piClient.addEventListener("agent-error", (e) => {
     renderErrorCard(e.detail);
   });
@@ -2363,6 +2410,13 @@ window.addEventListener("DOMContentLoaded", () => {
     // 完成后收起所有工具卡片（最终输出卡不收起）
     collapseAllToolCards();
     finalizeStream();
+
+    // 触发模型输出完成通知（多任务并行判断：若仍有其他任务运行则暂不通知，全部完成时通知）
+    notificationService.notifyAgentCompleted({
+      title: "Pi Desktop Lite",
+      message: "所有任务已全部处理完成。",
+      taskId: "agent-prompt",
+    });
   });
 
   /**
@@ -2372,6 +2426,12 @@ window.addEventListener("DOMContentLoaded", () => {
    */
   const handleFlowQuery = async (query, filesToAttach = []) => {
     if (!query && filesToAttach.length === 0) return;
+
+    // 注册模型生成活跃任务
+    notificationService.registerTask("agent-prompt", {
+      query,
+      type: "agent",
+    });
 
     // 记录本次附带的文件用于多模态失败检测与自适应重试
     lastSentAttachments = [...filesToAttach];
@@ -3763,6 +3823,12 @@ window.addEventListener("DOMContentLoaded", () => {
 
     packageTaskQueue.push(task);
 
+    // 注册包管理器队列并发任务
+    notificationService.registerTask("package-queue", {
+      count: packageTaskQueue.length,
+      type: "package",
+    });
+
     // 如果当前没有运行中的任务，且浮动提示存在，显示初始入队提示
     if (!currentRunningTask && packageProgressFloatCard) {
       updatePackageProgressUI({
@@ -3790,6 +3856,9 @@ window.addEventListener("DOMContentLoaded", () => {
         stepper.stopTimer();
         packageSteppersMap.delete(packageName.toLowerCase());
       }
+      if (packageTaskQueue.length === 0 && !currentRunningTask) {
+        notificationService.unregisterTask("package-queue");
+      }
       updateQueueBadge();
       refreshPackageViews();
     }
@@ -3801,6 +3870,11 @@ window.addEventListener("DOMContentLoaded", () => {
     if (packageTaskQueue.length === 0) {
       currentRunningTask = null;
       if (packageQueueBadge) packageQueueBadge.classList.add("hidden");
+      notificationService.notifyIfAllCompleted({
+        title: "Pi Desktop Lite",
+        message: "扩展组件安装与更新任务已全部完成。",
+        taskId: "package-queue",
+      });
       refreshPackageViews();
       return;
     }
@@ -3856,6 +3930,12 @@ window.addEventListener("DOMContentLoaded", () => {
         processPackageQueue();
       } else {
         if (packageQueueBadge) packageQueueBadge.classList.add("hidden");
+        // 队列全部清空且当前无任务，注销任务并触发全任务完成判定通知
+        notificationService.notifyIfAllCompleted({
+          title: "Pi Desktop Lite",
+          message: "扩展组件安装与更新任务已全部完成。",
+          taskId: "package-queue",
+        });
       }
     }
   };

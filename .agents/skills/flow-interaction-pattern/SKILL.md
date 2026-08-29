@@ -269,10 +269,22 @@ if (flowScrollArea) {
 
 ---
 
+## 📌 4. Windows 系统通知与失焦调度规范 (Notification & Focus Pipeline)
+
+### 4.1 触发时机铁律
+- **失焦判定（严格门禁）**：`notificationService.isWindowFocused()` 为 `true` 时，绝不发出任何通知；
+- **人工回归 (Human Intervention)**：当收到 `extension-ui` 或交互请求时，若失焦**立即通知**；
+- **报错终止 (Error Termination)**：当模型调用发生异常、RPC 报错或致命终止时，若失焦**立即通知**；
+- **输出完成 (Agent Completed)**：模型输出结束时，必须检查并发任务池（如包管理器队列、内核升级等），若无其他任务运行且失焦时触发“所有任务已完成”通知；若仍有其他任务在运行则暂不通知。
+
+---
+
 ## 📎 关联文件索引
 
 | 文件 | 关键内容 |
 |---|---|
-| [`src/main.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/main.js) | `resetStreamState`、`collapseThinkingCard`、`collapseToolCard`、`autoCollapseThinkingOnNextPhase`、`piClient` 事件监听、window wheel 委托 |
+| [`src/main.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/main.js) | `resetStreamState`、`collapseThinkingCard`、`collapseToolCard`、`autoCollapseThinkingOnNextPhase`、`piClient` 事件监听、window wheel 委托、通知接入 |
+| [`src/services/notification-service.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/notification-service.js) | 全局焦点追踪器、任务池追踪器、Windows 原生 Toast 通知分发 |
+| [`src-tauri/src/lib.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/lib.rs) | `tauri-plugin-notification` 初始化、`pi_show_notification`、`WindowEvent::Focused` 广播 |
 | [`src/styles.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles.css) | `.agent-thinking-card`、`.tool-card`、`.tool-collapse-arrow`、`.flow-stage`、`.flow-scroll-area` |
 | [`src/index.html`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/index.html) | `#agent-thinking-card`、`#thinking-toggle-btn`、`#tool-calls-container`、`#flow-scroll-area` |

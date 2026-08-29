@@ -96,6 +96,12 @@
    - **`version_watcher & kernel_updater` (抗抖动版本监测与一键内核更新引擎)**：启动延迟 2s 自检，6h 轮询带 ±8% Jitter 随机抖动与 15s Watchdog 超时熔断；支持“不再提醒更新”持久化（写入 `~/.pi-dl/config.json`，生效后直接跳过启动自检与后台自动轮询，不发网络请求；在设置页主动点击“检查更新”时自动重置恢复）；支持在设置页一键获取官方最新版本、折叠预览 Changelog 更新日志与提示框 8 秒自动平滑渐隐；支持流式 HTTP 管道下载与 `ProgressStepper` 平滑步进引擎（仅保留最右侧百分比，阶段等待期间每 2s 自动 +1% 直到下个阶段 - 1%，新阶段触发立即跳变响应）、支持一键取消更新（`pi_cancel_kernel_update` 安全终止下载流与清理临时文件），在 `~/.pi-dl/` 执行 staging 暂存、`--version` 预检校验、原子备份替换旧内核并热重启 `PiSupervisor`，实现零提权免安装无感热升级；
    - **`session` (并发内存会话索引与监听)**：基于 `DashMap` 并发内存缓存与 `notify` 文件监听提供毫秒级会话列表与分支树检索；
    - **`model_management & error_handling` (模型切换与异常自愈)**：支持通过 `pi_get_state`、`pi_get_available_models`、`pi_set_model`、`pi_set_thinking_level` 进行运行时模型感知与切换，捕获全链路 RPC 报错并渲染手绘异常诊断卡片提供一键重试与模型切换。
+11. **Windows 系统通知与失焦调度铁律 (`Windows Native Toast Notification & Blur-Trigger Pipeline`)**：
+   - **失焦触发铁律**：仅在软件处于**失去焦点 (Blurred / Background)** 状态时才会触发通知；当软件处于焦点状态 (Focused) 时，绝不打扰用户；
+   - **人工回归立即通知**：当触发模型需要人工介入/确认（如 `extension-ui` 请求）时，立即弹出 Windows 原生 Toast 通知与系统默认提示音；
+   - **报错终止立即通知**：当模型执行异常中断、RPC 报错或发生致命错误终止时，立即弹出通知；
+   - **输出完成与多任务并行调度**：若模型输出完成时仍有其他任务在并行运行（如包管理器安装/更新队列、内核升级等），暂不弹出通知；当**所有任务全部完成**后，统一弹出“所有任务已完成”通知；
+   - **底层架构实现**：后端基于 `tauri-plugin-notification = "2"` 与 `tauri-winrt-notification`（Windows 原生 Toast 通知，自带默认通知音），前端通过 `NotificationService` 结合 `document.hasFocus()`、`window.onfocus / onblur`、`visibilitychange` 与 Tauri `window-focus-change` 进行全方位交叉验证，配合并发任务池 `TaskTracker` 进行精确的任务生命周期管理。
 
 ---
 

@@ -167,6 +167,21 @@ fn close_window(window: tauri::WebviewWindow) {
 }
 
 // ==========================================================================
+// Windows 系统通知指令 (基于系统 Toast 与原生提示音)
+// ==========================================================================
+
+#[tauri::command]
+fn pi_show_notification(app: tauri::AppHandle, title: String, body: String) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+    app.notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+        .map_err(|e| e.to_string())
+}
+
+// ==========================================================================
 // Pi Agent 核心 RPC 与监督控制指令
 // ==========================================================================
 
@@ -407,6 +422,7 @@ fn show_and_focus_main_window(app: &tauri::AppHandle) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_and_focus_main_window(app);
         }))
@@ -414,6 +430,7 @@ pub fn run() {
             minimize_window,
             toggle_maximize_window,
             close_window,
+            pi_show_notification,
             pi_send_prompt,
             pi_send_steer,
             pi_send_follow_up,
@@ -548,6 +565,9 @@ pub fn run() {
             WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 let _ = window.hide();
+            }
+            WindowEvent::Focused(focused) => {
+                let _ = window.emit("window-focus-change", *focused);
             }
             WindowEvent::DragDrop(drag_event) => {
                 match drag_event {
