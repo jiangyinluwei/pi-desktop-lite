@@ -33,6 +33,7 @@ pub struct PiSupervisor {
     pi_version: Arc<RwLock<Option<String>>>,
     is_stopping: Arc<RwLock<bool>>,
     skill_injector: Arc<InnerSkillInjector>,
+    custom_workspace: Arc<RwLock<Option<PathBuf>>>,
 }
 
 impl PiSupervisor {
@@ -53,6 +54,7 @@ impl PiSupervisor {
             pi_version: Arc::new(RwLock::new(None)),
             is_stopping: Arc::new(RwLock::new(false)),
             skill_injector: Arc::new(InnerSkillInjector::new()),
+            custom_workspace: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -74,7 +76,6 @@ impl PiSupervisor {
                 curr_dir.join("pi-windows-x64/pi.exe"),
                 curr_dir.join(".mytools/pi-body/pi-windows-x64/pi"),
                 curr_dir.join("resources/pi-windows-x64/pi.exe"),
-                curr_dir.join("resources/_up_/.mytools/pi-body/pi-windows-x64/pi.exe"),
                 curr_dir.join("pi.exe"),
             ];
             for candidate in &curr_candidates {
@@ -91,7 +92,6 @@ impl PiSupervisor {
                     exe_dir.join("resources").join("pi-windows-x64").join("pi.exe"),
                     exe_dir.join("resources").join("pi-windows-x64").join("pi"),
                     exe_dir.join("resources").join("pi-body").join("pi-windows-x64").join("pi.exe"),
-                    exe_dir.join("resources").join("_up_").join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
                     exe_dir.join("pi-windows-x64").join("pi.exe"),
                     exe_dir.join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
                     exe_dir.join("..").join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
@@ -113,7 +113,6 @@ impl PiSupervisor {
                     resource_dir.join("pi-windows-x64").join("pi.exe"),
                     resource_dir.join("pi-windows-x64").join("pi"),
                     resource_dir.join("pi-body").join("pi-windows-x64").join("pi.exe"),
-                    resource_dir.join("_up_").join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
                     resource_dir.join(".mytools").join("pi-body").join("pi-windows-x64").join("pi.exe"),
                     resource_dir.join("pi.exe"),
                     resource_dir.join("pi"),
@@ -212,12 +211,14 @@ impl PiSupervisor {
             cmd.creation_flags(0x08000000);
         }
 
-        // 1. 设置工作目录：优先继承当前目录，异常时回退至用户主目录
-        if let Ok(curr) = std::env::current_dir() {
-            cmd.current_dir(curr);
-        } else if let Some(home) = dirs::home_dir() {
-            cmd.current_dir(home);
+        // 1. 设置工作目录：使用 resolve_workspace() 锁定为 default-area（自动创建并确保存在）
+        let workspace = self.resolve_workspace().await;
+        if let Err(e) = std::fs::create_dir_all(&workspace) {
+            log::warn!("[Supervisor] Failed to create workspace dir {:?}: {}", workspace, e);
+        } else {
+            log::info!("[Supervisor] Pi child process CWD locked to: {:?}", workspace);
         }
+        cmd.current_dir(&workspace);
 
         // 2. 补全 PATH 环境变量（使用 std::env::var 自动大小写兼容，避免 Windows 环境块冲突）
         if let Some(bin_dir) = binary_path.parent() {
@@ -537,6 +538,94 @@ impl PiSupervisor {
     /// 根据工具名动态查询其在 RULES.md 中绑定的 Inner-Skill
     pub fn resolve_skill_for_tool(&self, tool_name: &str) -> Option<String> {
         self.skill_injector.resolve_skill_for_tool(tool_name)
+    }
+
+    /// 获取默认工作空间目录 (default-area)
+    /// 优先级：
+    /// 1. 当前 exe 同级或 resources/default-area (安装版/便携版)
+    /// 2. Tauri resource_dir/default-area
+    /// 3. 当前源码工作目录及父级 default-area (开发模式)
+    /// 4. 自动兜底创建并返回绝对路径
+    pub fn get_default_workspace(app_handle: Option<&AppHandle>) -> PathBuf {
+        // 1. 优先检查当前运行 exe 所在目录及其 resources 目录
+        if let Ok(current_exe) = std::env::current_exe() {
+            if let Some(exe_dir) = current_exe.parent() {
+                let candidates = [
+                    exe_dir.join("default-area"),
+                    exe_dir.join("resources").join("default-area"),
+                ];
+                for candidate in &candidates {
+                    if candidate.is_dir() {
+                        return candidate.clone();
+                    }
+                }
+            }
+        }
+
+        // 2. 检查 Tauri Resource 目录
+        if let Some(app) = app_handle {
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                let candidate = resource_dir.join("default-area");
+                if candidate.is_dir() {
+                    return candidate;
+                }
+            }
+        }
+
+        // 3. 检查当前工作目录（开发模式下根目录或上一级）
+        if let Ok(curr_dir) = std::env::current_dir() {
+            let candidates = [
+                curr_dir.join("default-area"),
+                curr_dir.join("../default-area"),
+            ];
+            for candidate in &candidates {
+                if candidate.is_dir() {
+                    return candidate.clone();
+                }
+            }
+        }
+
+        // 4. 若上述路径不存在，则在最佳位置创建 default-area
+        let target_dir = if let Ok(current_exe) = std::env::current_exe() {
+            if let Some(exe_dir) = current_exe.parent() {
+                exe_dir.join("default-area")
+            } else if let Ok(curr) = std::env::current_dir() {
+                curr.join("default-area")
+            } else if let Some(home) = dirs::home_dir() {
+                home.join(".pi-dl").join("default-area")
+            } else {
+                PathBuf::from("default-area")
+            }
+        } else if let Ok(curr) = std::env::current_dir() {
+            curr.join("default-area")
+        } else {
+            PathBuf::from("default-area")
+        };
+
+        let _ = std::fs::create_dir_all(&target_dir);
+        target_dir
+    }
+
+    /// 解析当前生效的工作区路径（支持预留的动态配置覆盖）
+    pub async fn resolve_workspace(&self) -> PathBuf {
+        if let Some(custom) = self.custom_workspace.read().await.as_ref() {
+            if custom.is_dir() {
+                return custom.clone();
+            }
+        }
+        Self::get_default_workspace(Some(&self.app_handle))
+    }
+
+    /// 获取当前工作区绝对路径
+    pub async fn get_workspace(&self) -> PathBuf {
+        self.resolve_workspace().await
+    }
+
+    /// 设置并切换工作区（预留后续动态切换接口）
+    pub async fn set_workspace(&self, new_path: PathBuf) {
+        let _ = std::fs::create_dir_all(&new_path);
+        let mut w = self.custom_workspace.write().await;
+        *w = Some(new_path);
     }
 }
 

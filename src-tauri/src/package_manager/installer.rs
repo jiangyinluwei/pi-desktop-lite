@@ -137,6 +137,10 @@ pub async fn install_package(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
+    let workspace = PiSupervisor::get_default_workspace(Some(app_handle));
+    let _ = std::fs::create_dir_all(&workspace);
+    cmd.current_dir(&workspace);
+
     #[cfg(windows)]
     {
         cmd.creation_flags(0x08000000);
@@ -302,6 +306,10 @@ pub async fn uninstall_package(
         .arg("-a")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+
+    let workspace = PiSupervisor::get_default_workspace(Some(app_handle));
+    let _ = std::fs::create_dir_all(&workspace);
+    cmd.current_dir(&workspace);
 
     #[cfg(windows)]
     {

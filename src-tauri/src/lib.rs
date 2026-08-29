@@ -180,6 +180,21 @@ async fn pi_set_thinking_level(
     supervisor.set_thinking_level(&level).await
 }
 
+#[tauri::command]
+async fn pi_get_workspace(supervisor: State<'_, PiSupervisor>) -> Result<String, String> {
+    Ok(supervisor.get_workspace().await.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn pi_set_workspace(
+    supervisor: State<'_, PiSupervisor>,
+    workspace_path: String,
+) -> Result<(), String> {
+    let p = std::path::PathBuf::from(workspace_path);
+    supervisor.set_workspace(p).await;
+    Ok(())
+}
+
 // ==========================================================================
 // 会话索引与树状历史指令
 // ==========================================================================
@@ -281,6 +296,8 @@ pub fn run() {
             pi_get_available_models,
             pi_set_model,
             pi_set_thinking_level,
+            pi_get_workspace,
+            pi_set_workspace,
             pi_list_sessions,
             pi_get_session_tree,
             pi_switch_session,

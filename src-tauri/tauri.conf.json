@@ -38,7 +38,13 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../.mytools/pi-body/pi-windows-x64/**/*": "pi-windows-x64"
+      "../.mytools/pi-body/pi-windows-x64": "pi-windows-x64",
+      "../default-area": "default-area"
+    },
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico"
+      }
     }
   }
 }

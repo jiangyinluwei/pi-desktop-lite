@@ -108,15 +108,15 @@ pub fn find_pi_binary(app_handle: Option<&AppHandle>) -> Option<PathBuf> {
 ### 1. 坑点一：Tauri 2 资源打包相对路径畸变 (`_up_` 陷阱)
 - **故障现象**：在 `tauri.conf.json` 中配置数组 `"resources": ["../.mytools/pi-body/pi-windows-x64/**/*"]`，打包后文件被释放到 `resources/_up_/.mytools/...` 畸形目录下，导致程序按原相对路径找不到内核。
 - **底层根因**：Tauri 打包器对相对上级路径 `../` 进行了路径清洗（Path Sanitization），自动转义为 `_up_`。
-- **治理标准**：**必须使用对象映射字典**：
+- **治理标准**：**必须使用目录对象映射字典（切忌使用 `/**/*` 通配符导致子目录被扁平化冲刷）**：
   ```json
   "bundle": {
     "resources": {
-      "../.mytools/pi-body/pi-windows-x64/**/*": "pi-windows-x64"
+      "../.mytools/pi-body/pi-windows-x64": "pi-windows-x64"
     }
   }
   ```
-  解压后精确存放在 `<install_dir>/resources/pi-windows-x64/` 下。
+  解压后精确存放在 `<install_dir>/resources/pi-windows-x64/` 完整目录树下。
 
 ---
 
@@ -133,17 +133,16 @@ pub fn find_pi_binary(app_handle: Option<&AppHandle>) -> Option<PathBuf> {
 
 ---
 
-### 3. 坑点三：安装目录只读权限陷阱 (Program Files CWD Read-Only Trap)
-- **故障现象**：在开发环境（`npm run dev`）下运行完全正常，但通过 NSIS 安装到 `C:\Program Files` 之后，内核启动几秒后立即崩溃销毁。
-- **底层根因**：子进程默认继承父进程工作目录（CWD）。`Program Files` 对普通用户是只读的，Agent/Node 引擎启动后尝试在 CWD 创建 `.pi`、写日志或缓存时抛出 `EACCES / EPERM` 未捕获异常导致退出。
-- **治理标准**：显式隔离工作目录至用户目录：
+### 3. 坑点三：工作区与只读目录隔离 (`default-area` 默认工作区规范)
+- **故障现象**：子进程若直接继承当前未知的父工作目录，若安装在只读目录（如 `C:\Program Files`）下，Agent 在当前目录生成文件或检索项目时会抛出 `EACCES / EPERM` 权限异常导致崩溃。
+- **底层根因**：子进程工作目录（CWD）未显式指定与自适应隔离。
+- **治理标准**：统一在打包和运行时内置独立的 `default-area` 工作区目录，并通过自适应解析流水线锁定 CWD：
   ```rust
-  if let Ok(curr) = std::env::current_dir() {
-      cmd.current_dir(curr);
-  } else if let Some(home) = dirs::home_dir() {
-      cmd.current_dir(home);
-  }
+  let workspace = self.resolve_workspace().await;
+  let _ = std::fs::create_dir_all(&workspace);
+  cmd.current_dir(&workspace);
   ```
+  优先查找同级/resources/源码目录下的 `default-area`，未命中时自动在安全路径下递归创建。
 
 ---
 
