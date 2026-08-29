@@ -133,16 +133,20 @@ pub fn find_pi_binary(app_handle: Option<&AppHandle>) -> Option<PathBuf> {
 
 ---
 
-### 3. 坑点三：工作区与只读目录隔离 (`default-area` 默认工作区规范)
-- **故障现象**：子进程若直接继承当前未知的父工作目录，若安装在只读目录（如 `C:\Program Files`）下，Agent 在当前目录生成文件或检索项目时会抛出 `EACCES / EPERM` 权限异常导致崩溃。
-- **底层根因**：子进程工作目录（CWD）未显式指定与自适应隔离。
-- **治理标准**：统一在打包和运行时内置独立的 `default-area` 工作区目录，并通过自适应解析流水线锁定 CWD：
+### 3. 坑点三：工作区隔离与规则防穿透 (`default-area` 与 `AGENTS.md` 隔离规范)
+- **故障现象**：
+  1. 子进程若直接继承当前未知的父工作目录，若安装在只读目录（如 `C:\Program Files`）下，Agent 在当前目录生成文件或检索项目时会抛出 `EACCES / EPERM` 权限异常导致崩溃；
+  2. 开发调试（`npm run dev`）时，Pi CLI 内核会逐级向上寻找 `AGENTS.md`。若工作区未包含独立的 `AGENTS.md`，内核会穿透读取到项目源码根目录的 `AGENTS.md`（该文件为 Antigravity 编码开发规则，而非 Pi 运行时约束），产生行为偏差。
+- **底层根因**：子进程工作目录（CWD）未显式指定与自适应隔离，且工作区内缺乏运行时自洽的代理规则文件阻断向上溯源。
+- **治理标准**：
+  1. 统一在项目与打包体系内置独立的 `default-area` 目录，并在其内部维护 `default-area/AGENTS.md`（Pi 运行时自我描述与工作区规则）；
+  2. 探测流水线严格遵循“环境变量 `PI_WORKSPACE` > 源码工作区相对路径 `curr_dir/default-area` (开发态优先) > Release/便携目录 `exe_dir/default-area` > 安装包资源目录 `resource_dir/default-area` > 安全目录兜底创建并播种 `AGENTS.md`”；
+  3. `tauri.conf.json` 中配置 `"../default-area": "default-area"`，确保开发态的 `default-area`（包含 `AGENTS.md` 及未来增加的约束/skills）在打包时完整迁移至 Release 资源目录。
   ```rust
   let workspace = self.resolve_workspace().await;
   let _ = std::fs::create_dir_all(&workspace);
   cmd.current_dir(&workspace);
   ```
-  优先查找同级/resources/源码目录下的 `default-area`，未命中时自动在安全路径下递归创建。
 
 ---
 
