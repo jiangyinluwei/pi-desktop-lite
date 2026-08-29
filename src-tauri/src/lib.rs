@@ -31,6 +31,69 @@ use version_watcher::{pi_cancel_kernel_update, pi_update_kernel, VersionCheckRes
 // 窗口控制指令
 // ==========================================================================
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FileInspectionResult {
+    pub path: String,
+    pub name: String,
+    pub ext: String,
+    pub size: u64,
+    pub category: String, // "image", "document", "code", "other"
+    pub is_text: bool,
+}
+
+#[tauri::command]
+fn pi_inspect_file(path: String) -> Result<FileInspectionResult, String> {
+    let p = Path::new(&path);
+    if !p.exists() {
+        return Err(format!("文件不存在: {}", path));
+    }
+
+    let meta = std::fs::metadata(p).map_err(|e| e.to_string())?;
+    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string();
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let size = meta.len();
+
+    let image_exts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "tiff", "avif"];
+    let doc_exts = ["doc", "docx", "pdf", "txt", "md", "markdown", "csv", "xlsx", "xls", "ppt", "pptx", "rtf"];
+    let code_exts = ["js", "jsx", "ts", "tsx", "rs", "py", "go", "java", "c", "cpp", "h", "hpp", "html", "css", "json", "yaml", "yml", "toml", "xml", "sql", "sh", "bash", "ps1", "bat", "env"];
+
+    let (category, is_text) = if image_exts.contains(&ext.as_str()) {
+        ("image".to_string(), ext == "svg")
+    } else if doc_exts.contains(&ext.as_str()) {
+        let is_plain = ["txt", "md", "markdown", "csv", "rtf"].contains(&ext.as_str());
+        ("document".to_string(), is_plain)
+    } else if code_exts.contains(&ext.as_str()) {
+        ("code".to_string(), true)
+    } else {
+        ("other".to_string(), false)
+    };
+
+    Ok(FileInspectionResult {
+        path,
+        name,
+        ext,
+        size,
+        category,
+        is_text,
+    })
+}
+
+#[tauri::command]
+fn pi_read_file_text_preview(path: String, max_chars: Option<usize>) -> Result<String, String> {
+    let p = Path::new(&path);
+    if !p.exists() {
+        return Err(format!("文件不存在: {}", path));
+    }
+    let limit = max_chars.unwrap_or(30000);
+    let content = std::fs::read_to_string(p).map_err(|e| format!("无法读取文件文本内容 (可能是二进制文件): {}", e))?;
+    if content.chars().count() > limit {
+        let truncated: String = content.chars().take(limit).collect();
+        Ok(format!("{}\n\n[...内容过长，已截断显示前 {} 字...]", truncated, limit))
+    } else {
+        Ok(content)
+    }
+}
+
 #[tauri::command]
 fn minimize_window(window: tauri::WebviewWindow) {
     let _ = window.minimize();
@@ -348,6 +411,8 @@ pub fn run() {
             pi_check_package_updates,
             pi_update_package,
             pi_apply_package_preset,
+            pi_inspect_file,
+            pi_read_file_text_preview,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
@@ -427,11 +492,28 @@ pub fn run() {
 
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
+        .on_window_event(|window, event| match event {
+            WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 let _ = window.hide();
             }
+            WindowEvent::DragDrop(drag_event) => {
+                match drag_event {
+                    tauri::DragDropEvent::Drop { paths, position: _ } => {
+                        let file_paths: Vec<String> =
+                            paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
+                        let _ = window.emit("file-drop-paths", file_paths);
+                    }
+                    tauri::DragDropEvent::Enter { .. } => {
+                        let _ = window.emit("file-drag-enter", ());
+                    }
+                    tauri::DragDropEvent::Leave => {
+                        let _ = window.emit("file-drag-leave", ());
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

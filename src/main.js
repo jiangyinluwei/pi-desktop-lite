@@ -48,12 +48,19 @@ const ICONS = {
   eyeOff: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2 L14 14" /><path d="M6.2 6.3 A2.2 2.2 0 0 0 9.7 9.8" /><path d="M4.5 4.8 C2.8 5.8, 1.8 7.2, 1.5 8 C3.5 11.5, 12.5 11.5, 14.5 8 C14.1 7.3, 13.3 6.3, 12.2 5.5" /><path d="M7 3.6 C7.3 3.5, 7.7 3.5, 8 3.5 C12.5 3.5, 14.5 8, 14.5 8" /></svg>`,
   warning: `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2 L1.5 13.5 L14.5 13.5 Z" /><line x1="8" y1="6" x2="8" y2="9.5" /><circle cx="8" cy="11.5" r="0.6" fill="currentColor" stroke="none" /></svg>`,
   chevronDown: `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6 L8 10 L12 6" /></svg>`,
+  image: `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5" /><circle cx="5.5" cy="6" r="1" /><path d="M14 11.5 L10.5 8 L4.5 13.5" /><path d="M10 10.5 L12 12.5" /></svg>`,
+  document: `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 2.5 H9.5 L12.5 5.5 V13.5 H3.5 Z" /><path d="M9.5 2.5 V5.5 H12.5" /><line x1="5.5" y1="8" x2="10.5" y2="8" /><line x1="5.5" y1="10.5" x2="9" y2="10.5" /></svg>`,
+  code: `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5.5 5 2.5 8 5.5 11" /><polyline points="10.5 5 13.5 8 10.5 11" /><line x1="9" y1="4" x2="7" y2="12" /></svg>`,
+  lightbulb: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2 C5.5 2, 4 3.8, 4 6 C4 7.6, 5.2 9, 5.8 10.2 H10.2 C10.8 9, 12 7.6, 12 6 C12 3.8, 10.5 2, 8 2 Z" /><line x1="6" y1="12" x2="10" y2="12" /><line x1="7" y1="14" x2="9" y2="14" /></svg>`,
 };
 
 window.addEventListener("DOMContentLoaded", () => {
   const appContainer = document.getElementById("app-container");
   const searchInputWrapper = document.getElementById("search-input-wrapper");
   const searchInput = document.getElementById("search-input");
+  const attachedCapsulesContainer = document.getElementById("attached-capsules-container");
+  const searchIconBox = document.getElementById("search-icon-box");
+  const filePickerInput = document.getElementById("file-picker-input");
   const searchMottoLayer = document.getElementById("search-motto-layer");
   const searchMottoTrack = document.getElementById("search-motto-track");
   const searchMottoText1 = document.getElementById("search-motto-text-1");
@@ -66,6 +73,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const flowScrollArea = document.getElementById("flow-scroll-area");
   const flowConversation = document.getElementById("flow-conversation");
   const flowUserText = document.getElementById("flow-user-text");
+  const flowPromptAttachments = document.getElementById("flow-prompt-attachments");
   const thinkingToggleBtn = document.getElementById("thinking-toggle-btn");
   const agentThinkingCard = document.getElementById("agent-thinking-card");
   const thinkingDuration = document.getElementById("thinking-duration");
@@ -427,11 +435,18 @@ window.addEventListener("DOMContentLoaded", () => {
 
   initChannelDrawers();
 
-  const openSettingsView = async () => {
+  const openSettingsView = async (targetTab = null) => {
     if (currentView !== VIEW_SETTINGS) {
       previousView = currentView;
     }
     setViewMode(VIEW_SETTINGS, false);
+
+    if (targetTab) {
+      const tabBtn = document.querySelector(`.settings-tab-btn[data-tab="${targetTab}"]`);
+      if (tabBtn) {
+        tabBtn.click();
+      }
+    }
 
     // 右上角提示：重置状态，延迟 1s 后弹入抖动显示，再 3s 后平滑渐隐
     if (topbarHintBanner) {
@@ -2027,7 +2042,30 @@ window.addEventListener("DOMContentLoaded", () => {
   };
 
   /**
-   * 渲染手绘草图风格异常诊断卡片并提供快捷操作
+   * 检查错误信息是否命中模型不支持多模态特征
+   * @param {string} msg
+   * @returns {boolean}
+   */
+  const isMultimodalError = (msg) => {
+    if (!msg) return false;
+    const lower = String(msg).toLowerCase();
+    return (
+      lower.includes("multimodal") ||
+      lower.includes("vision") ||
+      lower.includes("image") ||
+      lower.includes("does not support image") ||
+      lower.includes("unsupported media") ||
+      lower.includes("unsupported content type") ||
+      lower.includes("not support binary") ||
+      lower.includes("file attachments are not supported") ||
+      lower.includes("messages.content: array") ||
+      lower.includes("content parts") ||
+      (lower.includes("400") && Array.isArray(lastSentAttachments) && lastSentAttachments.some((f) => f.category === "image"))
+    );
+  };
+
+  /**
+   * 渲染手绘草图风格异常诊断卡片并提供快捷操作与多模态建议
    * @param {{ message: string, model?: string, provider?: string }} errDetail
    */
   const renderErrorCard = (errDetail) => {
@@ -2036,6 +2074,23 @@ window.addEventListener("DOMContentLoaded", () => {
 
     const errMsg = errDetail?.message || "与模型服务通信中断或返回异常";
     const activeModelName = errDetail?.model || piClient.currentModel?.id || "当前模型";
+    const isMultiModalIssue = isMultimodalError(errMsg);
+
+    const multimodalHintHtml = isMultiModalIssue
+      ? `
+        <div class="multimodal-hint-box">
+          <div class="hint-content-wrap">
+            <span class="hint-icon">${ICONS.lightbulb}</span>
+            <div class="hint-text">
+              <strong>建议：</strong>当前模型不支持直接解析多模态文件。您可在<strong>「设置 ➔ 扩展组件」</strong>中安装推荐的 Pi 多模态解析插件以自动转换图像与文档。
+            </div>
+          </div>
+          <button type="button" class="hint-action-btn" id="btn-err-goto-packages">
+            ${ICONS.sparkle} 前往安装组件
+          </button>
+        </div>
+      `
+      : "";
 
     const cardHtml = `
       <div class="sketch-error-card">
@@ -2044,6 +2099,7 @@ window.addEventListener("DOMContentLoaded", () => {
           <span class="error-title">模型调用失败 [${escapeHtml(activeModelName)}]</span>
         </div>
         <div class="error-message-text">${escapeHtml(errMsg)}</div>
+        ${multimodalHintHtml}
         <div class="error-actions">
           <button type="button" class="error-btn retry-btn" id="btn-err-retry">
             <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
@@ -2074,11 +2130,12 @@ window.addEventListener("DOMContentLoaded", () => {
 
     const btnRetry = document.getElementById("btn-err-retry");
     const btnSwitch = document.getElementById("btn-err-switch-model");
+    const btnGotoPackages = document.getElementById("btn-err-goto-packages");
 
     if (btnRetry) {
       btnRetry.addEventListener("click", () => {
         if (lastUserQuery) {
-          handleFlowQuery(lastUserQuery);
+          handleFlowQuery(lastUserQuery, lastSentAttachments);
         }
       });
     }
@@ -2086,6 +2143,12 @@ window.addEventListener("DOMContentLoaded", () => {
     if (btnSwitch) {
       btnSwitch.addEventListener("click", () => {
         openSettingsView();
+      });
+    }
+
+    if (btnGotoPackages) {
+      btnGotoPackages.addEventListener("click", () => {
+        openSettingsView("tab-packages");
       });
     }
   };
@@ -2301,19 +2364,59 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   /**
-   * 触发用户提问并向 Pi 下发指令
+   * 触发用户提问并向 Pi 下发指令（支持注入文件绝对路径上下文）
    * @param {string} query
+   * @param {Array<any>} [filesToAttach=[]]
    */
-  const handleFlowQuery = async (query) => {
-    if (!query) return;
+  const handleFlowQuery = async (query, filesToAttach = []) => {
+    if (!query && filesToAttach.length === 0) return;
 
-    resetStreamState(query);
+    // 记录本次附带的文件用于多模态失败检测与自适应重试
+    lastSentAttachments = [...filesToAttach];
+
+    // 构造下发给模型的 Prompt 与上下文注入（实际注入内容为文件的系统绝对路径）
+    let promptToSend = query;
+    if (filesToAttach.length > 0) {
+      const pathsBlock = filesToAttach.map((f) => `- ${f.path || f.name}`).join("\n");
+      if (query) {
+        promptToSend = `${query}\n\n[附带本地文件绝对路径]:\n${pathsBlock}`;
+      } else {
+        promptToSend = `请查阅并分析以下文件内容：\n\n[附带本地文件绝对路径]:\n${pathsBlock}`;
+      }
+    }
+
+    resetStreamState(promptToSend);
     setViewMode(VIEW_FLOW, true);
+
+    // 在 Flow 用户问题卡片中显示文本与手绘附件徽章
+    if (flowUserText) {
+      flowUserText.textContent = query || (filesToAttach.length > 0 ? `[附带 ${filesToAttach.length} 个文件/图片]` : "");
+    }
+    if (flowPromptAttachments) {
+      if (filesToAttach.length > 0) {
+        flowPromptAttachments.classList.remove("hidden");
+        flowPromptAttachments.innerHTML = filesToAttach
+          .map(
+            (f) => `
+          <span class="flow-attachment-chip" title="${escapeHtml(f.path || f.name)}">
+            <span class="chip-icon">${getFileCategoryIcon(f.category)}</span>
+            <span class="chip-name">${escapeHtml(f.name)}</span>
+          </span>
+        `
+          )
+          .join("");
+      } else {
+        flowPromptAttachments.classList.add("hidden");
+        flowPromptAttachments.innerHTML = "";
+      }
+    }
+
     searchInput.value = "";
+    clearAttachedFiles();
     updateInputState();
 
     try {
-      await piClient.sendPrompt(query);
+      await piClient.sendPrompt(promptToSend);
     } catch (err) {
       console.error("Failed to send prompt to Pi:", err);
       renderErrorCard({
@@ -2322,14 +2425,12 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-
-
   // 表单回车提交
   searchForm.addEventListener("submit", (e) => {
     e.preventDefault();
     const query = searchInput.value.trim();
-    if (query) {
-      handleFlowQuery(query);
+    if (query || attachedFiles.length > 0) {
+      handleFlowQuery(query, attachedFiles);
     }
   });
 
@@ -2545,15 +2646,182 @@ window.addEventListener("DOMContentLoaded", () => {
   // 初始渲染讯息方框
   renderConversationMessages();
 
+  // ==========================================================================
+  // 输入框文件拖入、手绘概述胶囊与多模态文件注入引擎
+  // ==========================================================================
+  let attachedFiles = [];
+  let lastSentAttachments = [];
+
+  const getFileCategoryIcon = (category) => {
+    if (category === "image") return ICONS.image;
+    if (category === "code") return ICONS.code;
+    return ICONS.document;
+  };
+
+  const renderAttachedCapsules = () => {
+    if (!attachedCapsulesContainer) return;
+    attachedCapsulesContainer.innerHTML = "";
+
+    if (attachedFiles.length === 0) {
+      searchInputWrapper?.classList.remove("has-capsules");
+      updateInputState();
+      return;
+    }
+
+    searchInputWrapper?.classList.add("has-capsules");
+
+    attachedFiles.forEach((file, index) => {
+      const capsule = document.createElement("div");
+      capsule.className = "sketch-file-capsule";
+      capsule.title = file.path || file.name;
+      capsule.innerHTML = `
+        <span class="capsule-file-icon">${getFileCategoryIcon(file.category)}</span>
+        <span class="capsule-file-name">${escapeHtml(file.name)}</span>
+        <button type="button" class="capsule-remove-btn" aria-label="移除 ${escapeHtml(file.name)}" title="移除文件">
+          ${ICONS.close}
+        </button>
+      `;
+
+      const removeBtn = capsule.querySelector(".capsule-remove-btn");
+      if (removeBtn) {
+        removeBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          removeAttachedFile(index);
+        });
+      }
+
+      attachedCapsulesContainer.appendChild(capsule);
+    });
+
+    updateInputState();
+  };
+
+  const addAttachedFiles = async (paths) => {
+    if (!Array.isArray(paths) || paths.length === 0) return;
+
+    for (const rawPath of paths) {
+      if (typeof rawPath !== "string" || !rawPath.trim()) continue;
+      const path = rawPath.trim();
+      if (attachedFiles.some((f) => f.path === path)) continue;
+
+      try {
+        const fileMeta = await invokeTauri("pi_inspect_file", { path });
+        if (fileMeta) {
+          attachedFiles.push(fileMeta);
+        }
+      } catch (_) {
+        const normalized = path.replace(/\\/g, "/");
+        const name = normalized.split("/").pop() || "file";
+        const ext = name.includes(".") ? name.split(".").pop().toLowerCase() : "";
+        const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"];
+        const codeExts = ["js", "jsx", "ts", "tsx", "rs", "py", "go", "java", "c", "cpp", "json", "yaml", "yml", "html", "css", "md", "sql", "sh"];
+        let category = "document";
+        if (imageExts.includes(ext)) category = "image";
+        else if (codeExts.includes(ext)) category = "code";
+
+        attachedFiles.push({
+          path,
+          name,
+          ext,
+          category,
+          size: 0,
+          is_text: category !== "image",
+        });
+      }
+    }
+
+    renderAttachedCapsules();
+    if (searchInput) searchInput.focus();
+  };
+
+  const removeAttachedFile = (index) => {
+    if (index >= 0 && index < attachedFiles.length) {
+      attachedFiles.splice(index, 1);
+      renderAttachedCapsules();
+    }
+  };
+
+  const clearAttachedFiles = () => {
+    attachedFiles = [];
+    renderAttachedCapsules();
+  };
+
+  // 绑定 Tauri 文件拖拽广播事件
+  if (window.__TAURI__?.event?.listen) {
+    window.__TAURI__.event.listen("file-drop-paths", (event) => {
+      const paths = event.payload;
+      if (Array.isArray(paths) && paths.length > 0) {
+        addAttachedFiles(paths);
+      }
+      searchForm?.classList.remove("drag-over", "drag-active");
+    });
+
+    window.__TAURI__.event.listen("file-drag-enter", () => {
+      searchForm?.classList.add("drag-over");
+    });
+
+    window.__TAURI__.event.listen("file-drag-leave", () => {
+      searchForm?.classList.remove("drag-over", "drag-active");
+    });
+  }
+
+  // 绑定原生 DOM Drag & Drop 视觉高亮与防止误跳转
+  window.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    searchForm?.classList.add("drag-over");
+  });
+
+  window.addEventListener("dragleave", (e) => {
+    if (!e.relatedTarget) {
+      searchForm?.classList.remove("drag-over", "drag-active");
+    }
+  });
+
+  window.addEventListener("drop", (e) => {
+    e.preventDefault();
+    searchForm?.classList.remove("drag-over", "drag-active");
+  });
+
+  // 点击导入图标唤起文件选择
+  if (searchIconBox && filePickerInput) {
+    searchIconBox.addEventListener("click", (e) => {
+      e.preventDefault();
+      filePickerInput.value = "";
+      filePickerInput.click();
+    });
+
+    searchIconBox.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        filePickerInput.value = "";
+        filePickerInput.click();
+      }
+    });
+
+    filePickerInput.addEventListener("change", (e) => {
+      const files = Array.from(e.target.files || []);
+      if (files.length > 0) {
+        const paths = files.map((f) => f.path || f.name);
+        addAttachedFiles(paths);
+      }
+    });
+  }
+
   // 控制清空按钮显隐与格言跑马灯层可见性
   const updateInputState = () => {
     if (!searchInput) return;
     const hasText = searchInput.value.length > 0;
-    if (hasText) {
+    const hasCapsules = attachedFiles.length > 0;
+
+    if (hasText || hasCapsules) {
       clearBtn?.classList.add("visible");
-      searchInputWrapper?.classList.add("has-value");
     } else {
       clearBtn?.classList.remove("visible");
+    }
+
+    if (hasText) {
+      searchInputWrapper?.classList.add("has-value");
+    } else {
       searchInputWrapper?.classList.remove("has-value");
     }
   };
@@ -2562,14 +2830,16 @@ window.addEventListener("DOMContentLoaded", () => {
 
   clearBtn.addEventListener("click", () => {
     searchInput.value = "";
+    clearAttachedFiles();
     updateInputState();
     searchInput.focus();
   });
 
   searchInput.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
-      if (searchInput.value.length > 0) {
+      if (searchInput.value.length > 0 || attachedFiles.length > 0) {
         searchInput.value = "";
+        clearAttachedFiles();
         updateInputState();
       } else {
         searchInput.blur();
@@ -3745,8 +4015,9 @@ window.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    if (searchInput && searchInput.value.trim().length > 0) {
+    if ((searchInput && searchInput.value.trim().length > 0) || attachedFiles.length > 0) {
       searchInput.value = "";
+      clearAttachedFiles();
       updateInputState();
       return;
     }

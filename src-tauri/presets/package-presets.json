@@ -15,6 +15,21 @@
         "workflow": "auto-summary",
         "autoOpenBrowser": false
       }
+    },
+    {
+      "id": "pi-vision",
+      "packageNames": [
+        "pi-vision",
+        "npm:pi-vision",
+        "pi-multimodal"
+      ],
+      "title": "自动OCR与多模态解析",
+      "description": "支持自动提取图像文本与文档结构化解析，弥补纯文本模型视觉能力",
+      "configFile": "~/.pi/vision.json",
+      "settings": {
+        "ocrEngine": "auto",
+        "autoFallback": true
+      }
     }
   ]
 }
