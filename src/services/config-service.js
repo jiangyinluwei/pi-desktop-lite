@@ -530,6 +530,21 @@ class ConfigService extends EventTarget {
   async updatePackage(packageName) {
     return this.invoke("pi_update_package", { packageName });
   }
+
+  /**
+   * 使用当前或指定模型翻译文本 (主要用于内核更新日志翻译)
+   * @param {string} text
+   * @param {string|null} [provider]
+   * @param {string|null} [modelId]
+   * @returns {Promise<string>}
+   */
+  async translateText(text, provider = null, modelId = null) {
+    return this.invoke("pi_translate_text", {
+      text,
+      provider,
+      modelId,
+    });
+  }
 }
 
 export const configService = new ConfigService();

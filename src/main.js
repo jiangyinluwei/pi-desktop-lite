@@ -4,6 +4,7 @@ import { versionService } from "./services/version-service.js";
 import { configService } from "./services/config-service.js";
 import { invokeTauri } from "./services/tauri-bridge.js";
 import { enhanceAllSelects, enhanceSelect } from "./services/sketch-select.js";
+import { ProgressStepper } from "./services/progress-stepper.js";
 
 /**
  * 简单 HTML 转义防 XSS
@@ -18,6 +19,16 @@ export const escapeHtml = (str) => {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+};
+
+/**
+ * CSS 属性选择器值转义
+ * @param {string} str
+ * @returns {string}
+ */
+const escapeCss = (str) => {
+  if (typeof str !== "string") return "";
+  return str.replace(/["'\\]/g, "\\$&");
 };
 
 /**
@@ -36,6 +47,7 @@ const ICONS = {
   warning: `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2 L1.5 13.5 L14.5 13.5 Z" /><line x1="8" y1="6" x2="8" y2="9.5" /><circle cx="8" cy="11.5" r="0.6" fill="currentColor" stroke="none" /></svg>`,
   tool: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.8 2.2 C9.2 1.6, 8.2 1.4, 7.5 1.8 L6.2 3.1 L8.9 5.8 L10.2 4.5 C10.6 3.8, 10.4 2.8, 9.8 2.2 Z" /><path d="M8.2 6.5 L3.2 11.5 C2.8 11.9, 2.5 12.6, 2.7 13.2 C2.9 13.5, 3.2 13.8, 3.5 14 C4.1 14.2, 4.8 13.9, 5.2 13.5 L10.2 8.5 Z" /></svg>`,
   chevronDown: `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6 L8 10 L12 6" /></svg>`,
+  translate: `<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 3h7M5 3v1.5M2.5 4.5c.5 2.5 2 4.5 4 5.5M4.5 7c-.8 1.2-2 2-3 2.5" /><path d="M8.5 13.5l3.5-8 3.5 8M9.8 11h4.4" /></svg>`,
 };
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -91,6 +103,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const changelogVersionTag = document.getElementById("changelog-version-tag");
   const btnCloseChangelog = document.getElementById("btn-close-changelog");
   const kernelChangelogContent = document.getElementById("kernel-changelog-content");
+  const btnTranslateChangelog = document.getElementById("btn-translate-changelog");
   const btnNewSession = document.getElementById("btn-new-session");
   const sessionsList = document.getElementById("sessions-list");
   const sessionCount = document.getElementById("session-count");
@@ -1441,6 +1454,7 @@ window.addEventListener("DOMContentLoaded", () => {
   if (btnCancelUpdate) {
     btnCancelUpdate.addEventListener("click", async () => {
       btnCancelUpdate.disabled = true;
+      kernelUpdateStepper.stopTimer();
       if (kernelProgressStage) kernelProgressStage.textContent = "正在取消更新...";
       if (kernelProgressSubMsg) kernelProgressSubMsg.textContent = "正在停止下载并清理临时文件...";
       try {
@@ -1451,19 +1465,40 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // 更新日志翻译缓存与视图状态
+  const changelogTranslationCache = {};
+  let isShowingTranslatedChangelog = false;
+
   // 展开/收起更新日志抽屉
   if (btnToggleChangelog && kernelChangelogDrawer) {
     btnToggleChangelog.addEventListener("click", () => {
       const isHidden = kernelChangelogDrawer.classList.toggle("hidden");
       if (!isHidden && latestUpdateInfo) {
+        const versionKey = latestUpdateInfo.latest_version || "latest";
         if (changelogVersionTag) {
           changelogVersionTag.textContent = latestUpdateInfo.latest_version
             ? `v${latestUpdateInfo.latest_version}`
             : "最新版本";
         }
         if (kernelChangelogContent) {
-          kernelChangelogContent.textContent =
-            latestUpdateInfo.release_notes?.trim() || "暂无该版本的更新日志详情。";
+          if (isShowingTranslatedChangelog && changelogTranslationCache[versionKey]) {
+            kernelChangelogContent.textContent = changelogTranslationCache[versionKey];
+            if (btnTranslateChangelog) {
+              btnTranslateChangelog.innerHTML = `${ICONS.translate} <span class="btn-translate-text">查看原文</span>`;
+              btnTranslateChangelog.title = "点击切换回英文原文";
+            }
+          } else {
+            kernelChangelogContent.textContent =
+              latestUpdateInfo.release_notes?.trim() || "暂无该版本的更新日志详情。";
+            isShowingTranslatedChangelog = false;
+            if (btnTranslateChangelog) {
+              btnTranslateChangelog.innerHTML = `${ICONS.translate} <span class="btn-translate-text">翻译中文</span>`;
+              btnTranslateChangelog.title = "使用当前挂载的模型翻译为中文";
+            }
+          }
+        }
+        if (btnTranslateChangelog) {
+          btnTranslateChangelog.disabled = false;
         }
       }
     });
@@ -1474,6 +1509,94 @@ window.addEventListener("DOMContentLoaded", () => {
       kernelChangelogDrawer.classList.add("hidden");
     });
   }
+
+  // 翻译更新日志为中文 (使用当前挂载/选中的模型)
+  if (btnTranslateChangelog && kernelChangelogContent) {
+    btnTranslateChangelog.addEventListener("click", async () => {
+      const rawNotes = latestUpdateInfo?.release_notes?.trim();
+      if (!rawNotes) {
+        alert("暂无可翻译的更新日志详情");
+        return;
+      }
+
+      const versionKey = latestUpdateInfo?.latest_version || "latest";
+
+      // 1. 如果当前已经是翻译状态，点击切换回英文原文
+      if (isShowingTranslatedChangelog) {
+        kernelChangelogContent.textContent = rawNotes;
+        isShowingTranslatedChangelog = false;
+        btnTranslateChangelog.innerHTML = `${ICONS.translate} <span class="btn-translate-text">翻译中文</span>`;
+        btnTranslateChangelog.title = "使用当前挂载的模型翻译为中文";
+        return;
+      }
+
+      // 2. 如果已有缓存的翻译结果，直接展示并切换状态
+      if (changelogTranslationCache[versionKey]) {
+        kernelChangelogContent.textContent = changelogTranslationCache[versionKey];
+        isShowingTranslatedChangelog = true;
+        btnTranslateChangelog.innerHTML = `${ICONS.translate} <span class="btn-translate-text">查看原文</span>`;
+        btnTranslateChangelog.title = "点击切换回英文原文";
+        return;
+      }
+
+      // 3. 开始调用当前挂载的模型进行翻译
+      const originalHtml = btnTranslateChangelog.innerHTML;
+      btnTranslateChangelog.disabled = true;
+      btnTranslateChangelog.innerHTML = `<span class="translating-spinner"></span> <span class="btn-translate-text">正在翻译...</span>`;
+
+      try {
+        // 获取当前挂载或选中的模型
+        const selected = configService.getSelectedModel();
+        const active = piClient.currentModel || selected;
+        const provider = active?.provider || null;
+        const modelId = active?.id || active?.modelId || null;
+
+        const translated = await configService.translateText(rawNotes, provider, modelId);
+        if (!translated || !translated.trim()) {
+          throw new Error("翻译返回内容为空");
+        }
+
+        changelogTranslationCache[versionKey] = translated.trim();
+        kernelChangelogContent.textContent = translated.trim();
+        isShowingTranslatedChangelog = true;
+        btnTranslateChangelog.disabled = false;
+        btnTranslateChangelog.innerHTML = `${ICONS.translate} <span class="btn-translate-text">查看原文</span>`;
+        btnTranslateChangelog.title = "点击切换回英文原文";
+      } catch (err) {
+        console.error("Changelog translation failed:", err);
+        btnTranslateChangelog.disabled = false;
+        btnTranslateChangelog.innerHTML = originalHtml;
+        const errMsg = err?.message || err?.toString() || "未知错误";
+        alert(`模型调用失败: ${errMsg}`);
+      }
+    });
+  }
+
+  // 内核更新平滑进度步进器（每隔2秒增加1%，直到下个阶段-1%）
+  const kernelMilestones = [0, 5, 8, 10, 72, 80, 86, 90, 95, 100];
+  const kernelUpdateStepper = new ProgressStepper({
+    milestones: kernelMilestones,
+    intervalMs: 2000,
+    onUpdate: (currentPercent, payload) => {
+      if (kernelUpdateProgressWrap) {
+        kernelUpdateProgressWrap.classList.remove("hidden");
+      }
+      if (kernelProgressFill) {
+        kernelProgressFill.style.width = `${currentPercent}%`;
+      }
+      if (kernelProgressPercent) {
+        kernelProgressPercent.textContent = `${currentPercent}%`;
+      }
+      if (payload) {
+        if (payload.stageText && kernelProgressStage) {
+          kernelProgressStage.textContent = payload.stageText;
+        }
+        if (payload.subMsgText && kernelProgressSubMsg) {
+          kernelProgressSubMsg.textContent = payload.subMsgText;
+        }
+      }
+    },
+  });
 
   // 一键更新内核逻辑
   if (btnUpdateKernel) {
@@ -1490,7 +1613,7 @@ window.addEventListener("DOMContentLoaded", () => {
       if (btnCheckUpdate) btnCheckUpdate.disabled = true;
       if (btnCancelUpdate) btnCancelUpdate.disabled = false;
 
-      // 显示进度卡片
+      // 显示进度卡片并重置步进器
       if (kernelUpdateProgressWrap) {
         kernelUpdateProgressWrap.classList.remove("hidden");
         if (kernelProgressFill) kernelProgressFill.style.width = "0%";
@@ -1499,10 +1622,17 @@ window.addEventListener("DOMContentLoaded", () => {
         if (kernelProgressSubMsg) kernelProgressSubMsg.textContent = "正在连接 GitHub Releases...";
       }
 
+      kernelUpdateStepper.reset();
+      kernelUpdateStepper.step(0, {
+        stageText: "正在准备下载内核...",
+        subMsgText: "正在连接 GitHub Releases...",
+      });
+
       try {
         await versionService.updateKernel(targetVer);
       } catch (err) {
         console.error("Kernel update failed:", err);
+        kernelUpdateStepper.stopTimer();
         if (kernelProgressStage) kernelProgressStage.textContent = "内核更新失败";
         if (kernelProgressSubMsg) kernelProgressSubMsg.textContent = String(err);
         btnUpdateKernel.disabled = false;
@@ -1518,30 +1648,21 @@ window.addEventListener("DOMContentLoaded", () => {
     const p = e.detail;
     if (!p) return;
 
-    if (kernelUpdateProgressWrap) {
-      kernelUpdateProgressWrap.classList.remove("hidden");
-    }
-    if (kernelProgressFill) {
-      kernelProgressFill.style.width = `${Math.min(100, Math.max(0, p.percent))}%`;
-    }
-    if (kernelProgressPercent) {
-      kernelProgressPercent.textContent = `${p.percent}%`;
-    }
-    if (kernelProgressStage) {
-      kernelProgressStage.textContent = p.message || "正在处理内核更新...";
-    }
-    if (kernelProgressSubMsg) {
-      if (p.stage === "downloading" && p.total_bytes > 0) {
-        const mbDown = (p.downloaded_bytes / (1024 * 1024)).toFixed(1);
-        const mbTot = (p.total_bytes / (1024 * 1024)).toFixed(1);
-        // 仅保留最右侧百分比，下方与左侧不再显示冗余百分比
-        kernelProgressSubMsg.textContent = `流式下载中: ${mbDown} MB / ${mbTot} MB`;
-      } else {
-        kernelProgressSubMsg.textContent = p.message || "";
-      }
+    let subMsg = p.message || "";
+    if (p.stage === "downloading" && p.total_bytes > 0) {
+      const mbDown = (p.downloaded_bytes / (1024 * 1024)).toFixed(1);
+      const mbTot = (p.total_bytes / (1024 * 1024)).toFixed(1);
+      // 仅保留最右侧百分比，下方与左侧不再显示冗余百分比
+      subMsg = `流式下载中: ${mbDown} MB / ${mbTot} MB`;
     }
 
     if (p.stage === "completed") {
+      kernelUpdateStepper.stopTimer();
+      kernelUpdateStepper.step(100, {
+        stageText: p.message || `Pi 内核已成功更新至最新版本 v${p.target_version}！`,
+        subMsgText: subMsg,
+      });
+
       if (hostVersionText) {
         hostVersionText.textContent = `v${p.target_version}`;
       }
@@ -1573,6 +1694,7 @@ window.addEventListener("DOMContentLoaded", () => {
         }
       }, 3500);
     } else if (p.stage === "cancelled") {
+      kernelUpdateStepper.stopTimer();
       if (kernelProgressStage) kernelProgressStage.textContent = "内核更新已取消";
       if (kernelProgressSubMsg) kernelProgressSubMsg.textContent = "已中止下载并清理临时文件";
       if (kernelProgressPercent) kernelProgressPercent.textContent = "0%";
@@ -1589,10 +1711,20 @@ window.addEventListener("DOMContentLoaded", () => {
         }
       }, 2000);
     } else if (p.stage === "error") {
+      kernelUpdateStepper.stopTimer();
+      if (kernelProgressStage) kernelProgressStage.textContent = "内核更新失败";
+      if (kernelProgressSubMsg) kernelProgressSubMsg.textContent = p.message || "更新发生异常";
+
       if (btnUpdateKernel) btnUpdateKernel.disabled = false;
       if (btnRestartHost) btnRestartHost.disabled = false;
       if (btnCheckUpdate) btnCheckUpdate.disabled = false;
       if (btnCancelUpdate) btnCancelUpdate.disabled = false;
+    } else {
+      // 正常多阶段推进：立即跳至 p.percent，并在等待期间每 2s 步进 +1% 直到下个阶段 - 1%
+      kernelUpdateStepper.step(p.percent, {
+        stageText: p.message || "正在处理内核更新...",
+        subMsgText: subMsg,
+      });
     }
   });
 
@@ -2385,6 +2517,7 @@ window.addEventListener("DOMContentLoaded", () => {
   let packageUpdatesMap = new Map(); // packageName -> { latestVersion, hasUpdate }
   let packageOperationMap = new Map(); // packageName -> 'installing' | 'uninstalling' | 'updating'
   let packageProgressMap = new Map(); // packageName -> { stage, percent, message }
+  let packageSteppersMap = new Map(); // packageName.toLowerCase() -> ProgressStepper
 
   // 扩展任务队列：FIFO 顺序执行安装、更新与卸载，保证互斥不冲突
   let packageTaskQueue = []; // Array<{ id: string, packageName: string, action: 'install' | 'uninstall' | 'update' }>
@@ -2426,10 +2559,45 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // 更新进度条 UI (浮动卡片 + 卡片内部实时同步)
-  const updatePackageProgressUI = (payload) => {
-    if (!payload || !payload.packageName) return;
-    const { packageName, stage, percent, message } = payload;
+  // 获取各组件操作的阶段里程碑
+  const getPackageMilestones = (stage, action) => {
+    if (stage === "uninstalling" || stage === "uninstalled" || action === "uninstall") {
+      return [0, 30, 100];
+    }
+    if (stage === "updating" || action === "update") {
+      return [0, 5, 10, 15, 35, 55, 75, 90, 100];
+    }
+    return [0, 5, 15, 35, 55, 75, 90, 100];
+  };
+
+  // 获取或创建单个组件的平滑步进器
+  const getOrCreatePackageStepper = (packageName, stage, action) => {
+    const key = (packageName || "").toLowerCase();
+    let stepper = packageSteppersMap.get(key);
+    const milestones = getPackageMilestones(stage, action);
+    if (!stepper) {
+      stepper = new ProgressStepper({
+        milestones,
+        intervalMs: 2000,
+        onUpdate: (currentPercent, payload) => {
+          applyPackageProgressToUI(
+            payload?.packageName || packageName,
+            payload?.stage || stage,
+            currentPercent,
+            payload?.message || ""
+          );
+        },
+      });
+      packageSteppersMap.set(key, stepper);
+    } else {
+      stepper.setMilestones(milestones);
+    }
+    return stepper;
+  };
+
+  // 应用进度变化到 UI (浮动卡片 + 已安装列表与市场卡片局部/全局同步)
+  const applyPackageProgressToUI = (packageName, stage, percent, message) => {
+    if (!packageName) return;
     const cleanPercent = Math.min(100, Math.max(0, Number(percent) || 0));
 
     packageProgressMap.set(packageName, {
@@ -2482,9 +2650,78 @@ window.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    renderInstalledPackages();
-    if (currentCatalogResult?.packages) {
+    // 局部同步已安装列表与卡片中的进度条与百分比（极速无重绘）
+    let updatedInList = false;
+    let updatedInGrid = false;
+
+    if (installedPackagesList) {
+      const activeInstalledItem = installedPackagesList.querySelector(
+        `[data-package="${escapeCss(packageName)}"]`
+      );
+      if (activeInstalledItem) {
+        const pctEl = activeInstalledItem.querySelector(".card-progress-pct");
+        const fillEl = activeInstalledItem.querySelector(".sketch-progress-fill");
+        const msgEl = activeInstalledItem.querySelector(".card-progress-msg");
+        if (pctEl && fillEl) {
+          pctEl.textContent = `${cleanPercent}%`;
+          fillEl.style.width = `${cleanPercent}%`;
+          if (msgEl && message) {
+            msgEl.textContent = message;
+            msgEl.title = message;
+          }
+          updatedInList = true;
+        }
+      }
+    }
+
+    if (packagesCatalogGrid) {
+      const activeCard = packagesCatalogGrid.querySelector(
+        `[data-package="${escapeCss(packageName)}"]`
+      );
+      if (activeCard) {
+        const pctEl = activeCard.querySelector(".card-progress-pct");
+        const fillEl = activeCard.querySelector(".sketch-progress-fill");
+        const msgEl = activeCard.querySelector(".card-progress-msg");
+        if (pctEl && fillEl) {
+          pctEl.textContent = `${cleanPercent}%`;
+          fillEl.style.width = `${cleanPercent}%`;
+          if (msgEl && message) {
+            msgEl.textContent = message;
+            msgEl.title = message;
+          }
+          updatedInGrid = true;
+        }
+      }
+    }
+
+    // 若 DOM 尚未挂载进度条结构（如刚由常态按钮进入运行态），全量渲染一次挂载结构
+    if (!updatedInList) {
+      renderInstalledPackages();
+    }
+    if (!updatedInGrid && currentCatalogResult?.packages) {
       renderCatalogGrid(currentCatalogResult.packages);
+    }
+  };
+
+  // 更新进度条 UI (接入平滑步进引擎)
+  const updatePackageProgressUI = (payload) => {
+    if (!payload || !payload.packageName) return;
+    const { packageName, stage, percent, message } = payload;
+    const cleanPercent = Math.min(100, Math.max(0, Number(percent) || 0));
+
+    const stepper = getOrCreatePackageStepper(
+      packageName,
+      stage,
+      packageOperationMap.get(packageName)
+    );
+
+    if (stage === "completed" || stage === "uninstalled" || stage === "error") {
+      stepper.stopTimer();
+      stepper.step(cleanPercent, { packageName, stage, message });
+      packageSteppersMap.delete(packageName.toLowerCase());
+    } else {
+      // 阶段触发：立即跳至 cleanPercent，并在等待期间每 2s 步进 +1% 直到下个阶段 - 1%
+      stepper.step(cleanPercent, { packageName, stage, message });
     }
   };
 
@@ -2539,6 +2776,7 @@ window.addEventListener("DOMContentLoaded", () => {
     installedPackages.forEach((pkg) => {
       const item = document.createElement("div");
       item.className = "installed-package-item";
+      item.dataset.package = pkg.name;
 
       const updateInfo = packageUpdatesMap.get(pkg.name);
       const isRunning = isPackageRunning(pkg.name);
@@ -2724,6 +2962,7 @@ window.addEventListener("DOMContentLoaded", () => {
     packages.forEach((pkg) => {
       const card = document.createElement("article");
       card.className = "package-card";
+      card.dataset.package = pkg.name;
 
       const isInstalled = isPackageInstalled(pkg.name);
       const isRunning = isPackageRunning(pkg.name);
@@ -2861,6 +3100,11 @@ window.addEventListener("DOMContentLoaded", () => {
     if (idx !== -1) {
       packageTaskQueue.splice(idx, 1);
       packageProgressMap.delete(packageName);
+      const stepper = packageSteppersMap.get(packageName.toLowerCase());
+      if (stepper) {
+        stepper.stopTimer();
+        packageSteppersMap.delete(packageName.toLowerCase());
+      }
       if (packageQueueBadge) {
         if (packageTaskQueue.length > 0) {
           packageQueueBadge.textContent = `队列待执行: ${packageTaskQueue.length}`;
@@ -2925,6 +3169,11 @@ window.addEventListener("DOMContentLoaded", () => {
       );
     } finally {
       packageOperationMap.delete(packageName);
+      const stepper = packageSteppersMap.get(packageName.toLowerCase());
+      if (stepper) {
+        stepper.stopTimer();
+        packageSteppersMap.delete(packageName.toLowerCase());
+      }
       setTimeout(() => {
         packageProgressMap.delete(packageName);
         renderInstalledPackages();

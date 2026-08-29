@@ -254,12 +254,13 @@ const setupOutputTokensAutoSnap = (inputEl) => {
 
 ## 🧩 7. 内核与扩展组件管理规范 (Package Catalog & Kernel Runtime Pattern)
 
-- **内核顶部状态卡片与一键热更新**：在面板顶部展示底层 Pi 内核进程状态（Ready / Starting / Stopped / Crashed）、版本号、一键重启内核、检查更新与**一键内核热更新**（支持流式下载进度条与 Changelog 折叠预览抽屉）；
+- **内核顶部状态卡片与一键热更新**：在面板顶部展示底层 Pi 内核进程状态（Ready / Starting / Stopped / Crashed）、版本号、一键重启内核、检查更新与**一键内核热更新**（支持流式下载进度条、Changelog 折叠预览抽屉及利用当前挂载大模型一键翻译更新日志为中文，支持查看原文/翻译中文双向切换与失败告警）；
 - **连通官方目录**：通过 Rust `package_manager` 模块异步抓取 `pi.dev/packages`，基于正则提取 `data-package-*` 属性，设置 15min TTL 内存缓存；
 - **已安装组件折叠面板**：读取 `~/.pi/agent/settings.json` 与 `node_modules` 探测本地包名与版本，提供批量检查更新、单包更新与卸载能力；
-- **组件市场卡片与手绘进度条 (Sketch Progress Bar)**：
-  - 展示类型徽章（extension/skill/theme/prompt）、下载量、更新时间、npm/repo 外链；
-  - 安装、更新与卸载时通过 Tauri 事件系统（`package-progress`）实时推送多阶段状态与百分比；
+- **手绘进度条与平滑步进引擎 (ProgressStepper Engine)**：
+  - 内核更新与扩展组件安装/更新/卸载接入 `ProgressStepper` 引擎；
+  - **阶段百分比平滑步进**：当位于某阶段百分比（如 15%）时，立即跳至该百分比；在等待期间每隔 2 秒自动增加 1%，直到 `(下个阶段 - 1)%`（例如下个阶段为 35%，则伪百分比最多增长至 34% 停止）；
+  - **即时响应跳变**：触发下个阶段后（如 35%），立即跳至 35%，并以该阶段继续平滑步进；到达 100% 或终态（`completed` / `uninstalled` / `error` / `cancelled`）时立即停止定时器；
   - 提供卡片内置微进度条（`.card-progress-wrap`）与右下角手绘浮动进度卡（`.package-progress-float-card`），搭配动态斜纹（`sketchStripesMove`）与平滑退出动效；
 - **非阻塞 CLI 桥接**：执行 `pi install/remove npm:<pkg> -a` 必须附带 `-a` (`--approve`) 保证非交互执行。
 

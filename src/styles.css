@@ -1583,6 +1583,23 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   border-color: var(--ink-primary);
 }
 
+/* 消除原生 search 与 text 输入框自带的浏览器清空/取消按钮（WebView2 / WebKit / Blink / Edge / IE 等） */
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
+input::-ms-clear,
+input::-ms-reveal {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 /* ==========================================================================
    手绘草图质感自定义下拉框 (Sketch Custom Select Dropdown)
    特性：迅速触发的弹出微抖动动效（Pop & Micro-Shake），边框/底色/字色适配素描纸与炭黑板
@@ -2637,6 +2654,53 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   color: var(--ink-primary);
   padding-bottom: 4px;
   border-bottom: 1px dashed var(--sketch-border-subtle);
+}
+
+.changelog-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-translate-changelog {
+  font-size: 11px;
+  padding: 1px 6px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 3px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-translate-changelog:hover:not(:disabled) {
+  border-color: var(--sketch-border-subtle);
+  background: var(--sketch-tag-bg);
+  color: var(--ink-primary);
+}
+
+.btn-translate-changelog:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.translating-spinner {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--sketch-border-subtle);
+  border-top-color: var(--ink-primary);
+  border-radius: 50%;
+  animation: spin-translate 0.8s linear infinite;
+}
+
+@keyframes spin-translate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .drawer-close-btn {

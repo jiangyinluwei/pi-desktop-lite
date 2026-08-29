@@ -1,7 +1,12 @@
+use crate::pi_runner::supervisor::PiSupervisor;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
+use std::time::Duration;
+use tauri::State;
+use tokio::process::Command;
+
 
 /// 获取 ~/.pi/agent 目录路径并确保其存在
 pub fn get_pi_agent_dir() -> Result<PathBuf, String> {
@@ -765,3 +770,293 @@ fn get_builtin_official_catalog() -> Vec<OfficialProviderMeta> {
         },
     ]
 }
+
+/// 使用当前挂载/指定的模型进行文本翻译 (主要用于版本更新日志翻译为中文)
+#[tauri::command]
+pub async fn pi_translate_text(
+    supervisor: State<'_, PiSupervisor>,
+    text: String,
+    provider: Option<String>,
+    model_id: Option<String>,
+) -> Result<String, String> {
+    let raw_text = text.trim();
+    if raw_text.is_empty() {
+        return Err("待翻译内容为空".to_string());
+    }
+
+    // 1. 解析目标模型与运营商标识 (优先入参 -> Supervisor 会话状态 -> config.json)
+    let mut resolved_provider = provider.filter(|p| !p.trim().is_empty());
+    let mut resolved_model_id = model_id.filter(|m| !m.trim().is_empty());
+
+    if resolved_provider.is_none() || resolved_model_id.is_none() {
+        if let Ok(state_val) = supervisor.get_session_state().await {
+            if let Some(m_obj) = state_val.get("model") {
+                if resolved_provider.is_none() {
+                    resolved_provider = m_obj.get("provider").and_then(|v| v.as_str()).map(|s| s.to_string());
+                }
+                if resolved_model_id.is_none() {
+                    resolved_model_id = m_obj.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                }
+            }
+        }
+    }
+
+    if resolved_provider.is_none() || resolved_model_id.is_none() {
+        if let Ok(app_cfg) = pi_get_app_config() {
+            if let Some(sel) = app_cfg.get("selectedModel") {
+                if resolved_provider.is_none() {
+                    resolved_provider = sel.get("provider").and_then(|v| v.as_str()).map(|s| s.to_string());
+                }
+                if resolved_model_id.is_none() {
+                    resolved_model_id = sel.get("modelId").and_then(|v| v.as_str()).map(|s| s.to_string());
+                }
+            }
+        }
+    }
+
+    let target_provider = resolved_provider.unwrap_or_else(|| "anthropic".to_string());
+    let target_model_id = resolved_model_id.unwrap_or_else(|| "claude-3-7-sonnet-20250219".to_string());
+
+    // 2. 查询运营商 Base URL、API 协议类型与 API Key
+    let custom_config = pi_get_custom_models().unwrap_or_else(|_| json!({ "providers": {} }));
+    let custom_prov = custom_config
+        .get("providers")
+        .and_then(|p| p.get(&target_provider.to_lowercase()));
+
+    let mut base_url = None;
+    let mut api_type = "openai-completions".to_string();
+    let mut api_key = None;
+
+    if let Some(prov_obj) = custom_prov {
+        if let Some(b) = prov_obj.get("baseUrl").and_then(|v| v.as_str()) {
+            base_url = Some(b.trim().to_string());
+        }
+        if let Some(a) = prov_obj.get("api").and_then(|v| v.as_str()) {
+            api_type = a.trim().to_string();
+        }
+        if let Some(k) = prov_obj.get("apiKey").and_then(|v| v.as_str()) {
+            if !k.trim().is_empty() {
+                api_key = Some(k.trim().to_string());
+            }
+        }
+    }
+
+    if api_key.is_none() {
+        let auth_cfg = pi_get_auth_config().unwrap_or_else(|_| json!({}));
+        if let Some(entry) = auth_cfg.get(&target_provider.to_lowercase()) {
+            if let Some(k) = entry.get("key").and_then(|v| v.as_str()).or_else(|| entry.as_str()) {
+                if !k.trim().is_empty() {
+                    api_key = Some(k.trim().to_string());
+                }
+            }
+        }
+    }
+
+    if api_key.is_none() {
+        let env_var_name = match target_provider.to_lowercase().as_str() {
+            "anthropic" => Some("ANTHROPIC_API_KEY"),
+            "openai" => Some("OPENAI_API_KEY"),
+            "deepseek" => Some("DEEPSEEK_API_KEY"),
+            "google" => Some("GEMINI_API_KEY"),
+            "groq" => Some("GROQ_API_KEY"),
+            "openrouter" => Some("OPENROUTER_API_KEY"),
+            "qwen-token-plan" => Some("DASHSCOPE_API_KEY"),
+            _ => None,
+        };
+        if let Some(var_name) = env_var_name {
+            if let Ok(v) = std::env::var(var_name) {
+                if !v.trim().is_empty() {
+                    api_key = Some(v.trim().to_string());
+                }
+            }
+        }
+    }
+
+    if base_url.is_none() {
+        match target_provider.to_lowercase().as_str() {
+            "anthropic" => {
+                base_url = Some("https://api.anthropic.com".to_string());
+                api_type = "anthropic-messages".to_string();
+            }
+            "openai" => {
+                base_url = Some("https://api.openai.com/v1".to_string());
+                api_type = "openai-completions".to_string();
+            }
+            "deepseek" => {
+                base_url = Some("https://api.deepseek.com".to_string());
+                api_type = "openai-completions".to_string();
+            }
+            "openrouter" => {
+                base_url = Some("https://openrouter.ai/api/v1".to_string());
+                api_type = "openai-completions".to_string();
+            }
+            "groq" => {
+                base_url = Some("https://api.groq.com/openai/v1".to_string());
+                api_type = "openai-completions".to_string();
+            }
+            "qwen-token-plan" => {
+                base_url = Some("https://dashscope.aliyuncs.com/compatible-mode/v1".to_string());
+                api_type = "openai-completions".to_string();
+            }
+            "google" => {
+                base_url = Some("https://generativelanguage.googleapis.com/v1beta/openai".to_string());
+                api_type = "openai-completions".to_string();
+            }
+            _ => {}
+        }
+    }
+
+    // 3. 执行翻译请求
+    let system_prompt = "You are a professional software engineering translator. Translate the following software release notes / changelog into natural, fluent, accurate Simplified Chinese. Keep markdown formatting, version numbers, headers, list items, and technical terms intact. Output ONLY the translated markdown text without any conversational preamble or outro.";
+    let prompt_content = format!("Please translate the following changelog into Simplified Chinese:\n\n{}", raw_text);
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+
+    if let (Some(b_url), Some(key)) = (base_url.as_ref(), api_key.as_ref()) {
+        if api_type == "anthropic-messages" {
+            let url = if b_url.ends_with("/v1/messages") {
+                b_url.clone()
+            } else if b_url.ends_with('/') {
+                format!("{}v1/messages", b_url)
+            } else {
+                format!("{}/v1/messages", b_url)
+            };
+
+            let payload = json!({
+                "model": target_model_id,
+                "max_tokens": 4096,
+                "system": system_prompt,
+                "messages": [
+                    { "role": "user", "content": prompt_content }
+                ]
+            });
+
+            let resp = client.post(&url)
+                .header("x-api-key", key)
+                .header("anthropic-version", "2023-06-01")
+                .header("content-type", "application/json")
+                .json(&payload)
+                .send()
+                .await
+                .map_err(|e| format!("请求 Anthropic 接口失败: {}", e))?;
+
+            let status = resp.status();
+            let resp_text = resp.text().await.map_err(|e| format!("读取 Anthropic 响应失败: {}", e))?;
+
+            if !status.is_success() {
+                let err_msg = serde_json::from_str::<Value>(&resp_text)
+                    .ok()
+                    .and_then(|v| v["error"]["message"].as_str().map(|s| s.to_string()))
+                    .unwrap_or(resp_text);
+                return Err(format!("Anthropic 调用失败 [{}]: {}", status, err_msg));
+            }
+
+            let json_val: Value = serde_json::from_str(&resp_text).map_err(|e| format!("解析响应 JSON 失败: {}", e))?;
+            let translated = json_val["content"]
+                .as_array()
+                .and_then(|arr| arr.iter().find_map(|item| {
+                    if item.get("type").and_then(|t| t.as_str()) == Some("text") {
+                        item.get("text").and_then(|t| t.as_str())
+                    } else {
+                        None
+                    }
+                }))
+                .ok_or_else(|| "未能从 Anthropic 响应中解析出文本内容".to_string())?;
+
+            return Ok(translated.trim().to_string());
+        } else {
+            // Standard OpenAI-compatible format
+            let url = if b_url.ends_with("/chat/completions") {
+                b_url.clone()
+            } else if b_url.ends_with('/') {
+                format!("{}chat/completions", b_url)
+            } else {
+                format!("{}/chat/completions", b_url)
+            };
+
+            let payload = json!({
+                "model": target_model_id,
+                "messages": [
+                    { "role": "system", "content": system_prompt },
+                    { "role": "user", "content": prompt_content }
+                ],
+                "temperature": 0.2
+            });
+
+            let resp = client.post(&url)
+                .header("Authorization", format!("Bearer {}", key))
+                .header("Content-Type", "application/json")
+                .json(&payload)
+                .send()
+                .await
+                .map_err(|e| format!("请求模型接口失败: {}", e))?;
+
+            let status = resp.status();
+            let resp_text = resp.text().await.map_err(|e| format!("读取模型响应失败: {}", e))?;
+
+            if !status.is_success() {
+                let err_msg = serde_json::from_str::<Value>(&resp_text)
+                    .ok()
+                    .and_then(|v| v["error"]["message"].as_str().map(|s| s.to_string()))
+                    .unwrap_or(resp_text);
+                return Err(format!("模型接口返回错误 [{}]: {}", status, err_msg));
+            }
+
+            let json_val: Value = serde_json::from_str(&resp_text).map_err(|e| format!("解析响应 JSON 失败: {}", e))?;
+            let translated = json_val["choices"]
+                .as_array()
+                .and_then(|c| c.first())
+                .and_then(|c| c.get("message"))
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_str())
+                .ok_or_else(|| "未能从模型响应中解析出有效文本".to_string())?;
+
+            return Ok(translated.trim().to_string());
+        }
+    }
+
+    // 4. 若无 Base URL / API Key 直连配置，尝试调用 Pi CLI 子进程兜底
+    if let Some(pi_bin) = PiSupervisor::find_pi_binary(None) {
+        let mut cmd = Command::new(&pi_bin);
+        cmd.arg("-p")
+            .arg("--no-tools")
+            .arg("--no-skills")
+            .arg("--no-extensions")
+            .arg("--no-context-files")
+            .arg("--provider")
+            .arg(&target_provider)
+            .arg("--model")
+            .arg(&target_model_id)
+            .arg("--")
+            .arg(format!("{}\n\n{}", system_prompt, prompt_content));
+
+        #[cfg(windows)]
+        {
+            cmd.creation_flags(0x08000000);
+        }
+
+        match tokio::time::timeout(Duration::from_secs(30), cmd.output()).await {
+            Ok(Ok(out)) if out.status.success() => {
+                let res_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !res_str.is_empty() {
+                    return Ok(res_str);
+                }
+            }
+            Ok(Ok(out)) => {
+                let err_str = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                return Err(format!("Pi CLI 调用失败: {}", if err_str.is_empty() { "退出码非零".to_string() } else { err_str }));
+            }
+            Ok(Err(e)) => return Err(format!("执行 Pi 子进程失败: {}", e)),
+            Err(_) => return Err("调用 Pi CLI 超时 (30s)".to_string()),
+        }
+    }
+
+    Err(format!(
+        "模型 [{}/{}] 调用失败: 未找到有效 API Key，请在设置中配置密钥",
+        target_provider, target_model_id
+    ))
+}
+
