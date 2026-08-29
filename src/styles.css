@@ -1348,18 +1348,18 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   width: 100%;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 2s cubic-bezier(0.16, 1, 0.3, 1) 0s;
+  transition: opacity 2s linear 0s;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 悬浮展开态：每行耗时 1 秒，依据 --row-delay 依次级联渐出（第2行0s~1s, 第3行1s~2s, 第4行2s~3s...）
+/* 悬浮展开态：每行耗时 1 秒匀速渐出，上一行显示完毕后下一行紧接着开始 1 秒慢慢渐出（第2行0s~1s, 第3行1s~2s, 第4行2s~3s...，无死区停顿）
    到达 1.0 后自然锁定终态，绝无 JS rAF 终止引发的重绘闪烁 */
 .sketch-messages-drawer:hover .messages-expanded-row,
 .sketch-messages-drawer.is-hovered .messages-expanded-row {
   opacity: 1;
   pointer-events: auto;
-  transition: opacity 1s cubic-bezier(0.16, 1, 0.3, 1) var(--row-delay, 0s);
+  transition: opacity 1s linear var(--row-delay, 0s);
 }
 
 /* 单个讯息方框卡片（手绘纸质质感） */
