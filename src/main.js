@@ -2416,7 +2416,24 @@ window.addEventListener("DOMContentLoaded", () => {
     updateInputState();
 
     try {
-      await piClient.sendPrompt(promptToSend);
+      // 优先直接将多模态文件注入模型（构造原生图片 Payload 与绝对路径直传模型）
+      let imagePayloads = null;
+      const imageFiles = filesToAttach.filter((f) => f.category === "image" && f.path);
+      if (imageFiles.length > 0) {
+        const payloadResults = await Promise.all(
+          imageFiles.map(async (f) => {
+            try {
+              return await invokeTauri("pi_prepare_image_payload", { path: f.path });
+            } catch (_) {
+              return null;
+            }
+          })
+        );
+        imagePayloads = payloadResults.filter(Boolean);
+        if (imagePayloads.length === 0) imagePayloads = null;
+      }
+
+      await piClient.sendPrompt(promptToSend, imagePayloads);
     } catch (err) {
       console.error("Failed to send prompt to Pi:", err);
       renderErrorCard({

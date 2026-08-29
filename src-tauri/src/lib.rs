@@ -94,6 +94,55 @@ fn pi_read_file_text_preview(path: String, max_chars: Option<usize>) -> Result<S
     }
 }
 
+fn bytes_to_base64(bytes: &[u8]) -> String {
+    const CHARSET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = chunk.get(1).copied().unwrap_or(0);
+        let b2 = chunk.get(2).copied().unwrap_or(0);
+        out.push(CHARSET[(b0 >> 2) as usize] as char);
+        out.push(CHARSET[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(CHARSET[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(CHARSET[(b2 & 0x3f) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
+#[tauri::command]
+fn pi_prepare_image_payload(path: String) -> Result<serde_json::Value, String> {
+    let p = Path::new(&path);
+    if !p.exists() {
+        return Err(format!("图片文件不存在: {}", path));
+    }
+    let bytes = std::fs::read(p).map_err(|e| e.to_string())?;
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("png").to_lowercase();
+    let mime_type = match ext.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "bmp" => "image/bmp",
+        _ => "image/png",
+    };
+    let b64 = bytes_to_base64(&bytes);
+    Ok(serde_json::json!({
+        "type": "image",
+        "mimeType": mime_type,
+        "data": b64,
+        "path": path,
+    }))
+}
+
 #[tauri::command]
 fn minimize_window(window: tauri::WebviewWindow) {
     let _ = window.minimize();
@@ -413,6 +462,7 @@ pub fn run() {
             pi_apply_package_preset,
             pi_inspect_file,
             pi_read_file_text_preview,
+            pi_prepare_image_payload,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
