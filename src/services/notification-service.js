@@ -4,7 +4,7 @@
 // 2. 状态分发铁律：
 //    - "需要人工回归": 立即弹出 Windows 原生通知 (带默认提示音)；
 //    - "报错终止": 立即弹出 Windows 原生通知；
-//    - "输出完成": 并行调度检查，若仍有其他任务运行则暂不通知，当全部任务完成时弹出通知。
+//    - "输出完成": 并行调度检查，若仍有其他任务运行则暂不通知，当全部任务完成时弹出通知（防抖聚合单任务/多任务通知）。
 // ==========================================================================
 
 import { invokeTauri } from "./tauri-bridge.js";
@@ -14,6 +14,10 @@ export class NotificationService {
     this._isFocused = typeof document !== "undefined" && typeof document.hasFocus === "function" ? document.hasFocus() : true;
     this._activeTasks = new Map();
     this._unlistenFocus = null;
+    this._completedTasksHistory = [];
+    this._completionDebounceTimer = null;
+    this._lastToastTime = 0;
+    this._toastCooldownMs = 1200;
 
     this.initFocusListeners();
   }
@@ -132,7 +136,7 @@ export class NotificationService {
 
   /**
    * 底层发送 Windows 系统 Toast 原生通知 (带默认提示音)
-   * 仅在当前软件失去焦点时才会下发
+   * 仅在当前软件失去焦点且超出防抖冷却时间时才会下发
    * @param {string} title 通知标题
    * @param {string} body 通知内容
    * @returns {Promise<boolean>} 是否成功下发通知
@@ -142,6 +146,13 @@ export class NotificationService {
     if (this.isWindowFocused()) {
       return false;
     }
+
+    const now = Date.now();
+    if (now - this._lastToastTime < this._toastCooldownMs) {
+      // 处于防抖冷却期，防止 Windows 消息重复触发多次
+      return false;
+    }
+    this._lastToastTime = now;
 
     try {
       await invokeTauri("pi_show_notification", {
@@ -181,13 +192,18 @@ export class NotificationService {
   }
 
   /**
-   * 触发「输出完成」通知 (多任务并行调度：全部完成后才通知)
-   * @param {{ title?: string, message?: string, taskId?: string }} [options={}]
+   * 触发「输出完成」通知 (多任务并行调度与防抖聚合：全部完成后仅触发一次统一通知)
+   * @param {{ title?: string, message?: string, taskId?: string, taskTitle?: string }} [options={}]
    * @returns {Promise<boolean>}
    */
   async notifyAgentCompleted(options = {}) {
     const taskId = options.taskId || "agent";
+    const taskTitle = options.taskTitle || options.message;
     this.unregisterTask(taskId);
+
+    if (taskTitle && typeof taskTitle === "string") {
+      this._completedTasksHistory.push(taskTitle);
+    }
 
     // 检查是否仍有其他任务正在并行运行
     if (this.hasRunningTasks()) {
@@ -195,10 +211,29 @@ export class NotificationService {
       return false;
     }
 
-    // 所有任务全部完成，且软件失焦，弹出完成通知
-    const title = options.title || "pi-dl";
-    const body = options.message || "所有任务已全部处理完成。";
-    return await this.showSystemToast(title, body);
+    // 所有任务均已完成，使用 300ms 防抖聚合，防止多任务完结或事件抖动触发多次
+    if (this._completionDebounceTimer) {
+      clearTimeout(this._completionDebounceTimer);
+    }
+
+    this._completionDebounceTimer = setTimeout(async () => {
+      this._completionDebounceTimer = null;
+      if (this.hasRunningTasks()) return;
+
+      const count = this._completedTasksHistory.length;
+      let body = "所有后台任务已全部处理完成。";
+      if (count === 1) {
+        const item = this._completedTasksHistory[0];
+        body = item.startsWith("[") ? `${item} 已完成全部回答与分析。` : `[${item}] 任务已完成全部回答与分析。`;
+      } else if (count >= 2) {
+        body = `全部后台任务（共 ${count} 个）已全部处理完成。`;
+      }
+
+      this._completedTasksHistory = [];
+      await this.showSystemToast("pi-dl", body);
+    }, 300);
+
+    return true;
   }
 
   /**
@@ -230,7 +265,12 @@ export class NotificationService {
       } catch (_) {}
       this._unlistenFocus = null;
     }
+    if (this._completionDebounceTimer) {
+      clearTimeout(this._completionDebounceTimer);
+      this._completionDebounceTimer = null;
+    }
     this._activeTasks.clear();
+    this._completedTasksHistory = [];
   }
 }
 

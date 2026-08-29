@@ -9,6 +9,7 @@ import { enhanceAllSelects, enhanceSelect } from "./services/sketch-select.js";
 import { ProgressStepper } from "./services/progress-stepper.js";
 import { startFloatingIcons, stopFloatingIcons } from "./services/floating-icons.js";
 import { notificationService } from "./services/notification-service.js";
+import { taskManager } from "./services/task-manager.js";
 
 /**
  * 简单 HTML 转义防 XSS
@@ -93,6 +94,17 @@ window.addEventListener("DOMContentLoaded", () => {
   const messagesPrimaryRow = document.getElementById("messages-primary-row");
   const messagesExpandedWrap = document.getElementById("messages-expanded-wrap");
   const messagesExpandedGrid = document.getElementById("messages-expanded-grid");
+
+  // 后台对话任务与侧边栏元素
+  const miniTaskCapsule = document.getElementById("mini-task-capsule");
+  const capsuleTaskText = document.getElementById("capsule-task-text");
+  const flowBtnAbort = document.getElementById("flow-btn-abort");
+  const globalToastBanner = document.getElementById("global-toast-banner");
+  const globalToastText = document.getElementById("global-toast-text");
+  const taskDetailsSidebar = document.getElementById("task-details-sidebar");
+  const taskSidebarSummary = document.getElementById("task-sidebar-summary");
+  const taskSidebarList = document.getElementById("task-sidebar-list");
+  const btnCloseTaskSidebar = document.getElementById("btn-close-task-sidebar");
 
   // 设置独立全页面元素
   const topbarHintBanner = document.getElementById("topbar-hint-banner");
@@ -504,10 +516,34 @@ window.addEventListener("DOMContentLoaded", () => {
       openSettingsView();
     });
 
-    // 监听用户点击系统通知事件：自动退出设置全屏页、切换至 Flow 模式并滚动到底部
-    window.__TAURI__.event.listen("notification-clicked", () => {
+    // 监听窗口托盘/快捷唤醒事件 (多态路由分发：1个直通 Flow，>=2个进 Focus+显示胶囊，0个精准记忆恢复)
+    window.__TAURI__.event.listen("app-awakened", () => {
+      const suspended = taskManager.getActiveSuspendedTasks();
+      if (suspended.length === 1) {
+        closeSettingsView();
+        restoreTaskToFlow(suspended[0]);
+      } else if (suspended.length >= 2) {
+        closeSettingsView();
+        setViewMode(VIEW_FOCUS, true);
+        updateMiniTaskCapsuleUI();
+      }
+      // 0 个挂起任务时保持当前视图 (精准记忆恢复)
+    });
+
+    // 监听用户点击系统通知事件：自动退出设置全屏页、切换至该 Task 的 Flow 模式并滚动到底部
+    window.__TAURI__.event.listen("notification-clicked", (event) => {
       closeSettingsView();
-      setViewMode(VIEW_FLOW, true);
+      const targetTaskId = event?.payload?.taskId || event?.payload?.task_id;
+      if (targetTaskId && taskManager.getTask(targetTaskId)) {
+        restoreTaskToFlow(taskManager.getTask(targetTaskId));
+      } else {
+        const activeTasks = taskManager.getActiveTasks();
+        if (activeTasks.length > 0) {
+          restoreTaskToFlow(activeTasks[0]);
+        } else {
+          setViewMode(VIEW_FLOW, true);
+        }
+      }
       if (flowScrollArea) {
         flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
       }
@@ -2102,27 +2138,6 @@ window.addEventListener("DOMContentLoaded", () => {
       const cursor = flowResponseContent.querySelector(".streaming-cursor");
       if (cursor) cursor.remove();
     }
-
-    // 记录并沉淀本次完成的对话至记忆服务
-    if (lastUserQuery && (currentResponseText || currentThinkingText)) {
-      const toolCallsSnapshot = [];
-      renderedToolCards.forEach((cardEl, id) => {
-        toolCallsSnapshot.push({
-          id,
-          html: cardEl.outerHTML,
-        });
-      });
-
-      conversationHistoryService.recordConversation({
-        query: lastUserQuery,
-        thinkingText: currentThinkingText,
-        responseText: currentResponseText,
-        toolCalls: toolCallsSnapshot,
-        thinkingDuration: thinkingDuration ? thinkingDuration.textContent : null,
-        modelId: piClient.currentModel?.id || "",
-        sessionPath: "",
-      });
-    }
   };
 
   /**
@@ -2492,28 +2507,46 @@ window.addEventListener("DOMContentLoaded", () => {
     // 完成后收起所有工具卡片（最终输出卡不收起）
     collapseAllToolCards();
     finalizeStream();
-
-    // 触发模型输出完成通知（多任务并行判断：若仍有其他任务运行则暂不通知，全部完成时通知）
-    notificationService.notifyAgentCompleted({
-      title: "pi-dl",
-      message: "所有任务已全部处理完成。",
-      taskId: "agent-prompt",
-    });
   });
 
   /**
-   * 触发用户提问并向 Pi 下发指令（支持注入文件绝对路径上下文）
+   * 触发用户提问并向 Pi 下发指令（支持注入文件绝对路径上下文与多任务会话隔离）
    * @param {string} query
    * @param {Array<any>} [filesToAttach=[]]
    */
   const handleFlowQuery = async (query, filesToAttach = []) => {
     if (!query && filesToAttach.length === 0) return;
 
-    // 注册模型生成活跃任务
-    notificationService.registerTask("agent-prompt", {
+    // 并发任务数上限保护 (MAX_CONCURRENT_TASKS = 3)
+    const activeTasks = taskManager.getActiveTasks();
+    if (activeTasks.length >= taskManager.maxConcurrent) {
+      showGlobalToast(`后台任务已达上限 (${activeTasks.length}/${taskManager.maxConcurrent})，请等待某个任务完成后再发起新对话`, 2500);
+      return;
+    }
+
+    const savedSelected = configService.getSelectedModel();
+    const modelName =
+      piClient.currentModel?.id ||
+      piClient.currentModel?.modelId ||
+      piClient.currentModel?.name ||
+      savedSelected?.modelId ||
+      "default";
+    const providerName =
+      piClient.currentModel?.provider ||
+      savedSelected?.provider ||
+      "anthropic";
+
+    // 创建并注册 TaskManager 任务
+    const task = taskManager.createTask({
       query,
-      type: "agent",
+      attachments: filesToAttach,
+      model: modelName,
+      provider: providerName,
     });
+
+    if (flowBtnAbort) {
+      flowBtnAbort.classList.remove("hidden");
+    }
 
     // 记录本次附带的文件用于多模态失败检测与自适应重试
     lastSentAttachments = [...filesToAttach];
@@ -2581,11 +2614,13 @@ window.addEventListener("DOMContentLoaded", () => {
         if (imagePayloads.length === 0) imagePayloads = null;
       }
 
-      await piClient.sendPrompt(promptToSend, imagePayloads);
+      await piClient.sendPrompt(promptToSend, imagePayloads, null, task.id);
     } catch (err) {
       console.error("Failed to send prompt to Pi:", err);
       renderErrorCard({
         message: err.toString(),
+        model: modelName,
+        provider: providerName,
       });
     }
   };
@@ -2647,6 +2682,336 @@ window.addEventListener("DOMContentLoaded", () => {
     return `${d.getMonth() + 1}/${d.getDate()}`;
   };
 
+  // ==========================================================================
+  // 后台任务管理与多任务侧边栏交互 (TaskManager, Mini Capsule & Task Sidebar)
+  // ==========================================================================
+  let globalToastTimeout = null;
+  const showGlobalToast = (message, duration = 1500) => {
+    if (!globalToastBanner || !globalToastText) return;
+    globalToastText.textContent = message;
+    globalToastBanner.classList.remove("hidden");
+    if (globalToastTimeout) clearTimeout(globalToastTimeout);
+    globalToastTimeout = setTimeout(() => {
+      globalToastBanner.classList.add("hidden");
+    }, duration);
+  };
+
+  const updateMiniTaskCapsuleUI = () => {
+    if (!miniTaskCapsule || !capsuleTaskText) return;
+    const total = taskManager.getTotalSuspendedCount();
+    const completed = taskManager.getCompletedSuspendedCount();
+    const active = taskManager.getActiveSuspendedTasks();
+
+    if (total === 0) {
+      miniTaskCapsule.classList.add("hidden");
+      return;
+    }
+
+    miniTaskCapsule.classList.remove("hidden");
+    capsuleTaskText.textContent = `${completed}/${total} Task`;
+
+    if (active.length > 0) {
+      miniTaskCapsule.classList.add("is-running");
+      miniTaskCapsule.classList.remove("all-completed");
+    } else {
+      miniTaskCapsule.classList.remove("is-running");
+      if (completed === total) {
+        miniTaskCapsule.classList.add("all-completed");
+      } else {
+        miniTaskCapsule.classList.remove("all-completed");
+      }
+    }
+  };
+
+  const openTaskSidebar = () => {
+    if (!taskDetailsSidebar) return;
+    renderTaskSidebarList();
+    taskDetailsSidebar.classList.add("open");
+    document.body.classList.add("has-task-sidebar-open");
+  };
+
+  const closeTaskSidebar = () => {
+    if (!taskDetailsSidebar) return false;
+    const wasOpen = taskDetailsSidebar.classList.contains("open");
+    if (wasOpen) {
+      taskDetailsSidebar.classList.remove("open");
+      document.body.classList.remove("has-task-sidebar-open");
+      return true;
+    }
+    return false;
+  };
+
+  const renderTaskSidebarList = () => {
+    if (!taskSidebarList || !taskSidebarSummary) return;
+    const tasks = taskManager.getSuspendedTasks();
+    const completed = taskManager.getCompletedSuspendedCount();
+    const total = taskManager.getTotalSuspendedCount();
+
+    taskSidebarSummary.textContent = `已完成 ${completed} / 共 ${total} 个`;
+
+    if (tasks.length === 0) {
+      taskSidebarList.innerHTML = `<div class="empty-tasks-placeholder">暂无后台挂起任务</div>`;
+      return;
+    }
+
+    // 移除 placeholder
+    const placeholder = taskSidebarList.querySelector(".empty-tasks-placeholder");
+    if (placeholder) placeholder.remove();
+
+    // 收集现有 card 映射以支持原地增量更新，杜绝 hover 闪烁
+    const existingCards = new Map();
+    taskSidebarList.querySelectorAll(".sidebar-task-card").forEach((el) => {
+      if (el.dataset.id) {
+        existingCards.set(el.dataset.id, el);
+      }
+    });
+
+    const activeIds = new Set(tasks.map((t) => t.id));
+
+    // 移除已不存在的 card
+    for (const [id, el] of existingCards) {
+      if (!activeIds.has(id)) {
+        el.remove();
+        existingCards.delete(id);
+      }
+    }
+
+    tasks.forEach((task) => {
+      const isRunning = task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec";
+      const isCurrent = taskManager.currentActiveTaskId === task.id;
+
+      let statusText = "已完成";
+      if (task.status === "thinking") {
+        const elapsed = ((Date.now() - task.startedAt) / 1000).toFixed(0);
+        statusText = `思考中 (${elapsed}s)`;
+      } else if (task.status === "streaming") {
+        statusText = "流式生成中";
+      } else if (task.status === "tool_exec") {
+        statusText = `执行工具: ${task.activeToolName || "tool"}`;
+      } else if (task.status === "aborted") {
+        statusText = "已终止";
+      } else if (task.status === "error") {
+        statusText = "异常出错";
+      }
+
+      let card = existingCards.get(task.id);
+      if (card) {
+        // 原地更新已存在的节点，保持鼠标 hover 状态不丢失、不闪烁
+        card.className = `sidebar-task-card status-${task.status} ${isRunning ? "active-running" : ""} ${isCurrent ? "is-selected" : ""}`;
+        const badge = card.querySelector(".task-card-status-badge");
+        if (badge && badge.textContent !== statusText) {
+          badge.textContent = statusText;
+        }
+        const titleEl = card.querySelector(".task-card-title");
+        const newTitle = task.title || task.query || "未命名任务";
+        if (titleEl && titleEl.textContent !== newTitle) {
+          titleEl.textContent = newTitle;
+          titleEl.title = task.query || task.title || "";
+        }
+        const modelEl = card.querySelector(".task-card-model");
+        if (modelEl && modelEl.textContent !== (task.model || "Model")) {
+          modelEl.textContent = task.model || "Model";
+        }
+        let btnAbort = card.querySelector(".btn-abort-task");
+        if (isRunning && !btnAbort) {
+          const actions = card.querySelector(".task-card-actions");
+          if (actions) {
+            btnAbort = document.createElement("button");
+            btnAbort.type = "button";
+            btnAbort.className = "task-card-action-btn btn-abort-task";
+            btnAbort.textContent = "⏹ 终止";
+            btnAbort.addEventListener("click", async (e) => {
+              e.stopPropagation();
+              await taskManager.abortTask(task.id);
+              renderTaskSidebarList();
+              updateMiniTaskCapsuleUI();
+            });
+            actions.appendChild(btnAbort);
+          }
+        } else if (!isRunning && btnAbort) {
+          btnAbort.remove();
+        }
+      } else {
+        // 新建卡片
+        card = document.createElement("div");
+        card.dataset.id = task.id;
+        card.className = `sidebar-task-card status-${task.status} ${isRunning ? "active-running" : ""} ${isCurrent ? "is-selected" : ""}`;
+        card.innerHTML = `
+          <div class="task-card-header">
+            <span class="task-card-model">${escapeHtml(task.model || "Model")}</span>
+            <span class="task-card-status-badge">${escapeHtml(statusText)}</span>
+          </div>
+          <div class="task-card-title" title="${escapeHtml(task.query || task.title)}">${escapeHtml(task.title || task.query)}</div>
+          <div class="task-card-actions">
+            <button type="button" class="task-card-action-btn btn-enter-flow">进入 Flow</button>
+            ${isRunning ? `<button type="button" class="task-card-action-btn btn-abort-task">⏹ 终止</button>` : ""}
+          </div>
+        `;
+
+        card.addEventListener("click", (e) => {
+          if (e.target.closest(".task-card-action-btn")) return;
+          restoreTaskToFlow(task);
+          closeTaskSidebar();
+        });
+
+        const btnEnter = card.querySelector(".btn-enter-flow");
+        if (btnEnter) {
+          btnEnter.addEventListener("click", (e) => {
+            e.stopPropagation();
+            restoreTaskToFlow(task);
+            closeTaskSidebar();
+          });
+        }
+
+        const btnAbort = card.querySelector(".btn-abort-task");
+        if (btnAbort) {
+          btnAbort.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            await taskManager.abortTask(task.id);
+            renderTaskSidebarList();
+            updateMiniTaskCapsuleUI();
+          });
+        }
+
+        taskSidebarList.appendChild(card);
+      }
+    });
+  };
+
+  if (miniTaskCapsule) {
+    miniTaskCapsule.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openTaskSidebar();
+    });
+  }
+
+  if (btnCloseTaskSidebar) {
+    btnCloseTaskSidebar.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeTaskSidebar();
+    });
+  }
+
+  if (flowBtnAbort) {
+    flowBtnAbort.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const current = taskManager.getCurrentActiveTask();
+      if (current) {
+        await taskManager.abortTask(current.id);
+      } else {
+        await piClient.abort();
+      }
+      finalizeStream();
+      if (flowResponseContent) {
+        flowResponseContent.insertAdjacentHTML(
+          "beforeend",
+          `<div class="sketch-callout" style="margin-top: 10px;"><em>⏹ 当前任务已彻底中止 (Aborted)</em></div>`
+        );
+      }
+      showGlobalToast("当前任务已彻底中止", 1200);
+    });
+  }
+
+  taskManager.addEventListener("tasks-changed", () => {
+    updateMiniTaskCapsuleUI();
+    renderConversationMessages();
+    if (taskDetailsSidebar && taskDetailsSidebar.classList.contains("open")) {
+      renderTaskSidebarList();
+    }
+  });
+
+  taskManager.addEventListener("task-updated", () => {
+    updateMiniTaskCapsuleUI();
+    renderConversationMessages();
+    if (taskDetailsSidebar && taskDetailsSidebar.classList.contains("open")) {
+      renderTaskSidebarList();
+    }
+  });
+
+  const restoreTaskToFlow = (task) => {
+    if (!task) return;
+
+    taskManager.setActiveTask(task.id);
+    lastUserQuery = task.query || task.title || "";
+    lastSentAttachments = task.attachments || [];
+
+    if (flowUserText) flowUserText.textContent = task.query || task.title || "";
+
+    if (flowPromptAttachments) {
+      if (task.attachments && task.attachments.length > 0) {
+        flowPromptAttachments.classList.remove("hidden");
+        flowPromptAttachments.innerHTML = task.attachments
+          .map(
+            (f) => `
+          <span class="flow-attachment-chip" title="${escapeHtml(f.path || f.name)}">
+            <span class="chip-icon">${getFileCategoryIcon(f.category)}</span>
+            <span class="chip-name">${escapeHtml(f.name)}</span>
+          </span>
+        `
+          )
+          .join("");
+      } else {
+        flowPromptAttachments.classList.add("hidden");
+        flowPromptAttachments.innerHTML = "";
+      }
+    }
+
+    currentThinkingText = task.thinkingText || "";
+    currentResponseText = task.responseText || "";
+
+    if (thinkingTextStream) {
+      thinkingTextStream.textContent = task.thinkingText || "";
+    }
+    if (thinkingDuration) {
+      thinkingDuration.textContent = task.thinkingDurationText || "已完成思考";
+    }
+
+    if (toolCallsContainer) {
+      toolCallsContainer.innerHTML = "";
+      if (Array.isArray(task.toolCalls)) {
+        task.toolCalls.forEach((tc) => {
+          if (tc.html) {
+            toolCallsContainer.insertAdjacentHTML("beforeend", tc.html);
+          }
+        });
+      }
+    }
+
+    if (flowResponseContent) {
+      if (task.errorMessage) {
+        renderErrorCard({ message: task.errorMessage, model: task.model, provider: task.provider });
+      } else {
+        const isRunning = task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec";
+        flowResponseContent.innerHTML = renderMarkdown(task.responseText || "") + (isRunning ? `<span class="streaming-cursor"></span>` : "");
+      }
+    }
+
+    if (flowModelName) {
+      flowModelName.textContent = task.model || "Model";
+    }
+
+    const isRunning = task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec";
+    if (flowBtnAbort) {
+      if (isRunning) {
+        flowBtnAbort.classList.remove("hidden");
+      } else {
+        flowBtnAbort.classList.add("hidden");
+      }
+    }
+
+    if (task.responseText && task.responseText.trim().length > 0) {
+      collapseThinkingCard();
+    } else {
+      expandThinkingCard();
+    }
+
+    setViewMode(VIEW_FLOW, true);
+
+    if (flowScrollArea) {
+      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    }
+  };
+
   const restoreConversationToFlow = (conv) => {
     if (!conv) return;
 
@@ -2699,11 +3064,34 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   };
 
+  const archiveCurrentFlowToHistory = () => {
+    if (lastUserQuery && (currentResponseText || currentThinkingText)) {
+      const toolCallsSnapshot = [];
+      renderedToolCards.forEach((cardEl, id) => {
+        toolCallsSnapshot.push({
+          id,
+          html: cardEl.outerHTML,
+        });
+      });
+
+      conversationHistoryService.recordConversation({
+        query: lastUserQuery,
+        thinkingText: currentThinkingText,
+        responseText: currentResponseText,
+        toolCalls: toolCallsSnapshot,
+        thinkingDuration: thinkingDuration ? thinkingDuration.textContent : null,
+        modelId: piClient.currentModel?.id || "",
+        sessionPath: "",
+      });
+    }
+  };
+
   const renderConversationMessages = () => {
     if (!sketchMessagesDrawer || !messagesPrimaryRow || !messagesExpandedGrid) return;
 
-    const conversations = conversationHistoryService.getVisibleConversations();
-    if (!conversations || conversations.length === 0) {
+    const conversations = conversationHistoryService.getVisibleConversations() || [];
+
+    if (conversations.length === 0) {
       sketchMessagesDrawer.classList.add("hidden");
       messagesPrimaryRow.innerHTML = "";
       messagesExpandedGrid.innerHTML = "";
@@ -4232,8 +4620,8 @@ window.addEventListener("DOMContentLoaded", () => {
   enhanceSelect(packagesSortSelect);
 
   // ==========================================================================
-  // 全局右键行为规范：禁用上下文菜单，统一作为“返回上一步/回退 (Step Back)”
-  // 回退层级：设置全页面 (settings) -> Flow (界面3, abort) -> Focus (界面2) -> Detailed (界面1) -> 失焦/清空
+  // 全局右键与 Esc 行为规范：禁用上下文菜单，统一作为“返回上一步/回退 (Step Back)”
+  // 回退层级：侧边栏 (最高优先) -> 设置全页面 (settings) -> Flow (界面3, suspend to background) -> Focus (界面2) -> Detailed (界面1) -> 失焦/清空
   // ==========================================================================
   const stepBackHandlers = [];
 
@@ -4245,13 +4633,18 @@ window.addEventListener("DOMContentLoaded", () => {
     };
   };
 
-  // 注册设置页面回退
+  // 1. 注册侧边栏回退（最高优先级）
+  registerStepBackHandler(() => {
+    return closeTaskSidebar();
+  });
+
+  // 2. 注册设置页面回退
   registerStepBackHandler(() => {
     return closeSettingsView();
   });
 
   const handleGlobalStepBack = (e) => {
-    // 1. 逆序执行已注册的外部业务层回退钩子
+    // 1. 逆序执行已注册的外部业务层回退钩子（优先收起侧边栏、设置页面等）
     for (let i = stepBackHandlers.length - 1; i >= 0; i--) {
       try {
         const handled = stepBackHandlers[i](e);
@@ -4261,11 +4654,32 @@ window.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    // 2. Flow (界面3) -> 右键中止 Agent 并回退至 Focus (界面2)
+    // 2. Flow (界面3) -> 右键转入后台挂起 (若仍在运行) 或 归档至历史记录 (若已结束)
     if (currentView === VIEW_FLOW) {
-      piClient.abort();
-      setViewMode(VIEW_FOCUS, true);
-      return;
+      const activeTask = taskManager.getCurrentActiveTask();
+      const isStreaming = activeTask
+        ? activeTask.status === "thinking" || activeTask.status === "streaming" || activeTask.status === "tool_exec"
+        : piClient.isStreaming;
+
+      if (isStreaming) {
+        // 正在运行中 -> 右键/Esc 无感转入后台挂起 (isSuspended = true)
+        const suspended = taskManager.suspendCurrentFlow();
+        setViewMode(VIEW_FOCUS, true);
+        const taskTitle = suspended?.title || "Task";
+        showGlobalToast(`已转入后台运行 (${taskTitle})`, 1500);
+        updateMiniTaskCapsuleUI();
+        return;
+      } else {
+        // 运行已结束 (Done / Completed / Aborted / Idle) -> 右键/Esc 归档为历史记录并清除 Task
+        archiveCurrentFlowToHistory();
+        if (activeTask) {
+          taskManager.removeTask(activeTask.id);
+        }
+        setViewMode(VIEW_FOCUS, true);
+        updateMiniTaskCapsuleUI();
+        renderConversationMessages();
+        return;
+      }
     }
 
     // Focus (界面2) -> 右键回退至 Detailed (界面1) 并失焦
@@ -4306,5 +4720,11 @@ window.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     handleGlobalStepBack(e);
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      handleGlobalStepBack(e);
+    }
   });
 });

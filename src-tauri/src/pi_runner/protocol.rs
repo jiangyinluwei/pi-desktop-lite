@@ -15,20 +15,32 @@ pub enum HostStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptRequest {
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none", alias = "taskId")]
+    pub task_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<Value>>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "streamingBehavior")]
     pub streaming_behavior: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", alias = "modelId", alias = "model")]
+    pub model_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", alias = "thinkingLevel")]
+    pub thinking_level: Option<String>,
 }
 
 /// 前端向 Agent 提交 Steering 消息参数
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SteerRequest {
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none", alias = "taskId")]
+    pub task_id: Option<String>,
 }
 
 /// 前端向 Agent 提交 FollowUp 消息参数
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FollowUpRequest {
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none", alias = "taskId")]
+    pub task_id: Option<String>,
 }

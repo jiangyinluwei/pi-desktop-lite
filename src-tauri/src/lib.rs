@@ -17,7 +17,7 @@ use package_manager::{
     pi_get_recommended_plugins, pi_install_package, pi_search_packages, pi_uninstall_package,
     pi_update_package,
 };
-use pi_runner::{FollowUpRequest, HostStatus, PiSupervisor, PromptRequest, SteerRequest};
+use pi_runner::{FollowUpRequest, HostStatus, PiHostPool, PiSupervisor, PromptRequest, SteerRequest};
 use session::{parse_session_entries, SessionEntrySummary, SessionIndexCache, SessionMetadata, SessionWatcher};
 use std::path::Path;
 use std::sync::Arc;
@@ -258,67 +258,28 @@ fn pi_show_notification(_app: tauri::AppHandle, title: String, body: String) -> 
 // Pi Agent 核心 RPC 与监督控制指令
 // ==========================================================================
 
-async fn send_prompt_internal(
-    supervisor: &PiSupervisor,
-    cmd_type: &str,
-    message: &str,
-    images: Option<Vec<serde_json::Value>>,
-    streaming_behavior: Option<String>,
-) -> Result<(), String> {
-    let (processed_message, _info) = supervisor.inject_prompt(message);
-    let mut val = serde_json::json!({
-        "type": cmd_type,
-        "message": processed_message,
-    });
-
-    if let Some(imgs) = images {
-        val["images"] = serde_json::Value::Array(imgs);
-    }
-    if let Some(sb) = streaming_behavior {
-        val["streamingBehavior"] = serde_json::Value::String(sb);
-    }
-
-    supervisor.send_command(val).await
-}
-
 #[tauri::command]
 async fn pi_send_prompt(
-    supervisor: State<'_, PiSupervisor>,
+    host_pool: State<'_, PiHostPool>,
     request: PromptRequest,
-) -> Result<(), String> {
-    send_prompt_internal(
-        &supervisor,
-        "prompt",
-        &request.message,
-        request.images,
-        request.streaming_behavior,
-    ).await
+) -> Result<String, String> {
+    host_pool.send_prompt(request).await
 }
 
 #[tauri::command]
 async fn pi_send_steer(
-    supervisor: State<'_, PiSupervisor>,
+    host_pool: State<'_, PiHostPool>,
     request: SteerRequest,
 ) -> Result<(), String> {
-    let val = serde_json::json!({
-        "type": "steer",
-        "message": request.message,
-    });
-    supervisor.send_command(val).await
+    host_pool.send_steer(request).await
 }
 
 #[tauri::command]
 async fn pi_send_follow_up(
-    supervisor: State<'_, PiSupervisor>,
+    host_pool: State<'_, PiHostPool>,
     request: FollowUpRequest,
 ) -> Result<(), String> {
-    send_prompt_internal(
-        &supervisor,
-        "follow_up",
-        &request.message,
-        None,
-        None,
-    ).await
+    host_pool.send_follow_up(request).await
 }
 
 #[tauri::command]
@@ -350,8 +311,26 @@ async fn pi_send_command(
 }
 
 #[tauri::command]
-async fn pi_abort(supervisor: State<'_, PiSupervisor>) -> Result<(), String> {
-    supervisor.abort().await
+async fn pi_abort(
+    host_pool: State<'_, PiHostPool>,
+    task_id: Option<String>,
+) -> Result<(), String> {
+    host_pool.abort_task(task_id).await
+}
+
+#[tauri::command]
+async fn pi_destroy_task(
+    host_pool: State<'_, PiHostPool>,
+    task_id: String,
+) -> Result<(), String> {
+    host_pool.destroy_task(&task_id).await
+}
+
+#[tauri::command]
+async fn pi_get_active_tasks(
+    host_pool: State<'_, PiHostPool>,
+) -> Result<Vec<String>, String> {
+    Ok(host_pool.get_active_task_ids().await)
 }
 
 #[tauri::command]
@@ -384,17 +363,21 @@ async fn pi_get_available_models(
 #[tauri::command]
 async fn pi_set_model(
     supervisor: State<'_, PiSupervisor>,
+    host_pool: State<'_, PiHostPool>,
     provider: String,
     model_id: String,
 ) -> Result<serde_json::Value, String> {
+    host_pool.set_active_model(provider.clone(), model_id.clone()).await;
     supervisor.set_model(&provider, &model_id).await
 }
 
 #[tauri::command]
 async fn pi_set_thinking_level(
     supervisor: State<'_, PiSupervisor>,
+    host_pool: State<'_, PiHostPool>,
     level: String,
 ) -> Result<(), String> {
+    host_pool.set_active_thinking_level(level.clone()).await;
     supervisor.set_thinking_level(&level).await
 }
 
@@ -503,6 +486,7 @@ fn show_and_focus_main_window(app: &tauri::AppHandle) {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
+        let _ = window.emit("app-awakened", ());
     }
 }
 
@@ -528,6 +512,8 @@ pub fn run() {
             pi_send_follow_up,
             pi_send_command,
             pi_abort,
+            pi_destroy_task,
+            pi_get_active_tasks,
             pi_restart_host,
             pi_get_host_status,
             pi_get_version,
@@ -586,9 +572,12 @@ pub fn run() {
             #[cfg(windows)]
             init_windows_notification_identity();
 
-            // 1. 初始化 Pi Supervisor
+            // 1. 初始化 Pi Supervisor 与 PiHostPool 多进程任务池
             let supervisor = PiSupervisor::new(app.handle().clone());
+            let supervisor_arc = Arc::new(supervisor.clone());
+            let host_pool = PiHostPool::new(app.handle().clone(), supervisor_arc.clone());
             app.manage(supervisor.clone());
+            app.manage(host_pool);
 
             // 2. 初始化 Session Cache 与 Watcher
             let session_cache = SessionIndexCache::new();

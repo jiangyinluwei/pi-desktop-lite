@@ -294,17 +294,27 @@ class PiClient extends EventTarget {
   }
 
   /**
-   * 向 Pi 发送用户提示词
+   * 向 Pi 发送用户提示词（支持指定 taskId 绑定多进程独立会话）
    * @param {string} message
    * @param {Array<any>} [images]
    * @param {string} [streamingBehavior]
+   * @param {string} [taskId]
    */
-  async sendPrompt(message, images = null, streamingBehavior = null) {
+  async sendPrompt(message, images = null, streamingBehavior = null, taskId = null) {
+    const activeModel = this.currentModel;
+    const provider = activeModel?.provider;
+    const modelId = activeModel?.id || activeModel?.modelId || activeModel?.name;
+    const thinkingLevel = this.currentThinkingLevel;
+
     return await this.invoke("pi_send_prompt", {
       request: {
         message,
+        taskId: taskId || undefined,
         images,
         streamingBehavior,
+        provider: provider || undefined,
+        modelId: modelId || undefined,
+        thinkingLevel: thinkingLevel || undefined,
       },
     });
   }
@@ -379,10 +389,33 @@ class PiClient extends EventTarget {
   }
 
   /**
-   * 中止当前正在进行的 Agent 运行
+   * 中止正在进行的 Agent 运行（支持指定 taskId）
+   * @param {string} [taskId]
    */
-  async abort() {
-    return await this.invoke("pi_abort");
+  async abort(taskId = null) {
+    return await this.invoke("pi_abort", {
+      taskId: taskId || undefined,
+    });
+  }
+
+  /**
+   * 销毁并清理指定 Task 进程
+   * @param {string} taskId
+   */
+  async destroyTask(taskId) {
+    return await this.invoke("pi_destroy_task", { taskId });
+  }
+
+  /**
+   * 获取底层正在运行的 Task 列表
+   * @returns {Promise<Array<string>>}
+   */
+  async getActiveTasks() {
+    try {
+      return await this.invoke("pi_get_active_tasks");
+    } catch (_) {
+      return [];
+    }
   }
 
   /**

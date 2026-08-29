@@ -288,13 +288,32 @@ if (flowScrollArea) {
 
 ---
 
+## 📌 6. 后台对话任务与双通道解耦规范 (Background Tasks & Dual Channel Abort/Suspend)
+
+### 6.1 交互设计与双通道解耦
+1. **通道 1：后台挂起 (Background Suspend)**：
+   - 在 Flow 模式下按鼠标右键或按 Esc，当前推理任务**无感转入后台 `TaskManager` 持续执行**（绝不调用 `abort`）；
+   - 界面平滑回退至 Focus 专注版，顶部弹出 1.5s 提示条 `已转入后台运行 (Task #1)`；
+   - 右上角 Mini 任务胶囊计数同步更新（如 `[ ✏️ 1/3 Task ]`），伴随旋转呼吸动效；
+2. **通道 2：显式中止 (Explicit Abort)**：
+   - Flow 输入框右侧显式提供手绘「⏹ 中止」按钮（`#flow-btn-abort`）及侧边栏单任务中止操作，负责彻底杀死 Agent 生成；
+3. **毛玻璃侧边栏与背景高斯模糊 (`Task Details Sidebar`)**：
+   - 点击 Mini 胶囊滑出 320px 半透明手绘侧边栏（`backdrop-filter: blur(14px)`），主界面区域自动触发高斯模糊（`blur(4px)`）；
+   - 侧边栏支持查看所有 Task（模型、运行状态、提问摘要）及操作（「进入 Flow」、「⏹ 中止」、「✕ 清除」）；
+   - 全域右键或按 Esc 优先平滑收起侧边栏并复原主背景。
+
+---
+
 ## 📎 关联文件索引
 
 | 文件 | 关键内容 |
 |---|---|
+| [`src/services/task-manager.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/task-manager.js) | `TaskManager` 多任务状态机、事件缓冲区、任务挂起与中止 |
+| [`src-tauri/src/pi_runner/host_pool.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/pi_runner/host_pool.rs) | `PiHostPool` 多进程监管池、独立子进程隔离与 `task_id` 分帧注入 |
 | [`src/services/prompt-history.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/prompt-history.js) | `PromptHistoryNavigator` 历史记录栈、草稿暂存与指针控制 |
-| [`src/main.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/main.js) | `resetStreamState`、`collapseThinkingCard`、`collapseToolCard`、`autoCollapseThinkingOnNextPhase`、`piClient` 事件监听、window wheel 委托、`searchInput` 键盘历史翻阅与通知接入 |
+| [`src/main.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/main.js) | `resetStreamState`、`collapseThinkingCard`、`collapseToolCard`、`autoCollapseThinkingOnNextPhase`、`piClient` 事件监听、window wheel 委托、`taskManager` 侧边栏与胶囊绑定、Step Back 回退链 |
 | [`src/services/notification-service.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/notification-service.js) | 全局焦点追踪器、任务池追踪器、Windows 原生 Toast 通知分发 |
-| [`src-tauri/src/lib.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/lib.rs) | `tauri-plugin-notification` 初始化、`pi_show_notification`、`WindowEvent::Focused` 广播 |
-| [`src/styles.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles.css) | `.agent-thinking-card`、`.tool-card`、`.tool-collapse-arrow`、`.flow-stage`、`.flow-scroll-area` |
-| [`src/index.html`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/index.html) | `#agent-thinking-card`、`#thinking-toggle-btn`、`#tool-calls-container`、`#flow-scroll-area` |
+| [`src-tauri/src/lib.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/lib.rs) | `tauri-plugin-notification` 初始化、`pi_show_notification`、`app-awakened` 广播与任务池 RPC |
+| [`src/styles.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles.css) | `.agent-thinking-card`、`.tool-card`、`.tool-collapse-arrow`、`#mini-task-capsule`、`#task-details-sidebar`、`#global-toast-banner` |
+| [`src/index.html`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/index.html) | `#agent-thinking-card`、`#mini-task-capsule`、`#task-details-sidebar`、`#flow-btn-abort`、`#flow-scroll-area` |
+

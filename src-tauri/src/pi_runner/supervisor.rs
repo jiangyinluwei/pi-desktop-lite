@@ -210,8 +210,38 @@ impl PiSupervisor {
 
         let mut cmd = Command::new(&binary_path);
         cmd.arg("--mode")
-            .arg("rpc")
-            .stdin(Stdio::piped())
+            .arg("rpc");
+
+        // 从 ~/.pi-dl/config.json 预读选中的模型与思考等级
+        if let Some(home) = dirs::home_dir() {
+            let config_path = home.join(".pi-dl").join("config.json");
+            if config_path.is_file() {
+                if let Ok(content) = std::fs::read_to_string(&config_path) {
+                    if let Ok(json_val) = serde_json::from_str::<Value>(&content) {
+                        if let Some(selected) = json_val.get("selectedModel") {
+                            let provider = selected.get("provider").and_then(|v| v.as_str());
+                            let model_id = selected
+                                .get("modelId")
+                                .or_else(|| selected.get("id"))
+                                .or_else(|| selected.get("name"))
+                                .and_then(|v| v.as_str());
+                            if let (Some(p), Some(m)) = (provider, model_id) {
+                                if !p.trim().is_empty() && !m.trim().is_empty() {
+                                    cmd.arg("--provider").arg(p).arg("--model").arg(m);
+                                }
+                            }
+                        }
+                        if let Some(level) = json_val.get("defaultThinkingLevel").and_then(|v| v.as_str()) {
+                            if !level.trim().is_empty() {
+                                cmd.arg("--thinking").arg(level);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 

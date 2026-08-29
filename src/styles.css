@@ -4313,6 +4313,362 @@ input::-ms-reveal {
   transition: opacity 0.4s ease;
 }
 
+/* ==========================================================================
+   右上角手绘 Mini 任务胶囊 (Mini Task Capsule)
+   ========================================================================== */
+.mini-task-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  margin-right: 6px;
+  background: var(--sketch-tag-bg);
+  border: 1px dashed var(--sketch-border-subtle);
+  border-radius: 10px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--ink-muted);
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  transition: transform 0.16s ease, border-color 0.16s ease, color 0.16s ease, background-color 0.16s ease;
+}
+
+.mini-task-capsule:hover {
+  border-color: var(--sketch-border);
+  color: var(--ink-primary);
+  background: var(--sketch-tag-hover-bg);
+  transform: rotate(-0.5deg) scale(1.02);
+}
+
+.mini-task-capsule .capsule-pencil-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+}
+
+.mini-task-capsule.is-running .capsule-pencil-icon {
+  animation: spin-pulse 2s infinite ease-in-out;
+}
+
+@keyframes spin-pulse {
+  0% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(-10deg) scale(1.12); }
+  75% { transform: rotate(10deg) scale(1.12); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+
+.mini-task-capsule.all-completed {
+  border: 1px solid #16a34a;
+  color: #15803d;
+  background: rgba(22, 163, 74, 0.08);
+}
+
+:root[data-theme="dark"] .mini-task-capsule.all-completed,
+:root[data-theme="system"] .mini-task-capsule.all-completed {
+  border-color: #22c55e;
+  color: #4ade80;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+/* ==========================================================================
+   侧边栏展开时主背景毛玻璃高斯模糊 (Backdrop Blur)
+   ========================================================================== */
+body.has-task-sidebar-open .app-container {
+  filter: blur(4px);
+  opacity: 0.6;
+  pointer-events: none;
+  transition: filter 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ==========================================================================
+   半透明毛玻璃手绘侧边栏 (Task Details Sidebar)
+   ========================================================================== */
+.task-details-sidebar {
+  position: fixed;
+  top: var(--titlebar-height);
+  right: 0;
+  bottom: 0;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  background: rgba(250, 248, 245, 0.94);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-left: 1px solid var(--sketch-border-subtle);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  transform: translateX(100%);
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+}
+
+:root[data-theme="dark"] .task-details-sidebar,
+:root[data-theme="system"] .task-details-sidebar {
+  background: rgba(20, 19, 18, 0.94);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.45);
+}
+
+.task-details-sidebar.open {
+  transform: translateX(0);
+}
+
+.task-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--sketch-border-subtle);
+}
+
+.task-sidebar-header .sidebar-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.task-sidebar-header .sidebar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.task-sidebar-header .sidebar-summary {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.sidebar-close-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--ink-muted);
+  cursor: pointer;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.sidebar-close-btn:hover {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border-subtle);
+  background: var(--sketch-tag-bg);
+}
+
+.task-sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.empty-tasks-placeholder {
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: 12px;
+  padding: 30px 10px;
+}
+
+/* 侧边栏任务卡片 */
+.sidebar-task-card {
+  background: var(--sketch-box-bg);
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+.sidebar-task-card:hover {
+  border-color: var(--sketch-border);
+  box-shadow: var(--sketch-shadow);
+  transform: translateY(-1px);
+}
+
+.sidebar-task-card.active-running {
+  border-left: 3px solid var(--ink-primary);
+}
+
+.sidebar-task-card .task-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+}
+
+.sidebar-task-card .task-card-model {
+  font-weight: 600;
+  color: var(--ink-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sidebar-task-card .task-card-status-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--sketch-border-subtle);
+  color: var(--ink-muted);
+}
+
+.sidebar-task-card.status-thinking .task-card-status-badge {
+  border-color: #d97706;
+  color: #b45309;
+  background: rgba(217, 119, 6, 0.08);
+}
+
+.sidebar-task-card.status-streaming .task-card-status-badge {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.sidebar-task-card.status-tool_exec .task-card-status-badge {
+  border-color: #7c3aed;
+  color: #6d28d9;
+  background: rgba(124, 58, 237, 0.08);
+}
+
+.sidebar-task-card.status-completed .task-card-status-badge {
+  border-color: #16a34a;
+  color: #15803d;
+  background: rgba(22, 163, 74, 0.08);
+}
+
+.sidebar-task-card.status-aborted .task-card-status-badge,
+.sidebar-task-card.status-error .task-card-status-badge {
+  border-color: #dc2626;
+  color: #b91c1c;
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.sidebar-task-card .task-card-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-task-card .task-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--sketch-border-subtle);
+}
+
+.task-card-action-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--ink-muted);
+  padding: 2px 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.12s ease;
+}
+
+.task-card-action-btn:hover {
+  border-color: var(--sketch-border-subtle);
+  color: var(--ink-primary);
+  background: var(--sketch-tag-bg);
+}
+
+.task-card-action-btn.btn-abort-task:hover {
+  color: #dc2626;
+  border-color: #fca5a5;
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.task-card-action-btn.btn-abort-task:hover {
+  color: #dc2626;
+  border-color: #fca5a5;
+  background: rgba(220, 38, 38, 0.08);
+}
+
+/* Flow 显式中止按钮 */
+.flow-btn-abort {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.flow-btn-abort:hover {
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.35);
+  background: rgba(220, 38, 38, 0.08);
+}
+
+/* ==========================================================================
+   全局手绘浮动微提示条 (Global Toast Banner)
+   ========================================================================== */
+.global-toast-banner {
+  position: fixed;
+  top: calc(var(--titlebar-height) + 12px);
+  left: 50%;
+  transform: translateX(-50%) translateY(0);
+  z-index: 10000;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  background: var(--sketch-box-bg);
+  border: 1px solid var(--sketch-border);
+  border-radius: 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  opacity: 1;
+}
+
+:root[data-theme="dark"] .global-toast-banner,
+:root[data-theme="system"] .global-toast-banner {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.global-toast-banner.hidden {
+  display: none !important;
+  opacity: 0;
+  transform: translateX(-50%) translateY(-8px);
+}
+
+.global-toast-banner .toast-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+}
+
 /* 全局隐藏工具类 */
 .hidden {
   display: none !important;
