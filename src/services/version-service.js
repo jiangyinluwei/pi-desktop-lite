@@ -75,6 +75,18 @@ class VersionService extends EventTarget {
       throw err;
     }
   }
+
+  /**
+   * 取消当前正在执行的 Pi 内核更新
+   */
+  async cancelKernelUpdate() {
+    try {
+      return await invokeTauri("pi_cancel_kernel_update");
+    } catch (err) {
+      console.error("[VersionService] Failed to cancel kernel update:", err);
+      throw err;
+    }
+  }
 }
 
 export const versionService = new VersionService();

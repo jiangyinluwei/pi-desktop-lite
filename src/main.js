@@ -79,10 +79,12 @@ window.addEventListener("DOMContentLoaded", () => {
   const updateMsg = document.getElementById("update-msg");
   const updateNoticeActions = document.getElementById("update-notice-actions");
   const btnToggleChangelog = document.getElementById("btn-toggle-changelog");
+  const btnIgnoreUpdate = document.getElementById("btn-ignore-update");
   const btnUpdateKernel = document.getElementById("btn-update-kernel");
   const kernelUpdateProgressWrap = document.getElementById("kernel-update-progress-wrap");
   const kernelProgressStage = document.getElementById("kernel-progress-stage");
   const kernelProgressPercent = document.getElementById("kernel-progress-percent");
+  const btnCancelUpdate = document.getElementById("btn-cancel-update");
   const kernelProgressFill = document.getElementById("kernel-progress-fill");
   const kernelProgressSubMsg = document.getElementById("kernel-progress-sub-msg");
   const kernelChangelogDrawer = document.getElementById("kernel-changelog-drawer");
@@ -1300,9 +1302,36 @@ window.addEventListener("DOMContentLoaded", () => {
   loadModelsAndState();
 
   // ==========================================================================
-  // 6. 内核与版本控制逻辑 (包含一键更新与 Changelog 抽屉)
+  // 6. 内核与版本控制逻辑 (包含一键更新、取消更新、不再提醒与 Changelog 抽屉)
   // ==========================================================================
   let latestUpdateInfo = null;
+  let updateNoticeFadeTimer = null;
+
+  const clearUpdateNoticeFade = () => {
+    if (updateNoticeFadeTimer) {
+      clearTimeout(updateNoticeFadeTimer);
+      updateNoticeFadeTimer = null;
+    }
+    if (updateNotice) {
+      updateNotice.classList.remove("fade-out");
+    }
+  };
+
+  const showUpdateNoticeAutoFade = (durationMs = 8000) => {
+    if (!updateNotice) return;
+    clearUpdateNoticeFade();
+    updateNotice.classList.remove("hidden", "fade-out");
+
+    updateNoticeFadeTimer = setTimeout(() => {
+      updateNotice.classList.add("fade-out");
+      setTimeout(() => {
+        if (updateNotice.classList.contains("fade-out")) {
+          updateNotice.classList.add("hidden");
+          updateNotice.classList.remove("fade-out");
+        }
+      }, 500);
+    }, durationMs);
+  };
 
   const updateHostUI = (statusPayload) => {
     const status = typeof statusPayload === "string" ? statusPayload : statusPayload?.status || "ready";
@@ -1320,11 +1349,19 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  const applyUpdateInfoToUI = (info) => {
+  const applyUpdateInfoToUI = (info, isManual = false) => {
     latestUpdateInfo = info;
     if (!info) return;
 
     if (info.has_update) {
+      // 若非用户主动点击检查，且用户已勾选“不再提醒更新”，则静默不弹窗
+      if (!isManual && configService.getIgnoreUpdateNotification()) {
+        if (updateNotice) updateNotice.classList.add("hidden");
+        if (settingsBadge) settingsBadge.classList.remove("visible");
+        return;
+      }
+
+      clearUpdateNoticeFade();
       if (updateNotice) updateNotice.classList.remove("hidden");
       if (updateNoticeActions) updateNoticeActions.classList.remove("hidden");
       if (updateMsg) {
@@ -1340,13 +1377,14 @@ window.addEventListener("DOMContentLoaded", () => {
       }
       if (settingsBadge) settingsBadge.classList.add("visible");
     } else {
-      if (updateNotice) updateNotice.classList.remove("hidden");
       if (updateNoticeActions) updateNoticeActions.classList.add("hidden");
       if (kernelChangelogDrawer) kernelChangelogDrawer.classList.add("hidden");
       if (updateMsg) {
         updateMsg.textContent = `已是最新版本 (v${info.current_version || "0.84.3"})`;
       }
       if (settingsBadge) settingsBadge.classList.remove("visible");
+      // "是最新版本" 提醒框 弹出8秒后自动渐隐
+      showUpdateNoticeAutoFade(8000);
     }
   };
 
@@ -1376,12 +1414,39 @@ window.addEventListener("DOMContentLoaded", () => {
     btnCheckUpdate.addEventListener("click", async () => {
       btnCheckUpdate.disabled = true;
       try {
+        // 主动点击检查更新：将 ignoreUpdateNotification 置 false 并持久化记忆
+        await configService.setIgnoreUpdateNotification(false);
         const res = await versionService.checkUpdate();
-        applyUpdateInfoToUI(res);
+        applyUpdateInfoToUI(res, true);
       } catch (err) {
         console.error("Check update failed:", err);
       } finally {
         btnCheckUpdate.disabled = false;
+      }
+    });
+  }
+
+  // 不再提醒更新
+  if (btnIgnoreUpdate) {
+    btnIgnoreUpdate.addEventListener("click", async () => {
+      await configService.setIgnoreUpdateNotification(true);
+      clearUpdateNoticeFade();
+      if (updateNotice) updateNotice.classList.add("hidden");
+      if (kernelChangelogDrawer) kernelChangelogDrawer.classList.add("hidden");
+      if (settingsBadge) settingsBadge.classList.remove("visible");
+    });
+  }
+
+  // 取消内核更新
+  if (btnCancelUpdate) {
+    btnCancelUpdate.addEventListener("click", async () => {
+      btnCancelUpdate.disabled = true;
+      if (kernelProgressStage) kernelProgressStage.textContent = "正在取消更新...";
+      if (kernelProgressSubMsg) kernelProgressSubMsg.textContent = "正在停止下载并清理临时文件...";
+      try {
+        await versionService.cancelKernelUpdate();
+      } catch (err) {
+        console.warn("Cancel kernel update error:", err);
       }
     });
   }
@@ -1423,6 +1488,7 @@ window.addEventListener("DOMContentLoaded", () => {
       btnUpdateKernel.disabled = true;
       if (btnRestartHost) btnRestartHost.disabled = true;
       if (btnCheckUpdate) btnCheckUpdate.disabled = true;
+      if (btnCancelUpdate) btnCancelUpdate.disabled = false;
 
       // 显示进度卡片
       if (kernelUpdateProgressWrap) {
@@ -1442,6 +1508,7 @@ window.addEventListener("DOMContentLoaded", () => {
         btnUpdateKernel.disabled = false;
         if (btnRestartHost) btnRestartHost.disabled = false;
         if (btnCheckUpdate) btnCheckUpdate.disabled = false;
+        if (btnCancelUpdate) btnCancelUpdate.disabled = false;
       }
     });
   }
@@ -1467,9 +1534,10 @@ window.addEventListener("DOMContentLoaded", () => {
       if (p.stage === "downloading" && p.total_bytes > 0) {
         const mbDown = (p.downloaded_bytes / (1024 * 1024)).toFixed(1);
         const mbTot = (p.total_bytes / (1024 * 1024)).toFixed(1);
-        kernelProgressSubMsg.textContent = `流式下载中: ${mbDown} MB / ${mbTot} MB (${p.percent}%)`;
+        // 仅保留最右侧百分比，下方与左侧不再显示冗余百分比
+        kernelProgressSubMsg.textContent = `流式下载中: ${mbDown} MB / ${mbTot} MB`;
       } else {
-        kernelProgressSubMsg.textContent = p.message;
+        kernelProgressSubMsg.textContent = p.message || "";
       }
     }
 
@@ -1493,6 +1561,10 @@ window.addEventListener("DOMContentLoaded", () => {
       if (btnUpdateKernel) btnUpdateKernel.disabled = false;
       if (btnRestartHost) btnRestartHost.disabled = false;
       if (btnCheckUpdate) btnCheckUpdate.disabled = false;
+      if (btnCancelUpdate) btnCancelUpdate.disabled = false;
+
+      // "更新成功" 的提醒框 弹出8秒后自动渐隐
+      showUpdateNoticeAutoFade(8000);
 
       // 3.5秒后自动隐去进度卡片
       setTimeout(() => {
@@ -1500,15 +1572,32 @@ window.addEventListener("DOMContentLoaded", () => {
           kernelUpdateProgressWrap.classList.add("hidden");
         }
       }, 3500);
+    } else if (p.stage === "cancelled") {
+      if (kernelProgressStage) kernelProgressStage.textContent = "内核更新已取消";
+      if (kernelProgressSubMsg) kernelProgressSubMsg.textContent = "已中止下载并清理临时文件";
+      if (kernelProgressPercent) kernelProgressPercent.textContent = "0%";
+      if (kernelProgressFill) kernelProgressFill.style.width = "0%";
+
+      if (btnUpdateKernel) btnUpdateKernel.disabled = false;
+      if (btnRestartHost) btnRestartHost.disabled = false;
+      if (btnCheckUpdate) btnCheckUpdate.disabled = false;
+      if (btnCancelUpdate) btnCancelUpdate.disabled = false;
+
+      setTimeout(() => {
+        if (kernelUpdateProgressWrap) {
+          kernelUpdateProgressWrap.classList.add("hidden");
+        }
+      }, 2000);
     } else if (p.stage === "error") {
       if (btnUpdateKernel) btnUpdateKernel.disabled = false;
       if (btnRestartHost) btnRestartHost.disabled = false;
       if (btnCheckUpdate) btnCheckUpdate.disabled = false;
+      if (btnCancelUpdate) btnCancelUpdate.disabled = false;
     }
   });
 
   versionService.addEventListener("update-available", (e) => {
-    applyUpdateInfoToUI(e.detail);
+    applyUpdateInfoToUI(e.detail, false);
   });
 
   // ==========================================================================

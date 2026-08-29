@@ -4,7 +4,7 @@ pub mod updater;
 
 pub use checker::{check_latest_version, VersionCheckResult};
 pub use scheduler::VersionScheduler;
-pub use updater::{perform_kernel_update, KernelUpdateProgressPayload, KernelUpdateResult};
+pub use updater::{perform_kernel_update, pi_cancel_kernel_update, KernelUpdateProgressPayload, KernelUpdateResult};
 
 #[tauri::command]
 pub async fn pi_update_kernel(

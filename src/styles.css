@@ -2486,6 +2486,13 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   gap: 8px;
   color: var(--ink-primary);
   flex-wrap: wrap;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  opacity: 1;
+}
+
+.update-notice.fade-out {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .update-notice-main {
@@ -2523,7 +2530,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 .update-notice.hidden {
-  display: none;
+  display: none !important;
 }
 
 /* 内核更新多阶段进度条 */
@@ -2546,6 +2553,19 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   align-items: center;
   justify-content: space-between;
   font-size: 11.5px;
+}
+
+.progress-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-cancel-update {
+  font-size: 10.5px;
+  padding: 1px 6px;
+  height: 20px;
+  line-height: 1;
 }
 
 .progress-stage-text {

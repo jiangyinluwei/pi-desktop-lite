@@ -219,6 +219,19 @@ pub fn find_pi_binary(app_handle: Option<&AppHandle>) -> Option<PathBuf> {
 
 ---
 
+### 8. 坑点八：内核热更新中断取消与临时文件残留泄露治理
+- **故障现象**：用户在网络较慢时点击“取消更新”，若无原子取消信号控制，后台后台线程仍持续下载并尝试解压替换正在运行的内核，导致正在对话的内核意外被终止，或者产生未清理的 `temp/`、`kernel_staging/` 孤儿文件。
+- **底层根因**：
+  1. 缺少全局线程安全的原子取消标志（`AtomicBool`）；
+  2. 流式下载与解压各阶段未插入取消探测点；
+  3. 未在中断时回滚并安全清理临时文件。
+- **治理标准**：
+  1. **原子取消信号与指令**：暴露 `pi_cancel_kernel_update` 指令，在流式分块循环、候选源切换、解压与停止 supervisor 前严格自检取消信号；
+  2. **取消立即安全清理**：取消触发时安全关闭文件句柄并删除 `temp/` 压缩包与 `kernel_staging/`，保持原 supervisor 内核进程正常运行不受任何影响；
+  3. **交互去冗余与持久化控制**：进度显示仅保留最右侧百分比；提供“不再提醒更新”持久化（`~/.pi-dl/config.json`），用户主动点击“检查更新”时重置；“已是最新版本”与“更新成功”提醒框 8 秒平滑自动渐隐。
+
+---
+
 ## 🛠️ 三、交付与排查核对清单 (Checklist)
 
 在开发与交付包含内置内核的桌面端应用时，必须执行以下核对：
@@ -230,4 +243,6 @@ pub fn find_pi_binary(app_handle: Option<&AppHandle>) -> Option<PathBuf> {
 - [ ] 内核寻址探测优先级是否将源码工作区（`.mytools`）置于 `target/debug` 之前？
 - [ ] Win32 Job Object 是否配置了 `JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK`？
 - [ ] 内核大文件下载是否配置了长超时（600s）、`Accept-Encoding: identity` 及多镜像节点容灾切换？
+- [ ] 内核更新流是否支持取消指令 (`pi_cancel_kernel_update`)，且取消时完全清理临时产物并不终止运行中的 supervisor？
+- [ ] “不再提醒更新”是否正确持久化至 `~/.pi-dl/config.json` 且在手动“检查更新”时自愈重置？
 

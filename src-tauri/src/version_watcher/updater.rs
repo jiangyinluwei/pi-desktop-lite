@@ -12,12 +12,23 @@ use once_cell::sync::Lazy;
 /// 全局内核更新互斥锁：保障同一时间只有一个内核更新任务在运行
 static KERNEL_UPDATE_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 static IS_UPDATING: AtomicBool = AtomicBool::new(false);
+static CANCEL_REQUESTED: AtomicBool = AtomicBool::new(false);
 
-
+/// 取消当前正在执行的内核更新任务
+#[tauri::command]
+pub fn pi_cancel_kernel_update() -> Result<(), String> {
+    if IS_UPDATING.load(Ordering::SeqCst) {
+        log::info!("[Updater] Cancellation requested by user");
+        CANCEL_REQUESTED.store(true, Ordering::SeqCst);
+        Ok(())
+    } else {
+        Err("当前没有正在进行的内核更新任务".to_string())
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KernelUpdateProgressPayload {
-    pub stage: String, // "checking" | "downloading" | "extracting" | "verifying" | "replacing" | "restarting" | "completed" | "error"
+    pub stage: String, // "checking" | "downloading" | "extracting" | "verifying" | "replacing" | "restarting" | "completed" | "cancelled" | "error"
     pub percent: u32,
     pub message: String,
     pub downloaded_bytes: u64,
@@ -88,6 +99,7 @@ pub async fn perform_kernel_update(
     if IS_UPDATING.swap(true, Ordering::SeqCst) {
         return Err("Another kernel update is already in progress".to_string());
     }
+    CANCEL_REQUESTED.store(false, Ordering::SeqCst);
 
     let result = do_update(&app_handle, &supervisor, &target_version).await;
     IS_UPDATING.store(false, Ordering::SeqCst);
@@ -95,15 +107,28 @@ pub async fn perform_kernel_update(
     match result {
         Ok(res) => Ok(res),
         Err(err) => {
-            emit_progress(
-                &app_handle,
-                "error",
-                100,
-                format!("内核更新失败: {}", err),
-                0,
-                0,
-                &target_version,
-            );
+            let is_cancelled = CANCEL_REQUESTED.load(Ordering::SeqCst);
+            if is_cancelled {
+                emit_progress(
+                    &app_handle,
+                    "cancelled",
+                    0,
+                    "内核更新已取消".to_string(),
+                    0,
+                    0,
+                    &target_version,
+                );
+            } else {
+                emit_progress(
+                    &app_handle,
+                    "error",
+                    100,
+                    format!("内核更新失败: {}", err),
+                    0,
+                    0,
+                    &target_version,
+                );
+            }
             Err(err)
         }
     }
@@ -133,7 +158,7 @@ async fn do_update(
         app,
         "checking",
         5,
-        format!("正在准备下载 Pi 内核 v{} ({}) ...", clean_ver, asset_name),
+        format!("正在准备下载 Pi 内核 v{} ...", clean_ver),
         0,
         0,
         &clean_ver,
@@ -174,6 +199,11 @@ async fn do_update(
     let mut final_total_bytes = 45 * 1024 * 1024;
 
     for (idx, download_url) in candidate_urls.iter().enumerate() {
+        if CANCEL_REQUESTED.load(Ordering::SeqCst) {
+            let _ = fs::remove_file(&temp_archive_path);
+            return Err("内核更新已取消".to_string());
+        }
+
         if idx > 0 {
             log::info!("[Updater] Retrying with mirror: {}", download_url);
             emit_progress(
@@ -217,7 +247,7 @@ async fn do_update(
             app,
             "downloading",
             10,
-            format!("开始下载内核安装包 (总大小约 {:.1} MB)...", total_bytes as f64 / (1024.0 * 1024.0)),
+            "正在流式下载内核安装包...".to_string(),
             0,
             total_bytes,
             &clean_ver,
@@ -235,6 +265,13 @@ async fn do_update(
         let mut chunk_error = false;
 
         loop {
+            if CANCEL_REQUESTED.load(Ordering::SeqCst) {
+                log::info!("[Updater] Kernel update cancelled during download stream");
+                drop(file);
+                let _ = fs::remove_file(&temp_archive_path);
+                return Err("内核更新已取消".to_string());
+            }
+
             match response.chunk().await {
                 Ok(Some(chunk)) => {
                     if let Err(e) = file.write_all(&chunk) {
@@ -246,18 +283,11 @@ async fn do_update(
 
                     if last_emit.elapsed() >= Duration::from_millis(150) || downloaded >= total_bytes {
                         let percent = 10 + ((downloaded as f64 / total_bytes.max(1) as f64) * 60.0) as u32;
-                        let mb_downloaded = downloaded as f64 / (1024.0 * 1024.0);
-                        let mb_total = total_bytes as f64 / (1024.0 * 1024.0);
                         emit_progress(
                             app,
                             "downloading",
                             percent.min(70),
-                            format!(
-                                "正在下载内核: {:.1} MB / {:.1} MB ({:.0}%)",
-                                mb_downloaded,
-                                mb_total,
-                                (downloaded as f64 / total_bytes.max(1) as f64) * 100.0
-                            ),
+                            "正在流式下载内核安装包...".to_string(),
                             downloaded,
                             total_bytes,
                             &clean_ver,
@@ -280,6 +310,11 @@ async fn do_update(
 
         drop(file);
 
+        if CANCEL_REQUESTED.load(Ordering::SeqCst) {
+            let _ = fs::remove_file(&temp_archive_path);
+            return Err("内核更新已取消".to_string());
+        }
+
         if chunk_error || downloaded == 0 || (total_bytes > 1024 * 1024 && downloaded < 1024 * 1024) {
             let _ = fs::remove_file(&temp_archive_path);
             continue;
@@ -290,6 +325,11 @@ async fn do_update(
         break;
     }
 
+    if CANCEL_REQUESTED.load(Ordering::SeqCst) {
+        let _ = fs::remove_file(&temp_archive_path);
+        return Err("内核更新已取消".to_string());
+    }
+
     if !download_success {
         return Err(format!(
             "Failed to download release asset from all sources. Last error: {}",
@@ -298,11 +338,17 @@ async fn do_update(
     }
 
     // 3. 解压内核包到暂存目录
+    if CANCEL_REQUESTED.load(Ordering::SeqCst) {
+        let _ = fs::remove_file(&temp_archive_path);
+        let _ = fs::remove_dir_all(&staging_dir);
+        return Err("内核更新已取消".to_string());
+    }
+
     emit_progress(
         app,
         "extracting",
         72,
-        "下载完成，正在解压内核包到暂存区...".to_string(),
+        "下载完成，正在解压内核包...".to_string(),
         total_downloaded_bytes,
         final_total_bytes,
         &clean_ver,
@@ -317,6 +363,12 @@ async fn do_update(
     }
 
     // 4. 寻找并校验暂存区中的 pi 二进制文件
+    if CANCEL_REQUESTED.load(Ordering::SeqCst) {
+        let _ = fs::remove_file(&temp_archive_path);
+        let _ = fs::remove_dir_all(&staging_dir);
+        return Err("内核更新已取消".to_string());
+    }
+
     emit_progress(
         app,
         "verifying",
@@ -333,6 +385,12 @@ async fn do_update(
     verify_binary(&staged_binary).await?;
 
     // 5. 安全停止运行中的 Pi 监督进程
+    if CANCEL_REQUESTED.load(Ordering::SeqCst) {
+        let _ = fs::remove_file(&temp_archive_path);
+        let _ = fs::remove_dir_all(&staging_dir);
+        return Err("内核更新已取消".to_string());
+    }
+
     emit_progress(
         app,
         "replacing",

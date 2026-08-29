@@ -600,6 +600,12 @@
                       </svg>
                       更新日志
                     </button>
+                    <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-ignore-update" title="不再提醒更新">
+                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 4L4 12M4 4l8 8" />
+                      </svg>
+                      不再提醒更新
+                    </button>
                     <button type="button" class="flat-btn flat-btn-primary mini" id="btn-update-kernel">
                       <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M8 2v8M4 6l4 4 4-4M2 13h12" />
@@ -613,7 +619,12 @@
                 <div class="kernel-update-progress-wrap hidden" id="kernel-update-progress-wrap">
                   <div class="kernel-update-progress-header">
                     <span class="progress-stage-text" id="kernel-progress-stage">正在准备下载内核...</span>
-                    <span class="progress-percent-text" id="kernel-progress-percent">0%</span>
+                    <div class="progress-header-right">
+                      <span class="progress-percent-text" id="kernel-progress-percent">0%</span>
+                      <button type="button" class="flat-btn flat-btn-secondary mini btn-cancel-update" id="btn-cancel-update" title="取消内核更新">
+                        取消
+                      </button>
+                    </div>
                   </div>
                   <div class="sketch-progress-bar">
                     <div class="sketch-progress-fill" id="kernel-progress-fill" style="width: 0%;"></div>

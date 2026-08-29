@@ -10,6 +10,7 @@ const STORAGE_KEY_THEME = "pi_app_theme";
 const STORAGE_KEY_WHITELIST = "pi_model_whitelist";
 const STORAGE_KEY_SELECTED_MODEL = "pi_selected_model";
 const STORAGE_KEY_THINKING_LEVEL = "pi_thinking_level";
+const STORAGE_KEY_IGNORE_UPDATE = "pi_ignore_update_notification";
 
 class ConfigService extends EventTarget {
   constructor() {
@@ -18,6 +19,7 @@ class ConfigService extends EventTarget {
     this.defaultThinkingLevel = "medium";
     this.selectedModel = null;
     this.modelWhitelist = [];
+    this.ignoreUpdateNotification = false;
     this.mediaQueryDark = window.matchMedia("(prefers-color-scheme: dark)");
     this._appConfigLoaded = false;
   }
@@ -56,6 +58,12 @@ class ConfigService extends EventTarget {
           this.modelWhitelist = config.modelWhitelist;
           localStorage.setItem(STORAGE_KEY_WHITELIST, JSON.stringify(this.modelWhitelist));
         }
+        if (typeof config.ignoreUpdateNotification === "boolean") {
+          this.ignoreUpdateNotification = config.ignoreUpdateNotification;
+          localStorage.setItem(STORAGE_KEY_IGNORE_UPDATE, String(this.ignoreUpdateNotification));
+        } else {
+          this.ignoreUpdateNotification = localStorage.getItem(STORAGE_KEY_IGNORE_UPDATE) === "true";
+        }
         this._appConfigLoaded = true;
         return config;
       }
@@ -74,6 +82,7 @@ class ConfigService extends EventTarget {
       defaultThinkingLevel: this.getDefaultThinkingLevel(),
       selectedModel: this.getSelectedModel(),
       modelWhitelist: this.loadModelWhitelist(),
+      ignoreUpdateNotification: this.getIgnoreUpdateNotification(),
     };
 
     try {
@@ -81,6 +90,24 @@ class ConfigService extends EventTarget {
     } catch (e) {
       console.warn("[ConfigService] Failed to save app config to ~/.pi-dl/config.json:", e);
     }
+  }
+
+  /**
+   * 获取是否屏蔽版本更新自动弹窗提醒
+   */
+  getIgnoreUpdateNotification() {
+    return Boolean(this.ignoreUpdateNotification);
+  }
+
+  /**
+   * 设置并持久化是否屏蔽版本更新自动弹窗提醒
+   * @param {boolean} ignored
+   */
+  async setIgnoreUpdateNotification(ignored) {
+    this.ignoreUpdateNotification = Boolean(ignored);
+    localStorage.setItem(STORAGE_KEY_IGNORE_UPDATE, String(this.ignoreUpdateNotification));
+    await this.saveAppConfig();
+    this.dispatchEvent(new CustomEvent("ignore-update-change", { detail: { ignored: this.ignoreUpdateNotification } }));
   }
 
   // ==========================================================================
