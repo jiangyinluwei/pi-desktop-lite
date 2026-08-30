@@ -112,6 +112,12 @@ class ConversationHistoryService extends EventTarget {
       conv.lastViewedAt = now;
       conv.modelId = data.modelId || conv.modelId;
       conv.sessionPath = data.sessionPath || conv.sessionPath;
+      if (data.taskId) {
+        conv.taskId = data.taskId;
+      }
+      if (Array.isArray(data.turns) && data.turns.length > 0) {
+        conv.turns = data.turns;
+      }
       if (typeof data.isAborted === "boolean") {
         conv.isAborted = data.isAborted;
       }
@@ -120,6 +126,7 @@ class ConversationHistoryService extends EventTarget {
     } else {
       conv = {
         id: `conv_${now}_${Math.random().toString(36).substring(2, 7)}`,
+        taskId: data.taskId || undefined,
         title: this.generateSummaryTitle(trimmedQuery),
         query: trimmedQuery,
         thinkingText: data.thinkingText || "",
@@ -129,6 +136,7 @@ class ConversationHistoryService extends EventTarget {
         modelId: data.modelId || "",
         sessionPath: data.sessionPath || "",
         isAborted: Boolean(data.isAborted),
+        turns: Array.isArray(data.turns) && data.turns.length > 0 ? data.turns : undefined,
         createdAt: now,
         lastViewedAt: now,
       };

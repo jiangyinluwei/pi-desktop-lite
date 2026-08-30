@@ -2247,6 +2247,44 @@ window.addEventListener("DOMContentLoaded", () => {
     if (card && card.classList.contains("collapsed")) {
       card.classList.remove("collapsed");
       const header = card.querySelector(".tool-header");
+  // ==========================================================================
+  // 流式消息、工具调用与全链路错误渲染中心 (多轮 Flow 交互工作流架构)
+  // ==========================================================================
+  let thinkingStartTime = 0;
+  let thinkingTimerInterval = null;
+  let currentThinkingText = "";
+  let currentResponseText = "";
+  let currentErrorMessage = null;
+  let lastUserQuery = "";
+  let hasReceivedDelta = false;
+  let hasAutoCollapsedThinking = false;
+  const renderedToolCards = new Map();
+
+  /**
+   * 当前活跃轮次的 DOM 引用缓存
+   */
+  let activeTurnRefs = null;
+
+  /**
+   * 折叠单张工具卡片
+   * @param {HTMLElement} card
+   */
+  const collapseToolCard = (card) => {
+    if (card && !card.classList.contains("collapsed")) {
+      card.classList.add("collapsed");
+      const header = card.querySelector(".tool-header");
+      if (header) header.setAttribute("aria-expanded", "false");
+    }
+  };
+
+  /**
+   * 展开单张工具卡片
+   * @param {HTMLElement} card
+   */
+  const expandToolCard = (card) => {
+    if (card && card.classList.contains("collapsed")) {
+      card.classList.remove("collapsed");
+      const header = card.querySelector(".tool-header");
       if (header) header.setAttribute("aria-expanded", "true");
     }
   };
@@ -2267,17 +2305,21 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   };
 
-  const collapseThinkingCard = () => {
-    if (agentThinkingCard && agentThinkingCard.classList.contains("open")) {
-      agentThinkingCard.classList.remove("open");
-      if (thinkingToggleBtn) thinkingToggleBtn.setAttribute("aria-expanded", "false");
+  const collapseThinkingCard = (cardEl = null, btnEl = null) => {
+    const targetCard = cardEl || activeTurnRefs?.thinkingCardEl || agentThinkingCard;
+    const targetBtn = btnEl || activeTurnRefs?.thinkingToggleBtn || thinkingToggleBtn;
+    if (targetCard && targetCard.classList.contains("open")) {
+      targetCard.classList.remove("open");
+      if (targetBtn) targetBtn.setAttribute("aria-expanded", "false");
     }
   };
 
-  const expandThinkingCard = () => {
-    if (agentThinkingCard && !agentThinkingCard.classList.contains("open")) {
-      agentThinkingCard.classList.add("open");
-      if (thinkingToggleBtn) thinkingToggleBtn.setAttribute("aria-expanded", "true");
+  const expandThinkingCard = (cardEl = null, btnEl = null) => {
+    const targetCard = cardEl || activeTurnRefs?.thinkingCardEl || agentThinkingCard;
+    const targetBtn = btnEl || activeTurnRefs?.thinkingToggleBtn || thinkingToggleBtn;
+    if (targetCard && !targetCard.classList.contains("open")) {
+      targetCard.classList.add("open");
+      if (targetBtn) targetBtn.setAttribute("aria-expanded", "true");
     }
   };
 
@@ -2288,36 +2330,250 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  const resetStreamState = (query) => {
+  /**
+   * 动态创建单轮对话的 DOM 消息组 (Turn Message Group)
+   * @param {Object} options
+   * @param {string} options.query
+   * @param {Array<any>} [options.attachments=[]]
+   * @param {string} [options.thinkingText=""]
+   * @param {string} [options.thinkingDurationText=""]
+   * @param {string} [options.responseText=""]
+   * @param {Array<any>} [options.toolCalls=[]]
+   * @param {boolean} [options.isOpenThinking=true]
+   * @param {boolean} [options.isAborted=false]
+   * @param {string | null} [options.errorMessage=null]
+   * @returns {Object} 包含该轮各子元素引用的对象
+   */
+  const createFlowTurnGroupElement = ({
+    query = "",
+    attachments = [],
+    thinkingText = "",
+    thinkingDurationText = "",
+    responseText = "",
+    toolCalls = [],
+    isOpenThinking = true,
+    isAborted = false,
+    errorMessage = null,
+  } = {}) => {
+    const groupEl = document.createElement("div");
+    groupEl.className = "flow-message-group";
+
+    // 1. 用户问题卡片
+    const userPromptCard = document.createElement("div");
+    userPromptCard.className = "flow-user-prompt-card";
+
+    let attachmentsHtml = "";
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      const chips = attachments
+        .map(
+          (f) => `
+        <span class="flow-attachment-chip" title="${escapeHtml(f.path || f.name)}">
+          <span class="chip-icon">${getFileCategoryIcon(f.category)}</span>
+          <span class="chip-name">${escapeHtml(f.name)}</span>
+        </span>
+      `
+        )
+        .join("");
+      attachmentsHtml = `<div class="flow-prompt-attachments">${chips}</div>`;
+    }
+
+    userPromptCard.innerHTML = `
+      <div class="prompt-icon">
+        <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <path d="M4 10 L16 10 M11 5 L16 10 L11 15" />
+        </svg>
+      </div>
+      <div class="prompt-main-wrap">
+        ${attachmentsHtml}
+        <p class="prompt-content">${escapeHtml(query || (attachments.length > 0 ? `[附带 ${attachments.length} 个文件/图片]` : ""))}</p>
+      </div>
+    `;
+    groupEl.appendChild(userPromptCard);
+
+    // 2. 运行态上下文/Inner-Skill 注入胶囊
+    const injectionCapsuleEl = document.createElement("div");
+    injectionCapsuleEl.className = "flow-injection-capsule hidden";
+    injectionCapsuleEl.setAttribute("role", "status");
+    injectionCapsuleEl.setAttribute("aria-live", "polite");
+    injectionCapsuleEl.innerHTML = `
+      <span class="capsule-icon" aria-hidden="true">${ICONS.sparkle}</span>
+      <span class="capsule-text">已注入运行态技能：windows-bash-compatibility</span>
+    `;
+    groupEl.appendChild(injectionCapsuleEl);
+
+    // 3. AI Agent 思考过程卡片
+    const thinkingCardEl = document.createElement("div");
+    thinkingCardEl.className = `agent-thinking-card ${isOpenThinking ? "open" : ""}`;
+    thinkingCardEl.innerHTML = `
+      <div class="thinking-header" role="button" tabindex="0" aria-expanded="${isOpenThinking ? "true" : "false"}">
+        <div class="thinking-status-indicator">
+          <span class="thinking-dot"></span>
+          <span class="thinking-title">思考过程</span>
+          <span class="thinking-duration">${escapeHtml(thinkingDurationText || "思考中...")}</span>
+        </div>
+        <div class="thinking-arrow-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <polyline points="4 6 8 10 12 6" />
+          </svg>
+        </div>
+      </div>
+      <div class="thinking-body">
+        <div class="thinking-text-stream">${escapeHtml(thinkingText)}</div>
+      </div>
+    `;
+
+    const thinkingToggleBtn = thinkingCardEl.querySelector(".thinking-header");
+    const thinkingDurationEl = thinkingCardEl.querySelector(".thinking-duration");
+    const thinkingTextStreamEl = thinkingCardEl.querySelector(".thinking-text-stream");
+    const thinkingBodyEl = thinkingCardEl.querySelector(".thinking-body");
+
+    if (thinkingToggleBtn) {
+      thinkingToggleBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isOpen = thinkingCardEl.classList.toggle("open");
+        thinkingToggleBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      });
+    }
+
+    groupEl.appendChild(thinkingCardEl);
+
+    // 4. 工具调用卡片容器
+    const toolCallsContainerEl = document.createElement("div");
+    toolCallsContainerEl.className = "tool-calls-container";
+    if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+      toolCalls.forEach((tc) => {
+        if (tc.html) {
+          toolCallsContainerEl.insertAdjacentHTML("beforeend", tc.html);
+        }
+      });
+      // 重新绑定历史工具卡片的点击折叠
+      toolCallsContainerEl.querySelectorAll(".tool-card").forEach((card) => {
+        const header = card.querySelector(".tool-header");
+        if (header) {
+          header.addEventListener("click", () => {
+            if (card.classList.contains("collapsed")) {
+              expandToolCard(card);
+            } else {
+              collapseToolCard(card);
+            }
+          });
+        }
+      });
+    }
+    groupEl.appendChild(toolCallsContainerEl);
+
+    // 5. Agent 回答卡片
+    const responseCardEl = document.createElement("div");
+    responseCardEl.className = "flow-response-card";
+    const responseContentEl = document.createElement("div");
+    responseContentEl.className = "response-content";
+
+    let initialHtml = renderMarkdown(responseText);
+    if (isAborted || responseText?.includes("刚刚会话已手动终止")) {
+      if (!initialHtml.includes("flow-abort-callout") && !initialHtml.includes("刚刚会话已手动终止")) {
+        initialHtml += renderAbortNoticeHtml();
+      }
+    }
+    if (errorMessage) {
+      initialHtml += `
+        <div class="sketch-error-card" style="margin-top: 10px;">
+          <div class="error-header">
+            <span class="error-icon" aria-hidden="true">${ICONS.warning}</span>
+            <span class="error-title">模型调用失败</span>
+          </div>
+          <div class="error-message-text">${escapeHtml(errorMessage)}</div>
+        </div>
+      `;
+    }
+    responseContentEl.innerHTML = initialHtml;
+    responseCardEl.appendChild(responseContentEl);
+    groupEl.appendChild(responseCardEl);
+
+    const userTextEl = userPromptCard.querySelector(".prompt-content");
+    const promptAttachmentsEl = userPromptCard.querySelector(".flow-prompt-attachments");
+    const injectionTextEl = injectionCapsuleEl.querySelector(".capsule-text");
+
+    return {
+      groupEl,
+      userTextEl,
+      promptAttachmentsEl,
+      injectionCapsuleEl,
+      injectionTextEl,
+      thinkingCardEl,
+      thinkingToggleBtn,
+      thinkingDurationEl,
+      thinkingTextStreamEl,
+      thinkingBodyEl,
+      toolCallsContainerEl,
+      responseContentEl,
+    };
+  };
+
+  /**
+   * 初始化/重置流式状态（支持多轮追加与新会话独立划分）
+   * @param {string} query
+   * @param {Array<any>} attachments
+   * @param {boolean} isFollowUpTurn 是否为同会话多轮后续追问
+   */
+  const resetStreamState = (query, attachments = [], isFollowUpTurn = false) => {
     lastUserQuery = query;
     currentErrorMessage = null;
     hasReceivedDelta = false;
     hasAutoCollapsedThinking = false;
-    if (flowUserText) flowUserText.textContent = query;
     currentThinkingText = "";
     currentResponseText = "";
     renderedToolCards.clear();
 
-    if (flowInjectionCapsule) {
-      flowInjectionCapsule.classList.add("hidden");
+    if (!isFollowUpTurn) {
+      // 全新会话 -> 清空 flowConversation 容器
+      if (flowConversation) {
+        flowConversation.innerHTML = "";
+      }
+    } else {
+      // 同工作流多轮对话 -> 固化上一轮（收起思考与工具卡片，移除上一轮光标）
+      if (activeTurnRefs) {
+        collapseThinkingCard(activeTurnRefs.thinkingCardEl, activeTurnRefs.thinkingToggleBtn);
+        if (activeTurnRefs.responseContentEl) {
+          const prevCursor = activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
+          if (prevCursor) prevCursor.remove();
+        }
+      }
+      collapseAllDoneToolCards();
     }
 
-    if (thinkingTextStream) thinkingTextStream.innerHTML = "";
-    if (toolCallsContainer) toolCallsContainer.innerHTML = "";
-    if (flowResponseContent) {
-      flowResponseContent.innerHTML = `<span class="streaming-cursor"></span>`;
+    // 创建当前轮次的 DOM 组并追加到 flowConversation
+    activeTurnRefs = createFlowTurnGroupElement({
+      query,
+      attachments,
+      thinkingText: "",
+      thinkingDurationText: "思考中...",
+      responseText: "",
+      toolCalls: [],
+      isOpenThinking: true,
+    });
+
+    if (flowConversation && activeTurnRefs?.groupEl) {
+      flowConversation.appendChild(activeTurnRefs.groupEl);
     }
 
-    expandThinkingCard();
+    if (activeTurnRefs.responseContentEl) {
+      activeTurnRefs.responseContentEl.innerHTML = `<span class="streaming-cursor"></span>`;
+    }
+
+    expandThinkingCard(activeTurnRefs.thinkingCardEl, activeTurnRefs.thinkingToggleBtn);
 
     thinkingStartTime = Date.now();
     if (thinkingTimerInterval) clearInterval(thinkingTimerInterval);
     thinkingTimerInterval = setInterval(() => {
-      if (thinkingDuration) {
+      if (activeTurnRefs?.thinkingDurationEl) {
         const elapsed = ((Date.now() - thinkingStartTime) / 1000).toFixed(1);
-        thinkingDuration.textContent = `思考中 (${elapsed}s)...`;
+        activeTurnRefs.thinkingDurationEl.textContent = `思考中 (${elapsed}s)...`;
       }
     }, 100);
+
+    if (flowScrollArea) {
+      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    }
   };
 
   const finalizeStream = () => {
@@ -2325,14 +2581,14 @@ window.addEventListener("DOMContentLoaded", () => {
     if (thinkingTimerInterval) {
       clearInterval(thinkingTimerInterval);
       thinkingTimerInterval = null;
-      if (thinkingDuration) {
+      if (activeTurnRefs?.thinkingDurationEl) {
         const finalElapsed = ((Date.now() - thinkingStartTime) / 1000).toFixed(1);
-        thinkingDuration.textContent = `已思考 ${finalElapsed} 秒`;
+        activeTurnRefs.thinkingDurationEl.textContent = `已思考 ${finalElapsed} 秒`;
       }
     }
     // 移除光标
-    if (flowResponseContent) {
-      const cursor = flowResponseContent.querySelector(".streaming-cursor");
+    if (activeTurnRefs?.responseContentEl) {
+      const cursor = activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
       if (cursor) cursor.remove();
     }
     // 流式结束时隐藏 Flow 中止按钮
@@ -2353,11 +2609,11 @@ window.addEventListener("DOMContentLoaded", () => {
    * 在 Flow 对话末尾安全追加手动终止提示
    */
   const appendFlowAbortNotice = () => {
-    if (flowResponseContent) {
-      const cursor = flowResponseContent.querySelector(".streaming-cursor");
+    if (activeTurnRefs?.responseContentEl) {
+      const cursor = activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
       if (cursor) cursor.remove();
-      if (!flowResponseContent.querySelector(".flow-abort-callout")) {
-        flowResponseContent.insertAdjacentHTML("beforeend", renderAbortNoticeHtml());
+      if (!activeTurnRefs.responseContentEl.querySelector(".flow-abort-callout")) {
+        activeTurnRefs.responseContentEl.insertAdjacentHTML("beforeend", renderAbortNoticeHtml());
       }
     }
     if (flowScrollArea) {
@@ -2416,7 +2672,8 @@ window.addEventListener("DOMContentLoaded", () => {
       taskId: "agent-prompt",
     });
 
-    if (!flowResponseContent) return;
+    const targetResponseEl = activeTurnRefs?.responseContentEl || flowResponseContent;
+    if (!targetResponseEl) return;
 
     const activeModelName = errDetail?.model || piClient.currentModel?.id || "当前模型";
     const isMultiModalIssue = isMultimodalError(errMsg);
@@ -2467,15 +2724,15 @@ window.addEventListener("DOMContentLoaded", () => {
     `;
 
     // 移除已存在的错误卡片，避免重复堆叠
-    const existingCard = flowResponseContent.querySelector(".sketch-error-card");
+    const existingCard = targetResponseEl.querySelector(".sketch-error-card");
     if (existingCard) {
       existingCard.remove();
     }
 
     if (!currentResponseText || currentResponseText.trim().length === 0) {
-      flowResponseContent.innerHTML = cardHtml;
+      targetResponseEl.innerHTML = cardHtml;
     } else {
-      flowResponseContent.insertAdjacentHTML("beforeend", cardHtml);
+      targetResponseEl.insertAdjacentHTML("beforeend", cardHtml);
     }
 
     const btnRetry = document.getElementById("btn-err-retry");
@@ -2506,8 +2763,6 @@ window.addEventListener("DOMContentLoaded", () => {
   // 绑定 PiClient 流式事件
   piClient.addEventListener("thinking-start", () => {
     hasReceivedDelta = true;
-    // 若尚未自动收起过（第一轮思考创始），才展开；
-    // 工具调用后的二次思考不再重新展开思考卡片
     if (!hasAutoCollapsedThinking) {
       expandThinkingCard();
     }
@@ -2516,19 +2771,19 @@ window.addEventListener("DOMContentLoaded", () => {
   piClient.addEventListener("thinking-delta", (e) => {
     hasReceivedDelta = true;
     currentThinkingText += e.detail;
-    if (thinkingTextStream) {
-      thinkingTextStream.textContent = currentThinkingText;
+    if (activeTurnRefs?.thinkingTextStreamEl) {
+      activeTurnRefs.thinkingTextStreamEl.textContent = currentThinkingText;
     }
-    if (thinkingBody) {
-      thinkingBody.scrollTop = thinkingBody.scrollHeight;
+    if (activeTurnRefs?.thinkingBodyEl) {
+      activeTurnRefs.thinkingBodyEl.scrollTop = activeTurnRefs.thinkingBodyEl.scrollHeight;
     }
     if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
   });
 
   piClient.addEventListener("thinking-end", () => {
-    if (thinkingDuration) {
+    if (activeTurnRefs?.thinkingDurationEl) {
       const elapsed = ((Date.now() - thinkingStartTime) / 1000).toFixed(1);
-      thinkingDuration.textContent = `已思考 ${elapsed} 秒`;
+      activeTurnRefs.thinkingDurationEl.textContent = `已思考 ${elapsed} 秒`;
     }
     autoCollapseThinkingOnNextPhase();
   });
@@ -2544,8 +2799,8 @@ window.addEventListener("DOMContentLoaded", () => {
     hasReceivedDelta = true;
     autoCollapseThinkingOnNextPhase();
     currentResponseText += e.detail;
-    if (flowResponseContent) {
-      flowResponseContent.innerHTML = renderMarkdown(currentResponseText) + `<span class="streaming-cursor"></span>`;
+    if (activeTurnRefs?.responseContentEl) {
+      activeTurnRefs.responseContentEl.innerHTML = renderMarkdown(currentResponseText) + `<span class="streaming-cursor"></span>`;
     }
     if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
   });
@@ -2579,12 +2834,12 @@ window.addEventListener("DOMContentLoaded", () => {
   };
 
   const showInnerSkillCapsuleForTool = (rawToolName) => {
-    if (!rawToolName || !flowInjectionCapsule || !flowInjectionText) return;
+    if (!rawToolName || !activeTurnRefs?.injectionCapsuleEl || !activeTurnRefs?.injectionTextEl) return;
     const nameLower = rawToolName.toString().toLowerCase().trim();
     const mapped = activeToolSkillMappings.get(nameLower);
     if (mapped) {
-      flowInjectionText.textContent = mapped.label || `已激活运行态技能：${mapped.skill}`;
-      flowInjectionCapsule.classList.remove("hidden");
+      activeTurnRefs.injectionTextEl.textContent = mapped.label || `已激活运行态技能：${mapped.skill}`;
+      activeTurnRefs.injectionCapsuleEl.classList.remove("hidden");
       if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
     }
   };
@@ -2655,8 +2910,8 @@ window.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    if (toolCallsContainer) {
-      toolCallsContainer.appendChild(card);
+    if (activeTurnRefs?.toolCallsContainerEl) {
+      activeTurnRefs.toolCallsContainerEl.appendChild(card);
     }
     renderedToolCards.set(toolCallId, card);
     if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
@@ -2698,8 +2953,8 @@ window.addEventListener("DOMContentLoaded", () => {
 
   piClient.addEventListener("retry-status", (e) => {
     const data = e.detail;
-    if (thinkingDuration && data.attempt) {
-      thinkingDuration.textContent = `自动重试中 (${data.attempt}/${data.maxAttempts || 3})...`;
+    if (activeTurnRefs?.thinkingDurationEl && data.attempt) {
+      activeTurnRefs.thinkingDurationEl.textContent = `自动重试中 (${data.attempt}/${data.maxAttempts || 3})...`;
     }
   });
 
@@ -2753,19 +3008,12 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   /**
-   * 触发用户提问并向 Pi 下发指令（支持注入文件绝对路径上下文与多任务会话隔离）
+   * 触发用户提问并向 Pi 下发指令（支持同一 Flow 多轮会话工作流、注入文件绝对路径与多任务隔离）
    * @param {string} query
    * @param {Array<any>} [filesToAttach=[]]
    */
   const handleFlowQuery = async (query, filesToAttach = []) => {
     if (!query && filesToAttach.length === 0) return;
-
-    // 并发任务数上限保护 (MAX_CONCURRENT_TASKS = 3)
-    const activeTasks = taskManager.getActiveTasks();
-    if (activeTasks.length >= taskManager.maxConcurrent) {
-      showGlobalToast(`后台任务已达上限 (${activeTasks.length}/${taskManager.maxConcurrent})，请等待某个任务完成后再发起新对话`, 2500);
-      return;
-    }
 
     const savedSelected = configService.getSelectedModel();
     const modelName =
@@ -2779,13 +3027,30 @@ window.addEventListener("DOMContentLoaded", () => {
       savedSelected?.provider ||
       "anthropic";
 
-    // 创建并注册 TaskManager 任务
-    const task = taskManager.createTask({
-      query,
-      attachments: filesToAttach,
-      model: modelName,
-      provider: providerName,
-    });
+    // 判断是否在 Flow 模式下向同一个工作流继续提问 (Multi-turn Follow-up)
+    const activeTask = taskManager.getCurrentActiveTask();
+    const isFollowUp = Boolean(currentView === VIEW_FLOW && activeTask);
+
+    let currentTask = activeTask;
+
+    if (isFollowUp && currentTask) {
+      // 同一个 Flow 连续对话：在已有 Task 下开启新一轮 Turn
+      taskManager.startNewTurn(currentTask.id, query, filesToAttach);
+    } else {
+      // 发起全新对话工作流：检查并发任务上限保护 (MAX_CONCURRENT_TASKS = 3)
+      const runningTasks = taskManager.getActiveTasks();
+      if (runningTasks.length >= taskManager.maxConcurrent) {
+        showGlobalToast(`后台任务已达上限 (${runningTasks.length}/${taskManager.maxConcurrent})，请等待某个任务完成后再发起新对话`, 2500);
+        return;
+      }
+
+      currentTask = taskManager.createTask({
+        query,
+        attachments: filesToAttach,
+        model: modelName,
+        provider: providerName,
+      });
+    }
 
     if (flowBtnAbort) {
       flowBtnAbort.classList.remove("hidden");
@@ -2805,31 +3070,9 @@ window.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    resetStreamState(promptToSend);
+    // 初始化/追加流式轮次 DOM
+    resetStreamState(query, filesToAttach, isFollowUp);
     setViewMode(VIEW_FLOW, true);
-
-    // 在 Flow 用户问题卡片中显示文本与手绘附件徽章
-    if (flowUserText) {
-      flowUserText.textContent = query || (filesToAttach.length > 0 ? `[附带 ${filesToAttach.length} 个文件/图片]` : "");
-    }
-    if (flowPromptAttachments) {
-      if (filesToAttach.length > 0) {
-        flowPromptAttachments.classList.remove("hidden");
-        flowPromptAttachments.innerHTML = filesToAttach
-          .map(
-            (f) => `
-          <span class="flow-attachment-chip" title="${escapeHtml(f.path || f.name)}">
-            <span class="chip-icon">${getFileCategoryIcon(f.category)}</span>
-            <span class="chip-name">${escapeHtml(f.name)}</span>
-          </span>
-        `
-          )
-          .join("");
-      } else {
-        flowPromptAttachments.classList.add("hidden");
-        flowPromptAttachments.innerHTML = "";
-      }
-    }
 
     if (query && query.trim()) {
       promptHistoryNavigator.push(query.trim());
@@ -2858,15 +3101,18 @@ window.addEventListener("DOMContentLoaded", () => {
         if (imagePayloads.length === 0) imagePayloads = null;
       }
 
-      await piClient.sendPrompt(promptToSend, imagePayloads, null, task.id);
+      // 同一个 Flow 使用同一个 currentTask.id 保持会话上下文
+      await piClient.sendPrompt(promptToSend, imagePayloads, null, currentTask.id);
     } catch (err) {
       console.error("Failed to send prompt to Pi:", err);
       piClient.isStreaming = false;
-      task.status = "error";
-      task.completedAt = Date.now();
-      task.errorMessage = err.toString();
-      taskManager.dispatchEvent(new CustomEvent("task-updated", { detail: task }));
-      taskManager.dispatchEvent(new CustomEvent("tasks-changed", { detail: { tasks: taskManager.getAllTasks() } }));
+      if (currentTask) {
+        currentTask.status = "error";
+        currentTask.completedAt = Date.now();
+        currentTask.errorMessage = err.toString();
+        taskManager.dispatchEvent(new CustomEvent("task-updated", { detail: currentTask }));
+        taskManager.dispatchEvent(new CustomEvent("tasks-changed", { detail: { tasks: taskManager.getAllTasks() } }));
+      }
       renderErrorCard({
         message: err.toString(),
         model: modelName,
@@ -3198,91 +3444,76 @@ window.addEventListener("DOMContentLoaded", () => {
     if (!task) return;
 
     taskManager.setActiveTask(task.id);
-    lastUserQuery = task.query || task.title || "";
-    lastSentAttachments = task.attachments || [];
+    if (flowConversation) {
+      flowConversation.innerHTML = "";
+    }
 
-    if (flowUserText) flowUserText.textContent = task.query || task.title || "";
+    const turns = Array.isArray(task.turns) && task.turns.length > 0
+      ? task.turns
+      : [
+          {
+            query: task.query || task.title || "",
+            attachments: task.attachments || [],
+            thinkingText: task.thinkingText || "",
+            thinkingDurationText: task.thinkingDurationText || "已完成思考",
+            responseText: task.responseText || "",
+            toolCalls: task.toolCalls || [],
+            isAborted: task.status === "aborted",
+            errorMessage: task.errorMessage || (task.status === "error" ? "模型调用发生异常终止" : null),
+          },
+        ];
 
-    if (flowPromptAttachments) {
-      if (task.attachments && task.attachments.length > 0) {
-        flowPromptAttachments.classList.remove("hidden");
-        flowPromptAttachments.innerHTML = task.attachments
-          .map(
-            (f) => `
-          <span class="flow-attachment-chip" title="${escapeHtml(f.path || f.name)}">
-            <span class="chip-icon">${getFileCategoryIcon(f.category)}</span>
-            <span class="chip-name">${escapeHtml(f.name)}</span>
-          </span>
-        `
-          )
-          .join("");
-      } else {
-        flowPromptAttachments.classList.add("hidden");
-        flowPromptAttachments.innerHTML = "";
+    const isRunning = task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec";
+
+    turns.forEach((turn, idx) => {
+      const isLast = idx === turns.length - 1;
+      const isOpen = isLast && isRunning && (!turn.responseText || turn.responseText.trim().length === 0);
+
+      const groupRefs = createFlowTurnGroupElement({
+        query: turn.query || "",
+        attachments: turn.attachments || [],
+        thinkingText: turn.thinkingText || "",
+        thinkingDurationText: turn.thinkingDurationText || "已完成思考",
+        responseText: turn.responseText || "",
+        toolCalls: turn.toolCalls || [],
+        isOpenThinking: isOpen,
+        isAborted: turn.isAborted || (!isLast && turn.responseText?.includes("刚刚会话已手动终止")),
+        errorMessage: turn.errorMessage,
+      });
+
+      if (flowConversation && groupRefs?.groupEl) {
+        flowConversation.appendChild(groupRefs.groupEl);
       }
-    }
 
-    currentThinkingText = task.thinkingText || "";
-    currentResponseText = task.responseText || "";
-    currentErrorMessage = task.errorMessage || (task.status === "error" ? "模型调用发生异常终止" : null);
-    hasReceivedDelta = Boolean(task.responseText && task.responseText.trim().length > 0);
-    hasAutoCollapsedThinking = false;
+      if (isLast) {
+        activeTurnRefs = groupRefs;
+        lastUserQuery = turn.query || "";
+        lastSentAttachments = turn.attachments || [];
+        currentThinkingText = turn.thinkingText || "";
+        currentResponseText = turn.responseText || "";
+        currentErrorMessage = turn.errorMessage || null;
+        hasReceivedDelta = Boolean(turn.responseText && turn.responseText.trim().length > 0);
+        hasAutoCollapsedThinking = !isOpen;
 
-    if (thinkingTextStream) {
-      thinkingTextStream.textContent = task.thinkingText || "";
-    }
-    if (thinkingDuration) {
-      thinkingDuration.textContent = task.thinkingDurationText || "已完成思考";
-    }
-
-    if (toolCallsContainer) {
-      toolCallsContainer.innerHTML = "";
-      if (Array.isArray(task.toolCalls)) {
-        task.toolCalls.forEach((tc) => {
-          if (tc.html) {
-            toolCallsContainer.insertAdjacentHTML("beforeend", tc.html);
-          }
-        });
-      }
-    }
-
-    if (flowResponseContent) {
-      const isRunning = task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec";
-      const baseResponseHtml = renderMarkdown(task.responseText || "");
-
-      if (task.errorMessage || task.status === "error") {
-        flowResponseContent.innerHTML = baseResponseHtml;
-        renderErrorCard({
-          message: task.errorMessage || "模型调用发生异常终止",
-          model: task.model,
-          provider: task.provider,
-        });
-      } else {
-        let finalHtml = baseResponseHtml + (isRunning ? `<span class="streaming-cursor"></span>` : "");
-        if (task.status === "aborted") {
-          finalHtml += renderAbortNoticeHtml();
+        if (isRunning && groupRefs.responseContentEl) {
+          groupRefs.responseContentEl.innerHTML = renderMarkdown(turn.responseText || "") + `<span class="streaming-cursor"></span>`;
         }
-        flowResponseContent.innerHTML = finalHtml;
+      } else {
+        // 历史轮次全部收起思考卡片与工具卡片
+        collapseThinkingCard(groupRefs.thinkingCardEl, groupRefs.thinkingToggleBtn);
       }
-    }
+    });
 
     if (flowModelName) {
       flowModelName.textContent = task.model || "Model";
     }
 
-    const isRunning = task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec";
     if (flowBtnAbort) {
       if (isRunning) {
         flowBtnAbort.classList.remove("hidden");
       } else {
         flowBtnAbort.classList.add("hidden");
       }
-    }
-
-    if (task.responseText && task.responseText.trim().length > 0) {
-      collapseThinkingCard();
-    } else {
-      expandThinkingCard();
     }
 
     setViewMode(VIEW_FLOW, true);
@@ -3298,94 +3529,154 @@ window.addEventListener("DOMContentLoaded", () => {
     // 1. 刷新该讯息的浏览时间戳（MRU 刷新排序至第 1 位）
     conversationHistoryService.touchConversation(conv.id);
 
-    // 2. 恢复 Flow 界面内容
-    lastUserQuery = conv.query || "";
-    if (flowUserText) flowUserText.textContent = conv.query || "";
-    currentThinkingText = conv.thinkingText || "";
-    currentResponseText = conv.responseText || "";
+    // 2. 将该历史对话还原并绑定为 TaskManager 的当前活跃 Task，确保后续提问保留在同一个工作流
+    const taskIdToUse = conv.taskId || conv.id;
+    let task = taskManager.getTask(taskIdToUse);
+    const turns = Array.isArray(conv.turns) && conv.turns.length > 0
+      ? conv.turns
+      : [
+          {
+            query: conv.query || conv.title || "",
+            attachments: [],
+            thinkingText: conv.thinkingText || "",
+            thinkingDurationText: conv.thinkingDuration || "已完成思考",
+            responseText: conv.responseText || "",
+            toolCalls: conv.toolCalls || [],
+            isAborted: conv.isAborted,
+            status: "completed",
+          },
+        ];
 
-    if (thinkingTextStream) {
-      thinkingTextStream.textContent = conv.thinkingText || "";
+    if (!task) {
+      task = taskManager.createTask({
+        id: taskIdToUse,
+        query: conv.query || conv.title || "",
+        model: conv.modelId || piClient.currentModel?.id || "default",
+        isSuspended: false,
+      });
+      task.turns = turns;
+      task.status = "completed";
+      task.thinkingText = conv.thinkingText || "";
+      task.responseText = conv.responseText || "";
+      task.toolCalls = conv.toolCalls || [];
+      task.thinkingDurationText = conv.thinkingDuration || "已完成思考";
     }
 
-    if (thinkingDuration) {
-      thinkingDuration.textContent = conv.thinkingDuration || "已完成思考";
+    taskManager.setActiveTask(task.id);
+
+    if (flowConversation) {
+      flowConversation.innerHTML = "";
     }
 
-    if (flowResponseContent) {
-      let contentHtml = renderMarkdown(conv.responseText || "");
-      if (conv.isAborted || conv.responseText?.includes("刚刚会话已手动终止")) {
-        if (!contentHtml.includes("flow-abort-callout") && !contentHtml.includes("刚刚会话已手动终止")) {
-          contentHtml += renderAbortNoticeHtml();
-        }
+    turns.forEach((turn, idx) => {
+      const isLast = idx === turns.length - 1;
+      const groupRefs = createFlowTurnGroupElement({
+        query: turn.query || "",
+        attachments: turn.attachments || [],
+        thinkingText: turn.thinkingText || "",
+        thinkingDurationText: turn.thinkingDurationText || turn.thinkingDuration || "已完成思考",
+        responseText: turn.responseText || "",
+        toolCalls: turn.toolCalls || [],
+        isOpenThinking: false,
+        isAborted: turn.isAborted || turn.responseText?.includes("刚刚会话已手动终止"),
+        errorMessage: turn.errorMessage,
+      });
+
+      if (flowConversation && groupRefs?.groupEl) {
+        flowConversation.appendChild(groupRefs.groupEl);
       }
-      flowResponseContent.innerHTML = contentHtml;
-    }
 
-    if (toolCallsContainer) {
-      toolCallsContainer.innerHTML = "";
-      if (Array.isArray(conv.toolCalls) && conv.toolCalls.length > 0) {
-        conv.toolCalls.forEach((tc) => {
-          if (tc.html) {
-            toolCallsContainer.insertAdjacentHTML("beforeend", tc.html);
-          }
-        });
+      // 历史所有轮次收起思考卡片
+      collapseThinkingCard(groupRefs.thinkingCardEl, groupRefs.thinkingToggleBtn);
+
+      if (isLast) {
+        activeTurnRefs = groupRefs;
+        lastUserQuery = turn.query || "";
+        currentThinkingText = turn.thinkingText || "";
+        currentResponseText = turn.responseText || "";
       }
-    }
+    });
 
-    if (conv.responseText && conv.responseText.trim().length > 0) {
-      collapseThinkingCard();
-    } else {
-      expandThinkingCard();
-    }
-
-    // 3. 切换至 Flow 模式
     if (flowBtnAbort) {
       flowBtnAbort.classList.add("hidden");
     }
     setViewMode(VIEW_FLOW, true);
 
-    // 4. 若关联底层 Pi 会话路径，则同步切换底层 Pi 会话
+    // 同步切换底层 Pi 会话
     if (conv.sessionPath) {
       sessionService.switchSession(conv.sessionPath).catch((err) => {
         console.warn("[Main] Session sync switch warning:", err);
       });
     }
+
+    if (flowScrollArea) {
+      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    }
   };
 
   const archiveCurrentFlowToHistory = () => {
-    if (lastUserQuery) {
-      const toolCallsSnapshot = [];
-      renderedToolCards.forEach((cardEl, id) => {
-        toolCallsSnapshot.push({
-          id,
-          html: cardEl.outerHTML,
-        });
+    const currentActive = taskManager.getCurrentActiveTask();
+    const isAborted = Boolean(
+      (currentActive && currentActive.status === "aborted") ||
+      activeTurnRefs?.responseContentEl?.querySelector(".flow-abort-callout")
+    );
+
+    let responseTextToSave = currentResponseText;
+    if (!responseTextToSave && (currentErrorMessage || activeTurnRefs?.responseContentEl?.querySelector(".sketch-error-card"))) {
+      responseTextToSave = `> ⚠️ **模型调用失败**：${currentErrorMessage || "模型执行异常终止"}`;
+    }
+
+    const toolCallsSnapshot = [];
+    renderedToolCards.forEach((cardEl, id) => {
+      toolCallsSnapshot.push({
+        id,
+        html: cardEl.outerHTML,
+      });
+    });
+
+    if (currentActive && Array.isArray(currentActive.turns) && currentActive.turns.length > 0) {
+      const turnsToSave = currentActive.turns.map((turn, index) => {
+        const isLastTurn = index === currentActive.turns.length - 1;
+        if (isLastTurn) {
+          return {
+            ...turn,
+            thinkingText: currentThinkingText || turn.thinkingText || "",
+            responseText: responseTextToSave || turn.responseText || "",
+            toolCalls: toolCallsSnapshot.length > 0 ? toolCallsSnapshot : (turn.toolCalls || []),
+            thinkingDurationText: activeTurnRefs?.thinkingDurationEl ? activeTurnRefs.thinkingDurationEl.textContent : (turn.thinkingDurationText || "已完成思考"),
+            isAborted: isAborted || turn.isAborted,
+            errorMessage: currentErrorMessage || turn.errorMessage,
+          };
+        }
+        return turn;
       });
 
-      const currentActive = taskManager.getCurrentActiveTask();
-      const isAborted = Boolean(
-        (currentActive && currentActive.status === "aborted") ||
-        flowResponseContent?.querySelector(".flow-abort-callout")
-      );
-
-      let responseTextToSave = currentResponseText;
-      if (!responseTextToSave && (currentErrorMessage || flowResponseContent?.querySelector(".sketch-error-card"))) {
-        responseTextToSave = `> ⚠️ **模型调用失败**：${currentErrorMessage || "模型执行异常终止"}`;
-      }
-
-      if (responseTextToSave || currentThinkingText || isAborted) {
-        conversationHistoryService.recordConversation({
-          query: lastUserQuery,
-          thinkingText: currentThinkingText,
-          responseText: responseTextToSave || "",
-          toolCalls: toolCallsSnapshot,
-          thinkingDuration: thinkingDuration ? thinkingDuration.textContent : null,
-          modelId: piClient.currentModel?.id || "",
-          sessionPath: "",
-          isAborted,
-        });
-      }
+      const firstTurn = turnsToSave[0];
+      conversationHistoryService.recordConversation({
+        taskId: currentActive.id,
+        query: firstTurn?.query || lastUserQuery,
+        title: firstTurn?.query ? conversationHistoryService.generateSummaryTitle(firstTurn.query) : undefined,
+        turns: turnsToSave,
+        thinkingText: currentThinkingText,
+        responseText: responseTextToSave || "",
+        toolCalls: toolCallsSnapshot,
+        thinkingDuration: activeTurnRefs?.thinkingDurationEl ? activeTurnRefs.thinkingDurationEl.textContent : null,
+        modelId: piClient.currentModel?.id || "",
+        sessionPath: "",
+        isAborted,
+      });
+    } else if (lastUserQuery && (responseTextToSave || currentThinkingText || isAborted)) {
+      conversationHistoryService.recordConversation({
+        taskId: currentActive ? currentActive.id : undefined,
+        query: lastUserQuery,
+        thinkingText: currentThinkingText,
+        responseText: responseTextToSave || "",
+        toolCalls: toolCallsSnapshot,
+        thinkingDuration: activeTurnRefs?.thinkingDurationEl ? activeTurnRefs.thinkingDurationEl.textContent : null,
+        modelId: piClient.currentModel?.id || "",
+        sessionPath: "",
+        isAborted,
+      });
     }
   };
 

@@ -305,16 +305,32 @@ if (flowScrollArea) {
 
 ---
 
+## 📌 7. 同一工作流多轮连续对话规范 (Multi-turn Continuous Workflow Pattern)
+
+### 7.1 设计原则
+1. **工作流连续性 (Workflow Continuity)**：在 Flow 交互界面内，问完问题 1 后用户继续输入问题 2，必须保持在**同一个会话工作流**（同一个 Flow 实例、同一个 Task ID、同一个底层 `SessionHost` 子进程），严禁误判为新对话重置清空历史。
+2. **DOM 消息组级联追加 (Turn Message Group Appending)**：
+   - 历史各轮消息（问题卡片、思考卡片、工具卡片、回答卡片）依次在 `flow-conversation` 容器内保留；
+   - 历史各轮思考卡片与工具卡片自动收起，保留 Markdown 回答卡片供随时阅读回顾，点击历史思考卡片 header 依然支持独立折叠/展开；
+   - 最新一轮动态追加在容器最下方，流式光标与思考计时器仅挂载在最新一轮；
+   - `flow-scroll-area` 自动平滑滚动至最下方。
+3. **数据模型与多轮快照归档**：
+   - `TaskManager` 中的 `TaskItem` 维护 `turns: Array<TurnItem>` 轮次数组，实时同步思考、工具调用与回答；
+   - 右键回退或退出时，`conversationHistoryService` 完整持久化沉淀所有轮次快照（`turns`），点击历史讯息方框时能 100% 完整无损还原所有多轮对话！
+
+---
+
 ## 📎 关联文件索引
 
 | 文件 | 关键内容 |
 |---|---|
-| [`src/services/task-manager.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/task-manager.js) | `TaskManager` 多任务状态机、事件缓冲区、任务挂起与中止 |
+| [`src/services/task-manager.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/task-manager.js) | `TaskManager` 多任务状态机、`turns` 轮次数组、多轮开启 `startNewTurn`、任务挂起与中止 |
+| [`src/services/conversation-history.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/conversation-history.js) | `ConversationHistoryService` 多轮快照沉淀与 MRU 恢复 |
 | [`src-tauri/src/pi_runner/host_pool.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/pi_runner/host_pool.rs) | `PiHostPool` 多进程监管池、独立子进程隔离与 `task_id` 分帧注入 |
 | [`src/services/prompt-history.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/prompt-history.js) | `PromptHistoryNavigator` 历史记录栈、草稿暂存与指针控制 |
-| [`src/main.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/main.js) | `resetStreamState`、`collapseThinkingCard`、`collapseToolCard`、`autoCollapseThinkingOnNextPhase`、`piClient` 事件监听、window wheel 委托、`taskManager` 侧边栏与胶囊绑定、Step Back 回退链 |
+| [`src/main.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/main.js) | `createFlowTurnGroupElement`、`resetStreamState`（多轮追加）、`handleFlowQuery`（同一工作流路由）、`restoreTaskToFlow` 与 `restoreConversationToFlow`（多轮还原） |
 | [`src/services/notification-service.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/notification-service.js) | 全局焦点追踪器、任务池追踪器、Windows 原生 Toast 通知分发 |
 | [`src-tauri/src/lib.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/lib.rs) | `tauri-plugin-notification` 初始化、`pi_show_notification`、`app-awakened` 广播与任务池 RPC |
-| [`src/styles.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles.css) | `.agent-thinking-card`、`.tool-card`、`.tool-collapse-arrow`、`#mini-task-capsule`、`#task-details-sidebar`、`#global-toast-banner` |
-| [`src/index.html`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/index.html) | `#agent-thinking-card`、`#mini-task-capsule`、`#task-details-sidebar`、`#flow-btn-abort`、`#flow-scroll-area` |
+| [`src/styles.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles.css) | `.flow-message-group`、`.agent-thinking-card`、`.tool-card`、`#mini-task-capsule`、`#task-details-sidebar` |
+| [`src/index.html`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/index.html) | `#flow-conversation`、`#flow-btn-abort`、`#flow-scroll-area` |
 

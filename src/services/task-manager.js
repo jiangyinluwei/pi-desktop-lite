@@ -86,6 +86,22 @@ export class TaskManager extends EventTarget {
       events: [],
       hasUnread: false,
       errorMessage: null,
+      turns: [
+        {
+          id: `turn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          query: query || "",
+          attachments: [...attachments],
+          thinkingText: "",
+          responseText: "",
+          toolCalls: [],
+          thinkingDurationText: "思考中...",
+          status: "thinking",
+          errorMessage: null,
+          isAborted: false,
+          startedAt: Date.now(),
+          completedAt: null,
+        },
+      ],
     };
 
     this.tasks.set(taskId, task);
@@ -102,6 +118,49 @@ export class TaskManager extends EventTarget {
     this.dispatchEvent(new CustomEvent("tasks-changed", { detail: { tasks: this.getAllTasks() } }));
 
     return task;
+  }
+
+  /**
+   * 在已有 Task 中开启新一轮对话（多轮对话工作流）
+   * @param {string} taskId
+   * @param {string} query
+   * @param {Array<any>} [attachments=[]]
+   * @returns {Object}
+   */
+  startNewTurn(taskId, query, attachments = []) {
+    const task = this.tasks.get(taskId);
+    if (!task) return null;
+
+    if (!Array.isArray(task.turns)) {
+      task.turns = [];
+    }
+
+    const newTurn = {
+      id: `turn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      query: query || "",
+      attachments: [...attachments],
+      thinkingText: "",
+      responseText: "",
+      toolCalls: [],
+      thinkingDurationText: "思考中...",
+      status: "thinking",
+      errorMessage: null,
+      isAborted: false,
+      startedAt: Date.now(),
+      completedAt: null,
+    };
+
+    task.turns.push(newTurn);
+    task.status = "thinking";
+    task.completedAt = null;
+    task.errorMessage = null;
+    task.activeToolName = null;
+    task.thinkingDurationText = "思考中...";
+    task.startedAt = Date.now();
+
+    this.dispatchEvent(new CustomEvent("task-updated", { detail: task }));
+    this.dispatchEvent(new CustomEvent("tasks-changed", { detail: { tasks: this.getAllTasks() } }));
+    return newTurn;
   }
 
   /**
@@ -335,11 +394,17 @@ export class TaskManager extends EventTarget {
     // 压入事件缓冲区
     task.events.push(data);
 
+    if (!Array.isArray(task.turns)) {
+      task.turns = [];
+    }
+    const currentTurn = task.turns.length > 0 ? task.turns[task.turns.length - 1] : null;
+
     const isForeground = this.currentActiveTaskId === taskId;
 
     switch (data.type) {
       case "agent_start":
         task.status = "thinking";
+        if (currentTurn) currentTurn.status = "thinking";
         break;
 
       case "message_update":
@@ -348,12 +413,23 @@ export class TaskManager extends EventTarget {
           if (evt.type === "thinking_delta") {
             task.status = "thinking";
             task.thinkingText += evt.delta || "";
+            if (currentTurn) {
+              currentTurn.status = "thinking";
+              currentTurn.thinkingText += evt.delta || "";
+            }
           } else if (evt.type === "thinking_end") {
-            const elapsed = ((Date.now() - task.startedAt) / 1000).toFixed(1);
+            const elapsed = ((Date.now() - (currentTurn?.startedAt || task.startedAt)) / 1000).toFixed(1);
             task.thinkingDurationText = `已思考 ${elapsed} 秒`;
+            if (currentTurn) {
+              currentTurn.thinkingDurationText = `已思考 ${elapsed} 秒`;
+            }
           } else if (evt.type === "text_start" || evt.type === "text_delta") {
             task.status = "streaming";
             task.responseText += evt.delta || "";
+            if (currentTurn) {
+              currentTurn.status = "streaming";
+              currentTurn.responseText += evt.delta || "";
+            }
           }
         }
         break;
@@ -361,12 +437,17 @@ export class TaskManager extends EventTarget {
       case "tool_execution_start":
         task.status = "tool_exec";
         task.activeToolName = data.toolName || "tool";
-        task.toolCalls.push({
+        const newTool = {
           id: data.toolCallId,
           name: data.toolName || "tool",
           args: data.args || {},
           status: "running",
-        });
+        };
+        task.toolCalls.push(newTool);
+        if (currentTurn) {
+          currentTurn.status = "tool_exec";
+          currentTurn.toolCalls.push({ ...newTool });
+        }
         break;
 
       case "tool_execution_end":
@@ -375,6 +456,13 @@ export class TaskManager extends EventTarget {
         const targetTool = task.toolCalls.find((t) => t.id === data.toolCallId);
         if (targetTool) {
           targetTool.status = "done";
+        }
+        if (currentTurn) {
+          currentTurn.status = "streaming";
+          const turnTool = currentTurn.toolCalls.find((t) => t.id === data.toolCallId);
+          if (turnTool) {
+            turnTool.status = "done";
+          }
         }
         break;
 
@@ -394,6 +482,7 @@ export class TaskManager extends EventTarget {
         if (INTERACTIVE_METHODS.includes(method) || data.interactive === true || data.requiresConfirmation === true) {
           task.status = "paused";
           task.activeToolName = null;
+          if (currentTurn) currentTurn.status = "paused";
         }
         break;
       }
@@ -405,6 +494,11 @@ export class TaskManager extends EventTarget {
           task.status = "error";
           task.completedAt = Date.now();
           task.errorMessage = parseErrorMessage(data.message.errorMessage || "模型执行出错");
+          if (currentTurn) {
+            currentTurn.status = "error";
+            currentTurn.completedAt = Date.now();
+            currentTurn.errorMessage = task.errorMessage;
+          }
         }
         break;
 
@@ -412,6 +506,11 @@ export class TaskManager extends EventTarget {
         task.status = "error";
         task.completedAt = Date.now();
         task.errorMessage = parseErrorMessage(data.error || "扩展插件运行异常");
+        if (currentTurn) {
+          currentTurn.status = "error";
+          currentTurn.completedAt = Date.now();
+          currentTurn.errorMessage = task.errorMessage;
+        }
         break;
 
       case "agent_end":
@@ -424,14 +523,27 @@ export class TaskManager extends EventTarget {
             task.status = "error";
             task.completedAt = Date.now();
             task.errorMessage = parseErrorMessage(errMessage.errorMessage || "模型调用发生异常终止");
+            if (currentTurn) {
+              currentTurn.status = "error";
+              currentTurn.completedAt = Date.now();
+              currentTurn.errorMessage = task.errorMessage;
+            }
             break;
           }
         }
         if (task.status === "completed" || task.status === "error" || task.status === "aborted") {
+          if (currentTurn && !currentTurn.completedAt) {
+            currentTurn.status = task.status;
+            currentTurn.completedAt = Date.now();
+          }
           break; // 若已处于终态或异常状态则不重复覆盖
         }
         task.status = "completed";
         task.completedAt = Date.now();
+        if (currentTurn) {
+          currentTurn.status = "completed";
+          currentTurn.completedAt = Date.now();
+        }
         if (!isForeground) {
           task.hasUnread = true;
         }
