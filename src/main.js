@@ -63,6 +63,7 @@ const ICONS = {
   document: `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 2.5 H9.5 L12.5 5.5 V13.5 H3.5 Z" /><path d="M9.5 2.5 V5.5 H12.5" /><line x1="5.5" y1="8" x2="10.5" y2="8" /><line x1="5.5" y1="10.5" x2="9" y2="10.5" /></svg>`,
   code: `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5.5 5 2.5 8 5.5 11" /><polyline points="10.5 5 13.5 8 10.5 11" /><line x1="9" y1="4" x2="7" y2="12" /></svg>`,
   lightbulb: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2 C5.5 2, 4 3.8, 4 6 C4 7.6, 5.2 9, 5.8 10.2 H10.2 C10.8 9, 12 7.6, 12 6 C12 3.8, 10.5 2, 8 2 Z" /><line x1="6" y1="12" x2="10" y2="12" /><line x1="7" y1="14" x2="9" y2="14" /></svg>`,
+  stop: `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5" /></svg>`,
 };
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -2286,6 +2287,30 @@ window.addEventListener("DOMContentLoaded", () => {
   };
 
   /**
+   * 渲染手绘草图质感手动终止提示字段
+   * @returns {string}
+   */
+  const renderAbortNoticeHtml = () => {
+    return `<div class="sketch-callout flow-abort-callout" style="margin-top: 12px;"><span class="callout-icon" aria-hidden="true">${ICONS.stop}</span><span>刚刚会话已手动终止</span></div>`;
+  };
+
+  /**
+   * 在 Flow 对话末尾安全追加手动终止提示
+   */
+  const appendFlowAbortNotice = () => {
+    if (flowResponseContent) {
+      const cursor = flowResponseContent.querySelector(".streaming-cursor");
+      if (cursor) cursor.remove();
+      if (!flowResponseContent.querySelector(".flow-abort-callout")) {
+        flowResponseContent.insertAdjacentHTML("beforeend", renderAbortNoticeHtml());
+      }
+    }
+    if (flowScrollArea) {
+      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    }
+  };
+
+  /**
    * 检查错误信息是否命中模型不支持多模态特征
    * @param {string} msg
    * @returns {boolean}
@@ -3073,15 +3098,19 @@ window.addEventListener("DOMContentLoaded", () => {
         await piClient.abort();
       }
       finalizeStream();
-      if (flowResponseContent) {
-        flowResponseContent.insertAdjacentHTML(
-          "beforeend",
-          `<div class="sketch-callout" style="margin-top: 10px;"><em>⏹ 当前任务已彻底中止 (Aborted)</em></div>`
-        );
-      }
-      showGlobalToast("当前任务已彻底中止", 1200);
+      appendFlowAbortNotice();
+      showGlobalToast("当前任务已手动终止", 1200);
     });
   }
+
+  taskManager.addEventListener("task-aborted", (e) => {
+    const abortedTask = e.detail;
+    const current = taskManager.getCurrentActiveTask();
+    if (current && current.id === abortedTask?.id) {
+      finalizeStream();
+      appendFlowAbortNotice();
+    }
+  });
 
   taskManager.addEventListener("tasks-changed", () => {
     updateMiniTaskCapsuleUI();
@@ -3163,7 +3192,11 @@ window.addEventListener("DOMContentLoaded", () => {
           provider: task.provider,
         });
       } else {
-        flowResponseContent.innerHTML = baseResponseHtml + (isRunning ? `<span class="streaming-cursor"></span>` : "");
+        let finalHtml = baseResponseHtml + (isRunning ? `<span class="streaming-cursor"></span>` : "");
+        if (task.status === "aborted") {
+          finalHtml += renderAbortNoticeHtml();
+        }
+        flowResponseContent.innerHTML = finalHtml;
       }
     }
 
@@ -3214,7 +3247,13 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     if (flowResponseContent) {
-      flowResponseContent.innerHTML = renderMarkdown(conv.responseText || "");
+      let contentHtml = renderMarkdown(conv.responseText || "");
+      if (conv.isAborted || conv.responseText?.includes("刚刚会话已手动终止")) {
+        if (!contentHtml.includes("flow-abort-callout") && !contentHtml.includes("刚刚会话已手动终止")) {
+          contentHtml += renderAbortNoticeHtml();
+        }
+      }
+      flowResponseContent.innerHTML = contentHtml;
     }
 
     if (toolCallsContainer) {
@@ -3258,12 +3297,18 @@ window.addEventListener("DOMContentLoaded", () => {
         });
       });
 
+      const currentActive = taskManager.getCurrentActiveTask();
+      const isAborted = Boolean(
+        (currentActive && currentActive.status === "aborted") ||
+        flowResponseContent?.querySelector(".flow-abort-callout")
+      );
+
       let responseTextToSave = currentResponseText;
       if (!responseTextToSave && (currentErrorMessage || flowResponseContent?.querySelector(".sketch-error-card"))) {
         responseTextToSave = `> ⚠️ **模型调用失败**：${currentErrorMessage || "模型执行异常终止"}`;
       }
 
-      if (responseTextToSave || currentThinkingText) {
+      if (responseTextToSave || currentThinkingText || isAborted) {
         conversationHistoryService.recordConversation({
           query: lastUserQuery,
           thinkingText: currentThinkingText,
@@ -3272,6 +3317,7 @@ window.addEventListener("DOMContentLoaded", () => {
           thinkingDuration: thinkingDuration ? thinkingDuration.textContent : null,
           modelId: piClient.currentModel?.id || "",
           sessionPath: "",
+          isAborted,
         });
       }
     }

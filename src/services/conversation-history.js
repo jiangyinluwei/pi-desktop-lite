@@ -112,6 +112,9 @@ class ConversationHistoryService extends EventTarget {
       conv.lastViewedAt = now;
       conv.modelId = data.modelId || conv.modelId;
       conv.sessionPath = data.sessionPath || conv.sessionPath;
+      if (typeof data.isAborted === "boolean") {
+        conv.isAborted = data.isAborted;
+      }
       // 重新恢复显示（若此前被隐藏）
       this.hiddenIds.delete(conv.id);
     } else {
@@ -125,6 +128,7 @@ class ConversationHistoryService extends EventTarget {
         thinkingDuration: data.thinkingDuration || "",
         modelId: data.modelId || "",
         sessionPath: data.sessionPath || "",
+        isAborted: Boolean(data.isAborted),
         createdAt: now,
         lastViewedAt: now,
       };

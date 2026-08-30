@@ -777,6 +777,11 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   display: block;
 }
 
+.flow-abort-callout {
+  border-left-color: var(--ink-secondary);
+  animation: sketchFadeIn 0.2s ease-out;
+}
+
 /* ==========================================================================
    搜索与输入框区域
    ========================================================================== */
