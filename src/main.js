@@ -2217,36 +2217,6 @@ window.addEventListener("DOMContentLoaded", () => {
   // ==========================================================================
   // 流式消息、工具调用与全链路错误渲染中心
   // ==========================================================================
-  let thinkingStartTime = 0;
-  let thinkingTimerInterval = null;
-  let currentThinkingText = "";
-  let currentResponseText = "";
-  let currentErrorMessage = null;
-  let lastUserQuery = "";
-  let hasReceivedDelta = false;
-  let hasAutoCollapsedThinking = false;
-  const renderedToolCards = new Map();
-
-  /**
-   * 折叠单张工具卡片
-   * @param {HTMLElement} card
-   */
-  const collapseToolCard = (card) => {
-    if (card && !card.classList.contains("collapsed")) {
-      card.classList.add("collapsed");
-      const header = card.querySelector(".tool-header");
-      if (header) header.setAttribute("aria-expanded", "false");
-    }
-  };
-
-  /**
-   * 展开单张工具卡片
-   * @param {HTMLElement} card
-   */
-  const expandToolCard = (card) => {
-    if (card && card.classList.contains("collapsed")) {
-      card.classList.remove("collapsed");
-      const header = card.querySelector(".tool-header");
   // ==========================================================================
   // 流式消息、工具调用与全链路错误渲染中心 (多轮 Flow 交互工作流架构)
   // ==========================================================================

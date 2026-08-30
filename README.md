@@ -462,7 +462,7 @@ npm run build
 
 ```text
 pi-desktop-lite/
-├── .agents/skills/             # 项目技能规范定义 (auto-compile-and-fix, sketch-drafting-ui, clean-code-refactoring 等)
+├── .agents/skills/             # 项目技能规范定义 (auto-compile-and-fix, iterative-modification-hygiene, sketch-drafting-ui, clean-code-refactoring 等)
 ├── .mytools/pi-body/           # 最新 Pi Agent Release 引擎包 (打包发布时自动内嵌作为 App Bundle Resources，开箱即用)
 ├── default-area/               # Pi 默认工作区目录（含 AGENTS.md 运行时自我描述，打包与运行时隔离工作空间）
 ├── scripts/                    # 自动化与环境配置脚本 (tauri.js, check.js)
