@@ -221,7 +221,7 @@ touchModelAsRecentlyUsed(provider, modelId) {
     <span class="auto-reconnect-label">自动重连切换</span>
   </label>
   ```
-- **交互绑定（`main.js`）**：加载时同步 `configService.getAutoReconnectSwitch()` 至 `checked`；`change` 时调用 `configService.setAutoReconnectSwitch(checked, true)`（持久化 + 引擎联动）；监听 `auto-reconnect-change` 事件双向同步 Checkbox；打开设置页（`loadModelsAndState`）时再次同步勾选状态；
+- **交互绑定（`src/modules/kernel-panel.js`）**：加载时同步 `configService.getAutoReconnectSwitch()` 至 `checked`；`change` 时调用 `configService.setAutoReconnectSwitch(checked, true)`（持久化 + 引擎联动）；监听 `auto-reconnect-change` 事件双向同步 Checkbox；打开设置页（`loadModelsAndState`）时再次同步勾选状态；
 - **默认状态**：**默认勾选（checked）**，缺失配置时按 `true` 处理；
 ### 4.6 模型白名单与官方/自定义通道状态联动同步 (Channel Drawer Synchronization)
 - **双向感知铁律**：当在上方「当前模型列表」中点击「×」移除某个模型时，必须立即联动触发 `loadCustomProvidersConfig()` 与 `renderOfficialProviderDetails(...)`；

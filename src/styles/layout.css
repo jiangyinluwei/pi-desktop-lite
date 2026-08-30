@@ -1,0 +1,242 @@
+/* 标题栏与四态视图布局 */
+/* ==========================================================================
+   极简沉浸式标题栏（无多余文本、纯线条手绘控制按钮）
+   ========================================================================== */
+.titlebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--titlebar-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 12px;
+  z-index: 1000;
+  user-select: none;
+  -webkit-app-region: drag;
+  background: transparent;
+}
+
+/* Flow 模式下左上角仅展示手绘 Mini π 徽标（无任何文本） */
+.flow-mini-brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-10px);
+  transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  -webkit-app-region: no-drag;
+}
+
+.mini-sketch-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-primary);
+  transition: transform 0.2s ease;
+}
+
+.flow-mini-brand:hover .mini-sketch-icon {
+  transform: rotate(-5deg) scale(1.1);
+}
+
+.titlebar-drag-area {
+  flex: 1;
+  height: 100%;
+  -webkit-app-region: drag;
+}
+
+.titlebar-controls {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  outline: none;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: all 0.15s ease-out;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-btn:hover {
+  background-color: var(--titlebar-btn-hover);
+  color: var(--ink-primary);
+  border-color: var(--sketch-border-subtle);
+}
+
+.titlebar-btn:active {
+  background-color: var(--titlebar-btn-active);
+  transform: scale(0.95);
+}
+
+.titlebar-btn.btn-close:hover {
+  background-color: var(--titlebar-close-hover);
+  color: var(--titlebar-close-text);
+  border-color: var(--titlebar-close-hover);
+}
+
+.titlebar-btn.btn-close:active {
+  transform: scale(0.95);
+}
+
+.titlebar-btn svg {
+  pointer-events: none;
+  display: block;
+}
+
+/* ==========================================================================
+   主应用容器
+   ========================================================================== */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: calc(var(--titlebar-height) + 12px) 24px 24px;
+  position: relative;
+  user-select: none;
+  overflow: hidden;
+  transition: justify-content 0.3s ease;
+}
+
+/* ==========================================================================
+   三态模式驱动规则 (detailed | focus | flow)
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   模式 1：详细版 (detailed)
+   -------------------------------------------------------------------------- */
+.app-container[data-view="detailed"] .flow-stage {
+  display: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   模式 2：专注版 (focus)
+   说明：仅保留中心 Logo 与完整输入框（内部图标/Enter均保留），隐藏外部设置按钮、副标题与底部标签
+   -------------------------------------------------------------------------- */
+.app-container[data-view="focus"] .brand-title-wrap {
+  opacity: 0;
+  max-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translateY(-6px);
+}
+
+.app-container[data-view="focus"] .brand-header {
+  margin-bottom: 24px;
+  transform: scale(1.04);
+}
+
+.app-container[data-view="focus"] .settings-btn {
+  opacity: 0;
+  width: 0;
+  margin: 0;
+  padding: 0;
+  border-color: transparent;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.app-container[data-view="focus"] .sketch-messages-drawer {
+  opacity: 0;
+  max-height: 0;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+  overflow: hidden;
+  transform: translateY(10px);
+}
+
+.app-container[data-view="focus"] .flow-stage {
+  display: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   模式 3：Flow 流式交互版 (flow)
+   -------------------------------------------------------------------------- */
+.app-container[data-view="flow"] {
+  justify-content: space-between;
+  padding: calc(var(--titlebar-height) + 8px) 24px 18px;
+}
+
+/* 显现左上角 Mini π 徽标 */
+body:has(.app-container[data-view="flow"]) .flow-mini-brand {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.app-container[data-view="flow"] .brand-header {
+  opacity: 0;
+  max-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translateY(-20px) scale(0.85);
+}
+
+.app-container[data-view="flow"] .settings-btn {
+  opacity: 0;
+  width: 0;
+  margin: 0;
+  padding: 0;
+  border-color: transparent;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.app-container[data-view="flow"] .sketch-messages-drawer {
+  display: none !important;
+}
+
+.app-container[data-view="flow"] .search-section {
+  max-width: 760px;
+  margin-top: 0;
+  margin-bottom: 0;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.app-container[data-view="flow"] .sketch-search-box {
+  border-radius: 255px 16px 225px 16px / 16px 225px 16px 255px;
+  box-shadow: var(--sketch-shadow);
+}
+
+.app-container[data-view="flow"] .flow-stage {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 760px;
+  flex: 1;
+  min-height: 0;
+  opacity: 1;
+  pointer-events: auto;
+  margin-bottom: 14px;
+  animation: flowStageFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+

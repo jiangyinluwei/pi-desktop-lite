@@ -1,0 +1,619 @@
+/* Flow 对话流与思考/回复卡片 */
+/* ==========================================================================
+   Flow 主体交互流与卡片排版（横平竖直现代结构）
+   ========================================================================== */
+.flow-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 760px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.flow-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 6px;
+  scroll-behavior: smooth;
+}
+
+.flow-conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 12px;
+}
+
+/* 多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip - 优雅手绘窗体风格)
+   仅在内容溢出触发滚动条时显现；sticky 吸附于滚动容器顶部、靠左对齐；
+   纯提醒用途：pointer-events 置 none，无任何鼠标交互行为 */
+.flow-question-tip {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 10px 4px 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-primary);
+  background: var(--sketch-box-bg);
+  border: 1.3px solid var(--sketch-border-subtle);
+  border-radius: 255px 12px 225px 10px / 12px 225px 10px 255px;
+  box-shadow: var(--sketch-shadow);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  pointer-events: none;
+  user-select: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.flow-question-tip.visible {
+  display: inline-flex;
+  animation: sketchModalPopShake 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.flow-question-tip-window-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.flow-question-tip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1.5px 6px;
+  background: var(--sketch-tag-bg);
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 255px 6px 225px 5px / 6px 225px 5px 255px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-muted);
+}
+
+.flow-question-tip-badge svg {
+  color: var(--ink-primary);
+  flex-shrink: 0;
+}
+
+.flow-question-tip-badge .badge-label {
+  font-family: inherit;
+  line-height: 1;
+}
+
+.flow-question-tip-divider {
+  width: 1px;
+  height: 12px;
+  background: var(--sketch-border-subtle);
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.flow-question-tip .flow-question-tip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  min-width: 0;
+  color: var(--ink-primary);
+  font-weight: 550;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+}
+
+.flow-question-tip-pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ink-faint);
+  margin-left: 2px;
+  opacity: 0.7;
+}
+
+/* --------------------------------------------------------------------------
+   多段对话上下轮次定位导航 (Flow Turn Navigation)
+   仅当多轮对话 (flow-message-group >= 2) 且处于 Flow 视图时显现；
+   右移到 flow 内容区域之外（窗体内右边距处），纵向排列「上 / 下」按钮；
+   垂直位置由 JS (positionFlowTurnNav) 动态对齐 flow 内容区底部；
+   所有定位效果仅在鼠标弹起时响应（按下后移出按钮再弹起不生效）。
+   -------------------------------------------------------------------------- */
+.flow-turn-nav {
+  position: absolute;
+  right: 24px; /* 右移到 flow 内容区域之外（默认 900px 窗体内位于 760px 内容区右侧空隙） */
+  top: auto;   /* 由 positionFlowTurnNav() 动态计算 */
+  z-index: 40;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.flow-turn-nav.visible {
+  display: flex;
+  animation: sketchFadeIn 0.25s ease-out;
+}
+
+.flow-turn-nav-btn {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent; /* 常态无边框，保持 1px 几何占位防抖动 */
+  border-radius: 255px 12px 225px 10px / 12px 225px 10px 255px;
+  color: var(--ink-muted);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease,
+    box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+.flow-turn-nav-btn svg {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+}
+
+.flow-turn-nav-btn:hover,
+.flow-turn-nav-btn:focus-visible {
+  border-color: var(--sketch-border);
+  color: var(--ink-primary);
+  background: var(--sketch-box-bg);
+  box-shadow: var(--sketch-shadow-hover);
+}
+
+.flow-turn-nav-btn:active,
+.flow-turn-nav-btn.holding {
+  transform: scale(0.93);
+}
+
+/* 「下」按钮按下长按 1.5 秒背景色由左至右填充层 */
+.flow-turn-nav-down::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--sketch-tag-hover-bg);
+  transform-origin: left center;
+  transform: scaleX(0);
+  border-radius: inherit;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.flow-turn-nav-down.holding::before {
+  transform: scaleX(1);
+  transition: transform 1.5s linear;
+}
+
+/* 「下」按钮按下长按中的轻微抖动动画与悬浮边框 */
+.flow-turn-nav-down.holding {
+  border-color: var(--sketch-border);
+  color: var(--ink-primary);
+  box-shadow: var(--sketch-shadow-hover);
+  animation: flowNavHoldShake 0.16s ease-in-out infinite;
+}
+
+/* 长按「下」按钮满 1.5 秒：立即定位到会话最底部（无需弹起），图标轻呼吸提示 */
+.flow-turn-nav-btn.long-press {
+  border-color: var(--sketch-border);
+  color: var(--ink-primary);
+  background: var(--sketch-tag-bg);
+  box-shadow: var(--sketch-shadow);
+  animation: none;
+  transform: scale(1);
+}
+
+.flow-turn-nav-btn.long-press::before {
+  transform: scaleX(1);
+  transition: none;
+}
+
+.flow-turn-nav-btn.long-press svg {
+  animation: flowNavHoldPulse 1.1s ease-in-out infinite;
+}
+
+@keyframes flowNavHoldShake {
+  0%, 100% {
+    transform: scale(0.94) translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: scale(0.94) translate(-0.6px, 0.4px) rotate(-0.6deg);
+  }
+  50% {
+    transform: scale(0.94) translate(0.6px, -0.4px) rotate(0.5deg);
+  }
+  75% {
+    transform: scale(0.94) translate(-0.4px, -0.3px) rotate(-0.4deg);
+  }
+}
+
+/* 非 Flow 视图下绝不显现 */
+.app-container:not([data-view="flow"]) .flow-turn-nav {
+  display: none !important;
+}
+
+.flow-message-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.flow-user-prompt-card {
+  align-self: flex-start;
+  max-width: 90%;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--sketch-tag-bg);
+  border: 1px solid var(--sketch-tag-border);
+  border-radius: 8px;
+  padding: 8px 16px;
+  box-shadow: var(--sketch-shadow);
+}
+
+.flow-user-prompt-card .prompt-icon {
+  color: var(--ink-muted);
+  display: flex;
+  align-items: center;
+  margin-top: 3px;
+}
+
+.prompt-main-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.flow-prompt-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.flow-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  font-size: 11px;
+  background: var(--sketch-panel-bg);
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 4px;
+  color: var(--ink-primary);
+  line-height: 1;
+  user-select: none;
+}
+
+.flow-attachment-chip .chip-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-muted);
+}
+
+.flow-user-prompt-card .prompt-content {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  line-height: 1.4;
+}
+
+/* 运行态 Inner-Skill 上下文注入胶囊 (手绘草图风格微徽章) */
+.flow-injection-capsule {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  padding: 4px 11px;
+  margin: 0 0 10px 2px;
+  font-size: 11.5px;
+  font-family: inherit;
+  color: var(--ink-muted);
+  background: var(--sketch-tag-bg);
+  border: 1px dashed var(--sketch-border-subtle);
+  border-radius: 255px 12px 225px 10px / 12px 225px 10px 255px;
+  box-shadow: var(--sketch-shadow);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: sketchCapsuleFadeIn 0.25s ease-out;
+}
+
+@keyframes sketchCapsuleFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.flow-injection-capsule.hidden {
+  display: none !important;
+}
+
+.flow-injection-capsule .capsule-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-primary);
+  opacity: 0.85;
+}
+
+.flow-injection-capsule .capsule-text {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.flow-injection-capsule:hover {
+  border-color: var(--sketch-border);
+  color: var(--ink-primary);
+}
+
+/* 自动重连/切换进度胶囊 (手绘草图风格，运行态瞬态展示，不沉淀历史) */
+.flow-failover-capsule {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  padding: 4px 11px;
+  margin: 0 0 10px 2px;
+  font-size: 11.5px;
+  font-family: inherit;
+  color: var(--ink-primary);
+  background: var(--sketch-tag-bg);
+  border: 1px dashed rgba(217, 119, 6, 0.55);
+  border-radius: 255px 12px 225px 10px / 12px 225px 10px 255px;
+  box-shadow: var(--sketch-shadow);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: sketchCapsuleFadeIn 0.25s ease-out;
+  will-change: opacity, transform;
+}
+.flow-failover-capsule.hidden {
+  display: none !important;
+}
+.flow-failover-capsule .capsule-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #d97706;
+  opacity: 0.9;
+  animation: failoverPulse 1.4s ease-in-out infinite;
+}
+@media (prefers-color-scheme: dark) {
+  .flow-failover-capsule .capsule-icon {
+    color: #fbbf24;
+  }
+}
+.flow-failover-capsule .capsule-text {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+.flow-failover-capsule.ok {
+  border-color: rgba(21, 128, 61, 0.45);
+}
+.flow-failover-capsule.ok .capsule-icon {
+  color: var(--sketch-green, #166534);
+  animation: none;
+}
+@media (prefers-color-scheme: dark) {
+  .flow-failover-capsule.ok .capsule-icon {
+    color: #4ade80;
+  }
+}
+
+@keyframes failoverPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* AI Agent 思考过程卡片（横平竖直边框） */
+.agent-thinking-card {
+  background: var(--sketch-box-bg);
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 8px;
+  box-shadow: var(--sketch-shadow);
+  padding: 10px 14px;
+  transition: border-color 0.2s ease;
+}
+
+.agent-thinking-card:hover {
+  border-color: var(--sketch-border);
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+  outline: none;
+}
+
+.thinking-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.thinking-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--ink-muted);
+  animation: pulseDot 1.8s ease-in-out infinite;
+}
+
+.thinking-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  letter-spacing: 0.02em;
+}
+
+.thinking-duration {
+  font-size: 11.5px;
+  font-family: ui-monospace, monospace;
+  color: var(--ink-muted);
+  margin-left: 4px;
+}
+
+.thinking-arrow-icon {
+  color: var(--ink-muted);
+  display: flex;
+  align-items: center;
+  transition: transform 0.2s ease;
+}
+
+.agent-thinking-card.open .thinking-arrow-icon {
+  transform: rotate(180deg);
+}
+
+.thinking-body {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--sketch-border-subtle);
+  display: none;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.agent-thinking-card.open .thinking-body {
+  display: block;
+  animation: sketchFadeIn 0.25s ease-out;
+}
+
+/* 思考卡片呼吸脉冲仅在展开运行中显示 */
+.agent-thinking-card:not(.open) .thinking-dot {
+  animation: none;
+}
+
+.thinking-steps {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.step-item.done {
+  color: var(--ink-primary);
+}
+
+.step-item .step-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+}
+
+.step-item .step-marker svg {
+  display: block;
+}
+
+.step-item.done .step-marker {
+  color: var(--ink-primary);
+}
+
+.step-item.in-progress .step-marker {
+  animation: spinMarker 3s linear infinite;
+  color: var(--ink-primary);
+}
+
+/* AI Agent 回复卡片（横平竖直边框） */
+.agent-response-card {
+  background: var(--sketch-box-bg);
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 8px;
+  box-shadow: var(--sketch-shadow);
+  padding: 16px 20px;
+  animation: sketchFadeIn 0.3s ease-out;
+}
+
+.response-content {
+  font-size: 13.8px;
+  line-height: 1.65;
+  color: var(--ink-primary);
+  user-select: text;
+}
+
+.response-content p {
+  margin-bottom: 10px;
+}
+
+.response-content p:last-child {
+  margin-bottom: 0;
+}
+
+.response-content ul {
+  margin: 8px 0 12px 18px;
+}
+
+.response-content li {
+  margin-bottom: 5px;
+}
+
+.sketch-callout {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: var(--sketch-tag-bg);
+  border-left: 3px solid var(--ink-primary);
+  border-radius: 0 6px 6px 0;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.callout-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-primary);
+  flex-shrink: 0;
+}
+
+.callout-icon svg {
+  display: block;
+}
+
+.flow-abort-callout {
+  border-left-color: var(--ink-secondary);
+  animation: sketchFadeIn 0.2s ease-out;
+}
+

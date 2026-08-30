@@ -351,9 +351,25 @@ pub fn pi_get_settings_config() -> Result<Value, String> {
 }
 
 /// 写入 settings.json
+///
+/// 采用「读-合并-写回」语义：将传入字段浅合并进现有 settings.json 后写回，
+/// 绝不整体覆盖。前端（如保存思考深度）可能只传入部分字段，若整体替换会
+/// 丢失 packages / theme / lastChangelogVersion / retry 等其余关键配置，
+/// 从而导致已安装组件在设置页不再显示。合并写回可保证未提及的键全部保留。
 #[tauri::command]
 pub fn pi_save_settings_config(settings_data: Value) -> Result<(), String> {
-    write_agent_json("settings.json", &settings_data)
+    let mut current = read_agent_json("settings.json", json!({})).unwrap_or_else(|_| json!({}));
+    if !current.is_object() {
+        current = json!({});
+    }
+    if let Some(cur_obj) = current.as_object_mut() {
+        if let Some(in_obj) = settings_data.as_object() {
+            for (k, v) in in_obj {
+                cur_obj.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    write_agent_json("settings.json", &current)
 }
 
 /// 向 Pi 内核 ~/.pi/agent/settings.json 探测式注入模型自动重连推荐配置 (best-effort, 失败静默)

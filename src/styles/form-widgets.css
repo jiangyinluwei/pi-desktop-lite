@@ -1,0 +1,897 @@
+/* 手绘自动填表与自定义下拉控件 */
+/* ==========================================================================
+   手绘草图质感自定义填表与智能联想推荐系统 (Sketch AutoFill Dropdown)
+   ========================================================================== */
+.sketch-autofill-dropdown {
+  position: fixed;
+  z-index: 9999;
+  display: none;
+  flex-direction: column;
+  background-color: var(--sketch-box-bg);
+  border: 1.2px solid var(--sketch-border);
+  border-radius: 6px;
+  box-shadow: var(--sketch-shadow-hover);
+  padding: 6px;
+  gap: 4px;
+  outline: none;
+  font-family: inherit;
+  user-select: none;
+  transform-origin: top center;
+  box-sizing: border-box;
+}
+
+.sketch-autofill-dropdown.position-above {
+  transform-origin: bottom center;
+}
+
+.sketch-autofill-dropdown.open {
+  display: flex;
+  animation: sketchDropdownPopShake 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2) forwards;
+}
+
+.sketch-autofill-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 6px;
+  border-bottom: 1px dashed var(--sketch-border-subtle);
+  font-size: 11px;
+}
+
+.sketch-autofill-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.sketch-autofill-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-primary);
+}
+
+.sketch-autofill-icon svg {
+  display: block;
+}
+
+.sketch-autofill-tip {
+  font-size: 10px;
+  color: var(--ink-muted);
+}
+
+.sketch-autofill-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  max-height: 240px;
+  padding: 2px 0;
+}
+
+.sketch-autofill-group-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  padding: 5px 6px 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sketch-autofill-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.sketch-autofill-item:hover,
+.sketch-autofill-item.highlighted {
+  background-color: var(--sketch-tag-bg);
+  border-color: var(--sketch-border-subtle);
+}
+
+.sketch-autofill-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+}
+
+.sketch-autofill-item-icon svg {
+  display: block;
+}
+
+.sketch-autofill-item:hover .sketch-autofill-item-icon,
+.sketch-autofill-item.highlighted .sketch-autofill-item-icon {
+  color: var(--ink-primary);
+}
+
+.sketch-autofill-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sketch-autofill-item-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sketch-autofill-item-id {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: ui-monospace, monospace;
+  color: var(--ink-primary);
+}
+
+.sketch-autofill-item-name {
+  font-size: 11px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sketch-autofill-item-badge {
+  font-size: 9.5px;
+  font-weight: 500;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid var(--sketch-border-subtle);
+  color: var(--ink-muted);
+  background: transparent;
+  white-space: nowrap;
+}
+
+.sketch-autofill-item-badge.history {
+  border-color: #f59e0b;
+  color: #d97706;
+}
+
+@media (prefers-color-scheme: dark) {
+  .sketch-autofill-item-badge.history {
+    color: #fbbf24;
+    border-color: rgba(245, 158, 11, 0.4);
+  }
+}
+
+.sketch-autofill-item-desc {
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sketch-autofill-item-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  opacity: 0;
+  transform: translateX(-3px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  flex-shrink: 0;
+}
+
+.sketch-autofill-item-action svg {
+  display: block;
+}
+
+.sketch-autofill-item:hover .sketch-autofill-item-action,
+.sketch-autofill-item.highlighted .sketch-autofill-item-action {
+  opacity: 1;
+  transform: translateX(0);
+  color: var(--ink-primary);
+}
+
+.sketch-autofill-mark {
+  background: transparent;
+  color: var(--ink-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 700;
+}
+
+.sketch-autofill-empty {
+  padding: 12px 8px;
+  font-size: 11px;
+  color: var(--ink-muted);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.sketch-autofill-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 4px 6px 2px;
+  border-top: 1px dashed var(--sketch-border-subtle);
+}
+
+.sketch-autofill-clear-btn {
+  background: transparent;
+  border: none;
+  font-size: 10px;
+  color: var(--ink-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.sketch-autofill-clear-btn:hover {
+  color: #ef4444;
+  background: var(--sketch-tag-bg);
+}
+
+/* ==========================================================================
+   手绘草图质感自定义下拉框 (Sketch Custom Select Dropdown)
+   特性：迅速触发的弹出微抖动动效（Pop & Micro-Shake），边框/底色/字色适配素描纸与炭黑板
+   ========================================================================== */
+
+/* 隐匿原生 select */
+.sketch-native-hidden {
+  position: absolute !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+  clip: rect(0, 0, 0, 0) !important;
+  border: 0 !important;
+}
+
+/* 原生 select 基础美化 fallback */
+.flat-select {
+  width: 100%;
+  padding: 6px 26px 6px 10px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 4px;
+  background-color: var(--sketch-box-bg);
+  color: var(--ink-primary);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' width='12' height='12' fill='none' stroke='%2378716a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 6 L8 10 L12 6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.flat-select:hover:not(:disabled) {
+  border-color: var(--sketch-border);
+}
+
+.flat-select:focus {
+  border-color: var(--ink-primary);
+}
+
+.sketch-select-wrapper {
+  position: relative;
+  display: block;
+  width: 100%;
+  user-select: none;
+  font-family: inherit;
+}
+
+.sketch-select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 4px;
+  background-color: var(--sketch-box-bg);
+  color: var(--ink-primary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  text-align: left;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sketch-select-trigger:hover:not(:disabled) {
+  border-color: var(--sketch-border);
+  background-color: var(--sketch-box-bg-focus);
+}
+
+.sketch-select-wrapper.open .sketch-select-trigger,
+.sketch-select-trigger:focus-visible {
+  border-color: var(--ink-primary);
+  box-shadow: 1.5px 2px 0px var(--sketch-shadow);
+}
+
+.sketch-select-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sketch-select-value {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  color: var(--ink-primary);
+}
+
+.sketch-select-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.15s ease;
+}
+
+.sketch-select-arrow svg {
+  display: block;
+}
+
+.sketch-select-wrapper:hover .sketch-select-arrow {
+  color: var(--ink-primary);
+}
+
+.sketch-select-wrapper.open .sketch-select-arrow {
+  transform: rotate(180deg);
+  color: var(--ink-primary);
+}
+
+/* 下拉菜单面板 */
+.sketch-select-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 100%;
+  max-height: 280px;
+  overflow-y: auto;
+  background-color: var(--sketch-box-bg);
+  border: 1.2px solid var(--sketch-border);
+  border-radius: 5px;
+  box-shadow: var(--sketch-shadow-hover);
+  padding: 4px;
+  z-index: 1050;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  outline: none;
+  transform-origin: top center;
+}
+
+/* 官方通道服务商选择下拉列表限高增加（容纳更多官方服务商选项） */
+#channel-config-official .sketch-select-dropdown,
+.sketch-select-wrapper[data-for-id="official-provider-select"] .sketch-select-dropdown {
+  max-height: 380px;
+}
+
+/* 展开态：触发迅速、轻快、不油腻的弹出微抖动动效 (Pop & Micro-Shake) */
+.sketch-select-wrapper.open .sketch-select-dropdown {
+  display: flex;
+  animation: sketchDropdownPopShake 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2) forwards;
+}
+
+@keyframes sketchDropdownPopShake {
+  0% {
+    opacity: 0;
+    transform: translateY(-5px) scale(0.96) rotate(-0.6deg);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(2px) scale(1.01) rotate(0.35deg);
+  }
+  80% {
+    transform: translateY(-0.5px) scale(0.998) rotate(-0.1deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+}
+
+/* 单个选项项 */
+.sketch-select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 3px;
+  color: var(--ink-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.12s ease, transform 0.12s ease, color 0.12s ease;
+  user-select: none;
+}
+
+.sketch-option-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sketch-option-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-primary);
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  flex-shrink: 0;
+}
+
+.sketch-option-check svg {
+  display: block;
+}
+
+.sketch-select-option:hover,
+.sketch-select-option.highlighted {
+  background-color: var(--sketch-tag-bg);
+  color: var(--ink-primary);
+}
+
+.sketch-select-option.selected {
+  background-color: var(--sketch-tag-hover-bg);
+  font-weight: 600;
+}
+
+.sketch-select-option.selected .sketch-option-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.flat-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  background: transparent;
+}
+
+.flat-btn.mini {
+  padding: 3px 7px;
+  font-size: 11px;
+}
+
+.flat-btn-primary {
+  background-color: var(--ink-primary);
+  color: var(--bg-base);
+  border-color: var(--ink-primary);
+}
+
+.flat-btn-primary:hover {
+  opacity: 0.88;
+}
+
+.flat-btn-secondary {
+  background: transparent;
+  color: var(--ink-primary);
+  border-color: var(--sketch-border-subtle);
+}
+
+.flat-btn-secondary:hover {
+  background: var(--sketch-tag-bg);
+  border-color: var(--sketch-border);
+}
+
+.flat-btn-danger {
+  background: transparent;
+  color: #9b3737;
+  border-color: transparent;
+}
+
+.flat-btn-danger:hover {
+  color: #842e2e;
+  background: var(--sketch-tag-bg);
+  border-color: rgba(155, 55, 55, 0.3);
+}
+
+@media (prefers-color-scheme: dark) {
+  .flat-btn-danger {
+    color: #c25858;
+  }
+  .flat-btn-danger:hover {
+    color: #d16b6b;
+    border-color: rgba(194, 88, 88, 0.35);
+  }
+}
+
+.flat-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: monospace;
+  border-radius: 3px;
+  border: 1px solid var(--sketch-border-subtle);
+  background: transparent;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+}
+
+.flat-badge.flat-badge-reasoning {
+  color: #8c6d37;
+  border-color: rgba(140, 109, 55, 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+  .flat-badge.flat-badge-reasoning {
+    color: #c9a05b;
+    border-color: rgba(201, 160, 91, 0.35);
+  }
+}
+
+.flat-badge.flat-badge-custom {
+  color: var(--ink-muted);
+  border-color: var(--sketch-border-subtle);
+}
+
+.flat-badge.flat-badge-active {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  font-weight: 600;
+}
+
+.flat-link {
+  font-size: 11px;
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+
+.flat-link:hover {
+  color: var(--ink-primary);
+  text-decoration: underline;
+}
+
+/* 当前激活模型预览卡片 (非多层嵌套，使用正常线条边框包裹) */
+.active-model-card {
+  padding: 11px 14px;
+  border: 1px solid var(--sketch-border);
+  border-radius: 6px;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  position: relative;
+}
+
+.active-card-tag {
+  position: absolute;
+  right: 12px;
+  top: 10px;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--sketch-border-subtle);
+  background: transparent;
+  color: var(--ink-primary);
+  font-family: monospace;
+  font-weight: 500;
+}
+
+.active-card-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.active-card-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.active-card-details {
+  font-size: 11px;
+  color: var(--ink-muted);
+  font-family: ui-monospace, monospace;
+}
+
+/* 白名单模型列表 (按选用次序排序) */
+.models-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 2px;
+  transition: all 0.2s ease;
+}
+
+.models-list-container.collapsed-single {
+  max-height: none;
+  overflow-y: visible;
+}
+
+.models-list-container.collapsed-single .whitelist-model-item:not(.active) {
+  display: none !important;
+}
+
+.models-list-container.collapsed-single:not(:has(.whitelist-model-item.active)) .whitelist-model-item:nth-child(n+2) {
+  display: none !important;
+}
+
+/* 折叠通道操作栏 */
+.channel-toggle-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+  flex-wrap: wrap;
+}
+
+.channel-toggle-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 4px;
+  border: 1px solid var(--sketch-border-subtle);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.channel-toggle-btn:hover {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  background: var(--sketch-tag-bg);
+}
+
+.channel-toggle-btn.active {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  background: var(--sketch-tag-bg);
+  font-weight: 600;
+}
+
+.channel-toggle-btn svg {
+  flex-shrink: 0;
+  display: block;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.15s ease;
+}
+
+.channel-toggle-btn.active svg {
+  transform: rotate(180deg);
+}
+
+/* 折叠抽屉容器 */
+.channel-config-drawers {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.channel-drawer-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-top: 1px dashed var(--sketch-border-subtle);
+  padding-top: 14px;
+  animation: fadeInDrawer 0.2s ease;
+}
+
+.channel-drawer-pane.hidden {
+  display: none !important;
+}
+
+.drawer-inner-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.drawer-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  margin: 0;
+}
+
+.drawer-desc {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+@keyframes fadeInDrawer {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.whitelist-model-item {
+  padding: 8px 12px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 6px;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+  position: relative;
+}
+
+.whitelist-model-item:hover {
+  border-color: var(--sketch-border);
+  background: transparent;
+}
+
+.whitelist-model-item.active {
+  border-color: var(--sketch-border);
+  background: var(--sketch-tag-bg);
+}
+
+.model-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+
+.model-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-item-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.model-item-meta {
+  font-size: 11px;
+  color: var(--ink-muted);
+  font-family: ui-monospace, monospace;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.model-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 官方通道卡片 (单层线框包裹，内部透明) */
+.provider-config-box {
+  padding: 12px 14px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 6px;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.provider-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.provider-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.provider-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.provider-desc {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.input-with-action {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.key-status-text {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.official-models-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.section-sub-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sub-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  margin: 0;
+}
+
+.sub-hint {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.official-models-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.official-model-chip {
+  padding: 7px 10px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 6px;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  transition: border-color 0.15s ease;
+}
+
+.official-model-chip:hover {
+  border-color: var(--sketch-border);
+}
+

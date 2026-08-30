@@ -35,7 +35,7 @@ description: |
 
 ### 铁律 1：修改前必须重新对齐真实行号与上下文 (View Before Replace)
 **严禁凭历史记忆或上上轮对话中的行号直接下发替换指令。**
-- 在对大文件（如 `main.js`）进行第二轮或后续修改前，**必须先使用 `view_file` 查看目标位置前后的真实代码切片**；
+- 在对大文件进行第二轮或后续修改前，**必须先使用 `view_file` 查看目标位置前后的真实代码切片**；前端已按功能域拆分至 `src/modules/*.js`（如 `flow-ui.js`、`flow-pipeline.js`、`packages-panel.js`），修改前先定位所属模块；
 - 确认上一轮修改落地后的精确行号区间与闭合括号位置。
 
 ### 铁律 2：除旧布新必须原子化闭环 (Clean-as-you-go / Delete First)
@@ -48,8 +48,8 @@ description: |
 1. 搜索新函数/变量名在文件中的出现次数：
    ```bash
    # 检查是否存在重复声明（正常应仅 1 处声明）
-   grep "const expandToolCard" src/main.js
-   grep "let activeTurnRefs" src/main.js
+   grep "const expandToolCard" src/modules/flow-ui.js
+   grep "activeTurnRefs" src/main.js src/modules/*.js
    ```
 2. 若命中次数 > 1（排除正常调用），必须立即介入排查是否产生了残留副本。
 
@@ -59,6 +59,11 @@ description: |
 ```bash
 # 静态 AST 检查（0.05秒极速完成，精确报错行号与未闭合语法）
 node -c src/main.js
+node -c src/modules/flow-ui.js
+node -c src/modules/flow-stream.js
+node -c src/modules/flow-pipeline.js
+node -c src/modules/task-panel.js
+node -c src/modules/packages-panel.js
 node -c src/services/task-manager.js
 node -c src/services/conversation-history.js
 ```

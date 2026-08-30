@@ -468,16 +468,51 @@ pi-desktop-lite/
 ├── default-area/               # Pi 默认工作区目录（含 AGENTS.md 运行时自我描述，打包与运行时隔离工作空间）
 ├── scripts/                    # 自动化与环境配置脚本 (tauri.js, check.js)
 ├── src/                        # 前端页面源码与运行时资源
-│   ├── assets/                 # 静态资源 (logo.svg, logo.ico)
+│   ├── assets/                 # 静态资源 (logo.svg, logo.ico, 手绘 SVG 图标)
+│   ├── lib/                    # 跨模块共享基础件
+│   │   ├── dom-utils.js        # HTML 转义 / CSS 选择器值转义工具
+│   │   ├── icons.js            # currentColor 手绘 SVG 图元字典
+│   │   └── view-constants.js   # 四态界面 (detailed / focus / flow / settings) 常量
+│   ├── modules/                # 按功能域拆分的 UI 业务模块（由 main.js 统一编排）
+│   │   ├── view-mode.js        # 四态状态机与设置页打开/关闭路由
+│   │   ├── preferences.js      # 主题、发送快捷键、Tokens 规范吸附
+│   │   ├── settings-navigation.js # 设置 Tab / 内层步骤 / 折叠通道抽屉
+│   │   ├── model-panel.js      # 模型白名单 MRU 与官方通道配置
+│   │   ├── custom-provider-panel.js # 两步式自定义通道与模型管理
+│   │   ├── kernel-panel.js     # 内核状态、版本检查与一键更新
+│   │   ├── sessions-panel.js   # 会话记录列表与新建会话
+│   │   ├── window-controls.js  # 标题栏窗口控制
+│   │   ├── flow-ui.js          # Flow 渲染核心：Markdown、轮次 DOM、悬浮提问提示、上下定位导航
+│   │   ├── flow-stream.js      # 流式状态机、错误卡渲染与自动重连胶囊
+│   │   ├── flow-pipeline.js    # 提问下发、工具调用事件、自愈引擎与发送拦截
+│   │   ├── task-panel.js       # 后台任务胶囊、侧边栏、历史恢复与快照归档
+│   │   ├── file-attachments.js # 文件拖入、概述胶囊与多模态路径注入
+│   │   ├── search-input.js     # 输入交互、历史翻阅、格言跑马灯与焦点控制
+│   │   ├── packages-panel.js   # 扩展组件市场与安装/更新/卸载队列
+│   │   └── global-interactions.js # 全局右键/Esc 回退与窗口生命周期保护
 │   ├── services/               # 前端服务层
 │   │   ├── tauri-bridge.js     # 统一 Tauri IPC 跨平台调用桥接器
 │   │   ├── config-service.js   # ~/.pi/agent 配置与模型白名单管理服务
 │   │   ├── pi-client.js        # 对接 Rust 后端 supervisor 的流式通信客户端
 │   │   ├── session-service.js  # 历史会话管理与切换服务
 │   │   └── version-service.js  # 版本检测与更新通知服务
+│   ├── styles/                 # 按功能域拆分的手绘样式（styles.css 仅作 @import 聚合入口）
+│   │   ├── tokens.css          # 浅色 / 深色主题令牌
+│   │   ├── base.css            # 基础重置与隐藏式滚动条
+│   │   ├── layout.css          # 标题栏与四态视图布局
+│   │   ├── flow.css            # Flow 对话流与思考/回复卡片
+│   │   ├── search.css          # 搜索输入区与通用按钮
+│   │   ├── message-drawer.css  # 历史讯息抽屉
+│   │   ├── animations.css      # 全局关键帧动画
+│   │   ├── settings.css        # 设置独立全页面视图
+│   │   ├── form-widgets.css    # 手绘自动填表与自定义下拉控件
+│   │   ├── custom-provider.css # 两步式自定义通道样式
+│   │   ├── tool-response.css   # 工具卡片、Markdown 回复与错误卡
+│   │   ├── packages.css        # 内核面板与组件市场
+│   │   └── overlays.css        # 漂浮图标、任务侧边栏、Toast 与模态
 │   ├── index.html              # 页面主体（沉浸式标题栏 + 手绘Logo + 四态界面容器 + 独立设置视图）
-│   ├── styles.css              # 手绘线条、微渐变、工程几何设置页与系统自适应明暗主题样式
-│   └── main.js                 # 状态机分发、流式渲染、思维卡片、工具卡片、跑马灯与右键回退流水线
+│   ├── styles.css              # 样式聚合入口（@import 至 styles/ 各功能域子文件）
+│   └── main.js                 # 前端编排入口：DOM 引用收集 + 共享上下文构建 + 模块初始化
 ├── src-tauri/                  # Tauri (Rust) 高性能后端核心
 │   ├── Cargo.toml              # 依赖: tokio, serde, dashmap, notify, reqwest, regex, windows-sys
 │   ├── tauri.conf.json         # 窗口无边框、原生透明与安全策略配置

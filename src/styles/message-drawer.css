@@ -1,0 +1,202 @@
+/* 历史讯息抽屉 */
+/* ==========================================================================
+   底部手绘草图历史讯息抽屉 (Sketch Message Drawer)
+   常态展示第 1 行（3 个），鼠标悬浮向下平滑渐出展示更多（下方每行 4 个）
+   高度自适应当前软件框体，超出高度自动裁剪不显示
+   ========================================================================== */
+.sketch-messages-drawer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 600px;
+  margin-top: 20px;
+  position: relative;
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              margin 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              padding 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+
+.sketch-messages-drawer.hidden {
+  display: none !important;
+}
+
+/* 第 1 行：常态展示最多 3 个讯息方框 */
+.messages-primary-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  width: 100%;
+  transition: all 0.25s ease;
+}
+
+/* 下方展开包装层：常态收起，绝对定位向下展开（避免撑高容器导致整体上移） */
+.messages-expanded-wrap {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  width: 100%;
+  max-height: calc(100vh - 380px);
+  overflow: hidden;
+  pointer-events: none;
+  padding-top: 8px;
+  padding-bottom: 6px;
+  z-index: 10;
+}
+
+/* 抽屉悬浮展开态下，允许包装层接收鼠标事件 */
+.sketch-messages-drawer:hover .messages-expanded-wrap,
+.sketch-messages-drawer.is-hovered .messages-expanded-wrap {
+  pointer-events: auto;
+}
+
+/* 下方展开区域行列表容器 */
+.messages-expanded-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+/* 下方展开行：默认常态（移出渐隐态）
+   耗时 2 秒从完全显示平滑淡出至完全透明，无延迟，反向平滑过渡，GPU 合成器原生渲染绝无闪烁 */
+.messages-expanded-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  width: 100%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 2s linear 0s;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 悬浮展开态：每行耗时 1 秒匀速渐出，上一行显示完毕后下一行紧接着开始 1 秒慢慢渐出（第2行0s~1s, 第3行1s~2s, 第4行2s~3s...，无死区停顿）
+   到达 1.0 后自然锁定终态，绝无 JS rAF 终止引发的重绘闪烁 */
+.sketch-messages-drawer:hover .messages-expanded-row,
+.sketch-messages-drawer.is-hovered .messages-expanded-row {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 1s linear var(--row-delay, 0s);
+}
+
+/* 单个讯息方框卡片（手绘纸质质感） */
+.sketch-message-card {
+  position: relative;
+  background: var(--sketch-tag-bg);
+  border: 1px solid var(--sketch-tag-border);
+  border-radius: 255px 10px 225px 8px / 8px 225px 10px 255px;
+  padding: 8px 10px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 48px;
+  box-shadow: var(--sketch-shadow);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.18s ease,
+              border-color 0.18s ease,
+              transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.18s ease;
+  text-align: left;
+  outline: none;
+  overflow: hidden;
+}
+
+.sketch-message-card.removing {
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  opacity: 0 !important;
+  transform: scale(0.95);
+}
+
+.sketch-message-card:hover {
+  background: var(--sketch-tag-hover-bg);
+  border-color: var(--sketch-border);
+  transform: translateY(-1.5px);
+  box-shadow: var(--sketch-shadow-hover);
+}
+
+.sketch-message-card:active {
+  transform: translateY(0);
+  box-shadow: var(--sketch-shadow);
+}
+
+/* 卡片内部标题与时间 */
+.message-card-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 14px;
+}
+
+.message-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--ink-muted);
+}
+
+.message-card-time {
+  font-size: 10px;
+  color: var(--ink-muted);
+  opacity: 0.85;
+}
+
+/* 卡片右上角悬浮显示关闭/隐藏 "×" 按钮 */
+.message-card-close-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  z-index: 2;
+  padding: 0;
+}
+
+.sketch-message-card:hover .message-card-close-btn {
+  opacity: 0.65;
+  pointer-events: auto;
+}
+
+.message-card-close-btn:hover {
+  opacity: 1 !important;
+  color: var(--ink-primary);
+  background: var(--sketch-box-bg);
+  border-color: var(--sketch-border-subtle);
+  transform: scale(1.15);
+}
+
+.message-card-close-btn:active {
+  transform: scale(0.95);
+}
+
+/* 卡片移除淡出微动效 */
+.sketch-message-card.removing {
+  opacity: 0 !important;
+  transform: scale(0.85) translateY(4px) !important;
+  pointer-events: none;
+}
+

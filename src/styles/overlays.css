@@ -1,0 +1,745 @@
+/* 漂浮图标、任务侧边栏、Toast 与模态 */
+/* ==========================================================================
+   边框图标飘荡特效 (Floating Edge Icons)
+   ========================================================================== */
+
+.floating-icons-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.floating-icon {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  color: var(--ink-faint);
+  opacity: 0;
+  pointer-events: auto;
+  cursor: default;
+  will-change: transform, opacity, left, top;
+  transition: filter 0.25s ease, color 0.25s ease;
+  filter: drop-shadow(0 0 0 transparent);
+}
+
+.floating-icon:hover {
+  color: var(--ink-muted);
+  filter: drop-shadow(0 1px 3px rgba(28, 26, 23, 0.15));
+}
+
+:root[data-theme="dark"] .floating-icon:hover,
+:root[data-theme="system"] .floating-icon:hover {
+  filter: drop-shadow(0 1px 4px rgba(243, 239, 230, 0.12));
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .floating-icon:hover {
+    filter: drop-shadow(0 1px 4px rgba(243, 239, 230, 0.12));
+  }
+}
+
+/* Flow/Settings 态下隐藏飘荡特效 */
+.app-container[data-view="flow"] .floating-icons-layer,
+.app-container[data-view="settings"] .floating-icons-layer {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+
+.app-container[data-view="detailed"] .floating-icons-layer,
+.app-container[data-view="focus"] .floating-icons-layer {
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+
+/* ==========================================================================
+   右上角手绘 Mini 任务胶囊 (Mini Task Capsule)
+   ========================================================================== */
+.mini-task-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  margin-right: 6px;
+  background: var(--sketch-tag-bg);
+  border: 1px dashed var(--sketch-border-subtle);
+  border-radius: 10px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--ink-muted);
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  transition: transform 0.16s ease, border-color 0.16s ease, color 0.16s ease, background-color 0.16s ease;
+}
+
+.mini-task-capsule:hover {
+  border-color: var(--sketch-border);
+  color: var(--ink-primary);
+  background: var(--sketch-tag-hover-bg);
+  transform: rotate(-0.5deg) scale(1.02);
+}
+
+.mini-task-capsule .capsule-pencil-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+}
+
+.mini-task-capsule.is-running .capsule-pencil-icon {
+  animation: spin-pulse 2s infinite ease-in-out;
+}
+
+@keyframes spin-pulse {
+  0% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(-10deg) scale(1.12); }
+  75% { transform: rotate(10deg) scale(1.12); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+
+.mini-task-capsule.all-completed {
+  border: 1px solid #16a34a;
+  color: #15803d;
+  background: rgba(22, 163, 74, 0.08);
+}
+
+:root[data-theme="dark"] .mini-task-capsule.all-completed,
+:root[data-theme="system"] .mini-task-capsule.all-completed {
+  border-color: #22c55e;
+  color: #4ade80;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+/* ==========================================================================
+   侧边栏展开时主背景毛玻璃高斯模糊 (Backdrop Blur)
+   ========================================================================== */
+body.has-task-sidebar-open .app-container {
+  filter: blur(4px);
+  opacity: 0.6;
+  pointer-events: none;
+  transition: filter 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ==========================================================================
+   半透明毛玻璃手绘侧边栏 (Task Details Sidebar)
+   ========================================================================== */
+.task-details-sidebar {
+  position: fixed;
+  top: var(--titlebar-height);
+  right: 0;
+  bottom: 0;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  background: rgba(250, 248, 245, 0.94);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-left: 1px solid var(--sketch-border-subtle);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  transform: translateX(100%);
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+}
+
+:root[data-theme="dark"] .task-details-sidebar,
+:root[data-theme="system"] .task-details-sidebar {
+  background: rgba(20, 19, 18, 0.94);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.45);
+}
+
+.task-details-sidebar.open {
+  transform: translateX(0);
+}
+
+.task-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--sketch-border-subtle);
+}
+
+.task-sidebar-header .sidebar-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.task-sidebar-header .sidebar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.task-sidebar-header .sidebar-summary {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.sidebar-close-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--ink-muted);
+  cursor: pointer;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.sidebar-close-btn:hover {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border-subtle);
+  background: var(--sketch-tag-bg);
+}
+
+.task-sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.empty-tasks-placeholder {
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: 12px;
+  padding: 30px 10px;
+}
+
+/* 侧边栏任务卡片 */
+.sidebar-task-card {
+  background: var(--sketch-box-bg);
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+.sidebar-task-card:hover {
+  border-color: var(--sketch-border);
+  box-shadow: var(--sketch-shadow);
+  transform: translateY(-1px);
+}
+
+.sidebar-task-card.active-running {
+  border-left: 3px solid var(--ink-primary);
+}
+
+.sidebar-task-card .task-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+}
+
+.sidebar-task-card .task-card-model {
+  font-weight: 600;
+  color: var(--ink-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sidebar-task-card .task-card-status-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--sketch-border-subtle);
+  color: var(--ink-muted);
+}
+
+.sidebar-task-card.status-thinking .task-card-status-badge {
+  border-color: #d97706;
+  color: #b45309;
+  background: rgba(217, 119, 6, 0.08);
+}
+
+.sidebar-task-card.status-streaming .task-card-status-badge {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.sidebar-task-card.status-tool_exec .task-card-status-badge {
+  border-color: #7c3aed;
+  color: #6d28d9;
+  background: rgba(124, 58, 237, 0.08);
+}
+
+.sidebar-task-card.status-completed .task-card-status-badge {
+  border-color: #16a34a;
+  color: #15803d;
+  background: rgba(22, 163, 74, 0.08);
+}
+
+.sidebar-task-card.status-paused .task-card-status-badge {
+  border-color: #ea580c;
+  color: #c2410c;
+  background: rgba(234, 88, 12, 0.08);
+}
+
+.sidebar-task-card.status-aborted .task-card-status-badge {
+  border-color: #dc2626;
+  color: #b91c1c;
+  background: rgba(220, 38, 38, 0.08);
+}
+
+/* 异常终止 - 暗黄色手绘徽章 (Dark Amber / Ochre) */
+.sidebar-task-card.status-error .task-card-status-badge {
+  border-color: #b45309;
+  color: #92400e;
+  background: rgba(180, 83, 9, 0.1);
+}
+
+[data-theme="dark"] .sidebar-task-card.status-error .task-card-status-badge {
+  border-color: #d97706;
+  color: #f59e0b;
+  background: rgba(217, 119, 6, 0.16);
+}
+
+.sidebar-task-card .task-card-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-task-card .task-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--sketch-border-subtle);
+}
+
+.task-card-action-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--ink-muted);
+  padding: 2px 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.12s ease;
+}
+
+.task-card-action-btn:hover {
+  border-color: var(--sketch-border-subtle);
+  color: var(--ink-primary);
+  background: var(--sketch-tag-bg);
+}
+
+.task-card-action-btn.btn-abort-task:hover {
+  color: #dc2626;
+  border-color: #fca5a5;
+  background: rgba(220, 38, 38, 0.08);
+}
+
+/* Flow 显式中止按钮 (仅在 Flow 模式下允许显现，与发送按钮保持同一水平线垂直居中，在 detailed / focus / settings 下绝对隐藏) */
+.flow-btn-abort {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin-left: 6px;
+  flex-shrink: 0;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  align-self: flex-end;
+  margin-bottom: 0;
+  box-sizing: border-box;
+  -webkit-app-region: no-drag;
+  transition: all 0.15s ease;
+}
+
+.flow-btn-abort svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.flow-btn-abort:hover {
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.35);
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.flow-btn-abort:active {
+  transform: scale(0.92);
+}
+
+.app-container:not([data-view="flow"]) .flow-btn-abort,
+.app-container[data-view="detailed"] .flow-btn-abort,
+.app-container[data-view="focus"] .flow-btn-abort,
+.app-container[data-view="settings"] .flow-btn-abort {
+  display: none !important;
+}
+
+/* ==========================================================================
+   全局手绘浮动微提示条 (Global Toast Banner)
+   ========================================================================== */
+.global-toast-banner {
+  position: fixed;
+  top: calc(var(--titlebar-height) + 12px);
+  left: 50%;
+  transform: translateX(-50%) translateY(0);
+  z-index: 10000;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  background: var(--sketch-box-bg);
+  border: 1px solid var(--sketch-border);
+  border-radius: 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  opacity: 1;
+}
+
+:root[data-theme="dark"] .global-toast-banner,
+:root[data-theme="system"] .global-toast-banner {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.global-toast-banner.hidden {
+  display: none !important;
+  opacity: 0;
+  transform: translateX(-50%) translateY(-8px);
+}
+
+.global-toast-banner .toast-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+}
+
+/* 全局隐藏工具类 */
+.hidden {
+  display: none !important;
+}
+
+/* ==========================================================================
+   手绘草图质感模态弹窗系统规范 (SketchModal Center Dialog)
+   特性：固定于软件框体中心、半透明毛玻璃遮罩、1.4px 实墨草图描边、Pop-Shake 微抖动动效
+   ========================================================================== */
+
+.sketch-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 11000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background-color: rgba(28, 26, 23, 0.42);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root[data-theme="dark"] .sketch-modal-overlay,
+:root[data-theme="system"] .sketch-modal-overlay {
+  background-color: rgba(0, 0, 0, 0.65);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .sketch-modal-overlay {
+    background-color: rgba(0, 0, 0, 0.65);
+  }
+}
+
+.sketch-modal-overlay.visible {
+  opacity: 1;
+}
+
+.sketch-modal-overlay.closing {
+  opacity: 0;
+  transition: opacity 0.14s ease-out;
+}
+
+/* 手绘模态弹窗框体 */
+.sketch-modal-card {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  min-width: 290px;
+  background-color: var(--sketch-box-bg);
+  border: 1.4px solid var(--sketch-border);
+  border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.22), 3px 4px 0px var(--sketch-border-subtle);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: text;
+  transform: scale(0.92) rotate(-0.5deg) translateY(6px);
+  animation: sketchModalPopShake 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+:root[data-theme="dark"] .sketch-modal-card,
+:root[data-theme="system"] .sketch-modal-card {
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.65), 3px 4px 0px rgba(243, 239, 230, 0.15);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .sketch-modal-card {
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.65), 3px 4px 0px rgba(243, 239, 230, 0.15);
+  }
+}
+
+.sketch-modal-overlay.closing .sketch-modal-card {
+  animation: sketchModalDismiss 0.14s ease-in forwards;
+}
+
+/* 弹出微抖动动效 (Pop & Micro-Shake) */
+@keyframes sketchModalPopShake {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) rotate(-0.5deg) translateY(6px);
+  }
+  65% {
+    opacity: 1;
+    transform: scale(1.02) rotate(0.25deg) translateY(-1px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg) translateY(0);
+  }
+}
+
+@keyframes sketchModalDismiss {
+  0% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.94) translateY(4px);
+  }
+}
+
+/* 弹窗头部 */
+.sketch-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 10px 16px;
+  border-bottom: 1px dashed var(--sketch-border-subtle);
+}
+
+.sketch-modal-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sketch-modal-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ink-primary);
+}
+
+.sketch-modal-icon.success {
+  color: #10b981;
+}
+
+.sketch-modal-icon.warning {
+  color: #d97706;
+}
+
+.sketch-modal-icon.error {
+  color: #dc2626;
+}
+
+.sketch-modal-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 头部关闭按钮 (遵循常态透明无边框、hover显框铁律) */
+.sketch-modal-close-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-muted);
+  width: 26px;
+  height: 26px;
+  border-radius: 255px 6px 225px 6px / 6px 225px 6px 255px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.sketch-modal-close-btn:hover {
+  color: var(--ink-primary);
+  background-color: var(--sketch-tag-bg);
+  border-color: var(--sketch-border-subtle);
+}
+
+.sketch-modal-close-btn:active {
+  transform: scale(0.92);
+}
+
+/* 弹窗内容主体 */
+.sketch-modal-body {
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-primary);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.sketch-modal-message {
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.sketch-modal-detail {
+  margin-top: 10px;
+  padding: 8px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  background-color: var(--sketch-tag-bg);
+  border: 1px dashed var(--sketch-border-subtle);
+  border-radius: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+}
+
+.sketch-modal-input {
+  width: 100%;
+  margin-top: 12px;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: var(--ink-primary);
+  background-color: transparent;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 255px 8px 225px 8px / 8px 225px 8px 255px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.sketch-modal-input:focus {
+  border-color: var(--sketch-border);
+  box-shadow: var(--sketch-shadow);
+}
+
+/* 底部操作栏 */
+.sketch-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px 12px 16px;
+  border-top: 1px dashed var(--sketch-border-subtle);
+}
+
+/* 模态操作按钮 (严格遵循手绘按钮规范) */
+.sketch-modal-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-muted);
+  padding: 5px 14px;
+  font-size: 12.5px;
+  font-weight: 500;
+  border-radius: 255px 8px 225px 8px / 8px 225px 8px 255px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.sketch-modal-btn:focus-visible {
+  outline: 1.5px solid var(--sketch-border);
+  outline-offset: 1px;
+}
+
+.sketch-modal-btn.cancel:hover {
+  color: var(--ink-primary);
+  background-color: var(--sketch-tag-bg);
+  border-color: var(--sketch-border-subtle);
+}
+
+.sketch-modal-btn.cancel:active {
+  transform: scale(0.95);
+}
+
+.sketch-modal-btn.confirm {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  box-shadow: 1px 2px 0px var(--sketch-border-subtle);
+}
+
+.sketch-modal-btn.confirm:hover {
+  background-color: var(--sketch-tag-bg);
+  border-color: var(--sketch-border);
+  transform: translateY(-1px);
+}
+
+.sketch-modal-btn.confirm:active {
+  transform: scale(0.95) translateY(0);
+}
+
+.sketch-modal-btn.confirm.danger {
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.4);
+}
+
+.sketch-modal-btn.confirm.danger:hover {
+  background-color: rgba(220, 38, 38, 0.08);
+  border-color: #dc2626;
+}

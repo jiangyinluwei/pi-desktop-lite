@@ -180,6 +180,20 @@
 
 ---
 
+## 🗂️ 前端模块化结构速查 (Frontend Module Layout)
+
+前端不再使用单文件 `src/main.js` / `src/styles.css` 大闭包，已按功能域拆分：
+
+- **`src/main.js`**：唯一编排入口。只负责收集 DOM 引用（`ctx.el`）、构建共享上下文（`ctx.view` / `ctx.settings` / `ctx.flow` / `ctx.attachments` / `ctx.api`）并按依赖顺序初始化各模块；
+- **`src/lib/`**：跨模块共享基础件（`dom-utils.js` HTML/CSS 转义、`icons.js` currentColor 手绘 SVG 图元、`view-constants.js` 四态常量）；
+- **`src/modules/`**：按功能域拆分的 UI 业务模块（`view-mode.js`、`settings-navigation.js`、`model-panel.js`、`custom-provider-panel.js`、`kernel-panel.js`、`flow-ui.js`、`flow-stream.js`、`flow-pipeline.js`、`task-panel.js`、`packages-panel.js`、`global-interactions.js` 等）。跨模块调用一律通过 `ctx.api.<fn>()`，共享状态一律收敛至 `ctx.*`；
+- **`src/styles/`**：按功能域拆分的样式（`tokens.css` / `base.css` / `layout.css` / `flow.css` / `settings.css` / `packages.css` / `overlays.css` 等），`src/styles.css` 仅为 `@import` 聚合入口，新增样式必须写入对应功能域子文件；
+- **`src/services/`**：与 UI 解耦的前端服务层（IPC 桥接、配置、流式客户端、任务/会话/历史等），**禁止**在 service 中直接操作 UI DOM。
+
+> ⚠️ 修改前端时必须遵守：业务代码进 `src/modules/`，共享工具进 `src/lib/`，样式进 `src/styles/` 对应子文件；禁止把逻辑重新堆回 `src/main.js` 或 `src/styles.css`。
+
+---
+
 ## ⚙️ 常用命令速查
 
 - **极速编译检查（推荐首选，~1s）**：`npm run check`

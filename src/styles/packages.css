@@ -1,0 +1,687 @@
+/* 内核面板与组件市场 */
+/* ==========================================================================
+   内核面板样式 (Kernel & Package Catalog)
+   ========================================================================== */
+
+/* 0. 顶部内核卡片容器 */
+.host-kernel-section {
+  margin-bottom: 14px;
+}
+
+.host-kernel-section .status-card {
+  background: var(--sketch-box-bg);
+  transition: border-color 0.18s ease;
+}
+
+.host-kernel-section .status-card:hover {
+  border-color: var(--sketch-border);
+}
+
+/* 1. 已安装组件折叠区域 */
+.installed-packages-wrapper {
+  margin-bottom: 16px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 6px;
+  background: var(--sketch-box-bg);
+  overflow: hidden;
+  transition: border-color 0.18s ease;
+}
+
+.installed-packages-wrapper:hover {
+  border-color: var(--sketch-border);
+}
+
+.installed-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.installed-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.installed-section-header:hover {
+  background-color: var(--sketch-tag-bg);
+}
+
+.installed-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-primary);
+}
+
+.installed-header-title .fold-arrow {
+  transition: transform 0.2s ease;
+  color: var(--ink-muted);
+}
+
+.installed-packages-wrapper.collapsed .fold-arrow {
+  transform: rotate(-90deg);
+}
+
+.installed-packages-wrapper.collapsed .installed-packages-body {
+  display: none;
+}
+
+.installed-header-tip {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.installed-packages-body {
+  padding: 8px 12px 12px;
+  border-top: 1px dashed var(--sketch-border-subtle);
+}
+
+.installed-packages-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+}
+
+.installed-package-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 4px;
+  background: transparent;
+  transition: all 0.15s ease;
+}
+
+.installed-package-item:hover {
+  border-color: var(--sketch-border);
+  background: var(--sketch-box-bg-focus);
+}
+
+.installed-pkg-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.installed-pkg-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 2px;
+}
+
+.installed-pkg-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  word-break: break-all;
+}
+
+.installed-pkg-ver {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--sketch-border-subtle);
+  color: var(--ink-secondary);
+  font-family: var(--font-mono, monospace);
+}
+
+.installed-pkg-ver.update-available {
+  border-color: #10b981;
+  color: #10b981;
+  background-color: rgba(16, 185, 129, 0.08);
+}
+
+.installed-pkg-desc {
+  font-size: 11px;
+  color: var(--ink-muted);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.installed-pkg-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.btn-preset-pkg {
+  font-size: 11px;
+  color: var(--ink-secondary);
+  border-color: var(--sketch-border-subtle);
+  background: transparent;
+  transition: all 0.15s ease;
+}
+
+.btn-preset-pkg:hover {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  background: var(--sketch-tag-bg);
+}
+
+.packages-empty-hint {
+  grid-column: 1 / -1;
+  padding: 18px 10px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-muted);
+  border: 1px dashed var(--sketch-border-subtle);
+  border-radius: 4px;
+}
+
+/* 2. 市场搜索与筛选栏 */
+.packages-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.packages-filter-bar .search-input-group {
+  flex: 1;
+  min-width: 200px;
+}
+
+.filter-search-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.filter-search-input-wrap .search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--ink-muted);
+  pointer-events: none;
+}
+
+.filter-search-input-wrap .flat-input {
+  width: 100%;
+  padding-left: 30px;
+  padding-right: 28px;
+}
+
+.filter-search-input-wrap .btn-clear-search {
+  position: absolute;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: transparent;
+  border: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  border-radius: 50%;
+  transition: all 0.15s ease;
+}
+
+.filter-search-input-wrap .btn-clear-search:hover {
+  color: var(--ink-primary);
+  background-color: var(--sketch-tag-bg);
+}
+
+.packages-filter-bar .filter-dropdowns-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-select-shell {
+  min-width: 135px;
+}
+
+/* 3. 市场目录卡片网格 */
+.packages-catalog-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.packages-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--ink-muted);
+  padding: 0 2px;
+}
+
+.packages-catalog-source a {
+  color: var(--ink-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.packages-catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.package-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 12px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 6px;
+  background: var(--sketch-box-bg);
+  transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.package-card:hover {
+  border-color: var(--sketch-border);
+  transform: translateY(-1px);
+  box-shadow: 2px 2px 0px var(--sketch-shadow);
+}
+
+.package-card-top {
+  margin-bottom: 8px;
+}
+
+.package-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.package-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  line-height: 1.3;
+  word-break: break-all;
+}
+
+.package-type-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-family: inherit;
+  border-radius: 3px;
+  border: 1px solid var(--sketch-border-subtle);
+  color: var(--ink-secondary);
+  background: var(--sketch-tag-bg);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.package-type-badge[data-type="extension"] {
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #2563eb;
+}
+
+.package-type-badge[data-type="skill"] {
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #059669;
+}
+
+.package-type-badge[data-type="theme"] {
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #d97706;
+}
+
+.package-type-badge[data-type="prompt"] {
+  border-color: rgba(139, 92, 246, 0.4);
+  color: #7c3aed;
+}
+
+@media (prefers-color-scheme: dark) {
+  .package-type-badge[data-type="extension"] {
+    color: #60a5fa;
+  }
+  .package-type-badge[data-type="skill"] {
+    color: #34d399;
+  }
+  .package-type-badge[data-type="theme"] {
+    color: #fbbf24;
+  }
+  .package-type-badge[data-type="prompt"] {
+    color: #a78bfa;
+  }
+}
+
+.package-card-desc {
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.package-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  flex-wrap: wrap;
+}
+
+.package-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.package-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--sketch-border-subtle);
+}
+
+.package-card-links {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.package-link-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 6px;
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.package-link-icon:hover {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border-subtle);
+  background: var(--sketch-tag-bg);
+}
+
+.package-card-btn-action {
+  flex-shrink: 0;
+}
+
+/* 4. 分页器 */
+.packages-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 14px 0 6px;
+}
+
+.pagination-page-indicator {
+  font-size: 11px;
+  color: var(--ink-muted);
+  font-family: inherit;
+}
+
+/* 5. 手绘草图质感进度条与操作反馈 (Sketch Progress System) */
+.sketch-progress-track {
+  width: 100%;
+  height: 6px;
+  background: var(--sketch-box-bg-focus);
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.sketch-progress-fill {
+  height: 100%;
+  background: var(--ink-primary);
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 6px,
+    rgba(255, 255, 255, 0.15) 6px,
+    rgba(255, 255, 255, 0.15) 12px
+  );
+  border-radius: 2px;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: sketchStripesMove 1.2s linear infinite;
+}
+
+[data-theme="light"] .sketch-progress-fill {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 6px,
+    rgba(0, 0, 0, 0.12) 6px,
+    rgba(0, 0, 0, 0.12) 12px
+  );
+}
+
+@keyframes sketchStripesMove {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 24px 0;
+  }
+}
+
+/* 卡片内部紧凑进度条 */
+.card-progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.card-progress-labels {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--ink-muted);
+}
+
+.card-progress-msg {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.card-progress-pct {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-primary);
+}
+
+/* 浮动安装进度卡片 */
+.package-progress-float-card {
+  position: sticky;
+  bottom: 12px;
+  margin-top: 16px;
+  z-index: 40;
+  background: var(--paper-bg);
+  border: 1px solid var(--sketch-border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), 2px 2px 0px var(--sketch-shadow);
+  backdrop-filter: blur(8px);
+  animation: floatCardSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.package-progress-float-card.hidden {
+  display: none !important;
+}
+
+.package-progress-float-card.fade-out {
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+}
+
+@keyframes floatCardSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.package-progress-card-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.package-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.package-progress-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.package-progress-title {
+  color: var(--ink-muted);
+}
+
+.package-progress-pkg-name {
+  font-weight: 600;
+  color: var(--ink-primary);
+  font-family: inherit;
+}
+
+.package-progress-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.package-progress-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.package-progress-close-btn:hover {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border-subtle);
+  background: var(--sketch-tag-bg);
+}
+
+.package-queue-badge {
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  border: 1px dashed var(--sketch-border-subtle);
+  border-radius: 3px;
+  padding: 1px 6px;
+  background: var(--sketch-tag-bg);
+  white-space: nowrap;
+}
+
+.btn-queue-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink-muted);
+  border-color: var(--sketch-border-subtle);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-queue-cancel:hover {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.btn-queue-cancel.update-queued {
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.btn-queue-cancel.update-queued .thinking-dot {
+  background-color: #10b981;
+}
+
+.btn-queue-cancel.update-queued:hover {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.btn-queue-cancel.uninstall-queued {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.btn-queue-cancel.uninstall-queued .thinking-dot {
+  background-color: #ef4444;
+}
+
+.btn-queue-cancel.uninstall-queued:hover {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.package-progress-percent {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-primary);
+}
+
+.package-progress-message {
+  font-size: 11px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+

@@ -738,14 +738,14 @@ window.addEventListener("pi:view-change", () => updateFlowTurnNav());
 - **拦截交互**：`handleFlowQuery` 入口检测「当前视图为 Flow 且前台任务处于运行态/待确认」时，弹出 `sketchConfirm`（标题「上一轮仍在生成中」，`confirmText: 终止并发送`（危险操作红标），`cancelText: 等待完成`）：
   - 选择「等待完成」→ 输入内容原样保留、仅回焦输入框，不发起任何请求；
   - 选择「终止并发送」→ 进入中断发送流水线（见下），随后走正常多轮下发路径（`startNewTurn` → `resetStreamState(isFollowUpTurn=true)` → `piClient.sendPrompt`）；
-- **中断发送流水线时序铁律**（`main.js`）：
+- **中断发送流水线时序铁律**（`src/modules/flow-pipeline.js`）：
   1. `modelFailoverEngine.cancel("new-query")` 取消同任务在途自愈（清退避定时器、结算在途尝试）；
   2. 置 `interruptSendTaskId = taskId` 与 `task.pendingInterruptSend = true`，弹出「正在终止当前生成，即将发送新提问…」Toast；
   3. **先注册** `waitForTurnSettled(taskId)`（监听 `agent-end` / `agent-error` 且按 taskId 过滤，6s 超时兜底），**再** `piClient.abort(taskId)` —— 监听器必须先于 abort 注册，杜绝结算事件先于等待窗口到达导致永久悬挂；
   4. 结算到达或超时后清除 `interruptSendTaskId` 与 `pendingInterruptSend`，旧轮头部耗时位定格为「已中断 (Xs)」；
   5. 结算期间任务被挂起/切换则丢弃本次发送并回填输入内容；
 - **结算期抑制铁律**（双守卫，顺序无关）：
-  - `main.js` 的 `agent-end` / `agent-error` 监听器：`interruptSendTaskId` 非空且事件 taskId 匹配（或缺失）时一律 `return`——跳过 `finalizeStream` / `collapseAllToolCards` / `archiveCurrentFlowToHistory` / `renderErrorCard`，也绝不冷启动新自愈流水线；
+  - `src/modules/flow-pipeline.js` 的 `agent-end` / `agent-error` 监听器：`interruptSendTaskId` 非空且事件 taskId 匹配（或缺失）时一律 `return`——跳过 `finalizeStream` / `collapseAllToolCards` / `archiveCurrentFlowToHistory` / `renderErrorCard`，也绝不冷启动新自愈流水线；
   - `task-manager.js` 的 `agent-error` 监听与 `handleTaskEvent` 的 `agent_end` / `agent_settled` / `turn_end` / `message_start` / `message_end` / `extension_error` 分支：`task.pendingInterruptSend` 为真时只把旧轮标记为 `aborted`（`isAborted = true`、`completedAt` 落时间戳），**绝不**置整个 Task 为 `completed` / `error`、不发错误通知；
 - **根因消除**：新轮 DOM 只在旧轮真正结算（agent-end / agent-error / 超时）之后才创建，后端 `prompt` 指令在 `abort` 指令之后入同一 SessionHost 的 stdin FIFO 队列，旧轮残留流式内容永远落在旧轮 DOM/数据内，彻底杜绝内容混串。
 
@@ -789,9 +789,16 @@ window.addEventListener("pi:view-change", () => updateFlowTurnNav());
 | [`src/services/conversation-history.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/conversation-history.js) | `ConversationHistoryService` 多轮快照沉淀与 MRU 恢复 |
 | [`src-tauri/src/pi_runner/host_pool.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/pi_runner/host_pool.rs) | `PiHostPool` 多进程监管池、独立子进程隔离与 `task_id` 分帧注入 |
 | [`src/services/prompt-history.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/prompt-history.js) | `PromptHistoryNavigator` 历史记录栈、草稿暂存与指针控制 |
-| [`src/main.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/main.js) | `createFlowTurnGroupElement`、`resetStreamState`（多轮追加）、`handleFlowQuery`（同一工作流路由 + 运行中提交拦截/终止并发送流水线 `waitForTurnSettled`）、`restoreTaskToFlow` 与 `restoreConversationToFlow`（多轮还原）、`updateFlowTurnNav` / `scrollToTurnStart` / 上·下按钮事件绑定（多段对话定位导航） |
+| [`src/main.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/main.js) | 前端编排入口：收集 DOM 引用、构建 `ctx`（view / settings / flow / attachments / api）并按依赖顺序初始化各模块 |
+| [`src/modules/flow-ui.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/modules/flow-ui.js) | `createFlowTurnGroupElement`（多轮 DOM 组）、`updateFlowTurnNav` / `scrollToTurnStart` / 上·下按钮事件绑定（多段对话定位导航）、`updateFlowQuestionTip` |
+| [`src/modules/flow-stream.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/modules/flow-stream.js) | `resetStreamState`（多轮追加）、`finalizeStream`、`resetCurrentTurnForResend`、`renderErrorCard` |
+| [`src/modules/flow-pipeline.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/modules/flow-pipeline.js) | `handleFlowQuery`（同一工作流路由 + 运行中提交拦截/终止并发送流水线 `waitForTurnSettled`）、`agent-end` / `agent-error` 结算门控、工具调用事件监听 |
+| [`src/modules/task-panel.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/modules/task-panel.js) | `restoreTaskToFlow` 与 `restoreConversationToFlow`（多轮还原）、`archiveCurrentFlowToHistory`（多轮快照沉淀）、任务胶囊与侧边栏 |
 | [`src/services/notification-service.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/notification-service.js) | 全局焦点追踪器、任务池追踪器、Windows 原生 Toast 通知分发 |
 | [`src-tauri/src/lib.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/lib.rs) | `tauri-plugin-notification` 初始化、`pi_show_notification`、`app-awakened` 广播与任务池 RPC |
-| [`src/styles.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles.css) | `.flow-message-group`、`.agent-thinking-card`、`.tool-card`、`.flow-turn-nav` / `.flow-turn-nav-btn`（上下轮次定位导航）、`#mini-task-capsule`、`#task-details-sidebar` |
+| [`src/styles.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles.css) | 样式聚合入口（`@import` 至 `src/styles/` 各功能域子文件） |
+| [`src/styles/flow.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles/flow.css) | `.flow-message-group`、`.agent-thinking-card`、`.flow-turn-nav` / `.flow-turn-nav-btn`（上下轮次定位导航） |
+| [`src/styles/tool-response.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles/tool-response.css) | `.tool-card`、`.response-content`、`.sketch-error-card` |
+| [`src/styles/overlays.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles/overlays.css) | `#mini-task-capsule`、`#task-details-sidebar`、`.global-toast-banner` |
 | [`src/index.html`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/index.html) | `#flow-conversation`、`#flow-btn-abort`、`#flow-scroll-area`、`#flow-turn-nav`（含 `#flow-turn-nav-up` / `#flow-turn-nav-down`） |
 

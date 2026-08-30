@@ -30,7 +30,7 @@ description: |
 />
 ```
 
-### 1.2 WebKit 伪类全局覆盖 (`src/styles.css`)
+### 1.2 WebKit 伪类全局覆盖 (`src/styles/form-widgets.css`)
 确保所有输入框在被任何机制填入时，底色始终无缝融入当前主题，绝不弹出浏览器默认的亮黄色/淡青色色块：
 
 ```css

@@ -1,0 +1,86 @@
+/* 主题令牌 */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+  /* 浅色模式（高质感暖调素描绘图纸 / Warm Oatmeal Paper） */
+  --bg-base: #faf8f5;
+  --bg-gradient: radial-gradient(130% 110% at 50% 18%, #fdfbf7 0%, #f6f2ea 55%, #ede6da 100%);
+  --ink-primary: #1c1a17;
+  --ink-muted: #78716a;
+  --ink-faint: #a69f94;
+  --sketch-border: #262422;
+  --sketch-border-subtle: #d6cfc4;
+  --sketch-border-hover: #1c1a17;
+  --sketch-box-bg: #f8f6f1;
+  --sketch-box-bg-focus: #fcfaf6;
+  --sketch-tag-bg: #f5f0e6;
+  --sketch-tag-border: #dcd4c6;
+  --sketch-tag-hover-bg: #ece5d8;
+  --sketch-kbd-bg: #f0eae0;
+  --sketch-kbd-border: #d2c8b8;
+  --sketch-shadow: 2px 3px 0px rgba(28, 26, 23, 0.08);
+  --sketch-shadow-hover: 3px 4px 0px rgba(28, 26, 23, 0.12);
+  --sketch-shadow-focus: 3px 5px 0px rgba(28, 26, 23, 0.18);
+  --titlebar-height: 30px;
+  --titlebar-btn-hover: rgba(28, 26, 23, 0.06);
+  --titlebar-btn-active: rgba(28, 26, 23, 0.12);
+  --titlebar-close-hover: #dc2626;
+  --titlebar-close-text: #ffffff;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  /* 深色模式（极简黑板/素描炭黑纸 / Charcoal Blackboard） */
+  --bg-base: #141312;
+  --bg-gradient: radial-gradient(130% 110% at 50% 18%, #1c1a18 0%, #141311 55%, #0d0c0b 100%);
+  --ink-primary: #f3efe6;
+  --ink-muted: #9c9488;
+  --ink-faint: #5f5950;
+  --sketch-border: #ede8dc;
+  --sketch-border-subtle: #36322c;
+  --sketch-border-hover: #f3efe6;
+  --sketch-box-bg: #1c1a18;
+  --sketch-box-bg-focus: #1f1d1a;
+  --sketch-tag-bg: #23211e;
+  --sketch-tag-border: #38342e;
+  --sketch-tag-hover-bg: #2e2b27;
+  --sketch-kbd-bg: #2a2723;
+  --sketch-kbd-border: #443f38;
+  --sketch-shadow: 2px 3px 0px rgba(243, 239, 230, 0.08);
+  --sketch-shadow-hover: 3px 4px 0px rgba(243, 239, 230, 0.14);
+  --sketch-shadow-focus: 3px 5px 0px rgba(243, 239, 230, 0.22);
+  --titlebar-btn-hover: rgba(243, 239, 230, 0.08);
+  --titlebar-btn-active: rgba(243, 239, 230, 0.15);
+  --titlebar-close-hover: #ef4444;
+  --titlebar-close-text: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]),
+  :root[data-theme="system"] {
+    color-scheme: dark;
+    --bg-base: #141312;
+    --bg-gradient: radial-gradient(130% 110% at 50% 18%, #1c1a18 0%, #141311 55%, #0d0c0b 100%);
+    --ink-primary: #f3efe6;
+    --ink-muted: #9c9488;
+    --ink-faint: #5f5950;
+    --sketch-border: #ede8dc;
+    --sketch-border-subtle: #36322c;
+    --sketch-border-hover: #f3efe6;
+    --sketch-box-bg: #1c1a18;
+    --sketch-box-bg-focus: #1f1d1a;
+    --sketch-tag-bg: #23211e;
+    --sketch-tag-border: #38342e;
+    --sketch-tag-hover-bg: #2e2b27;
+    --sketch-kbd-bg: #2a2723;
+    --sketch-kbd-border: #443f38;
+    --sketch-shadow: 2px 3px 0px rgba(243, 239, 230, 0.08);
+    --sketch-shadow-hover: 3px 4px 0px rgba(243, 239, 230, 0.14);
+    --sketch-shadow-focus: 3px 5px 0px rgba(243, 239, 230, 0.22);
+    --titlebar-btn-hover: rgba(243, 239, 230, 0.08);
+    --titlebar-btn-active: rgba(243, 239, 230, 0.15);
+    --titlebar-close-hover: #ef4444;
+    --titlebar-close-text: #ffffff;
+  }
+}
+

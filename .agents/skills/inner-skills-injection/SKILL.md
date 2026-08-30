@@ -120,13 +120,13 @@ When invoking tool 'bash', 'terminal', 'powershell', 'cmd', 'execute_command':
 - 暴露 `pi_get_skill_mappings` 与 `pi_resolve_tool_skill` 命令供前端动态拉取；
 - 在新建会话（`new_session`）、切换会话（`switch_session`）与重启宿主（`restart`）时主动调用 `reset_skill_turns()` 重置轮次。
 
-### ④ 前端动态映射拦截与胶囊反馈：`src/main.js`
+### ④ 前端动态映射拦截与胶囊反馈：`src/modules/flow-pipeline.js`
 - 启动时通过 `pi_get_skill_mappings` 从后端动态获取 `RULES.md` 的映射表；
 - 监听 `toolcall-delta-start`、`tool-start` 与 `bash-update` 事件，**当且仅当被调用的工具命中 `RULES.md` 映射项时**（如 `bash` 命中 `windows-bash-compatibility`），即时平滑显现对应 Skill 胶囊；
 - **未映射工具绝不误触**：若 Agent 调用未在 `RULES.md` 声明的工具（如 `read_file`、`web_search`），绝不显现胶囊；
 - 提问提交 `resetStreamState` 时主动隐去胶囊，形成精准、零误触的视觉交互生命周期。
 
-### ⑤ 手绘草图视觉层：`src/styles.css` & `src/index.html`
+### ⑤ 手绘草图视觉层：`src/styles/flow.css` & `src/index.html`
 - 容器结构：
   ```html
   <div class="flow-injection-capsule hidden" id="flow-injection-capsule" role="status" aria-live="polite">
