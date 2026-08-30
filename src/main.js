@@ -230,15 +230,39 @@ window.addEventListener("DOMContentLoaded", () => {
   window.__piSetViewMode = setViewMode;
 
   if (searchInput) {
+    // 详细界面下按右键阻止触发原生获焦
+    searchInput.addEventListener("mousedown", (e) => {
+      if (e.button === 2 && currentView === VIEW_DETAILED) {
+        e.preventDefault();
+      }
+    });
+
     searchInput.addEventListener("focus", () => {
       if (currentView === VIEW_DETAILED) {
         setViewMode(VIEW_FOCUS, false);
       }
     });
 
-    searchInput.addEventListener("click", () => {
-      if (currentView === VIEW_DETAILED) {
+    searchInput.addEventListener("click", (e) => {
+      if (e.button === 0 && currentView === VIEW_DETAILED) {
         setViewMode(VIEW_FOCUS, true);
+      }
+    });
+  }
+
+  if (searchForm) {
+    // 详细界面下搜索框区域按右键阻止默认行为与冒泡，杜绝触发界面瞬切与抖动
+    searchForm.addEventListener("mousedown", (e) => {
+      if (e.button === 2 && currentView === VIEW_DETAILED) {
+        e.preventDefault();
+      }
+    });
+
+    searchForm.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      if (currentView === VIEW_DETAILED) {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
       }
     });
   }
@@ -428,7 +452,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   initSettingsTabs();
 
-  // 设置面板自动平滑滚动到底部辅助函数 (针对官方通道/自定义通道抽屉及任意下拉详情展开行为)
+  // 设置面板自动平滑滚动到底部辅助函数 (针对官方通道/自定义通道抽屉首次展开行为)
   const scrollSettingsToBottom = (smooth = true) => {
     const settingsTabContent = document.querySelector(".settings-tab-content");
     if (!settingsTabContent) return;
@@ -441,6 +465,51 @@ window.addEventListener("DOMContentLoaded", () => {
     requestAnimationFrame(doScroll);
     setTimeout(doScroll, 80);
     setTimeout(doScroll, 220); // 覆盖抽屉 fadeInDrawer 动画耗时
+  };
+
+  // 设置面板自动平滑滚动使得当前操作的框体/卡片底部对齐视口下边缘 (单次精准计算，杜绝动画掐断与抖动)
+  const scrollElementIntoViewBottom = (el, padding = 20, smooth = true) => {
+    const container = document.querySelector(".settings-tab-content");
+    if (!container || !el) return;
+
+    requestAnimationFrame(() => {
+      const containerRect = container.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+
+      if (containerRect.height <= 0 || elRect.height <= 0) return;
+
+      const viewportHeight = container.clientHeight;
+      const effectivePadding = Math.min(padding, 24);
+
+      let targetScrollTop = container.scrollTop;
+
+      // 如果目标元素过大（超出视口可用高度），优先保证其顶部可见
+      if (elRect.height + effectivePadding * 2 >= viewportHeight) {
+        const topDelta = elRect.top - (containerRect.top + effectivePadding);
+        targetScrollTop = container.scrollTop + topDelta;
+      } else {
+        // 若元素底部超出视口下边缘，则向下滚动让其底部与呼吸间距露出
+        if (elRect.bottom > containerRect.bottom - effectivePadding) {
+          const bottomDelta = elRect.bottom - (containerRect.bottom - effectivePadding);
+          targetScrollTop = container.scrollTop + bottomDelta;
+        } else if (elRect.top < containerRect.top + effectivePadding) {
+          // 若元素顶部超出视口上边缘，则向上滚动让其顶部露出
+          const topDelta = elRect.top - (containerRect.top + effectivePadding);
+          targetScrollTop = container.scrollTop + topDelta;
+        }
+      }
+
+      const maxScroll = container.scrollHeight - viewportHeight;
+      targetScrollTop = Math.max(0, Math.min(targetScrollTop, maxScroll));
+
+      // 若位置已在目标范围，且差距极小 (<2px)，则无需滚动，杜绝抖动
+      if (Math.abs(targetScrollTop - container.scrollTop) > 2) {
+        container.scrollTo({
+          top: targetScrollTop,
+          behavior: smooth ? "smooth" : "auto",
+        });
+      }
+    });
   };
 
   // 自定义通道配置内层 Tab 切换 (步骤1 / 步骤2)
@@ -503,6 +572,9 @@ window.addEventListener("DOMContentLoaded", () => {
         btnToggleCustom.innerHTML = `<span>自定义通道配置</span>${ICONS.chevronDown}`;
         btnToggleCustom.classList.remove("active");
       }
+      if (typeof renderOfficialProviderDetails === "function" && officialProviderSelect?.value) {
+        renderOfficialProviderDetails(officialProviderSelect.value);
+      }
       scrollSettingsToBottom(true);
     } else if (channel === "custom") {
       if (whitelistModelsList) whitelistModelsList.classList.add("collapsed-single");
@@ -516,6 +588,9 @@ window.addEventListener("DOMContentLoaded", () => {
       if (btnToggleCustom) {
         btnToggleCustom.innerHTML = `<span>收起</span>${ICONS.chevronDown}`;
         btnToggleCustom.classList.add("active");
+      }
+      if (typeof loadCustomProvidersConfig === "function") {
+        loadCustomProvidersConfig();
       }
       scrollSettingsToBottom(true);
     } else {
@@ -556,22 +631,6 @@ window.addEventListener("DOMContentLoaded", () => {
           setExpandedChannel("custom");
         }
       });
-    }
-
-    // 监听模型配置及官方/自定义通道抽屉展开与尺寸变化，自动将设置面板滚动条平滑定位到底部
-    if (typeof ResizeObserver !== "undefined" && channelConfigDrawers) {
-      let lastHeight = 0;
-      const drawerResizeObserver = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          const newHeight = entry.contentRect.height;
-          // 仅在抽屉展开、尺寸增加且处于打开态时自动平滑滚动到底部
-          if (newHeight > 0 && newHeight > lastHeight + 5 && expandedChannel) {
-            scrollSettingsToBottom(true);
-          }
-          lastHeight = newHeight;
-        }
-      });
-      drawerResizeObserver.observe(channelConfigDrawers);
     }
   };
 
@@ -824,6 +883,12 @@ window.addEventListener("DOMContentLoaded", () => {
           }
           configService.removeModelFromWhitelist(m.provider, m.id);
           renderWhitelistModels(piClient.currentModel);
+          if (typeof loadCustomProvidersConfig === "function") {
+            loadCustomProvidersConfig();
+          }
+          if (typeof renderOfficialProviderDetails === "function" && officialProviderSelect?.value) {
+            renderOfficialProviderDetails(officialProviderSelect.value);
+          }
         });
       }
 
@@ -1002,6 +1067,9 @@ window.addEventListener("DOMContentLoaded", () => {
             addBtn.className = "flat-btn flat-btn-secondary mini";
             addBtn.disabled = true;
             renderWhitelistModels(piClient.currentModel);
+            if (typeof loadCustomProvidersConfig === "function") {
+              loadCustomProvidersConfig();
+            }
           });
         }
 
@@ -1379,7 +1447,7 @@ window.addEventListener("DOMContentLoaded", () => {
                     inputNewModelId.__sketchAutoFill.open();
                   }
 
-                  scrollSettingsToBottom(true);
+                  scrollElementIntoViewBottom(inlineAddForm, 24, true);
                   await sketchAlert(`成功从运营商 [${pKey.toUpperCase()}] 获取 ${formatted.length} 个在线模型！已更新至表单推荐列表，请点击选择填入。`, {
                     type: "success",
                     title: "获取成功"
@@ -1426,7 +1494,7 @@ window.addEventListener("DOMContentLoaded", () => {
               inlineAddForm.classList.add("hidden");
             }
             if (willOpen) {
-              scrollSettingsToBottom(true);
+              scrollElementIntoViewBottom(inlineEditForm, 24, true);
             }
           });
         }
@@ -1511,7 +1579,7 @@ window.addEventListener("DOMContentLoaded", () => {
               inlineEditForm.classList.add("hidden");
             }
             if (willOpen) {
-              scrollSettingsToBottom(true);
+              scrollElementIntoViewBottom(inlineAddForm, 24, true);
             }
           });
         }
@@ -1678,7 +1746,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 const willOpen = modelEditBox.classList.contains("hidden");
                 modelEditBox.classList.toggle("hidden");
                 if (willOpen) {
-                  scrollSettingsToBottom(true);
+                  scrollElementIntoViewBottom(modelEditBox, 24, true);
                 }
               });
             }
@@ -1757,6 +1825,9 @@ window.addEventListener("DOMContentLoaded", () => {
                 addBtn.className = "flat-btn flat-btn-secondary mini";
                 addBtn.disabled = true;
                 renderWhitelistModels(piClient.currentModel);
+                if (typeof renderOfficialProviderDetails === "function" && officialProviderSelect?.value) {
+                  renderOfficialProviderDetails(officialProviderSelect.value);
+                }
               });
             }
 
@@ -6266,6 +6337,9 @@ window.addEventListener("DOMContentLoaded", () => {
 
   window.addEventListener("contextmenu", (e) => {
     e.preventDefault();
+    if (currentView === VIEW_DETAILED && searchForm && searchForm.contains(e.target)) {
+      return;
+    }
     handleGlobalStepBack(e);
   });
 

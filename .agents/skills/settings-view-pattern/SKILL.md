@@ -173,7 +173,7 @@ graph TD
   - 点击展开任一通道时，上方模型列表进入 `.collapsed-single` 模式（仅展示当前生效的选中项/第一项），为下方表单腾出空间；
   - 展开态下按钮文案变为 `收起`（箭头平滑旋转 180° 朝上）与目标通道切换按钮，支持在官方与自定义配置间自由一键直切；
   - 点击 `收起` 即可恢复多模型完整列表与初始展开按钮状态；
-  - **下拉详情行为与高度变化自动滚动到底部流水线 (`scrollSettingsToBottom` & `ResizeObserver`)**：为任意导致页面展开或尺寸变化的下拉详情行为（包括：官方/自定义通道抽屉展开、官方服务商下拉切换、从官网拉取最新模型、自定义通道内层步骤1/2切换、运营商修改配置折叠框、新增模型折叠框、模型卡片行内编辑框展开等），统一调用 `scrollSettingsToBottom(true)` 进行平滑定位；同时在抽屉容器上挂载 `ResizeObserver`，当抽屉处于展开态且高度增长时自动触发滚动到底部，保证全部新增内容即时进入视口。
+  - **大抽屉展开与局部表单智能定位流水线 (`scrollSettingsToBottom` & `scrollElementIntoViewBottom`)**：大通道抽屉首次展开或步骤切换时，调用 `scrollSettingsToBottom(true)` 平滑定位到底部；而在运营商卡片内部进行操作（如点击「+ 新增模型」、修改运营商配置、编辑模型参数或在线拉取更新推荐表单）时，统一调用 `scrollElementIntoViewBottom(targetElement, 24, true)` 智能平滑定位使得当前聚焦框体的底部对齐视口下边缘，彻底杜绝全页面无脑滚到底部导致上方操作区被顶出画面的问题。
 
 ### 4.3 界面元素与交互精简
 - ❌ **去除刷新按钮**：模型状态与白名单由内部事件总线（`whitelist-change` / `model-change`）自驱动，无需手动刷新；
@@ -223,7 +223,10 @@ touchModelAsRecentlyUsed(provider, modelId) {
   ```
 - **交互绑定（`main.js`）**：加载时同步 `configService.getAutoReconnectSwitch()` 至 `checked`；`change` 时调用 `configService.setAutoReconnectSwitch(checked, true)`（持久化 + 引擎联动）；监听 `auto-reconnect-change` 事件双向同步 Checkbox；打开设置页（`loadModelsAndState`）时再次同步勾选状态；
 - **默认状态**：**默认勾选（checked）**，缺失配置时按 `true` 处理；
-- **生效范围**：仅影响 Flow 交互界面的模型调用错误处理（瞬态自动重连 / 永久自动切换，详见 `ModelFailoverEngine`）。
+### 4.6 模型白名单与官方/自定义通道状态联动同步 (Channel Drawer Synchronization)
+- **双向感知铁律**：当在上方「当前模型列表」中点击「×」移除某个模型时，必须立即联动触发 `loadCustomProvidersConfig()` 与 `renderOfficialProviderDetails(...)`；
+- **状态无缝复原**：移除后，下方官方通道或自定义通道内对应的模型项将实时重新计算 `configService.isModelInWhitelist(provider, modelId)`，其操作按钮从置灰的 `<button disabled>已添加</button>` 瞬间复原为可点击的 `<button>+ 添加到当前列表</button>`，彻底杜绝状态滞后；
+- **抽屉展开按需刷新**：用户点击展开「官方通道配置」或「自定义通道配置」抽屉时，同样自动刷新该通道列表以呈现最新白名单状态。
 
 ---
 
