@@ -1,12 +1,12 @@
 ---
 name: flow-interaction-pattern
 description: |
-  指导 Flow 流式交互界面（界面3）的四大核心交互逻辑实现规范：①过程框体（思考卡片/工具调用卡片）可手动折叠展开；②"当前最下方框体展开、出现下一框时自动收起"的级联自动收起流水线；③Flow 界面任意区域滚轮事件委托至最外层滚动容器；④多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)。当用户提出"flow界面交互"、"思考卡片折叠"、"工具调用卡折叠"、"自动收起"、"滚轮滚动"、"flow滚动条"、"卡片收起"、"悬浮提问提示"、"顶部悬浮tips"、"当前提问提示"时使用此技能。
+  指导 Flow 流式交互界面（界面3）的五大核心交互逻辑实现规范：①过程框体（思考卡片/工具调用卡片）可手动折叠展开；②"当前最下方框体展开、出现下一框时自动收起"的级联自动收起流水线；③Flow 界面任意区域滚轮事件委托至最外层滚动容器；④多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑤多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)。当用户提出"flow界面交互"、"思考卡片折叠"、"工具调用卡折叠"、"自动收起"、"滚轮滚动"、"flow滚动条"、"卡片收起"、"悬浮提问提示"、"顶部悬浮tips"、"当前提问提示"、"上下按钮"、"轮次定位"、"多段对话优化"时使用此技能。
 ---
 
 # Flow 界面交互逻辑规范 (Flow Interaction Pattern)
 
-本 Skill 归档了 Flow 流式交互界面（`界面3 / data-view="flow"`）的四大核心交互机制的**实现规范、已验证代码模式与关键陷阱**。
+本 Skill 归档了 Flow 流式交互界面（`界面3 / data-view="flow"`）的五大核心交互机制的**实现规范、已验证代码模式与关键陷阱**。
 
 ---
 
@@ -15,16 +15,20 @@ description: |
 Flow 界面卡片层级如下（从上到下）：
 
 ```
-flow-scroll-area            ← 唯一可滚动容器（overflow-y: auto）
-  ├─ flow-question-tip      ← 顶部悬浮当前提问提示（sticky top:0，仅溢出时显现）
-  └─ flow-conversation
-       └─ flow-message-group
-            ├─ flow-user-prompt-card       用户提问（不可折叠）
-            ├─ flow-injection-capsule      Inner-Skill 注入胶囊（不可折叠）
-            ├─ agent-thinking-card         思考过程（可折叠）
-            ├─ tool-calls-container
-            │    └─ tool-card × N          工具调用卡（可折叠）
-            └─ agent-response-card         最终输出（永不折叠）
+#app-container            ← 全局容器（position: relative; overflow: hidden）
+  ├─ flow-stage           ← Flow 主体（max-width: 760px 居中）
+  │    └─ flow-scroll-area ← 唯一可滚动容器（overflow-y: auto）
+  │         ├─ flow-question-tip      ← 顶部悬浮当前提问提示（sticky top:0，仅溢出时显现）
+  │         └─ flow-conversation
+  │              └─ flow-message-group
+  │                   ├─ flow-user-prompt-card       用户提问（不可折叠）
+  │                   ├─ flow-injection-capsule      Inner-Skill 注入胶囊（不可折叠）
+  │                   ├─ agent-thinking-card         思考过程（可折叠）
+  │                   ├─ tool-calls-container
+  │                   │    └─ tool-card × N          工具调用卡（可折叠）
+  │                   └─ agent-response-card         最终输出（永不折叠）
+  ├─ flow-turn-nav        ← 右侧上下轮次定位导航（absolute，右移到 flow 内容外，多轮 >= 2 时显现）
+  └─ search-section       ← 底部输入区
 ```
 
 **铁律**：`agent-response-card`（最终输出卡）**永远不折叠**，仅过程类框体可折叠。
@@ -386,6 +390,301 @@ window.addEventListener("pi:view-change", () => updateFlowQuestionTip()); // 进
 
 ---
 
+## 📌 3.6 多段对话右侧上下轮次定位导航 (Flow Turn Navigation)
+
+### 3.6.1 交互设计
+- **触发条件**：处于 Flow 视图且对话轮次 ≥ 2（`#flow-conversation` 内 `.flow-message-group` 数量 ≥ 2）时，在 Flow 内容区**右侧外部**显现「上 / 下」按钮；
+- **悬浮形态**：导航是 `#app-container` 的直接子元素（非 `#flow-stage` 内），`position: absolute; right: 24px;` 右移到 flow 内容区域之外（窗体内右边距处），垂直方向由 JS（`positionFlowTurnNav`）动态对齐 Flow 内容区底部；纵向排列两个 34px 手绘按钮；非 Flow 视图下 `display: none !important` 绝不显现；
+- **定位目标（问题2）**：每轮对话定位到「该轮最终输出内容」的顶部（`.flow-response-card` / `.agent-response-card` / `.response-content`），对齐显示窗体顶部（扣除顶部悬浮提示吸附高度，避免被遮挡）；
+- **锚定与定位同源（问题1）**：当前锚定轮次与定位目标使用同一元素（最终输出内容顶），且判定阈值加上提示吸附高度——点击一次后锚定随之推进，可**连续多次**向上/向下逐轮定位（修复「只能点一次」的问题）；
+- **交互铁律（鼠标弹起才响应）**：所有定位效果仅在**鼠标弹起（mouseup）**时触发——
+  - 按下后移出按钮再弹起**不会生效**：`mouseleave` 时即作废按下状态（`cancelNavPress`），且 `mouseup` 仅当指针仍在按钮上时才会派发到按钮；
+  - 「上」按钮弹起 → 定位到**上一个**对话的最终输出内容顶部（当前锚定轮次 - 1）；
+  - 「下」按钮弹起（未满 3 秒）→ 定位到**下一个**对话的最终输出内容顶部（当前锚定轮次 + 1）；
+- **长按「下」满 1.5 秒（问题4）**：1.5 秒定时器到点**立即**定位到会话最底部（`scrollTop = scrollHeight`），**无需弹起**；弹起后不再重复定位；
+- **长按视觉反馈**：按下添加 `holding`（scale 微缩），「下」按钮按住时触发 1.5 秒由左至右背景填充动画（`transition: transform 1.5s linear`）与手绘轻微抖动（`flowNavHoldShake`）；按住满 1.5s 定位后添加 `long-press`（图标轻呼吸 `flowNavHoldPulse` + title 变为「已定位到会话最底部」）；
+- **键盘可访问性**：补充 Enter/Space 的 keydown/keyup，行为与鼠标一致（长按同样 1.5 秒立即定位）。
+
+### 3.6.2 实现要点
+
+```html
+<!-- 位于 #app-container 内、#flow-stage 之后（absolute 定位，右移到 flow 内容外） -->
+<div class="flow-turn-nav" id="flow-turn-nav">
+  <button type="button" class="flow-turn-nav-btn flow-turn-nav-up" id="flow-turn-nav-up"
+    aria-label="定位到上一个对话的最终输出内容顶部" title="上一个对话">
+    <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polyline points="4 10 8 6 12 10" />
+    </svg>
+  </button>
+  <button type="button" class="flow-turn-nav-btn flow-turn-nav-down" id="flow-turn-nav-down"
+    aria-label="定位到下一个对话的最终输出内容顶部 (长按 1.5 秒直接定位到底部)" title="下一个对话 (长按 1.5 秒直接定位到底部)">
+    <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polyline points="4 6 8 10 12 6" />
+    </svg>
+  </button>
+</div>
+```
+
+```css
+/* 右移到 flow 内容区域之外（窗体内右边距处）；垂直 top 由 JS 动态计算 */
+.flow-turn-nav {
+  position: absolute;
+  right: 24px;
+  top: auto;   /* 由 positionFlowTurnNav() 设置 */
+  z-index: 40;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.flow-turn-nav.visible { display: flex; animation: sketchFadeIn 0.25s ease-out; }
+
+.flow-turn-nav-btn {
+  position: relative;
+  overflow: hidden;
+  width: 34px; height: 34px; padding: 0;
+  background: transparent;
+  border: 1px solid transparent; /* 常态无边框，保持 1px 几何占位防抖动 */
+  border-radius: 255px 12px 225px 10px / 12px 225px 10px 255px;
+  color: var(--ink-muted);
+  cursor: pointer; user-select: none;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+.flow-turn-nav-btn svg {
+  position: relative;
+  z-index: 2;
+}
+.flow-turn-nav-btn:hover,
+.flow-turn-nav-btn:focus-visible {
+  border-color: var(--sketch-border);
+  color: var(--ink-primary);
+  background: var(--sketch-box-bg);
+  box-shadow: var(--sketch-shadow-hover);
+}
+.flow-turn-nav-btn:active,
+.flow-turn-nav-btn.holding { transform: scale(0.93); }
+
+/* 「下」按钮按下长按 1.5 秒背景色由左至右填充层 */
+.flow-turn-nav-down::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--sketch-tag-hover-bg);
+  transform-origin: left center;
+  transform: scaleX(0);
+  border-radius: inherit;
+  z-index: 1;
+  pointer-events: none;
+}
+.flow-turn-nav-down.holding::before {
+  transform: scaleX(1);
+  transition: transform 1.5s linear;
+}
+
+/* 「下」按钮按下长按中的轻微抖动动画与悬浮边框 */
+.flow-turn-nav-down.holding {
+  border-color: var(--sketch-border);
+  color: var(--ink-primary);
+  box-shadow: var(--sketch-shadow-hover);
+  animation: flowNavHoldShake 0.16s ease-in-out infinite;
+}
+
+.flow-turn-nav-btn.long-press {
+  border-color: var(--sketch-border);
+  color: var(--ink-primary);
+  background: var(--sketch-tag-bg);
+  box-shadow: var(--sketch-shadow);
+  animation: none;
+  transform: scale(1);
+}
+.flow-turn-nav-btn.long-press::before {
+  transform: scaleX(1);
+  transition: none;
+}
+.flow-turn-nav-btn.long-press svg { animation: flowNavHoldPulse 1.1s ease-in-out infinite; }
+
+/* 非 Flow 视图下绝不显现 */
+.app-container:not([data-view="flow"]) .flow-turn-nav { display: none !important; }
+
+@keyframes flowNavHoldShake {
+  0%, 100% { transform: scale(0.94) translate(0, 0) rotate(0deg); }
+  25% { transform: scale(0.94) translate(-0.6px, 0.4px) rotate(-0.6deg); }
+  50% { transform: scale(0.94) translate(0.6px, -0.4px) rotate(0.5deg); }
+  75% { transform: scale(0.94) translate(-0.4px, -0.3px) rotate(-0.4deg); }
+}
+
+@keyframes flowNavHoldPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+```
+
+```javascript
+const LONG_PRESS_MS = 1500;
+let navPressState = null;      // { type: 'up'|'down', startTime, done }
+let downLongPressTimer = null;
+
+const resetNavButtonVisual = (type) => {
+  const btn = type === "up" ? flowTurnNavUp : flowTurnNavDown;
+  if (!btn) return;
+  btn.classList.remove("holding", "long-press");
+  if (type === "down") btn.setAttribute("title", "下一个对话 (长按 1.5 秒直接定位到底部)");
+};
+
+const beginNavPress = (type) => {
+  if (navPressState) cancelNavPress(navPressState.type);
+  navPressState = { type, startTime: Date.now(), done: false };
+  const btn = type === "up" ? flowTurnNavUp : flowTurnNavDown;
+  if (btn) btn.classList.add("holding");
+  if (type === "down") {
+    clearTimeout(downLongPressTimer);
+    downLongPressTimer = setTimeout(() => {
+      if (navPressState && navPressState.type === "down" && !navPressState.done) {
+        navPressState.done = true;   // 长按满 1.5 秒：立即定位到底部，无需弹起
+        scrollToConversationBottom();
+        if (flowTurnNavDown) {
+          flowTurnNavDown.classList.add("long-press");
+          flowTurnNavDown.setAttribute("title", "已定位到会话最底部");
+        }
+      }
+    }, LONG_PRESS_MS);
+  }
+};
+
+const endNavPress = (type) => {
+  if (!navPressState || navPressState.type !== type) return;
+  const wasDone = navPressState.done;
+  navPressState = null;
+  clearTimeout(downLongPressTimer); downLongPressTimer = null;
+  resetNavButtonVisual(type);
+  if (wasDone) return;             // 长按已触发定位，弹起不再重复定位
+  if (type === "up") scrollToPreviousTurn();
+  else scrollToNextTurn();
+};
+
+const cancelNavPress = (type) => {
+  if (navPressState && navPressState.type === type) {
+    navPressState = null;
+    clearTimeout(downLongPressTimer); downLongPressTimer = null;
+    resetNavButtonVisual(type);
+  }
+};
+
+// 顶部悬浮提示吸附高度（锚定判定与定位偏移共用，保证目标不被遮挡）
+const getStickyTipOffset = () =>
+  flowQuestionTip && flowQuestionTip.classList.contains("visible")
+    ? flowQuestionTip.offsetHeight + 8 : 0;
+
+// 每轮对话的定位锚点 = 该轮「最终输出内容」卡片（.flow-response-card / .agent-response-card）
+const getTurnResponseAnchor = (group) =>
+  group?.querySelector(".flow-response-card") ||
+  group?.querySelector(".agent-response-card") ||
+  group?.querySelector(".response-content") ||
+  group;
+
+// 当前锚定轮次：取「最终输出内容顶部 <= 视口顶边(+提示吸附高度)」的最后一个轮次；
+// 与定位使用同一目标，点击后锚定随之推进，可连续多次向上/向下定位（修复二次点击失效）。
+const getAnchoredTurnIndex = () => {
+  if (!flowScrollArea || !flowConversation) return -1;
+  const groups = flowConversation.querySelectorAll(".flow-message-group");
+  if (groups.length === 0) return -1;
+  const areaTop = flowScrollArea.getBoundingClientRect().top;
+  const threshold = areaTop + getStickyTipOffset();
+  let anchor = 0;
+  for (let i = 0; i < groups.length; i++) {
+    if (getTurnResponseAnchor(groups[i]).getBoundingClientRect().top <= threshold) anchor = i; else break;
+  }
+  return anchor;
+};
+
+// 定位到第 index 段对话「最终输出内容」顶部（对齐显示窗体顶部，扣除顶部悬浮提示吸附高度）
+const scrollToTurnStart = (index) => {
+  if (!flowScrollArea || !flowConversation) return;
+  const groups = flowConversation.querySelectorAll(".flow-message-group");
+  if (index < 0 || index >= groups.length) return;
+  const target = getTurnResponseAnchor(groups[index]);
+  const areaTop = flowScrollArea.getBoundingClientRect().top;
+  const targetTop = target.getBoundingClientRect().top;
+  const tipOffset = getStickyTipOffset();
+  const maxTop = flowScrollArea.scrollHeight - flowScrollArea.clientHeight;
+  const nextTop = Math.max(0, Math.min(flowScrollArea.scrollTop + (targetTop - areaTop) - tipOffset, maxTop));
+  flowScrollArea.scrollTop = nextTop; // scroll-behavior: smooth 平滑滚动
+};
+
+const scrollToPreviousTurn = () => {
+  const anchor = getAnchoredTurnIndex();
+  if (anchor <= 0) return; // 已是第一轮
+  scrollToTurnStart(anchor - 1);
+};
+const scrollToNextTurn = () => {
+  const anchor = getAnchoredTurnIndex();
+  const count = flowConversation.querySelectorAll(".flow-message-group").length;
+  if (anchor < 0 || anchor >= count - 1) return; // 已是最后一轮
+  scrollToTurnStart(anchor + 1);
+};
+const scrollToConversationBottom = () => {
+  if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+};
+
+// 垂直对齐：按钮已右移到 flow 内容区之外，垂直方向动态对齐 flow 内容区底部
+const positionFlowTurnNav = () => {
+  if (!flowTurnNav || !flowStage || !appContainer || currentView !== VIEW_FLOW) return;
+  const appRect = appContainer.getBoundingClientRect();
+  const stageRect = flowStage.getBoundingClientRect();
+  const navHeight = flowTurnNav.offsetHeight || 0;
+  flowTurnNav.style.top = `${Math.round(stageRect.bottom - appRect.top - navHeight - 14)}px`;
+};
+
+const updateFlowTurnNav = () => {
+  if (!flowTurnNav) return;
+  const count = flowConversation ? flowConversation.querySelectorAll(".flow-message-group").length : 0;
+  const shouldShow = currentView === VIEW_FLOW && count >= 2;
+  flowTurnNav.classList.toggle("visible", shouldShow);
+  if (!shouldShow) { cancelNavPress("up"); cancelNavPress("down"); }
+  positionFlowTurnNav();
+};
+
+// flow 内容区尺寸变化（窗口缩放 / 输入框多行高度变化 / 视图切换）时保持按钮垂直对齐
+if (flowStage) {
+  const navStageResizeObserver = new ResizeObserver(() => positionFlowTurnNav());
+  navStageResizeObserver.observe(flowStage);
+  window.addEventListener("resize", positionFlowTurnNav);
+}
+
+// 绑定：mouseup 仅在指针仍在按钮上时触发；mouseleave 即作废；键盘 Enter/Space 支持可访问性
+const bindTurnNavButton = (type) => {
+  const btn = type === "up" ? flowTurnNavUp : flowTurnNavDown;
+  if (!btn) return;
+  btn.addEventListener("mousedown", (e) => { if (e.button !== 0) return; e.preventDefault(); beginNavPress(type); });
+  btn.addEventListener("mouseup",   (e) => { if (e.button !== 0) return; endNavPress(type); });
+  btn.addEventListener("mouseleave", () => cancelNavPress(type));
+  btn.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); beginNavPress(type); }
+  });
+  btn.addEventListener("keyup", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); endNavPress(type); }
+  });
+};
+bindTurnNavButton("up");
+bindTurnNavButton("down");
+
+// 刷新时机：resetStreamState 末尾（新轮次追加）+ pi:view-change（进入/离开 Flow、历史恢复）
+window.addEventListener("pi:view-change", () => updateFlowTurnNav());
+```
+
+### 3.6.3 关键陷阱
+- **导航必须挂在 `#app-container` 下而非 `#flow-stage` 内**：`#flow-stage` 有 `overflow: hidden`，会把右移到内容外的按钮裁掉；挂到 `#app-container`（`position: relative`）后用 JS（`positionFlowTurnNav` + `ResizeObserver`）对齐垂直位置；
+- **`mouseleave` 必须作废按下状态**：这是「按下后移出按钮再弹起不生效」的核心保障——仅靠 `mouseup` 在按钮上派发还不够，拖出再拖回后释放仍会触发，必须用 `mouseleave` 清零；
+- **锚定与定位必须同源**：锚定轮次与定位目标都使用「每轮最终输出内容顶部」，且判定阈值要加 `tipOffset`（提示吸附高度）；否则点击一次后锚定不推进，第二次点击就失效（「只能点一次」的根因）；
+- **扣除 sticky 提示高度**：直接 `scrollTop += targetTop - areaTop` 会把目标顶部对齐到视口顶边，从而被 `flow-question-tip` 遮挡，需减去 `tipOffset = tipHeight + 8`；
+- **长按立即定位用定时器触发**：1.5s 定时器到点直接 `scrollToConversationBottom()` 并置 `done = true`，弹起时不再重复定位（无需再用时间戳在 mouseup 判定）；
+- **导航显隐必须在两个时机刷新**：`resetStreamState`（新轮次追加后，含跟随即时显现）与 `pi:view-change`（进入/离开 Flow、历史任务/会话恢复），缺一不可；同时用 `ResizeObserver` 监听 `flow-stage` 以保持垂直对齐；
+- **常态透明无边框**：遵循项目按钮铁律，`border: 1px solid transparent` 防抖，仅 hover/focus-visible 显框。
+
+---
+
 ## 📌 4. Windows 系统通知与失焦调度规范 (Notification & Focus Pipeline)
 
 ### 4.1 触发时机铁律
@@ -444,9 +743,9 @@ window.addEventListener("pi:view-change", () => updateFlowQuestionTip()); // 进
 | [`src/services/conversation-history.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/conversation-history.js) | `ConversationHistoryService` 多轮快照沉淀与 MRU 恢复 |
 | [`src-tauri/src/pi_runner/host_pool.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/pi_runner/host_pool.rs) | `PiHostPool` 多进程监管池、独立子进程隔离与 `task_id` 分帧注入 |
 | [`src/services/prompt-history.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/prompt-history.js) | `PromptHistoryNavigator` 历史记录栈、草稿暂存与指针控制 |
-| [`src/main.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/main.js) | `createFlowTurnGroupElement`、`resetStreamState`（多轮追加）、`handleFlowQuery`（同一工作流路由）、`restoreTaskToFlow` 与 `restoreConversationToFlow`（多轮还原） |
+| [`src/main.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/main.js) | `createFlowTurnGroupElement`、`resetStreamState`（多轮追加）、`handleFlowQuery`（同一工作流路由）、`restoreTaskToFlow` 与 `restoreConversationToFlow`（多轮还原）、`updateFlowTurnNav` / `scrollToTurnStart` / 上·下按钮事件绑定（多段对话定位导航） |
 | [`src/services/notification-service.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/notification-service.js) | 全局焦点追踪器、任务池追踪器、Windows 原生 Toast 通知分发 |
 | [`src-tauri/src/lib.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/lib.rs) | `tauri-plugin-notification` 初始化、`pi_show_notification`、`app-awakened` 广播与任务池 RPC |
-| [`src/styles.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles.css) | `.flow-message-group`、`.agent-thinking-card`、`.tool-card`、`#mini-task-capsule`、`#task-details-sidebar` |
-| [`src/index.html`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/index.html) | `#flow-conversation`、`#flow-btn-abort`、`#flow-scroll-area` |
+| [`src/styles.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles.css) | `.flow-message-group`、`.agent-thinking-card`、`.tool-card`、`.flow-turn-nav` / `.flow-turn-nav-btn`（上下轮次定位导航）、`#mini-task-capsule`、`#task-details-sidebar` |
+| [`src/index.html`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/index.html) | `#flow-conversation`、`#flow-btn-abort`、`#flow-scroll-area`、`#flow-turn-nav`（含 `#flow-turn-nav-up` / `#flow-turn-nav-down`） |
 

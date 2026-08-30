@@ -76,7 +76,7 @@ description: |
 | `--sketch-border-subtle` | `#36322C` | 暗石炭底线（静止态） |
 | `--sketch-box-bg` | `#1C1A18` | 输入框深炭黑底 |
 | `--sketch-tag-bg` | `#23211E` | 标签深石炭底色 |
-| `--sketch-shadow` | `2px 3px 0px rgba(0, 0, 0, 0.5)` | 沉浸炭黑投影 |
+| `--sketch-shadow` | `2px 3px 0px rgba(243, 239, 230, 0.08)` | 炭黑板素描泛白粉笔微投影 |
 
 ---
 

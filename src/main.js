@@ -87,6 +87,9 @@ window.addEventListener("DOMContentLoaded", () => {
   const flowConversation = document.getElementById("flow-conversation");
   const flowQuestionTip = document.getElementById("flow-question-tip");
   const flowQuestionTipText = document.getElementById("flow-question-tip-text");
+  const flowTurnNav = document.getElementById("flow-turn-nav");
+  const flowTurnNavUp = document.getElementById("flow-turn-nav-up");
+  const flowTurnNavDown = document.getElementById("flow-turn-nav-down");
   const flowUserText = document.getElementById("flow-user-text");
   const flowPromptAttachments = document.getElementById("flow-prompt-attachments");
   const thinkingToggleBtn = document.getElementById("thinking-toggle-btn");
@@ -2530,6 +2533,204 @@ window.addEventListener("DOMContentLoaded", () => {
   // 视图切换进入/离开 Flow 时刷新悬浮提示显隐
   window.addEventListener("pi:view-change", () => updateFlowQuestionTip());
 
+  // ==========================================================================
+  // 多段对话上下轮次定位导航 (Flow Turn Navigation)
+  // 触发条件：Flow 视图下对话轮次 >= 2 时，在 flow 内容区右侧（内容外）纵向显现「上 / 下」按钮；
+  // 交互铁律：所有定位效果仅在「鼠标弹起」时响应 —— 按下后移出按钮再弹起不生效，
+  //           故按下状态在 mouseleave 时即作废，mouseup 仅当指针仍在按钮上才会触发；
+  // 定位目标：每轮对话定位到「该轮最终输出内容」的顶部，对齐显示窗体顶部；
+  // 锚定与定位同源：连续多次点击可逐轮向上/向下定位（修复二次点击失效）；
+  // 长按「下」满 1.5 秒：立即定位到会话最底部，无需弹起。
+  // ==========================================================================
+  const LONG_PRESS_MS = 1500;
+  let navPressState = null; // { type: 'up'|'down', startTime, done }
+  let downLongPressTimer = null;
+
+  const resetNavButtonVisual = (type) => {
+    const btn = type === "up" ? flowTurnNavUp : flowTurnNavDown;
+    if (!btn) return;
+    btn.classList.remove("holding", "long-press");
+    if (type === "down") {
+      btn.setAttribute("title", "下一个对话 (长按 1.5 秒直接定位到底部)");
+    }
+  };
+
+  const beginNavPress = (type) => {
+    if (navPressState) cancelNavPress(navPressState.type);
+    navPressState = { type, startTime: Date.now(), done: false };
+    const btn = type === "up" ? flowTurnNavUp : flowTurnNavDown;
+    if (btn) btn.classList.add("holding");
+    if (type === "down") {
+      clearTimeout(downLongPressTimer);
+      downLongPressTimer = setTimeout(() => {
+        if (navPressState && navPressState.type === "down" && !navPressState.done) {
+          navPressState.done = true; // 长按满 1.5 秒：立即定位到底部，无需弹起
+          scrollToConversationBottom();
+          if (flowTurnNavDown) {
+            flowTurnNavDown.classList.add("long-press");
+            flowTurnNavDown.setAttribute("title", "已定位到会话最底部");
+          }
+        }
+      }, LONG_PRESS_MS);
+    }
+  };
+
+  const endNavPress = (type) => {
+    if (!navPressState || navPressState.type !== type) return;
+    const wasDone = navPressState.done;
+    navPressState = null;
+    clearTimeout(downLongPressTimer);
+    downLongPressTimer = null;
+    resetNavButtonVisual(type);
+    if (wasDone) return; // 长按已触发定位，弹起不再重复定位
+    if (type === "up") {
+      scrollToPreviousTurn();
+    } else {
+      scrollToNextTurn();
+    }
+  };
+
+  const cancelNavPress = (type) => {
+    if (navPressState && navPressState.type === type) {
+      navPressState = null;
+      clearTimeout(downLongPressTimer);
+      downLongPressTimer = null;
+      resetNavButtonVisual(type);
+    }
+  };
+
+  const getFlowTurnCount = () =>
+    flowConversation ? flowConversation.querySelectorAll(".flow-message-group").length : 0;
+
+  // 顶部悬浮提问提示的吸附高度（锚定判定与定位偏移共用，保证目标内容不被遮挡）
+  const getStickyTipOffset = () =>
+    flowQuestionTip && flowQuestionTip.classList.contains("visible")
+      ? flowQuestionTip.offsetHeight + 8
+      : 0;
+
+  // 每轮对话的定位锚点 = 该轮「最终输出内容」卡片（.flow-response-card / .agent-response-card），
+  // 兜底回退到 .response-content 或整组。
+  const getTurnResponseAnchor = (group) =>
+    group?.querySelector(".flow-response-card") ||
+    group?.querySelector(".agent-response-card") ||
+    group?.querySelector(".response-content") ||
+    group;
+
+  // 当前锚定轮次：取「最终输出内容顶部 <= 视口顶边(+提示吸附高度)」的最后一个轮次；
+  // 与定位使用同一目标，点击后锚定随之推进，可连续多次向上/向下定位（修复二次点击失效）。
+  const getAnchoredTurnIndex = () => {
+    if (!flowScrollArea || !flowConversation) return -1;
+    const groups = flowConversation.querySelectorAll(".flow-message-group");
+    if (groups.length === 0) return -1;
+    const areaTop = flowScrollArea.getBoundingClientRect().top;
+    const threshold = areaTop + getStickyTipOffset();
+    let anchor = 0;
+    for (let i = 0; i < groups.length; i++) {
+      if (getTurnResponseAnchor(groups[i]).getBoundingClientRect().top <= threshold) {
+        anchor = i;
+      } else {
+        break;
+      }
+    }
+    return anchor;
+  };
+
+  // 定位到第 index 段对话「最终输出内容」顶部（对齐显示窗体顶部，扣除顶部悬浮提示吸附高度）
+  const scrollToTurnStart = (index) => {
+    if (!flowScrollArea || !flowConversation) return;
+    const groups = flowConversation.querySelectorAll(".flow-message-group");
+    if (index < 0 || index >= groups.length) return;
+    const target = getTurnResponseAnchor(groups[index]);
+    const areaTop = flowScrollArea.getBoundingClientRect().top;
+    const targetTop = target.getBoundingClientRect().top;
+    const tipOffset = getStickyTipOffset();
+    const maxTop = flowScrollArea.scrollHeight - flowScrollArea.clientHeight;
+    const nextTop = Math.max(
+      0,
+      Math.min(flowScrollArea.scrollTop + (targetTop - areaTop) - tipOffset, maxTop)
+    );
+    flowScrollArea.scrollTop = nextTop;
+  };
+
+  const scrollToPreviousTurn = () => {
+    const anchor = getAnchoredTurnIndex();
+    if (anchor <= 0) return; // 已是第一轮（或无可定位轮次）
+    scrollToTurnStart(anchor - 1);
+  };
+
+  const scrollToNextTurn = () => {
+    const anchor = getAnchoredTurnIndex();
+    const count = getFlowTurnCount();
+    if (anchor < 0 || anchor >= count - 1) return; // 已是最后一轮（或无可定位轮次）
+    scrollToTurnStart(anchor + 1);
+  };
+
+  const scrollToConversationBottom = () => {
+    if (!flowScrollArea) return;
+    flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+  };
+
+  // 垂直对齐：按钮已右移到 flow 内容区域之外，垂直方向动态对齐 flow 内容区底部（问题3）
+  const positionFlowTurnNav = () => {
+    if (!flowTurnNav || !flowStage || !appContainer || currentView !== VIEW_FLOW) return;
+    const appRect = appContainer.getBoundingClientRect();
+    const stageRect = flowStage.getBoundingClientRect();
+    const navHeight = flowTurnNav.offsetHeight || 0;
+    flowTurnNav.style.top = `${Math.round(stageRect.bottom - appRect.top - navHeight - 14)}px`;
+  };
+
+  const updateFlowTurnNav = () => {
+    if (!flowTurnNav) return;
+    const shouldShow = currentView === VIEW_FLOW && getFlowTurnCount() >= 2;
+    flowTurnNav.classList.toggle("visible", shouldShow);
+    if (!shouldShow) {
+      cancelNavPress("up");
+      cancelNavPress("down");
+    }
+    positionFlowTurnNav();
+  };
+
+  // flow 内容区尺寸变化（窗口缩放 / 输入框多行高度变化 / 视图切换）时保持按钮垂直对齐
+  if (flowStage) {
+    const navStageResizeObserver = new ResizeObserver(() => positionFlowTurnNav());
+    navStageResizeObserver.observe(flowStage);
+    window.addEventListener("resize", positionFlowTurnNav);
+  }
+
+  // 绑定上/下按钮：mouseup 仅在指针仍停留在按钮上时触发（按下后移出再弹起不会生效）；
+  // 同时补充键盘 Enter/Space 支持以保证可访问性。
+  const bindTurnNavButton = (type) => {
+    const btn = type === "up" ? flowTurnNavUp : flowTurnNavDown;
+    if (!btn) return;
+    btn.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      beginNavPress(type);
+    });
+    btn.addEventListener("mouseup", (e) => {
+      if (e.button !== 0) return;
+      endNavPress(type);
+    });
+    btn.addEventListener("mouseleave", () => cancelNavPress(type));
+    btn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        beginNavPress(type);
+      }
+    });
+    btn.addEventListener("keyup", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        endNavPress(type);
+      }
+    });
+  };
+  bindTurnNavButton("up");
+  bindTurnNavButton("down");
+
+  // 视图切换进入/离开 Flow 时刷新定位导航显隐（新轮次追加在 resetStreamState 内联动刷新）
+  window.addEventListener("pi:view-change", () => updateFlowTurnNav());
+
   /**
    * 初始化/重置流式状态（支持多轮追加与新会话独立划分）
    * @param {string} query
@@ -2598,6 +2799,8 @@ window.addEventListener("DOMContentLoaded", () => {
 
     // 新轮次就绪后刷新顶部悬浮提问提示
     updateFlowQuestionTip();
+    // 新轮次追加后刷新右侧多段对话定位导航显隐（>= 2 轮时显现）
+    updateFlowTurnNav();
   };
 
   const finalizeStream = () => {
