@@ -80,31 +80,54 @@ class ConversationHistoryService extends EventTarget {
   }
 
   /**
-   * 记录 Flow 模式完成的一轮对话
+   * 记录 Flow 模式完成的一轮或多轮对话
    * @param {Object} data
-   * @param {string} data.query 用户问题
+   * @param {string} [data.id] 会话唯一 ID (若已知则精准定位更新)
+   * @param {string} [data.taskId] 关联的任务 ID
+   * @param {string} [data.title] 会话标题摘要
+   * @param {string} data.query 用户问题 (首轮提问)
+   * @param {Array<any>} [data.turns] 多轮对话完整轮次快照
    * @param {string} [data.thinkingText] 思考过程
    * @param {string} [data.responseText] 回答内容
    * @param {Array<any>} [data.toolCalls] 工具调用快照
    * @param {string} [data.thinkingDuration] 思考耗时文本
    * @param {string} [data.modelId] 模型ID
    * @param {string} [data.sessionPath] 关联的 Pi 会话文件路径
+   * @param {boolean} [data.isAborted] 是否已中止
    * @returns {Object} 新增/更新的对话记录
    */
   recordConversation(data) {
-    if (!data || !data.query || data.query.trim().length === 0) return null;
+    if (!data) return null;
+    const trimmedQuery = (data.query || data.turns?.[0]?.query || "").trim();
+    if (!trimmedQuery && (!Array.isArray(data.turns) || data.turns.length === 0)) return null;
 
-    const trimmedQuery = data.query.trim();
     const now = Date.now();
 
-    // 检查是否已有完全相同提问的最新项，如果有则原地更新
-    let existingIndex = this.conversations.findIndex(
-      (c) => c.query === trimmedQuery && Math.abs(now - c.lastViewedAt) < 60000
-    );
+    // 1. 优先根据明确的 conversation id 匹配
+    let existingIndex = -1;
+    if (data.id) {
+      existingIndex = this.conversations.findIndex((c) => c.id === data.id);
+    }
+
+    // 2. 其次根据 taskId 匹配（若该任务此前已沉淀过记录）
+    if (existingIndex === -1 && data.taskId) {
+      existingIndex = this.conversations.findIndex(
+        (c) => (c.taskId && c.taskId === data.taskId) || c.id === data.taskId
+      );
+    }
+
+    // 3. 再次根据提问内容进行回退匹配 (5分钟容差)
+    if (existingIndex === -1 && trimmedQuery) {
+      existingIndex = this.conversations.findIndex(
+        (c) => c.query === trimmedQuery && Math.abs(now - c.lastViewedAt) < 300000
+      );
+    }
 
     let conv;
     if (existingIndex !== -1) {
       conv = this.conversations[existingIndex];
+      if (data.title) conv.title = data.title;
+      if (trimmedQuery) conv.query = trimmedQuery;
       conv.thinkingText = data.thinkingText || conv.thinkingText || "";
       conv.responseText = data.responseText || conv.responseText || "";
       conv.toolCalls = data.toolCalls || conv.toolCalls || [];
@@ -125,9 +148,9 @@ class ConversationHistoryService extends EventTarget {
       this.hiddenIds.delete(conv.id);
     } else {
       conv = {
-        id: `conv_${now}_${Math.random().toString(36).substring(2, 7)}`,
+        id: data.id || `conv_${now}_${Math.random().toString(36).substring(2, 7)}`,
         taskId: data.taskId || undefined,
-        title: this.generateSummaryTitle(trimmedQuery),
+        title: data.title || this.generateSummaryTitle(trimmedQuery),
         query: trimmedQuery,
         thinkingText: data.thinkingText || "",
         responseText: data.responseText || "",

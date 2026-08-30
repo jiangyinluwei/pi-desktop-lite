@@ -85,6 +85,8 @@ window.addEventListener("DOMContentLoaded", () => {
   const flowStage = document.getElementById("flow-stage");
   const flowScrollArea = document.getElementById("flow-scroll-area");
   const flowConversation = document.getElementById("flow-conversation");
+  const flowQuestionTip = document.getElementById("flow-question-tip");
+  const flowQuestionTipText = document.getElementById("flow-question-tip-text");
   const flowUserText = document.getElementById("flow-user-text");
   const flowPromptAttachments = document.getElementById("flow-prompt-attachments");
   const thinkingToggleBtn = document.getElementById("thinking-toggle-btn");
@@ -2480,6 +2482,55 @@ window.addEventListener("DOMContentLoaded", () => {
   };
 
   /**
+   * 多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)
+   * 仅当内容溢出触发滚动条 (scrollHeight > clientHeight) 时显现；
+   * sticky 吸附于对话区域顶部、靠左对齐；纯提醒用途，无任何鼠标行为 (pointer-events: none)。
+   * 多段对话锚定：根据滚动位置定位「当前所在对话段」——
+   * 当视口顶部定位于第 N 段至第 N+1 段之间时，显示第 N 段对话顶部信息 (其提问文本)。
+   */
+  const updateFlowQuestionTip = () => {
+    if (!flowQuestionTip || !flowQuestionTipText || !flowScrollArea) return;
+    const overflowing = flowScrollArea.scrollHeight > flowScrollArea.clientHeight + 1;
+
+    // 锚定当前对话段：取「顶部仍高于/等于视口顶边」的最后一个 flow-message-group
+    let question = "";
+    if (overflowing && flowConversation) {
+      const groups = flowConversation.querySelectorAll(".flow-message-group");
+      if (groups.length > 0) {
+        const areaTop = flowScrollArea.getBoundingClientRect().top;
+        let anchorGroup = groups[0];
+        for (const g of groups) {
+          if (g.getBoundingClientRect().top <= areaTop) {
+            anchorGroup = g;
+          } else {
+            break;
+          }
+        }
+        const qEl = anchorGroup.querySelector(".flow-user-prompt-card .prompt-content");
+        question = qEl?.textContent?.trim() || lastUserQuery?.trim() || "";
+      } else {
+        question = String(lastUserQuery?.trim() || activeTurnRefs?.userTextEl?.textContent?.trim() || "");
+      }
+    }
+
+    flowQuestionTipText.textContent = question;
+    const shouldShow = currentView === VIEW_FLOW && overflowing && Boolean(question);
+    flowQuestionTip.classList.toggle("visible", shouldShow);
+  };
+
+  // 内容尺寸变化（流式增长/折叠展开/多轮追加）与容器尺寸变化（窗口缩放）时自动刷新悬浮提示
+  if (flowConversation && flowScrollArea) {
+    const tipResizeObserver = new ResizeObserver(() => updateFlowQuestionTip());
+    tipResizeObserver.observe(flowConversation);
+    tipResizeObserver.observe(flowScrollArea);
+    window.addEventListener("resize", updateFlowQuestionTip);
+    // 滚动位置变化时重算锚定的对话段
+    flowScrollArea.addEventListener("scroll", updateFlowQuestionTip, { passive: true });
+  }
+  // 视图切换进入/离开 Flow 时刷新悬浮提示显隐
+  window.addEventListener("pi:view-change", () => updateFlowQuestionTip());
+
+  /**
    * 初始化/重置流式状态（支持多轮追加与新会话独立划分）
    * @param {string} query
    * @param {Array<any>} attachments
@@ -2544,6 +2595,9 @@ window.addEventListener("DOMContentLoaded", () => {
     if (flowScrollArea) {
       flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
     }
+
+    // 新轮次就绪后刷新顶部悬浮提问提示
+    updateFlowQuestionTip();
   };
 
   const finalizeStream = () => {
@@ -2728,6 +2782,9 @@ window.addEventListener("DOMContentLoaded", () => {
         openSettingsView("tab-packages");
       });
     }
+
+    // 报错终止时即时自动沉淀快照至历史记录
+    archiveCurrentFlowToHistory();
   };
 
   // 绑定 PiClient 流式事件
@@ -2975,6 +3032,7 @@ window.addEventListener("DOMContentLoaded", () => {
     // 完成后收起所有工具卡片（最终输出卡不收起）
     collapseAllToolCards();
     finalizeStream();
+    archiveCurrentFlowToHistory();
   });
 
   /**
@@ -3382,6 +3440,7 @@ window.addEventListener("DOMContentLoaded", () => {
       finalizeStream();
       appendFlowAbortNotice();
       showGlobalToast("当前任务已手动终止", 1200);
+      archiveCurrentFlowToHistory();
     });
   }
 
@@ -3391,6 +3450,7 @@ window.addEventListener("DOMContentLoaded", () => {
     if (current && current.id === abortedTask?.id) {
       finalizeStream();
       appendFlowAbortNotice();
+      archiveCurrentFlowToHistory();
     }
   });
 
@@ -3412,6 +3472,22 @@ window.addEventListener("DOMContentLoaded", () => {
 
   const restoreTaskToFlow = (task) => {
     if (!task) return;
+
+    if (currentView === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id !== task.id) {
+      archiveCurrentFlowToHistory();
+    }
+
+    if (!task.conversationId) {
+      const existingConv = conversationHistoryService.conversations.find(
+        (c) => c.taskId === task.id || c.id === task.id
+      );
+      if (existingConv) {
+        task.conversationId = existingConv.id;
+        if ((!Array.isArray(task.turns) || task.turns.length === 0) && Array.isArray(existingConv.turns) && existingConv.turns.length > 0) {
+          task.turns = JSON.parse(JSON.stringify(existingConv.turns));
+        }
+      }
+    }
 
     taskManager.setActiveTask(task.id);
     if (flowConversation) {
@@ -3496,6 +3572,10 @@ window.addEventListener("DOMContentLoaded", () => {
   const restoreConversationToFlow = (conv) => {
     if (!conv) return;
 
+    if (currentView === VIEW_FLOW) {
+      archiveCurrentFlowToHistory();
+    }
+
     // 1. 刷新该讯息的浏览时间戳（MRU 刷新排序至第 1 位）
     conversationHistoryService.touchConversation(conv.id);
 
@@ -3520,17 +3600,20 @@ window.addEventListener("DOMContentLoaded", () => {
     if (!task) {
       task = taskManager.createTask({
         id: taskIdToUse,
+        conversationId: conv.id,
         query: conv.query || conv.title || "",
         model: conv.modelId || piClient.currentModel?.id || "default",
         isSuspended: false,
       });
-      task.turns = turns;
-      task.status = "completed";
-      task.thinkingText = conv.thinkingText || "";
-      task.responseText = conv.responseText || "";
-      task.toolCalls = conv.toolCalls || [];
-      task.thinkingDurationText = conv.thinkingDuration || "已完成思考";
     }
+    task.turns = JSON.parse(JSON.stringify(turns));
+    task.conversationId = conv.id;
+    task.status = "completed";
+    const lastTurn = turns[turns.length - 1];
+    task.thinkingText = lastTurn?.thinkingText || conv.thinkingText || "";
+    task.responseText = lastTurn?.responseText || conv.responseText || "";
+    task.toolCalls = lastTurn?.toolCalls || conv.toolCalls || [];
+    task.thinkingDurationText = lastTurn?.thinkingDurationText || conv.thinkingDuration || "已完成思考";
 
     taskManager.setActiveTask(task.id);
 
@@ -3621,22 +3704,32 @@ window.addEventListener("DOMContentLoaded", () => {
         return turn;
       });
 
+      // 同步内存中的 turns 状态
+      currentActive.turns = turnsToSave;
+
       const firstTurn = turnsToSave[0];
-      conversationHistoryService.recordConversation({
+      const lastTurn = turnsToSave[turnsToSave.length - 1];
+      const savedConv = conversationHistoryService.recordConversation({
+        id: currentActive.conversationId || undefined,
         taskId: currentActive.id,
         query: firstTurn?.query || lastUserQuery,
         title: firstTurn?.query ? conversationHistoryService.generateSummaryTitle(firstTurn.query) : undefined,
         turns: turnsToSave,
-        thinkingText: currentThinkingText,
-        responseText: responseTextToSave || "",
-        toolCalls: toolCallsSnapshot,
-        thinkingDuration: activeTurnRefs?.thinkingDurationEl ? activeTurnRefs.thinkingDurationEl.textContent : null,
-        modelId: piClient.currentModel?.id || "",
+        thinkingText: lastTurn?.thinkingText || currentThinkingText || "",
+        responseText: lastTurn?.responseText || responseTextToSave || "",
+        toolCalls: lastTurn?.toolCalls || toolCallsSnapshot,
+        thinkingDuration: lastTurn?.thinkingDurationText || (activeTurnRefs?.thinkingDurationEl ? activeTurnRefs.thinkingDurationEl.textContent : null),
+        modelId: currentActive.model || piClient.currentModel?.id || "",
         sessionPath: "",
-        isAborted,
+        isAborted: turnsToSave.some((t) => t.isAborted),
       });
+
+      if (savedConv && savedConv.id) {
+        currentActive.conversationId = savedConv.id;
+      }
     } else if (lastUserQuery && (responseTextToSave || currentThinkingText || isAborted)) {
-      conversationHistoryService.recordConversation({
+      const savedConv = conversationHistoryService.recordConversation({
+        id: currentActive?.conversationId || undefined,
         taskId: currentActive ? currentActive.id : undefined,
         query: lastUserQuery,
         thinkingText: currentThinkingText,
@@ -3647,6 +3740,10 @@ window.addEventListener("DOMContentLoaded", () => {
         sessionPath: "",
         isAborted,
       });
+
+      if (savedConv && savedConv.id && currentActive) {
+        currentActive.conversationId = savedConv.id;
+      }
     }
   };
 
@@ -5447,6 +5544,25 @@ window.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       handleGlobalStepBack(e);
+    }
+  });
+
+  // 窗口生命周期与关闭保护：在窗口关闭、页面隐藏或离开时自动归档 Flow
+  window.addEventListener("beforeunload", () => {
+    if (currentView === VIEW_FLOW) {
+      archiveCurrentFlowToHistory();
+    }
+  });
+
+  window.addEventListener("pagehide", () => {
+    if (currentView === VIEW_FLOW) {
+      archiveCurrentFlowToHistory();
+    }
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden" && currentView === VIEW_FLOW) {
+      archiveCurrentFlowToHistory();
     }
   });
 });

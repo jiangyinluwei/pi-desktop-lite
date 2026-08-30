@@ -475,6 +475,100 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   padding-bottom: 12px;
 }
 
+/* 多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip - 优雅手绘窗体风格)
+   仅在内容溢出触发滚动条时显现；sticky 吸附于滚动容器顶部、靠左对齐；
+   纯提醒用途：pointer-events 置 none，无任何鼠标交互行为 */
+.flow-question-tip {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 10px 4px 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-primary);
+  background: var(--sketch-box-bg);
+  border: 1.3px solid var(--sketch-border-subtle);
+  border-radius: 255px 12px 225px 10px / 12px 225px 10px 255px;
+  box-shadow: var(--sketch-shadow);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  pointer-events: none;
+  user-select: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.flow-question-tip.visible {
+  display: inline-flex;
+  animation: sketchModalPopShake 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.flow-question-tip-window-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.flow-question-tip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1.5px 6px;
+  background: var(--sketch-tag-bg);
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 255px 6px 225px 5px / 6px 225px 5px 255px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-muted);
+}
+
+.flow-question-tip-badge svg {
+  color: var(--ink-primary);
+  flex-shrink: 0;
+}
+
+.flow-question-tip-badge .badge-label {
+  font-family: inherit;
+  line-height: 1;
+}
+
+.flow-question-tip-divider {
+  width: 1px;
+  height: 12px;
+  background: var(--sketch-border-subtle);
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.flow-question-tip .flow-question-tip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  min-width: 0;
+  color: var(--ink-primary);
+  font-weight: 550;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+}
+
+.flow-question-tip-pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ink-faint);
+  margin-left: 2px;
+  opacity: 0.7;
+}
+
 .flow-message-group {
   display: flex;
   flex-direction: column;

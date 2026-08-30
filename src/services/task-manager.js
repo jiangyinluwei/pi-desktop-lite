@@ -55,6 +55,7 @@ export class TaskManager extends EventTarget {
    * 创建并注册新 Task 实例（默认为前台正常 Flow，isSuspended 为 false）
    * @param {Object} options
    * @param {string} [options.id]
+   * @param {string} [options.conversationId]
    * @param {string} options.query
    * @param {Array<any>} [options.attachments=[]]
    * @param {string} [options.model=""]
@@ -62,13 +63,14 @@ export class TaskManager extends EventTarget {
    * @param {boolean} [options.isSuspended=false]
    * @returns {TaskItem}
    */
-  createTask({ id, query, attachments = [], model = "", provider = "", isSuspended = false }) {
+  createTask({ id, conversationId = null, query, attachments = [], model = "", provider = "", isSuspended = false }) {
     const taskId = id || `task_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const title = this._generateTitle(query) || (attachments.length > 0 ? `[附带 ${attachments.length} 个文件]` : "新对话任务");
 
     /** @type {TaskItem} */
     const task = {
       id: taskId,
+      conversationId: conversationId || null,
       title,
       query: query || "",
       attachments: [...attachments],

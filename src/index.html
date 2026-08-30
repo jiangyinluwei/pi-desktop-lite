@@ -81,6 +81,30 @@
     <!-- Flow 模式：AI 思考过程与输出内容主体交互流容器 -->
     <section class="flow-stage" id="flow-stage" aria-label="Agent 对话与思考流">
       <div class="flow-scroll-area" id="flow-scroll-area">
+        <!-- 多段对话顶部悬浮当前提问提示 (手绘窗体风格，仅提醒，无任何鼠标行为；内容溢出触发滚动条时显现) -->
+        <div class="flow-question-tip" id="flow-question-tip" aria-hidden="true">
+          <div class="flow-question-tip-window-bar">
+            <span class="flow-question-tip-badge">
+              <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.3"
+                stroke-linecap="round" stroke-linejoin="round">
+                <!-- 手绘气泡/提问锚点 -->
+                <path
+                  d="M3.2 4.2 C3.2 3.5, 3.8 3, 4.5 3 L11.5 3 C12.2 3, 12.8 3.5, 12.8 4.2 L12.8 11.2 C12.8 11.9, 12.2 12.4, 11.5 12.4 L6.2 12.4 L3.5 14.5 L3.5 4.2 Z" />
+                <path d="M5.5 6.2 L10.5 6.2 M5.5 8.8 L9 8.8" />
+              </svg>
+              <span class="badge-label">当前提问</span>
+            </span>
+          </div>
+          <span class="flow-question-tip-divider" aria-hidden="true"></span>
+          <span class="flow-question-tip-text" id="flow-question-tip-text"></span>
+          <span class="flow-question-tip-pin" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.3"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="8" cy="4" r="2" />
+              <path d="M8 6 L8 14" />
+            </svg>
+          </span>
+        </div>
         <!-- 动态消息流将通过 JS 渲染注入此处 -->
         <div class="flow-conversation" id="flow-conversation">
           <!-- 初始默认交互项模板 -->

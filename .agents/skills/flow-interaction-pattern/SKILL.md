@@ -1,12 +1,12 @@
 ---
 name: flow-interaction-pattern
 description: |
-  指导 Flow 流式交互界面（界面3）的三大核心交互逻辑实现规范：①过程框体（思考卡片/工具调用卡片）可手动折叠展开；②"当前最下方框体展开、出现下一框时自动收起"的级联自动收起流水线；③Flow 界面任意区域滚轮事件委托至最外层滚动容器。当用户提出"flow界面交互"、"思考卡片折叠"、"工具调用卡折叠"、"自动收起"、"滚轮滚动"、"flow滚动条"、"卡片收起"时使用此技能。
+  指导 Flow 流式交互界面（界面3）的四大核心交互逻辑实现规范：①过程框体（思考卡片/工具调用卡片）可手动折叠展开；②"当前最下方框体展开、出现下一框时自动收起"的级联自动收起流水线；③Flow 界面任意区域滚轮事件委托至最外层滚动容器；④多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)。当用户提出"flow界面交互"、"思考卡片折叠"、"工具调用卡折叠"、"自动收起"、"滚轮滚动"、"flow滚动条"、"卡片收起"、"悬浮提问提示"、"顶部悬浮tips"、"当前提问提示"时使用此技能。
 ---
 
 # Flow 界面交互逻辑规范 (Flow Interaction Pattern)
 
-本 Skill 归档了 Flow 流式交互界面（`界面3 / data-view="flow"`）的三大核心交互机制的**实现规范、已验证代码模式与关键陷阱**。
+本 Skill 归档了 Flow 流式交互界面（`界面3 / data-view="flow"`）的四大核心交互机制的**实现规范、已验证代码模式与关键陷阱**。
 
 ---
 
@@ -16,6 +16,7 @@ Flow 界面卡片层级如下（从上到下）：
 
 ```
 flow-scroll-area            ← 唯一可滚动容器（overflow-y: auto）
+  ├─ flow-question-tip      ← 顶部悬浮当前提问提示（sticky top:0，仅溢出时显现）
   └─ flow-conversation
        └─ flow-message-group
             ├─ flow-user-prompt-card       用户提问（不可折叠）
@@ -269,6 +270,122 @@ if (flowScrollArea) {
 
 ---
 
+## 📌 3.5 多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)
+
+### 3.5.1 交互设计
+- **触发条件**：仅当 Flow 内容溢出触发滚动条（`flowScrollArea.scrollHeight > flowScrollArea.clientHeight + 1`）且处于 Flow 视图、存在当前提问文本时显现；
+- **悬浮形态**：`position: sticky; top: 0;` 吸附于滚动容器顶部、靠左对齐（`width: fit-content`），内容滚动时始终保持在对话区域上方；
+- **纯提醒无鼠标行为**：`pointer-events: none; user-select: none;`，绝不拦截滚轮/点击/右键事件，无 hover 交互；
+- **多段对话锚定 (Turn Anchoring)**：根据滚动位置动态切换顶部信息——取「顶部仍高于/等于视口顶边」的最后一个 `.flow-message-group` 作为锚定段；当视口顶边定位于第 N 段至第 N+1 段之间时，显示第 N 段对话顶部信息（其提问文本）；单段对话时回退显示当前轮提问（`lastUserQuery`）；超长提问自动省略号截断。
+
+### 3.5.2 实现要点
+
+```html
+<!-- 位于 #flow-scroll-area 内、#flow-conversation 之前（更优雅的手绘窗体风格） -->
+<div class="flow-question-tip" id="flow-question-tip" aria-hidden="true">
+  <div class="flow-question-tip-window-bar">
+    <span class="flow-question-tip-badge">
+      <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3.2 4.2 C3.2 3.5, 3.8 3, 4.5 3 L11.5 3 C12.2 3, 12.8 3.5, 12.8 4.2 L12.8 11.2 C12.8 11.9, 12.2 12.4, 11.5 12.4 L6.2 12.4 L3.5 14.5 L3.5 4.2 Z" />
+        <path d="M5.5 6.2 L10.5 6.2 M5.5 8.8 L9 8.8" />
+      </svg>
+      <span class="badge-label">当前提问</span>
+    </span>
+  </div>
+  <span class="flow-question-tip-divider" aria-hidden="true"></span>
+  <span class="flow-question-tip-text" id="flow-question-tip-text"></span>
+  <span class="flow-question-tip-pin" aria-hidden="true">
+    <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="8" cy="4" r="2" />
+      <path d="M8 6 L8 14" />
+    </svg>
+  </span>
+</div>
+```
+
+```css
+.flow-question-tip {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: none;               /* 未溢出时零占位 */
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 10px 4px 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-primary);
+  background: var(--sketch-box-bg);
+  border: 1.3px solid var(--sketch-border-subtle);
+  border-radius: 255px 12px 225px 10px / 12px 225px 10px 255px;
+  box-shadow: var(--sketch-shadow);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  pointer-events: none;
+  user-select: none;
+}
+.flow-question-tip.visible { display: inline-flex; animation: sketchModalPopShake 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
+.flow-question-tip .flow-question-tip-text {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 100%; min-width: 0; color: var(--ink-primary); font-weight: 550; font-size: 12px;
+}
+```
+
+```javascript
+const updateFlowQuestionTip = () => {
+  if (!flowQuestionTip || !flowQuestionTipText || !flowScrollArea) return;
+  const overflowing = flowScrollArea.scrollHeight > flowScrollArea.clientHeight + 1;
+
+  // 多段对话锚定：取「顶部仍高于/等于视口顶边」的最后一个 flow-message-group
+  let question = "";
+  if (overflowing && flowConversation) {
+    const groups = flowConversation.querySelectorAll(".flow-message-group");
+    if (groups.length > 0) {
+      const areaTop = flowScrollArea.getBoundingClientRect().top;
+      let anchorGroup = groups[0];
+      for (const g of groups) {
+        if (g.getBoundingClientRect().top <= areaTop) {
+          anchorGroup = g;
+        } else {
+          break;
+        }
+      }
+      const qEl = anchorGroup.querySelector(".flow-user-prompt-card .prompt-content");
+      question = qEl?.textContent?.trim() || lastUserQuery?.trim() || "";
+    } else {
+      question = String(lastUserQuery?.trim() || activeTurnRefs?.userTextEl?.textContent?.trim() || "");
+    }
+  }
+
+  flowQuestionTipText.textContent = question;
+  const shouldShow = currentView === VIEW_FLOW && overflowing && Boolean(question);
+  flowQuestionTip.classList.toggle("visible", shouldShow);
+};
+
+// 内容/容器尺寸变化自动刷新（流式增长/折叠展开/多轮追加/窗口缩放）
+if (flowConversation && flowScrollArea) {
+  const tipResizeObserver = new ResizeObserver(() => updateFlowQuestionTip());
+  tipResizeObserver.observe(flowConversation);
+  tipResizeObserver.observe(flowScrollArea);
+  window.addEventListener("resize", updateFlowQuestionTip);
+  // 滚动位置变化时重算锚定的对话段
+  flowScrollArea.addEventListener("scroll", updateFlowQuestionTip, { passive: true });
+}
+window.addEventListener("pi:view-change", () => updateFlowQuestionTip()); // 进入/离开 Flow 刷新
+```
+
+### 3.5.3 关键陷阱
+- **必须置于滚动容器内部且位于 `flow-conversation` 之前**：`position: sticky` 相对于最近的滚动祖先生效，若放在 `.flow-stage` 外层则无法吸附滚动；
+- **不要用 `display: inline-flex` + 省略号**：flex 子项需 `min-width: 0` 才能正确收缩触发 `text-overflow: ellipsis`；
+- **锚定判定依赖 `getBoundingClientRect()`**：以 `flow-scroll-area` 的 `top` 为视口顶边参照，滚动事件（`passive: true`）与 `ResizeObserver` 双重驱动，避免内容增删/折叠后锚定错位；
+- **新轮次/恢复会话后必须刷新**：`resetStreamState` 末尾显式调用一次（新提问文本即时生效），多轮/历史恢复经由 `pi:view-change` 事件兜底刷新；
+- **`aria-hidden="true"`**：提示为纯视觉提醒，避免辅助技术重复朗读当前提问。
+
+---
+
 ## 📌 4. Windows 系统通知与失焦调度规范 (Notification & Focus Pipeline)
 
 ### 4.1 触发时机铁律
@@ -313,10 +430,9 @@ if (flowScrollArea) {
    - 历史各轮消息（问题卡片、思考卡片、工具卡片、回答卡片）依次在 `flow-conversation` 容器内保留；
    - 历史各轮思考卡片与工具卡片自动收起，保留 Markdown 回答卡片供随时阅读回顾，点击历史思考卡片 header 依然支持独立折叠/展开；
    - 最新一轮动态追加在容器最下方，流式光标与思考计时器仅挂载在最新一轮；
-   - `flow-scroll-area` 自动平滑滚动至最下方。
 3. **数据模型与多轮快照归档**：
    - `TaskManager` 中的 `TaskItem` 维护 `turns: Array<TurnItem>` 轮次数组，实时同步思考、工具调用与回答；
-   - 右键回退或退出时，`conversationHistoryService` 完整持久化沉淀所有轮次快照（`turns`），点击历史讯息方框时能 100% 完整无损还原所有多轮对话！
+   - 生成完成（`agent-end` / `agent-error` / abort）、右键回退及窗口关闭生命周期（`beforeunload` / `pagehide`）时，`conversationHistoryService` 均即时更新并持久化沉淀所有轮次快照（`turns`），结合 Conversation ID 与 Task ID 双向映射，无论何时关闭重启软件，点击历史讯息方框或 Task 时均能 100% 完整无损还原所有多轮对话！
 
 ---
 
