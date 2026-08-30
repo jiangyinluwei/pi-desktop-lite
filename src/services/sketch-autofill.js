@@ -535,12 +535,29 @@ export class SketchAutoFill {
       presets = this.options.presets;
     } else if (this.type === "provider") {
       presets = PROVIDER_PRESETS;
-    } else if (this.type === "model") {
+    } else if (this.type === "model" || this.type.startsWith("model:")) {
       presets = COMMON_MODEL_PRESETS;
     }
 
     const history = getAutofillHistory(this.type);
     return { presets, history };
+  }
+
+  /**
+   * 动态更新候选项预设列表与标题
+   * @param {Array} newPresets
+   * @param {string} [newTitle]
+   */
+  updatePresets(newPresets, newTitle) {
+    if (Array.isArray(newPresets)) {
+      this.options.presets = newPresets;
+    }
+    if (newTitle) {
+      this.options.title = newTitle;
+    }
+    if (this.isOpen) {
+      this.renderItems(this.input.value);
+    }
   }
 
   /**
@@ -573,7 +590,9 @@ export class SketchAutoFill {
     
     let titleText = this.options.title || "手绘推荐与快速填表";
     if (this.type === "provider") titleText = "常用运营商预设与智能联动";
-    if (this.type === "model") titleText = "热门模型推荐与参数预填";
+    if (this.type === "model" || this.type.startsWith("model:")) {
+      titleText = this.options.title || "热门模型推荐与参数预填";
+    }
 
     header.innerHTML = `
       <span class="sketch-autofill-title"><span class="sketch-autofill-icon">${ICONS.spark}</span> ${titleText}</span>
@@ -605,7 +624,7 @@ export class SketchAutoFill {
       if (filteredHistory.length > 0) {
         const presetsGroupTitle = document.createElement("div");
         presetsGroupTitle.className = "sketch-autofill-group-title";
-        presetsGroupTitle.innerHTML = `<span>内置官方与聚合预设</span>`;
+        presetsGroupTitle.innerHTML = `<span>推荐与同步预设</span>`;
         listContainer.appendChild(presetsGroupTitle);
       }
 
@@ -676,7 +695,7 @@ export class SketchAutoFill {
     let iconSvg = ICONS.spark;
     if (isHistory) iconSvg = ICONS.clock;
     else if (this.type === "provider") iconSvg = ICONS.server;
-    else if (this.type === "model") iconSvg = ICONS.cube;
+    else if (this.type === "model" || this.type.startsWith("model:")) iconSvg = ICONS.cube;
     else if (this.type === "url") iconSvg = ICONS.link;
 
     el.innerHTML = `

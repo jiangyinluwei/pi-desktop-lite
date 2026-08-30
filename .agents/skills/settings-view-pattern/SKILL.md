@@ -172,7 +172,8 @@ graph TD
 - **多态折叠与无缝切换**：
   - 点击展开任一通道时，上方模型列表进入 `.collapsed-single` 模式（仅展示当前生效的选中项/第一项），为下方表单腾出空间；
   - 展开态下按钮文案变为 `收起`（箭头平滑旋转 180° 朝上）与目标通道切换按钮，支持在官方与自定义配置间自由一键直切；
-  - 点击 `收起` 即可恢复多模型完整列表与初始展开按钮状态。
+  - 点击 `收起` 即可恢复多模型完整列表与初始展开按钮状态；
+  - **下拉详情行为与高度变化自动滚动到底部流水线 (`scrollSettingsToBottom` & `ResizeObserver`)**：为任意导致页面展开或尺寸变化的下拉详情行为（包括：官方/自定义通道抽屉展开、官方服务商下拉切换、从官网拉取最新模型、自定义通道内层步骤1/2切换、运营商修改配置折叠框、新增模型折叠框、模型卡片行内编辑框展开等），统一调用 `scrollSettingsToBottom(true)` 进行平滑定位；同时在抽屉容器上挂载 `ResizeObserver`，当抽屉处于展开态且高度增长时自动触发滚动到底部，保证全部新增内容即时进入视口。
 
 ### 4.3 界面元素与交互精简
 - ❌ **去除刷新按钮**：模型状态与白名单由内部事件总线（`whitelist-change` / `model-change`）自驱动，无需手动刷新；
@@ -227,6 +228,10 @@ touchModelAsRecentlyUsed(provider, modelId) {
 ---
 
 ## 🎯 5. 自定义模型配置与 Token 规范智能吸附 (Token Snapping)
+
+### 5.0 两步式配置与保存自动跳转 (Step 1 ➔ Step 2)
+- **步骤 1（新增/配置运营商）**：填写运营商标识、接口类型、Base URL、Key 与兼容性开关；
+- **保存自动切换**：点击「+ 保存/更新运营商」保存成功后，全自动切换至「步骤 2（运营商列表与模型管理）」（调用 `switchInnerTab("inner-step2")`），并刷新卡片列表、平滑滚动到底部，方便用户直接为该运营商添加具体模型或进行管理；
 
 ### 5.1 思考推理默认勾选
 - 在自定义运营商下点击“+ 新增模型”展开行内表单时，“**支持思考/推理**”复选框必须默认勾选：
@@ -292,6 +297,11 @@ const setupOutputTokensAutoSnap = (inputEl) => {
 - 关键表单输入框通过 `enhanceInputAutoFill`（位于 `src/services/sketch-autofill.js`）挂载手绘联想浮层（支持运营商/模型/URL预设与历史记忆池，实现全表字段智能联动填充）；
 - 动态卡片创建完毕后必须调用 `enhanceAllAutoFills(container)`；
 - 完整开发规范与示例详见专用技能：[`sketch-form-autofill-pattern`](file:///.agents/skills/sketch-form-autofill-pattern/SKILL.md)。
+
+### 5.4 新增模型「获取模型列表」与按运营商隔离表单记忆 (Provider-Scoped AutoFill & Remote Fetching)
+- **在线模型列表拉取**：在自定义运营商的「+ 新增模型」表单头部集成手绘「获取模型列表」按钮（`btn-fetch-custom-models`），点击调用 `configService.fetchCustomProviderModels({ providerId, baseUrl, apiKey, apiType })`；
+- **全表字段覆盖填入 (Form Overwrite & Token Snapping)**：拉取成功后动态调用 `inputElement.__sketchAutoFill.updatePresets(formattedList, title)`，更新并立即弹出手绘推荐浮层供用户选择；点击任一模型时覆盖填入 Model ID、Display Name、Context Window、Max Tokens（自动触发 Token 智能吸附）与 Reasoning 开关；
+- **运营商专属记忆隔离 (Provider Memory Isolation)**：不同运营商的表单预设与填表历史严格跟随运营商本身（`type: model:<provider_id>`），确保 SiliconFlow、Ollama、OneAPI 或用户自建网关的历史记录与预设库互不干扰并持久化保存。
 
 ---
 

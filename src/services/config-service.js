@@ -414,6 +414,32 @@ class ConfigService extends EventTarget {
   }
 
   /**
+   * 从自定义运营商端点拉取在线可用模型列表
+   * @param {Object} params
+   * @param {string} params.providerId
+   * @param {string} [params.baseUrl]
+   * @param {string} [params.apiKey]
+   * @param {string} [params.apiType]
+   */
+  async fetchCustomProviderModels({ providerId, baseUrl, apiKey, apiType }) {
+    try {
+      const list = await this.invoke("pi_fetch_custom_provider_models", {
+        providerId,
+        baseUrl: baseUrl || null,
+        apiKey: apiKey || null,
+        apiType: apiType || null,
+      });
+      if (Array.isArray(list) && list.length > 0) {
+        return list;
+      }
+    } catch (e) {
+      console.warn(`[ConfigService] Failed to fetch custom models for ${providerId}:`, e);
+      throw e;
+    }
+    return [];
+  }
+
+  /**
    * 内置官方服务商与模型目录保底数据
    */
   getBuiltinOfficialCatalogFallback() {

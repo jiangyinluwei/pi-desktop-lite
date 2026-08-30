@@ -506,15 +506,49 @@ impl PiSupervisor {
 
     /// 切换当前使用的模型
     pub async fn set_model(&self, provider: &str, model_id: &str) -> Result<Value, String> {
-        self.send_command_with_response(
-            serde_json::json!({
-                "type": "set_model",
-                "provider": provider,
-                "modelId": model_id
-            }),
-            Duration::from_secs(8),
-        )
-        .await
+        let first_res = self
+            .send_command_with_response(
+                serde_json::json!({
+                    "type": "set_model",
+                    "provider": provider,
+                    "modelId": model_id
+                }),
+                Duration::from_secs(8),
+            )
+            .await;
+
+        match first_res {
+            Ok(v) => Ok(v),
+            Err(ref err) if err.contains("Model not found") => {
+                log::warn!(
+                    "[PiSupervisor] Model not found in active session ({}). Restarting supervisor to reload ~/.pi/agent/models.json...",
+                    err
+                );
+                // 重启 supervisor 以重新加载最新的 models.json / auth.json 配置
+                if let Err(e) = self.restart().await {
+                    log::error!(
+                        "[PiSupervisor] Failed to restart supervisor after Model not found: {}",
+                        e
+                    );
+                    return Err(format!(
+                        "切换模型失败: {} (尝试重启内核重新加载配置失败: {})",
+                        err, e
+                    ));
+                }
+                // 等待进程初始化并重试一次 set_model
+                tokio::time::sleep(Duration::from_millis(400)).await;
+                self.send_command_with_response(
+                    serde_json::json!({
+                        "type": "set_model",
+                        "provider": provider,
+                        "modelId": model_id
+                    }),
+                    Duration::from_secs(8),
+                )
+                .await
+            }
+            Err(err) => Err(err),
+        }
     }
 
     /// 切换思考推理等级

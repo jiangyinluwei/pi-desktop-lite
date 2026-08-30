@@ -5445,17 +5445,16 @@ body.has-task-sidebar-open .app-container {
   background: rgba(220, 38, 38, 0.08);
 }
 
-.task-card-action-btn.btn-abort-task:hover {
-  color: #dc2626;
-  border-color: #fca5a5;
-  background: rgba(220, 38, 38, 0.08);
-}
-
-/* Flow 显式中止按钮 (仅在 Flow 模式下允许显现，在 detailed / focus / settings 下绝对隐藏) */
+/* Flow 显式中止按钮 (仅在 Flow 模式下允许显现，与发送按钮保持同一水平线垂直居中，在 detailed / focus / settings 下绝对隐藏) */
 .flow-btn-abort {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin-left: 6px;
+  flex-shrink: 0;
   color: var(--ink-muted);
   background: transparent;
   border: 1px solid transparent;
@@ -5463,13 +5462,25 @@ body.has-task-sidebar-open .app-container {
   cursor: pointer;
   align-self: flex-end;
   margin-bottom: 0;
+  box-sizing: border-box;
+  -webkit-app-region: no-drag;
   transition: all 0.15s ease;
+}
+
+.flow-btn-abort svg {
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 
 .flow-btn-abort:hover {
   color: #dc2626;
   border-color: rgba(220, 38, 38, 0.35);
   background: rgba(220, 38, 38, 0.08);
+}
+
+.flow-btn-abort:active {
+  transform: scale(0.92);
 }
 
 .app-container:not([data-view="flow"]) .flow-btn-abort,

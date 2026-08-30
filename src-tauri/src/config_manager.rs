@@ -706,6 +706,203 @@ pub async fn pi_fetch_official_models(
     Ok(fetched_models)
 }
 
+/// 动态从指定自定义运营商端点拉取模型列表
+#[tauri::command]
+pub async fn pi_fetch_custom_provider_models(
+    provider_id: String,
+    base_url: Option<String>,
+    api_key: Option<String>,
+    api_type: Option<String>,
+) -> Result<Vec<OfficialModelMeta>, String> {
+    let p_key = provider_id.trim().to_lowercase();
+
+    // 1. 读取或回退已保存的配置
+    let custom_config = pi_get_custom_models().unwrap_or_else(|_| json!({ "providers": {} }));
+    let prov_obj = custom_config
+        .get("providers")
+        .and_then(|p| p.get(&p_key))
+        .and_then(|v| v.as_object());
+
+    let final_base_url = base_url
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| prov_obj.and_then(|o| o.get("baseUrl").and_then(|u| u.as_str()).map(|s| s.to_string())))
+        .unwrap_or_default()
+        .trim()
+        .trim_end_matches('/')
+        .to_string();
+
+    if final_base_url.is_empty() {
+        return Err(format!("运营商 [{}] 的 Base URL 接口地址为空，无法获取模型列表", provider_id));
+    }
+
+    let raw_api_key = api_key
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| prov_obj.and_then(|o| o.get("apiKey").and_then(|k| k.as_str()).map(|s| s.to_string())));
+
+    // 解析环境变量插值 (如 $MY_KEY)
+    let final_api_key = raw_api_key.map(|k| {
+        let trimmed = k.trim();
+        if let Some(env_var) = trimmed.strip_prefix('$') {
+            std::env::var(env_var).unwrap_or_else(|_| trimmed.to_string())
+        } else {
+            trimmed.to_string()
+        }
+    });
+
+    let final_api_type = api_type
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| prov_obj.and_then(|o| o.get("api").and_then(|a| a.as_str()).map(|s| s.to_string())))
+        .unwrap_or_else(|| "openai-completions".to_string())
+        .to_lowercase();
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+
+    let mut fetched_models: Vec<OfficialModelMeta> = Vec::new();
+
+    // 2. 针对 Ollama 端点处理
+    if final_api_type == "ollama" || final_base_url.contains("11434") {
+        let tags_url = if final_base_url.ends_with("/v1") {
+            format!("{}/api/tags", final_base_url.trim_end_matches("/v1"))
+        } else {
+            format!("{}/api/tags", final_base_url)
+        };
+
+        if let Ok(resp) = client.get(&tags_url).header("User-Agent", "pi-desktop-lite").send().await {
+            if let Ok(json_data) = resp.json::<Value>().await {
+                if let Some(models_arr) = json_data.get("models").and_then(|m| m.as_array()) {
+                    for m in models_arr {
+                        if let Some(id) = m.get("name").or_else(|| m.get("model")).and_then(|v| v.as_str()) {
+                            let name = format_model_display_name(id);
+                            let id_lower = id.to_lowercase();
+                            let reasoning = id_lower.contains("r1") || id_lower.contains("reason") || id_lower.contains("thinking");
+                            fetched_models.push(OfficialModelMeta {
+                                id: id.to_string(),
+                                name,
+                                provider: p_key.clone(),
+                                context_window: 32768,
+                                max_tokens: 4096,
+                                reasoning,
+                                is_default: false,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. 通用 OpenAI 兼容 /models 端点请求
+    if fetched_models.is_empty() {
+        let mut candidate_urls = Vec::new();
+        if final_base_url.ends_with("/v1") || final_base_url.ends_with("/v2") || final_base_url.ends_with("/v3") || final_base_url.ends_with("/v4") {
+            candidate_urls.push(format!("{}/models", final_base_url));
+        } else {
+            candidate_urls.push(format!("{}/v1/models", final_base_url));
+            candidate_urls.push(format!("{}/models", final_base_url));
+        }
+
+        for url in candidate_urls {
+            let mut req = client.get(&url).header("User-Agent", "pi-desktop-lite");
+            if let Some(ref key) = final_api_key {
+                if !key.is_empty() {
+                    req = req.header("Authorization", format!("Bearer {}", key));
+                }
+            }
+
+            if let Ok(resp) = req.send().await {
+                if resp.status().is_success() {
+                    if let Ok(json_data) = resp.json::<Value>().await {
+                        let items_opt = json_data.get("data").and_then(|d| d.as_array())
+                            .or_else(|| json_data.get("models").and_then(|d| d.as_array()))
+                            .or_else(|| json_data.as_array());
+
+                        if let Some(items) = items_opt {
+                            for item in items {
+                                let id_opt = item.get("id")
+                                    .or_else(|| item.get("name"))
+                                    .or_else(|| item.get("model"))
+                                    .and_then(|v| v.as_str())
+                                    .or_else(|| item.as_str());
+
+                                if let Some(id) = id_opt {
+                                    let id_str = id.trim();
+                                    if id_str.is_empty() || fetched_models.iter().any(|m| m.id == id_str) {
+                                        continue;
+                                    }
+
+                                    let name = item.get("name")
+                                        .or_else(|| item.get("display_name"))
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string())
+                                        .unwrap_or_else(|| format_model_display_name(id_str));
+
+                                    let context_window = item.get("context_length")
+                                        .or_else(|| item.get("context_window"))
+                                        .or_else(|| item.get("max_context_length"))
+                                        .or_else(|| item.get("max_input_tokens"))
+                                        .and_then(|v| v.as_u64())
+                                        .unwrap_or_else(|| {
+                                            let lower = id_str.to_lowercase();
+                                            if lower.contains("1m") || lower.contains("1000k") { 1000000 }
+                                            else if lower.contains("200k") { 200000 }
+                                            else if lower.contains("128k") { 128000 }
+                                            else if lower.contains("64k") { 64000 }
+                                            else if lower.contains("32k") { 32768 }
+                                            else if lower.contains("16k") { 16384 }
+                                            else if lower.contains("8k") { 8192 }
+                                            else { 64000 }
+                                        });
+
+                                    let max_tokens = item.get("max_tokens")
+                                        .or_else(|| item.get("max_completion_tokens"))
+                                        .or_else(|| item.get("max_output_tokens"))
+                                        .and_then(|v| v.as_u64())
+                                        .unwrap_or_else(|| {
+                                            let lower = id_str.to_lowercase();
+                                            if lower.contains("r1") || lower.contains("reason") || lower.contains("o1") || lower.contains("o3") { 16384 }
+                                            else { 4096 }
+                                        });
+
+                                    let id_lower = id_str.to_lowercase();
+                                    let reasoning = id_lower.contains("reason")
+                                        || id_lower.contains("r1")
+                                        || id_lower.contains("o1")
+                                        || id_lower.contains("o3")
+                                        || id_lower.contains("thinking")
+                                        || id_lower.contains("qwq")
+                                        || id_lower.contains("sonnet");
+
+                                    fetched_models.push(OfficialModelMeta {
+                                        id: id_str.to_string(),
+                                        name,
+                                        provider: p_key.clone(),
+                                        context_window,
+                                        max_tokens,
+                                        reasoning,
+                                        is_default: false,
+                                    });
+                                }
+                            }
+                            if !fetched_models.is_empty() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if fetched_models.is_empty() {
+        return Err(format!("未能从运营商 [{}] 的端点 ({}) 获取到有效模型列表，请确认接口地址、网络连接与 API Key 是否正确。", provider_id, final_base_url));
+    }
+
+    Ok(fetched_models)
+}
+
 /// 获取官方支持的服务商与其罗列的可用模型清单（合并本地 models.json、动态缓存与内置目录）
 #[tauri::command]
 pub fn pi_get_official_models_catalog() -> Result<Vec<OfficialProviderMeta>, String> {

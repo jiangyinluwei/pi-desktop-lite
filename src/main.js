@@ -428,27 +428,54 @@ window.addEventListener("DOMContentLoaded", () => {
 
   initSettingsTabs();
 
+  // 设置面板自动平滑滚动到底部辅助函数 (针对官方通道/自定义通道抽屉及任意下拉详情展开行为)
+  const scrollSettingsToBottom = (smooth = true) => {
+    const settingsTabContent = document.querySelector(".settings-tab-content");
+    if (!settingsTabContent) return;
+    const doScroll = () => {
+      settingsTabContent.scrollTo({
+        top: settingsTabContent.scrollHeight,
+        behavior: smooth ? "smooth" : "auto",
+      });
+    };
+    requestAnimationFrame(doScroll);
+    setTimeout(doScroll, 80);
+    setTimeout(doScroll, 220); // 覆盖抽屉 fadeInDrawer 动画耗时
+  };
+
   // 自定义通道配置内层 Tab 切换 (步骤1 / 步骤2)
-  const initInnerTabs = () => {
+  const switchInnerTab = (targetId) => {
     const innerTabBtns = document.querySelectorAll(".inner-tab-btn");
     const innerTabPanes = document.querySelectorAll(".inner-tab-pane");
 
+    innerTabBtns.forEach((b) => {
+      if (b.getAttribute("data-inner-tab") === targetId) {
+        b.classList.add("active");
+      } else {
+        b.classList.remove("active");
+      }
+    });
+
+    innerTabPanes.forEach((pane) => {
+      if (pane.id === targetId) {
+        pane.classList.add("active");
+      } else {
+        pane.classList.remove("active");
+      }
+    });
+
+    scrollSettingsToBottom(true);
+  };
+
+  const initInnerTabs = () => {
+    const innerTabBtns = document.querySelectorAll(".inner-tab-btn");
     innerTabBtns.forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.preventDefault();
         const targetId = btn.getAttribute("data-inner-tab");
-        if (!targetId) return;
-
-        innerTabBtns.forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-
-        innerTabPanes.forEach((pane) => {
-          if (pane.id === targetId) {
-            pane.classList.add("active");
-          } else {
-            pane.classList.remove("active");
-          }
-        });
+        if (targetId) {
+          switchInnerTab(targetId);
+        }
       });
     });
   };
@@ -476,6 +503,7 @@ window.addEventListener("DOMContentLoaded", () => {
         btnToggleCustom.innerHTML = `<span>自定义通道配置</span>${ICONS.chevronDown}`;
         btnToggleCustom.classList.remove("active");
       }
+      scrollSettingsToBottom(true);
     } else if (channel === "custom") {
       if (whitelistModelsList) whitelistModelsList.classList.add("collapsed-single");
       if (channelConfigOfficial) channelConfigOfficial.classList.add("hidden");
@@ -489,6 +517,7 @@ window.addEventListener("DOMContentLoaded", () => {
         btnToggleCustom.innerHTML = `<span>收起</span>${ICONS.chevronDown}`;
         btnToggleCustom.classList.add("active");
       }
+      scrollSettingsToBottom(true);
     } else {
       // 收起全部抽屉，恢复模型列表完整展示
       if (whitelistModelsList) whitelistModelsList.classList.remove("collapsed-single");
@@ -527,6 +556,22 @@ window.addEventListener("DOMContentLoaded", () => {
           setExpandedChannel("custom");
         }
       });
+    }
+
+    // 监听模型配置及官方/自定义通道抽屉展开与尺寸变化，自动将设置面板滚动条平滑定位到底部
+    if (typeof ResizeObserver !== "undefined" && channelConfigDrawers) {
+      let lastHeight = 0;
+      const drawerResizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const newHeight = entry.contentRect.height;
+          // 仅在抽屉展开、尺寸增加且处于打开态时自动平滑滚动到底部
+          if (newHeight > 0 && newHeight > lastHeight + 5 && expandedChannel) {
+            scrollSettingsToBottom(true);
+          }
+          lastHeight = newHeight;
+        }
+      });
+      drawerResizeObserver.observe(channelConfigDrawers);
     }
   };
 
@@ -1004,6 +1049,7 @@ window.addEventListener("DOMContentLoaded", () => {
   if (officialProviderSelect) {
     officialProviderSelect.addEventListener("change", () => {
       renderOfficialProviderDetails(officialProviderSelect.value);
+      scrollSettingsToBottom(true);
     });
   }
 
@@ -1053,6 +1099,7 @@ window.addEventListener("DOMContentLoaded", () => {
             provMeta.models = fetchedModels;
           }
           renderOfficialProviderDetails(provider);
+          scrollSettingsToBottom(true);
           if (officialKeyStatus) {
             officialKeyStatus.textContent = `● 成功从官网/内核拉取并同步 ${fetchedModels.length} 个最新可用模型`;
             officialKeyStatus.style.color = "#10b981";
@@ -1176,7 +1223,15 @@ window.addEventListener("DOMContentLoaded", () => {
 
           <!-- 折叠添加模型表单 -->
           <div class="inline-add-model-box hidden" id="inline-form-${pKey}">
-            <div style="font-size: 12px; font-weight: 600; color: var(--ink-primary);">新增模型到运营商 [${escapeHtml(pKey.toUpperCase())}]</div>
+            <div style="font-size: 12px; font-weight: 600; color: var(--ink-primary); display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+              <span>新增模型到运营商 [${escapeHtml(pKey.toUpperCase())}]</span>
+              <button type="button" class="flat-btn flat-btn-secondary mini btn-fetch-custom-models" title="从该运营商端点获取在线可用模型列表并更新推荐表单" style="display: inline-flex; align-items: center; gap: 4px;">
+                <svg class="icon-fetch-custom-models" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c2.3 0 4.3 1.4 5.1 3.5M13.5 2.5v3.5H10" />
+                </svg>
+                <span class="btn-fetch-text">获取模型列表</span>
+              </button>
+            </div>
             <div class="form-grid-2">
               <div class="form-field">
                 <label class="form-label">模型标识 (Model ID) <span class="req">*</span></label>
@@ -1236,35 +1291,112 @@ window.addEventListener("DOMContentLoaded", () => {
           const inputNewMaxTokens = inlineAddForm.querySelector(".input-new-max-tokens");
           setupOutputTokensAutoSnap(inputNewMaxTokens);
 
-          // 增强新增模型 Model ID 的手绘智能联想与参数全表联动
+          // 增强新增模型 Model ID 的手绘智能联想与参数全表联动 (按运营商隔离记忆与预设)
           const inputNewModelId = inlineAddForm.querySelector(".input-new-model-id");
           const inputNewModelName = inlineAddForm.querySelector(".input-new-model-name");
           const inputNewContextWin = inlineAddForm.querySelector(".input-new-context-win");
           const inputNewReasoning = inlineAddForm.querySelector(".input-new-reasoning");
+          const btnFetchCustomModels = inlineAddForm.querySelector(".btn-fetch-custom-models");
+          const btnFetchText = inlineAddForm.querySelector(".btn-fetch-text");
 
-          if (inputNewModelId) {
+          const providerCategory = `model:${pKey.toLowerCase()}`;
+
+          // 读取已缓存的该运营商在线模型列表或内置预设
+          const getInitialModelPresets = () => {
+            try {
+              const cachedRaw = localStorage.getItem(`pi_dl_custom_models_${pKey.toLowerCase()}`);
+              if (cachedRaw) {
+                const parsed = JSON.parse(cachedRaw);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+              }
+            } catch {}
+
             const matchedPreset = PROVIDER_PRESETS.find((p) => p.id.toLowerCase() === pKey.toLowerCase());
-            const modelPresets = (matchedPreset && Array.isArray(matchedPreset.models) && matchedPreset.models.length > 0)
+            return (matchedPreset && Array.isArray(matchedPreset.models) && matchedPreset.models.length > 0)
               ? matchedPreset.models
               : COMMON_MODEL_PRESETS;
+          };
 
+          if (inputNewModelId) {
             enhanceInputAutoFill(inputNewModelId, {
-              type: "model",
+              type: providerCategory,
               title: `推荐模型与参数预填 [${pKey.toUpperCase()}]`,
-              presets: modelPresets,
+              presets: getInitialModelPresets(),
               onSelect: (model) => {
-                if (inputNewModelName && (!inputNewModelName.value || inputNewModelName.value === model.id)) {
-                  inputNewModelName.value = model.name || model.id;
+                // 覆盖填入原表单
+                inputNewModelId.value = model.id || "";
+                inputNewModelName.value = model.name || model.id || "";
+                if (inputNewContextWin && (model.contextWindow || model.context_window)) {
+                  inputNewContextWin.value = model.contextWindow || model.context_window;
                 }
-                if (inputNewContextWin && model.contextWindow) {
-                  inputNewContextWin.value = model.contextWindow;
-                }
-                if (inputNewMaxTokens && model.maxTokens) {
-                  inputNewMaxTokens.value = model.maxTokens;
+                if (inputNewMaxTokens && (model.maxTokens || model.max_tokens)) {
+                  inputNewMaxTokens.value = snapToClosestStandardTokens(model.maxTokens || model.max_tokens);
                 }
                 if (inputNewReasoning && model.reasoning !== undefined) {
                   inputNewReasoning.checked = !!model.reasoning;
                 }
+              }
+            });
+          }
+
+          // 绑定「获取模型列表」按钮：从该运营商端点在线拉取最新模型
+          if (btnFetchCustomModels) {
+            btnFetchCustomModels.addEventListener("click", async () => {
+              btnFetchCustomModels.disabled = true;
+              if (btnFetchText) btnFetchText.textContent = "正在获取...";
+
+              try {
+                const fetched = await configService.fetchCustomProviderModels({
+                  providerId: pKey,
+                  baseUrl: provData.baseUrl,
+                  apiKey: provData.apiKey,
+                  apiType: provData.api,
+                });
+
+                if (Array.isArray(fetched) && fetched.length > 0) {
+                  const formatted = fetched.map((m) => ({
+                    id: m.id,
+                    name: m.name || m.id,
+                    contextWindow: m.context_window || 64000,
+                    maxTokens: m.max_tokens || 4096,
+                    reasoning: !!m.reasoning,
+                    tag: "在线拉取",
+                    desc: m.context_window ? `${(m.context_window / 1000).toFixed(0)}k context` : ""
+                  }));
+
+                  // 缓存至该运营商的专属缓存中
+                  try {
+                    localStorage.setItem(`pi_dl_custom_models_${pKey.toLowerCase()}`, JSON.stringify(formatted));
+                  } catch {}
+
+                  // 更新 AutoFill 实例的预设并展开浮层
+                  if (inputNewModelId && inputNewModelId.__sketchAutoFill) {
+                    inputNewModelId.__sketchAutoFill.updatePresets(
+                      formatted,
+                      `在线可用模型 [${pKey.toUpperCase()}] (${formatted.length} 个)`
+                    );
+                    inputNewModelId.focus();
+                    inputNewModelId.__sketchAutoFill.open();
+                  }
+
+                  scrollSettingsToBottom(true);
+                  await sketchAlert(`成功从运营商 [${pKey.toUpperCase()}] 获取 ${formatted.length} 个在线模型！已更新至表单推荐列表，请点击选择填入。`, {
+                    type: "success",
+                    title: "获取成功"
+                  });
+                  if (inputNewModelId && inputNewModelId.__sketchAutoFill) {
+                    inputNewModelId.focus();
+                    inputNewModelId.__sketchAutoFill.open();
+                  }
+                } else {
+                  await sketchAlert(`未从该运营商端点获取到模型，已保留当前推荐列表。`, { type: "info", title: "获取完成" });
+                }
+              } catch (err) {
+                console.error("[Main] Fetch custom models failed:", err);
+                await sketchAlert(`获取模型列表失败: ${err}`, { type: "error", title: "获取失败" });
+              } finally {
+                btnFetchCustomModels.disabled = false;
+                if (btnFetchText) btnFetchText.textContent = "获取模型列表";
               }
             });
           }
@@ -1288,9 +1420,13 @@ window.addEventListener("DOMContentLoaded", () => {
           }
 
           btnEditProvider.addEventListener("click", () => {
+            const willOpen = inlineEditForm.classList.contains("hidden");
             inlineEditForm.classList.toggle("hidden");
             if (!inlineEditForm.classList.contains("hidden") && inlineAddForm) {
               inlineAddForm.classList.add("hidden");
+            }
+            if (willOpen) {
+              scrollSettingsToBottom(true);
             }
           });
         }
@@ -1369,9 +1505,13 @@ window.addEventListener("DOMContentLoaded", () => {
 
         if (btnToggleAddModel && inlineAddForm) {
           btnToggleAddModel.addEventListener("click", () => {
+            const willOpen = inlineAddForm.classList.contains("hidden");
             inlineAddForm.classList.toggle("hidden");
             if (!inlineAddForm.classList.contains("hidden") && inlineEditForm) {
               inlineEditForm.classList.add("hidden");
+            }
+            if (willOpen) {
+              scrollSettingsToBottom(true);
             }
           });
         }
@@ -1429,8 +1569,9 @@ window.addEventListener("DOMContentLoaded", () => {
                 isCustom: true,
               });
 
-              // 沉淀至模型历史池
-              saveAutofillHistory("model", {
+              // 沉淀至该运营商专有的模型历史池 (隔离记忆)
+              const providerCategory = `model:${pKey.toLowerCase()}`;
+              saveAutofillHistory(providerCategory, {
                 id: modelIdVal,
                 name: modelNameVal,
                 contextWindow: contextWinVal,
@@ -1534,7 +1675,11 @@ window.addEventListener("DOMContentLoaded", () => {
 
             if (btnEditModel) {
               btnEditModel.addEventListener("click", () => {
+                const willOpen = modelEditBox.classList.contains("hidden");
                 modelEditBox.classList.toggle("hidden");
+                if (willOpen) {
+                  scrollSettingsToBottom(true);
+                }
               });
             }
 
@@ -1726,12 +1871,17 @@ window.addEventListener("DOMContentLoaded", () => {
         saveAutofillHistory("provider", { id: providerId, name: providerId, baseUrl });
         saveAutofillHistory("url", { id: baseUrl, value: baseUrl });
 
-        await sketchAlert(`运营商 [${providerId.toUpperCase()}] 已成功保存！现在可以在下方“步骤 2”中为该运营商添加具体模型或修改配置。`, { type: "success", title: "保存成功" });
         customProviderId.value = "";
         customBaseUrl.value = "";
         customApiKey.value = "";
 
+        // 保存后自动进入步骤 2：运营商列表与模型管理
+        switchInnerTab("inner-step2");
         loadCustomProvidersConfig();
+        scrollSettingsToBottom(true);
+
+        await sketchAlert(`运营商 [${providerId.toUpperCase()}] 已成功保存！已自动切换至“步骤 2”，可在此为该运营商添加具体模型或管理配置。`, { type: "success", title: "保存成功" });
+        scrollSettingsToBottom(true);
       } catch (err) {
         console.error("Save custom provider failed:", err);
         await sketchAlert(`保存运营商失败: ${err}`, { type: "error", title: "保存失败" });
