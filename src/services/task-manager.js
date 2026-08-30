@@ -5,6 +5,7 @@
 
 import { piClient, parseErrorMessage } from "./pi-client.js";
 import { notificationService } from "./notification-service.js";
+import { modelFailoverEngine } from "./model-failover.js";
 
 /**
  * @typedef {Object} TaskItem
@@ -355,6 +356,10 @@ export class TaskManager extends EventTarget {
 
     piClient.addEventListener("agent-error", (e) => {
       const detail = e.detail || {};
+      // 自动重连切换进行中 或 将被引擎接管冷启动 (自动重连开启且含模型上下文)：
+      // 错误一律由 ModelFailoverEngine 结算，绝不提前置 Task 为 error / 弹错误通知
+      // (注：taskManager 监听器先于 main.js 注册，故冷启动时引擎尚未激活，需以 canHandle 预判接管)
+      if (modelFailoverEngine.isActive() || modelFailoverEngine.canHandle(detail)) return;
       const taskId = detail.task_id || detail.taskId || this.currentActiveTaskId;
       if (!taskId || !this.tasks.has(taskId)) {
         if (this.currentActiveTaskId && this.tasks.has(this.currentActiveTaskId)) {
@@ -492,6 +497,8 @@ export class TaskManager extends EventTarget {
       case "turn_end":
       case "message_start":
       case "message_end":
+        // 自动重连切换进行中：错误分支交由引擎结算，不提前置 Task 为 error
+        if (modelFailoverEngine.isActive()) break;
         if (data.message && (data.message.stopReason === "error" || data.message.errorMessage)) {
           task.status = "error";
           task.completedAt = Date.now();
@@ -505,6 +512,8 @@ export class TaskManager extends EventTarget {
         break;
 
       case "extension_error":
+        // 自动重连切换进行中：错误分支交由引擎结算
+        if (modelFailoverEngine.isActive()) break;
         task.status = "error";
         task.completedAt = Date.now();
         task.errorMessage = parseErrorMessage(data.error || "扩展插件运行异常");
@@ -522,6 +531,8 @@ export class TaskManager extends EventTarget {
             (m) => m.stopReason === "error" || m.errorMessage
           );
           if (errMessage) {
+            // 自动重连切换进行中：错误分支交由引擎结算，不提前置 Task 为 error
+            if (modelFailoverEngine.isActive()) break;
             task.status = "error";
             task.completedAt = Date.now();
             task.errorMessage = parseErrorMessage(errMessage.errorMessage || "模型调用发生异常终止");

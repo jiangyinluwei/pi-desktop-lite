@@ -134,14 +134,26 @@ graph TD
         "reasoning": true,
         "isCustom": false
       }
-    ]
+    ],
+    "autoReconnectSwitch": true,
+    "modelFailover": {
+      "maxReconnectAttempts": 24,
+      "reconnectBackoffMs": [2000, 4000, 8000],
+      "maxBackoffMs": 8000,
+      "perCandidateReconnectBudget": 2,
+      "escalateToSwitchAfterReconnectExhausted": true,
+      "switchOnPermanentError": true
+    }
   }
   ```
+- **`autoReconnectSwitch`（自动重连切换，默认 `true`）**：模型调用错误时是否进入全自动自愈流水线；缺失时默认勾选，变更时派发 `auto-reconnect-change` 事件同步设置页 Checkbox 与引擎；
+- **`modelFailover`（模型自愈推荐参数块）**：`maxReconnectAttempts` 重连上限 24 次、`reconnectBackoffMs` 退避序列 2s/4s/8s、`maxBackoffMs` 恒封顶 8s、`perCandidateReconnectBudget` 单候选模型小额重连预算 2 次、`escalateToSwitchAfterReconnectExhausted` 重连耗尽默认升级为切换、`switchOnPermanentError` 永久错误自动切换模型；
 
 ### 3.2 第二层：Pi CLI 内核配置 (`~/.pi/agent/`)
 - `auth.json`：持久化官方服务商（Anthropic, OpenAI, DeepSeek, Google, etc.）的 API Key；
 - `models.json`：持久化两步式自定义服务商端点（Base URL、API Protocol、兼容 flags）与挂载模型；
-- `settings.json`：持久化 Pi 命令行内核运行时配置。
+- `settings.json`：持久化 Pi 命令行内核运行时配置；
+- **模型自动重连推荐配置注入 (`pi_apply_model_failover_preset`)**：应用启动（自动重连开启时）与勾选「自动重连切换」时，向内核 `settings.json` 探测式写入 `retry.maxAttempts: 24` / `backoff: [2,4,8]` / `maxBackoffSeconds: 8`（best-effort，未知 schema 安全跳过、失败静默绝不报错），**已存在用户自定义 `retry` 配置时尊重原值不覆盖**；内核参数注入仅为辅助轨道，行为主实现由桌面 `ModelFailoverEngine` 保证「恰好 24 次 / 2-4-8s 退避」语义。
 
 ---
 
@@ -191,6 +203,26 @@ touchModelAsRecentlyUsed(provider, modelId) {
   }
 }
 ```
+
+### 4.5 模型配置「自动重连切换」Checkbox (Auto Reconnect Switch)
+- **DOM 落点**：`.pane-header-row` 内「模型配置」标题（`<h3 class="pane-title">模型配置</h3>`）右侧；
+- **样式铁律**：遵循手绘草图质感与按钮交互铁律——常态透明无边框、`1px solid transparent` 占位，`hover` / `focus-within` 才显手绘边框（`var(--sketch-border-subtle)`），杜绝 Layout Shift；视觉框 `1.2px solid var(--sketch-border-subtle)` + 不对称有机圆角，勾选时内显 `currentColor` 手绘对勾并填充墨色，150ms 平滑过渡，**严禁系统默认 Emoji 与原生复选样式**；
+- **DOM 结构**（原生 `<input type="checkbox">` 视觉隐藏 + 自绘手绘框与对勾 SVG）：
+  ```html
+  <label class="auto-reconnect-toggle" title="模型调用失败时自动重连或切换其他模型">
+    <input type="checkbox" class="auto-reconnect-checkbox" id="auto-reconnect-switch" checked autocomplete="off" />
+    <span class="auto-reconnect-box" aria-hidden="true">
+      <svg class="auto-reconnect-tick" viewBox="0 0 16 16" width="10" height="10" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 8.5 L6.5 12 L13 4.5" />
+      </svg>
+    </span>
+    <span class="auto-reconnect-label">自动重连切换</span>
+  </label>
+  ```
+- **交互绑定（`main.js`）**：加载时同步 `configService.getAutoReconnectSwitch()` 至 `checked`；`change` 时调用 `configService.setAutoReconnectSwitch(checked, true)`（持久化 + 引擎联动）；监听 `auto-reconnect-change` 事件双向同步 Checkbox；打开设置页（`loadModelsAndState`）时再次同步勾选状态；
+- **默认状态**：**默认勾选（checked）**，缺失配置时按 `true` 处理；
+- **生效范围**：仅影响 Flow 交互界面的模型调用错误处理（瞬态自动重连 / 永久自动切换，详见 `ModelFailoverEngine`）。
 
 ---
 

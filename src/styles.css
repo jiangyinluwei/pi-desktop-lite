@@ -816,6 +816,68 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   color: var(--ink-primary);
 }
 
+/* 自动重连/切换进度胶囊 (手绘草图风格，运行态瞬态展示，不沉淀历史) */
+.flow-failover-capsule {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  padding: 4px 11px;
+  margin: 0 0 10px 2px;
+  font-size: 11.5px;
+  font-family: inherit;
+  color: var(--ink-primary);
+  background: var(--sketch-tag-bg);
+  border: 1px dashed rgba(217, 119, 6, 0.55);
+  border-radius: 255px 12px 225px 10px / 12px 225px 10px 255px;
+  box-shadow: var(--sketch-shadow);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: sketchCapsuleFadeIn 0.25s ease-out;
+  will-change: opacity, transform;
+}
+.flow-failover-capsule.hidden {
+  display: none !important;
+}
+.flow-failover-capsule .capsule-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #d97706;
+  opacity: 0.9;
+  animation: failoverPulse 1.4s ease-in-out infinite;
+}
+@media (prefers-color-scheme: dark) {
+  .flow-failover-capsule .capsule-icon {
+    color: #fbbf24;
+  }
+}
+.flow-failover-capsule .capsule-text {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+.flow-failover-capsule.ok {
+  border-color: rgba(21, 128, 61, 0.45);
+}
+.flow-failover-capsule.ok .capsule-icon {
+  color: var(--sketch-green, #166534);
+  animation: none;
+}
+@media (prefers-color-scheme: dark) {
+  .flow-failover-capsule.ok .capsule-icon {
+    color: #4ade80;
+  }
+}
+
+@keyframes failoverPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 /* AI Agent 思考过程卡片（横平竖直边框） */
 .agent-thinking-card {
   background: var(--sketch-box-bg);
@@ -2122,6 +2184,77 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   color: var(--ink-muted);
   line-height: 1.45;
   margin: 2px 0 0 0;
+}
+
+/* 自动重连切换 Checkbox (手绘草图质感，常态透明无边框、悬浮显框，杜绝 Layout Shift) */
+.auto-reconnect-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  background: transparent;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+.auto-reconnect-toggle:hover,
+.auto-reconnect-toggle:focus-within {
+  border-color: var(--sketch-border-subtle);
+  background: var(--bg-elevated, transparent);
+}
+.auto-reconnect-checkbox {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  white-space: nowrap;
+}
+.auto-reconnect-box {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1.2px solid var(--sketch-border-subtle);
+  border-radius: 4px 3px 5px 2px / 3px 5px 2px 4px;
+  background: transparent;
+  transition: border-color 150ms ease, background 150ms ease;
+  flex-shrink: 0;
+}
+.auto-reconnect-toggle:hover .auto-reconnect-box {
+  border-color: var(--sketch-border);
+}
+.auto-reconnect-tick {
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 150ms ease, transform 150ms ease;
+  color: var(--bg-primary, #fbf9f4);
+}
+.auto-reconnect-checkbox:checked + .auto-reconnect-box {
+  border-color: var(--sketch-border);
+  background: var(--ink-primary, #262422);
+}
+.auto-reconnect-checkbox:checked + .auto-reconnect-box .auto-reconnect-tick {
+  opacity: 1;
+  transform: scale(1);
+}
+.auto-reconnect-checkbox:focus-visible + .auto-reconnect-box {
+  outline: 2px solid var(--sketch-border);
+  outline-offset: 2px;
+}
+.auto-reconnect-label {
+  font-size: 12px;
+  color: var(--ink-muted);
+  line-height: 1;
+  white-space: nowrap;
 }
 
 /* 表单与分组 */
@@ -4124,6 +4257,16 @@ textarea:-webkit-autofill:focus {
   line-height: 1.5;
   color: var(--ink-primary);
   word-break: break-word;
+}
+
+.error-failover-summary {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  padding: 6px 10px;
+  border: 1px dashed var(--sketch-border-subtle);
+  border-radius: 255px 10px 225px 8px / 10px 225px 8px 255px;
+  background: transparent;
 }
 
 .error-actions {

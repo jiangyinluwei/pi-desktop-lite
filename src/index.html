@@ -512,6 +512,16 @@
                 <h3 class="pane-title">模型配置</h3>
                 <p class="pane-desc">管理与选用模型列表，或展开下方通道配置以新增更多模型。</p>
               </div>
+              <label class="auto-reconnect-toggle" title="模型调用失败时自动重连或切换其他模型">
+                <input type="checkbox" class="auto-reconnect-checkbox" id="auto-reconnect-switch" checked autocomplete="off" />
+                <span class="auto-reconnect-box" aria-hidden="true">
+                  <svg class="auto-reconnect-tick" viewBox="0 0 16 16" width="10" height="10" fill="none"
+                       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 8.5 L6.5 12 L13 4.5" />
+                  </svg>
+                </span>
+                <span class="auto-reconnect-label">自动重连切换</span>
+              </label>
             </div>
 
             <!-- 白名单模型列表容器 (按选用次序排序) -->

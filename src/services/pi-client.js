@@ -53,6 +53,85 @@ export function parseErrorMessage(err) {
   return str;
 }
 
+/**
+ * 瞬态错误码判定信号 (可自动重连)：HTTP 状态码 / 错误 token / 网络层关键字
+ */
+const TRANSIENT_CODES = [
+  "408", "429", "500", "502", "503", "504",
+  "rate_limit", "server_error", "overloaded", "temporarily_unavailable",
+  "timeout", "timed_out", "upstream_error", "gateway_timeout", "bad_gateway",
+  "econnreset", "econnrefused", "etimedout", "enotfound", "eai_again",
+  "socket hang up", "fetch failed", "connection refused", "connection reset",
+  "read econnreset", "network", "请求超时",
+];
+
+/**
+ * 永久错误码判定信号 (需自动切换模型)：HTTP 状态码 / 错误 token / 中文信号
+ */
+const PERMANENT_CODES = [
+  "400", "401", "403", "404", "405", "406", "409", "415", "422",
+  "authentication_error", "invalid_api_key", "invalid_request_error",
+  "insufficient_quota", "quota_exceeded", "credits", "model_not_found",
+  "invalid_model", "content_policy", "context_length_exceeded", "bad_request",
+  "forbidden", "unauthorized",
+  "鉴权失败", "api key", "额度不足", "模型不存在", "未开通权限", "不支持",
+];
+
+/**
+ * 从模型调用错误中提取原始错误码 (HTTP 数字 / 错误 token / 网络层关键字)
+ * 必须运行于 parseErrorMessage 友好化之前，优先使用原始 RPC 数据 (detail.raw)
+ * @param {any} err agent-error detail 或原始错误对象
+ * @returns {string}
+ */
+export function extractErrorCode(err) {
+  if (!err) return "";
+  const raw = err?.raw;
+  const candidate =
+    raw?.errorMessage ||
+    raw?.error?.message ||
+    (raw?.error && typeof raw.error === "string" ? raw.error : "") ||
+    raw?.message ||
+    (typeof raw === "string" ? raw : "") ||
+    err?.message ||
+    (typeof err === "string" ? err : "") ||
+    "";
+  let str = String(candidate).toLowerCase();
+
+  // 尝试解析嵌套 JSON 中的 error.code / error.type
+  try {
+    const jsonMatch = str.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed?.error?.code) return String(parsed.error.code).toLowerCase();
+      if (parsed?.error?.type) return String(parsed.error.type).toLowerCase();
+      if (parsed?.code) return String(parsed.code).toLowerCase();
+      if (parsed?.type) return String(parsed.type).toLowerCase();
+    }
+  } catch (_) {
+    // 嵌套 JSON 解析失败则继续关键字匹配
+  }
+
+  // 提取首个 3 位 HTTP 状态码
+  const digits = str.match(/\b(4\d\d|5\d\d)\b/);
+  if (digits) return digits[1];
+
+  return str;
+}
+
+/**
+ * 判定模型调用错误类别 ("TRANSIENT" | "PERMANENT")
+ * UNKNOWN 一律保守归永久 (进入切换兜底，切换也失败则输出错误信息)
+ * @param {any} err agent-error detail 或原始错误对象
+ * @returns {"TRANSIENT" | "PERMANENT"}
+ */
+export function classifyModelError(err) {
+  const code = extractErrorCode(err);
+  const s = String(code || "").toLowerCase();
+  if (TRANSIENT_CODES.some((c) => s === c || s.includes(c))) return "TRANSIENT";
+  if (PERMANENT_CODES.some((c) => s === c || s.includes(c))) return "PERMANENT";
+  return "PERMANENT"; // UNKNOWN 保守归永久
+}
+
 class PiClient extends EventTarget {
   constructor() {
     super();

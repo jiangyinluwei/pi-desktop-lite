@@ -735,11 +735,41 @@ window.addEventListener("pi:view-change", () => updateFlowTurnNav());
 
 ---
 
+## 📌 8. 模型自动重连切换自愈流水线规范 (Model Auto Reconnect & Failover Pattern)
+
+> 前置开关：设置页「模型配置」标题右侧「自动重连切换」Checkbox（默认勾选，见 `settings-view-pattern`），持久化于 `~/.pi-dl/config.json`；仅影响 Flow 流程中的模型调用错误处理。
+
+### 8.1 引擎职责与行为分支 (ModelFailoverEngine)
+- **文件**：`src/services/model-failover.js`（单例 `modelFailoverEngine`）；
+- **错误分类（先于友好化文案）**：`pi-client.js` 导出 `extractErrorCode` / `classifyModelError`，从 `detail.raw`（原始 RPC 数据）提取 HTTP 状态码 / 错误 token / 网络层关键字；
+  - **瞬态 `TRANSIENT`**（408/429/500/502/503/504、`rate_limit`/`server_error`/`overloaded`/`timeout`、`ECONNRESET`/`ETIMEDOUT`/`fetch failed`/`请求超时` 等）→ 自动重连；
+  - **永久 `PERMANENT`**（400/401/403/404/405/422、`authentication_error`/`insufficient_quota`/`model_not_found`、中文 `鉴权失败`/`额度不足`/`模型不存在` 等）→ 自动切换模型；UNKNOWN 保守归永久；
+- **分支一：瞬态自动重连**：`delay = min(reconnectBackoffMs[attempt-1] ?? 8000, 8000)`（2s → 4s → 8s → 8s…），上限 `maxReconnectAttempts = 24` 次；同 Turn 复用重发（不重建提问卡、不重复压入 prompt history、不新建 Task）；重连耗尽默认升级为切换（`escalateToSwitchAfterReconnectExhausted = true`，可配置关闭）；
+- **分支二：永久自动切换**：候选 = 白名单 MRU 顺序（跳过当前失败模型），单次遍历不循环；每候选先「临时切换」（仅 `pi_set_model`，**绝不刷新 MRU / `selectedModel`**）再重发；候选瞬态错误仅消耗 `perCandidateReconnectBudget = 2` 次小额重连预算；候选成功输出后才转「正常切换」（`saveSelectedModel` + `touchModelAsRecentlyUsed` 置顶持久化）；
+- **全部失败兜底**：恢复原模型（`pi_set_model` 切回，MRU/selectedModel 本就未变）+ 复用 `renderErrorCard` 并追加自愈摘要行（`已尝试重连 N 次 / 已依次尝试 N 个模型后仍失败` / 单模型时 `当前仅配置 1 个模型`）。
+
+### 8.2 Flow 内进度反馈与事件结算
+- **进度胶囊**：`createFlowTurnGroupElement` 在注入胶囊之后新增 `.flow-failover-capsule`（默认隐藏，不沉淀历史快照）；引擎派发 `failover-status` 事件（`status/attempt/maxAttempts/nextDelayMs/candidate/modelName/phase`），`updateFailoverCapsule` 更新文案：
+  - 重连中：`模型调用异常 (429) · 自动重连中 3/24 · 8s 后重试`；
+  - 切换中：`正在自动切换至 <模型名> 重试 … (2/5)`；
+  - 切换成功：`已自动切换至 <模型名> · 已记入最近使用`（绿墨色，2s 后淡出）；重连成功（未切换）：淡出 `已恢复连接`；
+  - 全部失败 / 被取消：隐藏胶囊；
+- **事件结算**（关键时序铁律）：`pi-client` 对一次失败尝试会先派发 `agent-error` 再派发 `agent-end`（同步 `dispatchEvent` 保证顺序）——
+  - `agent-error` 监听器：引擎活跃 → `handleModelError`（热结算当前在途尝试为失败并继续流水线）；引擎未活跃但 `canHandle`（自动重连开启且含模型上下文）→ 冷启动自愈；否则 `renderErrorCard`；
+  - `agent-end` 监听器：引擎活跃 → `resolveTurnSuccess()`（结算成功并交由引擎 `onSuccess` 收尾，绝不提前归档）；未活跃 → 既有正常收尾逻辑；
+  - 退避等待期间到达的杂散 `agent-error` / `agent-end` 因无在途尝试被引擎安全忽略；
+- **不提前归档铁律**：自愈进行中全局 `agent-end` / `agent-error` 被引擎接管，`archiveCurrentFlowToHistory` 与 Task「error」状态、错误通知全部延后至终态（成功或 GIVE_UP），`task-manager.js` 的 `agent-error` 监听与 `handleTaskEvent` 错误分支均以 `modelFailoverEngine.isActive() || canHandle(detail)` 门控跳过；
+- **终止 / 挂起 / 多任务隔离**：「⏹ 终止」与侧边栏任务终止调用 `modelFailoverEngine.cancel()`（清除退避定时器 + 结算在途尝试 + 走既有手动终止提示）；右键后台挂起后引擎继续在后台运行，侧边栏挂起任务徽章显示「自动重连中 / 切换模型中」；引擎按 `taskId` 隔离多任务互不干扰（`MAX_CONCURRENT_TASKS = 3` 保护不变）；用户发起新显式提问时取消同任务在途自愈（后台任务不受影响）。
+
+---
+
 ## 📎 关联文件索引
 
 | 文件 | 关键内容 |
 |---|---|
-| [`src/services/task-manager.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/task-manager.js) | `TaskManager` 多任务状态机、`turns` 轮次数组、多轮开启 `startNewTurn`、任务挂起与中止 |
+| [`src/services/task-manager.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/task-manager.js) | `TaskManager` 多任务状态机、`turns` 轮次数组、多轮开启 `startNewTurn`、任务挂起与中止（自愈期间错误分支以 `modelFailoverEngine` 门控跳过） |
+| [`src/services/model-failover.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/model-failover.js) | `ModelFailoverEngine` 自动重连切换引擎（错误分类、退避重连 ≤24 次、候选遍历、临时/正常切换、`failover-status` 事件、`cancel`） |
+| [`src/services/pi-client.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/pi-client.js) | `extractErrorCode` / `classifyModelError` 错误分类、`agent-error` / `agent-end` / `retry-status` 事件流 |
 | [`src/services/conversation-history.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/conversation-history.js) | `ConversationHistoryService` 多轮快照沉淀与 MRU 恢复 |
 | [`src-tauri/src/pi_runner/host_pool.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/pi_runner/host_pool.rs) | `PiHostPool` 多进程监管池、独立子进程隔离与 `task_id` 分帧注入 |
 | [`src/services/prompt-history.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/prompt-history.js) | `PromptHistoryNavigator` 历史记录栈、草稿暂存与指针控制 |

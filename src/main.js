@@ -18,6 +18,7 @@ import { startFloatingIcons, stopFloatingIcons } from "./services/floating-icons
 import { notificationService } from "./services/notification-service.js";
 import { taskManager } from "./services/task-manager.js";
 import { sketchAlert, sketchConfirm, sketchPrompt, SketchModal } from "./services/sketch-modal.js";
+import { modelFailoverEngine } from "./services/model-failover.js";
 
 /**
  * 简单 HTML 转义防 XSS
@@ -163,6 +164,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const channelConfigOfficial = document.getElementById("channel-config-official");
   const channelConfigCustom = document.getElementById("channel-config-custom");
   const channelConfigDrawers = document.getElementById("channel-config-drawers");
+  const autoReconnectSwitch = document.getElementById("auto-reconnect-switch");
 
   // 官方通道设置元素
   const officialProviderSelect = document.getElementById("official-provider-select");
@@ -384,6 +386,10 @@ window.addEventListener("DOMContentLoaded", () => {
     await configService.loadAppConfig();
     initThemeControl();
     initSendShortcutControl();
+    // 启动时 best-effort 向 Pi 内核注入推荐重连配置 (仅当自动重连开启时，失败静默不阻断)
+    if (configService.getAutoReconnectSwitch()) {
+      configService.applyModelFailoverPreset().catch(() => {});
+    }
   })();
 
   // ==========================================================================
@@ -782,6 +788,10 @@ window.addEventListener("DOMContentLoaded", () => {
 
   const loadModelsAndState = async () => {
     try {
+      // 同步「自动重连切换」勾选状态至设置页 UI
+      if (autoReconnectSwitch) {
+        autoReconnectSwitch.checked = configService.getAutoReconnectSwitch();
+      }
       const [state, catalog] = await Promise.all([
         piClient.getState(),
         configService.getOfficialModelsCatalog(),
@@ -1870,6 +1880,19 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // 模型配置「自动重连切换」开关 (默认勾选，全局持久化)
+  if (autoReconnectSwitch) {
+    autoReconnectSwitch.checked = configService.getAutoReconnectSwitch();
+    autoReconnectSwitch.addEventListener("change", () => {
+      configService.setAutoReconnectSwitch(autoReconnectSwitch.checked, true);
+    });
+  }
+  configService.addEventListener("auto-reconnect-change", (e) => {
+    if (autoReconnectSwitch && e.detail?.value !== undefined) {
+      autoReconnectSwitch.checked = e.detail.value;
+    }
+  });
+
   // 取消内核更新
   if (btnCancelUpdate) {
     btnCancelUpdate.addEventListener("click", async () => {
@@ -2235,6 +2258,10 @@ window.addEventListener("DOMContentLoaded", () => {
   let hasAutoCollapsedThinking = false;
   const renderedToolCards = new Map();
 
+  // 自动重连切换：缓存最近一次下发的构造 Prompt 与图片 Payload，供引擎同 Turn 复用重发
+  let lastSentPrompt = "";
+  let lastImagePayloads = null;
+
   /**
    * 当前活跃轮次的 DOM 引用缓存
    */
@@ -2376,6 +2403,17 @@ window.addEventListener("DOMContentLoaded", () => {
     `;
     groupEl.appendChild(injectionCapsuleEl);
 
+    // 2b. 自动重连/切换进度胶囊 (手绘草图风格，运行态瞬态展示，不沉淀历史)
+    const failoverCapsuleEl = document.createElement("div");
+    failoverCapsuleEl.className = "flow-failover-capsule hidden";
+    failoverCapsuleEl.setAttribute("role", "status");
+    failoverCapsuleEl.setAttribute("aria-live", "polite");
+    failoverCapsuleEl.innerHTML = `
+      <span class="capsule-icon" aria-hidden="true">${ICONS.bolt}</span>
+      <span class="capsule-text">模型调用异常 · 自动重连中</span>
+    `;
+    groupEl.appendChild(failoverCapsuleEl);
+
     // 3. AI Agent 思考过程卡片
     const thinkingCardEl = document.createElement("div");
     thinkingCardEl.className = `agent-thinking-card ${isOpenThinking ? "open" : ""}`;
@@ -2467,6 +2505,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const userTextEl = userPromptCard.querySelector(".prompt-content");
     const promptAttachmentsEl = userPromptCard.querySelector(".flow-prompt-attachments");
     const injectionTextEl = injectionCapsuleEl.querySelector(".capsule-text");
+    const failoverTextEl = failoverCapsuleEl.querySelector(".capsule-text");
 
     return {
       groupEl,
@@ -2474,6 +2513,8 @@ window.addEventListener("DOMContentLoaded", () => {
       promptAttachmentsEl,
       injectionCapsuleEl,
       injectionTextEl,
+      failoverCapsuleEl,
+      failoverTextEl,
       thinkingCardEl,
       thinkingToggleBtn,
       thinkingDurationEl,
@@ -2825,6 +2866,128 @@ window.addEventListener("DOMContentLoaded", () => {
   };
 
   /**
+   * 自动重连切换：复用当前 Turn 容器重发相同输入前重置当前轮次流式状态
+   * 不重建用户提问卡、不重复压入 prompt history、不新建 Task，仅清除上一轮临时产物
+   */
+  const resetCurrentTurnForResend = () => {
+    currentThinkingText = "";
+    currentResponseText = "";
+    currentErrorMessage = null;
+    hasReceivedDelta = false;
+    hasAutoCollapsedThinking = false;
+    renderedToolCards.clear();
+
+    // 移除上一轮临时错误卡片 (避免重复堆叠)
+    if (activeTurnRefs?.responseContentEl) {
+      const errCard = activeTurnRefs.responseContentEl.querySelector(".sketch-error-card");
+      if (errCard) errCard.remove();
+      const cursor = activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
+      if (cursor) cursor.remove();
+      activeTurnRefs.responseContentEl.innerHTML = `<span class="streaming-cursor"></span>`;
+    }
+    // 清空思考流文本与工具卡片容器
+    if (activeTurnRefs?.thinkingTextStreamEl) {
+      activeTurnRefs.thinkingTextStreamEl.textContent = "";
+    }
+    if (activeTurnRefs?.toolCallsContainerEl) {
+      activeTurnRefs.toolCallsContainerEl.innerHTML = "";
+    }
+    // 重开思考卡片并重置耗时计时
+    expandThinkingCard(activeTurnRefs.thinkingCardEl, activeTurnRefs.thinkingToggleBtn);
+    thinkingStartTime = Date.now();
+    if (thinkingTimerInterval) clearInterval(thinkingTimerInterval);
+    thinkingTimerInterval = setInterval(() => {
+      if (activeTurnRefs?.thinkingDurationEl) {
+        const elapsed = ((Date.now() - thinkingStartTime) / 1000).toFixed(1);
+        activeTurnRefs.thinkingDurationEl.textContent = `思考中 (${elapsed}s)...`;
+      }
+    }, 100);
+    // 自愈期间保留「⏹ 终止」按钮可见
+    if (flowBtnAbort) {
+      flowBtnAbort.classList.remove("hidden");
+    }
+    if (flowScrollArea) {
+      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    }
+  };
+
+  /**
+   * 更新自动重连/切换进度胶囊 (手绘草图风格，无 Emoji)
+   */
+  const updateFailoverCapsule = (payload = {}) => {
+    if (!activeTurnRefs?.failoverCapsuleEl || !activeTurnRefs?.failoverTextEl) return;
+    const phase = payload.phase || "";
+    const textEl = activeTurnRefs.failoverTextEl;
+    const capsule = activeTurnRefs.failoverCapsuleEl;
+
+    if (payload.status === "succeeded" && payload.switched) {
+      textEl.textContent = `已自动切换至 ${payload.modelName || "其他模型"} · 已记入最近使用`;
+      capsule.classList.remove("hidden");
+      capsule.classList.add("ok");
+      // 2s 后淡出
+      setTimeout(() => capsule.classList.add("hidden"), 2000);
+      return;
+    }
+    if (payload.status === "succeeded") {
+      // 重连成功 (未切换)：淡出「已恢复连接」
+      textEl.textContent = "已恢复连接";
+      capsule.classList.remove("hidden");
+      capsule.classList.add("ok");
+      setTimeout(() => capsule.classList.add("hidden"), 1500);
+      return;
+    }
+    if (payload.status === "gave_up" || payload.status === "cancelled") {
+      capsule.classList.add("hidden");
+      capsule.classList.remove("ok");
+      return;
+    }
+
+    // 重连中 / 切换中
+    capsule.classList.remove("ok");
+    if (payload.status === "reconnecting") {
+      const codeStr = payload.code ? ` ${payload.code}` : "";
+      if (phase === "waiting" && payload.nextDelayMs) {
+        const secs = Math.max(1, Math.round(payload.nextDelayMs / 1000));
+        textEl.textContent = `模型调用异常${codeStr} · 自动重连中 ${payload.attempt}/${payload.maxAttempts} · ${secs}s 后重试`;
+      } else {
+        textEl.textContent = `自动重连中 ${payload.attempt}/${payload.maxAttempts}`;
+      }
+      capsule.classList.remove("hidden");
+    } else if (payload.status === "switching") {
+      if (phase === "switching_model") {
+        textEl.textContent = `正在自动切换至 ${payload.modelName || "其他模型"} 重试 … (${payload.candidateIndex + 1}/${payload.candidateTotal})`;
+      } else {
+        textEl.textContent = `${payload.modelName || "候选模型"} 重试中 … (${payload.candidateIndex + 1}/${payload.candidateTotal})`;
+      }
+      capsule.classList.remove("hidden");
+    }
+    if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+  };
+
+  // 自动重连切换引擎进度事件 → 更新 Flow 进度胶囊
+  modelFailoverEngine.addEventListener("failover-status", (e) => {
+    const payload = e.detail || {};
+    // 退避等待期间停止思考计时，避免耗时位残留「思考中」虚长
+    if (
+      (payload.status === "reconnecting" || payload.status === "switching") &&
+      payload.phase === "waiting" &&
+      thinkingTimerInterval
+    ) {
+      clearInterval(thinkingTimerInterval);
+      thinkingTimerInterval = null;
+    }
+    updateFailoverCapsule(payload);
+    // 侧边栏挂起任务状态徽章 (自动重连中/切换模型中) 实时刷新
+    if (
+      taskDetailsSidebar &&
+      taskDetailsSidebar.classList.contains("open") &&
+      typeof renderTaskSidebarList === "function"
+    ) {
+      renderTaskSidebarList();
+    }
+  });
+
+  /**
    * 渲染手绘草图质感手动终止提示字段
    * @returns {string}
    */
@@ -2921,6 +3084,25 @@ window.addEventListener("DOMContentLoaded", () => {
       `
       : "";
 
+    // 自愈摘要行：仅当引擎发生过自动重连/切换时才追加 (复用 renderErrorCard 终态渲染)
+    let failoverSummaryHtml = "";
+    if (errDetail?.failoverSummary) {
+      if (errDetail.failoverSummary.singleModelOnly) {
+        failoverSummaryHtml = `<div class="error-failover-summary">当前仅配置 1 个模型，无其他候选模型可自动切换</div>`;
+      } else {
+        const parts = [];
+        if (errDetail.failoverSummary.reconnectCount > 0) {
+          parts.push(`已尝试重连 ${errDetail.failoverSummary.reconnectCount} 次`);
+        }
+        if (errDetail.failoverSummary.triedCandidates > 0) {
+          parts.push(`已依次尝试 ${errDetail.failoverSummary.triedCandidates} 个模型`);
+        }
+        if (parts.length > 0) {
+          failoverSummaryHtml = `<div class="error-failover-summary">${parts.join(" / ")} 后仍失败</div>`;
+        }
+      }
+    }
+
     const cardHtml = `
       <div class="sketch-error-card">
         <div class="error-header">
@@ -2928,6 +3110,7 @@ window.addEventListener("DOMContentLoaded", () => {
           <span class="error-title">模型调用失败 [${escapeHtml(activeModelName)}]</span>
         </div>
         <div class="error-message-text">${escapeHtml(errMsg)}</div>
+        ${failoverSummaryHtml}
         ${multimodalHintHtml}
         <div class="error-actions">
           <button type="button" class="error-btn retry-btn" id="btn-err-retry">
@@ -3183,6 +3366,8 @@ window.addEventListener("DOMContentLoaded", () => {
 
   piClient.addEventListener("retry-status", (e) => {
     const data = e.detail;
+    // 引擎接管自愈时，内核内置 3 次快速重试降级为内部静默，不再覆盖耗时位展示
+    if (modelFailoverEngine.isActive()) return;
     if (activeTurnRefs?.thinkingDurationEl && data.attempt) {
       activeTurnRefs.thinkingDurationEl.textContent = `自动重试中 (${data.attempt}/${data.maxAttempts || 3})...`;
     }
@@ -3227,11 +3412,51 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // ==========================================================================
+  // 自动重连切换引擎 (ModelFailoverEngine) 接入
+  // 瞬态错误自动重连 / 永久错误自动切换，全程无需用户介入，绝不提前渲染错误卡与归档
+  // ==========================================================================
+  const failoverHooks = {
+    // 同 Turn 复用重发相同输入 (不重建提问卡、不重复压入 prompt history、不新建 Task)
+    onResendAttempt: (taskId) => {
+      resetCurrentTurnForResend();
+      return piClient.sendPrompt(lastSentPrompt, lastImagePayloads, null, taskId);
+    },
+    // 全部失败兜底：复用既有错误卡并追加自愈摘要
+    onGiveUp: (errDetail, summary) => {
+      const detail = { ...(errDetail || {}) };
+      if (summary && (summary.reconnectCount > 0 || summary.triedCandidates > 0)) {
+        detail.failoverSummary = summary;
+      }
+      renderErrorCard(detail);
+    },
+    // 自愈成功：正常收尾 (收起工具卡 + 结束流式 + 沉淀历史快照)
+    onSuccess: () => {
+      collapseAllToolCards();
+      finalizeStream();
+      archiveCurrentFlowToHistory();
+    },
+  };
+
   piClient.addEventListener("agent-error", (e) => {
-    renderErrorCard(e.detail);
+    if (modelFailoverEngine.isActive()) {
+      // 自愈进行中：该错误即为当前重发尝试的结果 (含 RPC/扩展错误)，一律交由引擎结算，
+      // 避免引擎在途尝试悬空挂起，也绝不提前渲染错误卡打断自愈
+      modelFailoverEngine.handleModelError(e.detail, failoverHooks);
+    } else if (modelFailoverEngine.canHandle(e.detail)) {
+      // 冷启动：自动重连开启且错误含模型上下文 → 交给引擎自愈
+      modelFailoverEngine.handleModelError(e.detail, failoverHooks);
+    } else {
+      renderErrorCard(e.detail);
+    }
   });
 
   piClient.addEventListener("agent-end", () => {
+    // 引擎自愈进行中：结算当前重发尝试为成功，由引擎负责收尾，避免提前归档历史
+    if (modelFailoverEngine.isActive()) {
+      modelFailoverEngine.resolveTurnSuccess();
+      return;
+    }
     // 完成后收起所有工具卡片（最终输出卡不收起）
     collapseAllToolCards();
     finalizeStream();
@@ -3261,6 +3486,12 @@ window.addEventListener("DOMContentLoaded", () => {
     // 判断是否在 Flow 模式下向同一个工作流继续提问 (Multi-turn Follow-up)
     const activeTask = taskManager.getCurrentActiveTask();
     const isFollowUp = Boolean(currentView === VIEW_FLOW && activeTask);
+
+    // 用户发起新的显式提问：若引擎正在自愈「当前活跃任务」，以手动操作为准取消其过期自愈，
+    // 避免旧轮次退避重发污染新提问；后台挂起任务的自愈不受影响 (规范：挂起后台继续运行)
+    if (modelFailoverEngine.isActive() && activeTask && modelFailoverEngine.taskId === activeTask.id) {
+      modelFailoverEngine.cancel("new-query");
+    }
 
     let currentTask = activeTask;
 
@@ -3333,6 +3564,9 @@ window.addEventListener("DOMContentLoaded", () => {
       }
 
       // 同一个 Flow 使用同一个 currentTask.id 保持会话上下文
+      // 缓存构造后的 Prompt 与图片 Payload，供自动重连切换引擎同 Turn 复用重发
+      lastSentPrompt = promptToSend;
+      lastImagePayloads = imagePayloads;
       await piClient.sendPrompt(promptToSend, imagePayloads, null, currentTask.id);
     } catch (err) {
       console.error("Failed to send prompt to Pi:", err);
@@ -3517,8 +3751,20 @@ window.addEventListener("DOMContentLoaded", () => {
       const isRunning = task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec";
       const isCurrent = taskManager.currentActiveTaskId === task.id;
 
+      // 自动重连切换进行中：该 Task 绑定引擎自愈流水线时展示专属状态徽章
+      const engineStatus =
+        modelFailoverEngine.isActive() &&
+        modelFailoverEngine.taskId &&
+        modelFailoverEngine.taskId === task.id
+          ? modelFailoverEngine.status
+          : null;
+
       let statusText = "已完成";
-      if (task.status === "thinking") {
+      if (engineStatus === "reconnecting") {
+        statusText = "自动重连中";
+      } else if (engineStatus === "switching") {
+        statusText = "切换模型中";
+      } else if (task.status === "thinking") {
         const elapsed = ((Date.now() - task.startedAt) / 1000).toFixed(0);
         statusText = `思考中 (${elapsed}s)`;
       } else if (task.status === "streaming") {
@@ -3634,6 +3880,8 @@ window.addEventListener("DOMContentLoaded", () => {
   if (flowBtnAbort) {
     flowBtnAbort.addEventListener("click", async (e) => {
       e.stopPropagation();
+      // 立即终止引擎待执行的退避定时器与切换流水线
+      modelFailoverEngine.cancel("user");
       const current = taskManager.getCurrentActiveTask();
       if (current) {
         await taskManager.abortTask(current.id);
@@ -3651,6 +3899,8 @@ window.addEventListener("DOMContentLoaded", () => {
     const abortedTask = e.detail;
     const current = taskManager.getCurrentActiveTask();
     if (current && current.id === abortedTask?.id) {
+      // 终止与该 Task 绑定的自愈流水线 (退避定时器与切换流水线)
+      modelFailoverEngine.cancel("abort");
       finalizeStream();
       appendFlowAbortNotice();
       archiveCurrentFlowToHistory();

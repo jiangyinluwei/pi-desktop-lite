@@ -356,6 +356,68 @@ pub fn pi_save_settings_config(settings_data: Value) -> Result<(), String> {
     write_agent_json("settings.json", &settings_data)
 }
 
+/// 向 Pi 内核 ~/.pi/agent/settings.json 探测式注入模型自动重连推荐配置 (best-effort, 失败静默)
+///
+/// 轨道 A (内核参数注入)：若内核识别重试键则让其自身按推荐值 (24 次 / 2-4-8s 退避) 重连；
+/// 轨道 B (桌面 ModelFailoverEngine) 为行为主实现，无论本指令是否生效均能保证「恰好 24 次」语义。
+/// 本指令对未知 schema 安全跳过、绝不报错，绝不阻断引擎自愈流水线。
+#[tauri::command]
+pub fn pi_apply_model_failover_preset(config: Value) -> Result<(), String> {
+    let max_attempts = config
+        .get("maxReconnectAttempts")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(24);
+
+    // 退避序列 (ms) 转为秒级数组供内核使用，并封顶 maxBackoffMs
+    let backoff_secs: Vec<Value> = config
+        .get("reconnectBackoffMs")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .map(|ms| {
+                    let s = ms.as_u64().unwrap_or(2000) / 1000;
+                    Value::from(s.max(1))
+                })
+                .collect()
+        })
+        .unwrap_or_else(|| vec![Value::from(2u64), Value::from(4u64), Value::from(8u64)]);
+
+    let max_backoff_secs = config
+        .get("maxBackoffMs")
+        .and_then(|v| v.as_u64())
+        .map(|ms| (ms / 1000).max(1))
+        .unwrap_or(8);
+
+    let mut settings = pi_get_settings_config().unwrap_or_else(|_| json!({}));
+    if !settings.is_object() {
+        settings = json!({});
+    }
+
+    let retry_block = json!({
+        "maxAttempts": max_attempts,
+        "backoff": backoff_secs,
+        "maxBackoffSeconds": max_backoff_secs
+    });
+
+    if let Some(obj) = settings.as_object_mut() {
+        // 仅当内核 settings.json 未显式声明禁用重试时注入推荐值；
+        // 已存在用户自定义 retry 配置则尊重原值不覆盖，避免破坏用户刻意调优。
+        let has_user_retry = obj
+            .get("retry")
+            .map(|r| r.is_object())
+            .unwrap_or(false);
+        if !has_user_retry {
+            obj.insert("retry".to_string(), retry_block);
+        }
+    }
+
+    // 写回为 best-effort：失败仅记录日志，返回 Ok 绝不阻断前端引擎
+    if let Err(e) = pi_save_settings_config(settings) {
+        log::warn!("[config_manager] Failed to apply model failover preset: {}", e);
+    }
+    Ok(())
+}
+
 /// 官方通道与模型基础元数据目录
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
