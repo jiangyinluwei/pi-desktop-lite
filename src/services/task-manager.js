@@ -374,6 +374,17 @@ export class TaskManager extends EventTarget {
       }
 
       const task = this.tasks.get(taskId);
+      if (task.pendingInterruptSend) {
+        // 「终止并发送」流程中旧轮报错视为已结算，不置 Task 为 error，等待新轮次发起
+        task.pendingInterruptSend = false;
+        const lastTurn = task.turns && task.turns.length > 0 ? task.turns[task.turns.length - 1] : null;
+        if (lastTurn && !lastTurn.completedAt) {
+          lastTurn.status = "aborted";
+          lastTurn.isAborted = true;
+          lastTurn.completedAt = Date.now();
+        }
+        return;
+      }
       task.status = "error";
       task.completedAt = Date.now();
       task.errorMessage = detail.message || "模型调用发生异常";
@@ -499,6 +510,8 @@ export class TaskManager extends EventTarget {
       case "message_end":
         // 自动重连切换进行中：错误分支交由引擎结算，不提前置 Task 为 error
         if (modelFailoverEngine.isActive()) break;
+        // 「终止并发送」流程中旧轮错误已由 interrupt-send 流水线结算
+        if (task.pendingInterruptSend) break;
         if (data.message && (data.message.stopReason === "error" || data.message.errorMessage)) {
           task.status = "error";
           task.completedAt = Date.now();
@@ -514,6 +527,8 @@ export class TaskManager extends EventTarget {
       case "extension_error":
         // 自动重连切换进行中：错误分支交由引擎结算
         if (modelFailoverEngine.isActive()) break;
+        // 「终止并发送」流程中旧轮错误已由 interrupt-send 流水线结算
+        if (task.pendingInterruptSend) break;
         task.status = "error";
         task.completedAt = Date.now();
         task.errorMessage = parseErrorMessage(data.error || "扩展插件运行异常");
@@ -526,6 +541,17 @@ export class TaskManager extends EventTarget {
 
       case "agent_end":
       case "agent_settled":
+        // 用户中途输入「终止并发送」：旧轮结算由前端 interrupt-send 流水线接管，
+        // 仅把当前轮标记为已中断，绝不提前将整个 Task 置为 completed
+        if (task.pendingInterruptSend) {
+          task.pendingInterruptSend = false;
+          if (currentTurn && !currentTurn.completedAt) {
+            currentTurn.status = "aborted";
+            currentTurn.isAborted = true;
+            currentTurn.completedAt = Date.now();
+          }
+          break;
+        }
         if (Array.isArray(data.messages)) {
           const errMessage = data.messages.find(
             (m) => m.stopReason === "error" || m.errorMessage

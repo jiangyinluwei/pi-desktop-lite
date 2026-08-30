@@ -36,6 +36,11 @@
       "name": "pi-ocr",
       "description": "图像文字光学识别与视觉提取组件",
       "source": "npm:pi-ocr"
+    },
+    {
+      "name": "pai-acp",
+      "description": "主动上下文修剪与长会话压缩扩展 (Active Context Pruning)",
+      "source": "npm:pai-acp"
     }
   ]
 }

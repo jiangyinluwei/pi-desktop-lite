@@ -733,6 +733,22 @@ window.addEventListener("pi:view-change", () => updateFlowTurnNav());
    - `TaskManager` 中的 `TaskItem` 维护 `turns: Array<TurnItem>` 轮次数组，实时同步思考、工具调用与回答；
    - 生成完成（`agent-end` / `agent-error` / abort）、右键回退及窗口关闭生命周期（`beforeunload` / `pagehide`）时，`conversationHistoryService` 均即时更新并持久化沉淀所有轮次快照（`turns`），结合 Conversation ID 与 Task ID 双向映射，无论何时关闭重启软件，点击历史讯息方框或 Task 时均能 100% 完整无损还原所有多轮对话！
 
+### 7.2 运行中提交拦截与「终止并发送」流水线 (Mid-stream Submit Intercept & Interrupt-Send Pipeline)
+- **背景**：当前轮处于运行态（`thinking` / `streaming` / `tool_exec`）或待确认（`paused`）时用户仍可编辑并提交输入框。若直接放行并发起新轮，旧轮流式残留事件（无 taskId 路由的 `thinking-delta` / `text-delta` / `tool-start`）会混入新轮 DOM 与数据，旧轮 `agent-end` 还会提前归档历史并提前置 Task 为 `completed`，形成内容串轮、状态错乱与历史脏快照三重竞态；
+- **拦截交互**：`handleFlowQuery` 入口检测「当前视图为 Flow 且前台任务处于运行态/待确认」时，弹出 `sketchConfirm`（标题「上一轮仍在生成中」，`confirmText: 终止并发送`（危险操作红标），`cancelText: 等待完成`）：
+  - 选择「等待完成」→ 输入内容原样保留、仅回焦输入框，不发起任何请求；
+  - 选择「终止并发送」→ 进入中断发送流水线（见下），随后走正常多轮下发路径（`startNewTurn` → `resetStreamState(isFollowUpTurn=true)` → `piClient.sendPrompt`）；
+- **中断发送流水线时序铁律**（`main.js`）：
+  1. `modelFailoverEngine.cancel("new-query")` 取消同任务在途自愈（清退避定时器、结算在途尝试）；
+  2. 置 `interruptSendTaskId = taskId` 与 `task.pendingInterruptSend = true`，弹出「正在终止当前生成，即将发送新提问…」Toast；
+  3. **先注册** `waitForTurnSettled(taskId)`（监听 `agent-end` / `agent-error` 且按 taskId 过滤，6s 超时兜底），**再** `piClient.abort(taskId)` —— 监听器必须先于 abort 注册，杜绝结算事件先于等待窗口到达导致永久悬挂；
+  4. 结算到达或超时后清除 `interruptSendTaskId` 与 `pendingInterruptSend`，旧轮头部耗时位定格为「已中断 (Xs)」；
+  5. 结算期间任务被挂起/切换则丢弃本次发送并回填输入内容；
+- **结算期抑制铁律**（双守卫，顺序无关）：
+  - `main.js` 的 `agent-end` / `agent-error` 监听器：`interruptSendTaskId` 非空且事件 taskId 匹配（或缺失）时一律 `return`——跳过 `finalizeStream` / `collapseAllToolCards` / `archiveCurrentFlowToHistory` / `renderErrorCard`，也绝不冷启动新自愈流水线；
+  - `task-manager.js` 的 `agent-error` 监听与 `handleTaskEvent` 的 `agent_end` / `agent_settled` / `turn_end` / `message_start` / `message_end` / `extension_error` 分支：`task.pendingInterruptSend` 为真时只把旧轮标记为 `aborted`（`isAborted = true`、`completedAt` 落时间戳），**绝不**置整个 Task 为 `completed` / `error`、不发错误通知；
+- **根因消除**：新轮 DOM 只在旧轮真正结算（agent-end / agent-error / 超时）之后才创建，后端 `prompt` 指令在 `abort` 指令之后入同一 SessionHost 的 stdin FIFO 队列，旧轮残留流式内容永远落在旧轮 DOM/数据内，彻底杜绝内容混串。
+
 ---
 
 ## 📌 8. 模型自动重连切换自愈流水线规范 (Model Auto Reconnect & Failover Pattern)
@@ -767,13 +783,13 @@ window.addEventListener("pi:view-change", () => updateFlowTurnNav());
 
 | 文件 | 关键内容 |
 |---|---|
-| [`src/services/task-manager.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/task-manager.js) | `TaskManager` 多任务状态机、`turns` 轮次数组、多轮开启 `startNewTurn`、任务挂起与中止（自愈期间错误分支以 `modelFailoverEngine` 门控跳过） |
+| [`src/services/task-manager.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/task-manager.js) | `TaskManager` 多任务状态机、`turns` 轮次数组、多轮开启 `startNewTurn`、任务挂起与中止（自愈期间错误分支以 `modelFailoverEngine` 门控跳过；「终止并发送」期间结算分支以 `pendingInterruptSend` 门控仅标记旧轮 aborted） |
 | [`src/services/model-failover.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/model-failover.js) | `ModelFailoverEngine` 自动重连切换引擎（错误分类、退避重连 ≤24 次、候选遍历、临时/正常切换、`failover-status` 事件、`cancel`） |
 | [`src/services/pi-client.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/pi-client.js) | `extractErrorCode` / `classifyModelError` 错误分类、`agent-error` / `agent-end` / `retry-status` 事件流 |
 | [`src/services/conversation-history.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/conversation-history.js) | `ConversationHistoryService` 多轮快照沉淀与 MRU 恢复 |
 | [`src-tauri/src/pi_runner/host_pool.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/pi_runner/host_pool.rs) | `PiHostPool` 多进程监管池、独立子进程隔离与 `task_id` 分帧注入 |
 | [`src/services/prompt-history.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/prompt-history.js) | `PromptHistoryNavigator` 历史记录栈、草稿暂存与指针控制 |
-| [`src/main.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/main.js) | `createFlowTurnGroupElement`、`resetStreamState`（多轮追加）、`handleFlowQuery`（同一工作流路由）、`restoreTaskToFlow` 与 `restoreConversationToFlow`（多轮还原）、`updateFlowTurnNav` / `scrollToTurnStart` / 上·下按钮事件绑定（多段对话定位导航） |
+| [`src/main.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/main.js) | `createFlowTurnGroupElement`、`resetStreamState`（多轮追加）、`handleFlowQuery`（同一工作流路由 + 运行中提交拦截/终止并发送流水线 `waitForTurnSettled`）、`restoreTaskToFlow` 与 `restoreConversationToFlow`（多轮还原）、`updateFlowTurnNav` / `scrollToTurnStart` / 上·下按钮事件绑定（多段对话定位导航） |
 | [`src/services/notification-service.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/notification-service.js) | 全局焦点追踪器、任务池追踪器、Windows 原生 Toast 通知分发 |
 | [`src-tauri/src/lib.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/lib.rs) | `tauri-plugin-notification` 初始化、`pi_show_notification`、`app-awakened` 广播与任务池 RPC |
 | [`src/styles.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles.css) | `.flow-message-group`、`.agent-thinking-card`、`.tool-card`、`.flow-turn-nav` / `.flow-turn-nav-btn`（上下轮次定位导航）、`#mini-task-capsule`、`#task-details-sidebar` |

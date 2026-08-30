@@ -2408,6 +2408,10 @@ window.addEventListener("DOMContentLoaded", () => {
   let hasAutoCollapsedThinking = false;
   const renderedToolCards = new Map();
 
+  // 用户中途输入「终止并发送」：非空时表示旧轮结算由 interrupt-send 流水线接管，
+  // 期间到达的 agent-end / agent-error 一律跳过收尾、归档与错误卡渲染
+  let interruptSendTaskId = null;
+
   // 自动重连切换：缓存最近一次下发的构造 Prompt 与图片 Payload，供引擎同 Turn 复用重发
   let lastSentPrompt = "";
   let lastImagePayloads = null;
@@ -3589,6 +3593,13 @@ window.addEventListener("DOMContentLoaded", () => {
   };
 
   piClient.addEventListener("agent-error", (e) => {
+    // 「终止并发送」进行中：旧轮报错视为已结算，不渲染错误卡、不进入自愈
+    if (interruptSendTaskId) {
+      const errTaskId = e.detail?.taskId || e.detail?.raw?.task_id || e.detail?.task_id;
+      if (!errTaskId || errTaskId === interruptSendTaskId) {
+        return;
+      }
+    }
     if (modelFailoverEngine.isActive()) {
       // 自愈进行中：该错误即为当前重发尝试的结果 (含 RPC/扩展错误)，一律交由引擎结算，
       // 避免引擎在途尝试悬空挂起，也绝不提前渲染错误卡打断自愈
@@ -3601,11 +3612,18 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  piClient.addEventListener("agent-end", () => {
+  piClient.addEventListener("agent-end", (e) => {
     // 引擎自愈进行中：结算当前重发尝试为成功，由引擎负责收尾，避免提前归档历史
     if (modelFailoverEngine.isActive()) {
       modelFailoverEngine.resolveTurnSuccess();
       return;
+    }
+    // 「终止并发送」进行中：旧轮结算由 interrupt-send 流水线接管，跳过收尾与归档
+    if (interruptSendTaskId) {
+      const endTaskId = e.detail?.task_id || e.detail?.taskId;
+      if (!endTaskId || endTaskId === interruptSendTaskId) {
+        return;
+      }
     }
     // 完成后收起所有工具卡片（最终输出卡不收起）
     collapseAllToolCards();
@@ -3614,12 +3632,119 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   /**
+   * 等待指定 Task 的当前轮次结算（agent-end / agent_settled / agent-error，超时兜底）
+   * 监听器须在发起 abort 之前注册，避免结算事件先于等待窗口到达而永久悬挂
+   * @param {string} taskId
+   * @param {number} [timeoutMs=6000]
+   * @returns {Promise<void>}
+   */
+  const waitForTurnSettled = (taskId, timeoutMs = 6000) => {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        piClient.removeEventListener("agent-end", onEnd);
+        piClient.removeEventListener("agent-error", onErr);
+        resolve();
+      };
+      const isTargetTask = (detail) => {
+        const tid = detail?.task_id || detail?.taskId || detail?.raw?.task_id;
+        return !tid || tid === taskId;
+      };
+      const onEnd = (e) => {
+        if (isTargetTask(e.detail)) finish();
+      };
+      const onErr = (e) => {
+        if (isTargetTask(e.detail)) finish();
+      };
+      piClient.addEventListener("agent-end", onEnd);
+      piClient.addEventListener("agent-error", onErr);
+      const timer = setTimeout(finish, timeoutMs);
+    });
+  };
+
+  /**
    * 触发用户提问并向 Pi 下发指令（支持同一 Flow 多轮会话工作流、注入文件绝对路径与多任务隔离）
    * @param {string} query
    * @param {Array<any>} [filesToAttach=[]]
    */
   const handleFlowQuery = async (query, filesToAttach = []) => {
     if (!query && filesToAttach.length === 0) return;
+
+    // 运行中提交拦截：同一 Flow 的当前轮仍在生成（思考/流式/工具执行/待确认）时，
+    // 弹窗让用户选择「等待完成」或「终止并发送」。
+    // 「终止并发送」先取消自愈流水线 → 后端 abort → 等待旧轮结算 → 再走正常多轮下发，
+    // 彻底杜绝旧轮流式残留混入新轮、Task 提前置终态与历史提前归档等竞态
+    const currentRunningTask =
+      currentView === VIEW_FLOW
+        ? (() => {
+            const t = taskManager.getCurrentActiveTask();
+            if (!t) return null;
+            return t.status === "thinking" ||
+              t.status === "streaming" ||
+              t.status === "tool_exec" ||
+              t.status === "paused"
+              ? t
+              : null;
+          })()
+        : null;
+
+    if (currentRunningTask) {
+      const userConfirm = await sketchConfirm(
+        "上一轮对话仍在生成中（思考 / 流式输出 / 工具执行）。\n「终止并发送」将立即中断当前生成并发送新提问；「等待完成」则保留输入内容，待当前轮次结束后再发送。",
+        {
+          title: "上一轮仍在生成中",
+          type: "confirm",
+          confirmText: "终止并发送",
+          cancelText: "等待完成",
+          isDanger: true,
+        }
+      );
+      if (!userConfirm) {
+        // 等待完成：输入内容原样保留，仅回焦输入框
+        if (searchInput) {
+          searchInput.focus();
+          const len = searchInput.value.length;
+          searchInput.setSelectionRange(len, len);
+        }
+        return;
+      }
+
+      // 用户确认中断旧轮：取消自愈流水线 → 先注册结算监听 → 后端 abort → 等待结算
+      modelFailoverEngine.cancel("new-query");
+      const interruptTaskId = currentRunningTask.id;
+      interruptSendTaskId = interruptTaskId;
+      currentRunningTask.pendingInterruptSend = true;
+      showGlobalToast("正在终止当前生成，即将发送新提问…", 1500);
+      const settledPromise = waitForTurnSettled(interruptTaskId);
+      try {
+        await piClient.abort(interruptTaskId);
+      } catch (_) {
+        // abort 失败（子进程已退出等）不阻塞，由超时兜底继续
+      }
+      await settledPromise;
+      interruptSendTaskId = null;
+      // 显式清除（结算事件到达时 taskManager 已清除；超时兜底路径必须在此兜底清除，
+      // 否则新轮次的 agent_end 会被误判为旧轮中断结算）
+      currentRunningTask.pendingInterruptSend = false;
+
+      // 旧轮已结算：头部耗时位定格为「已中断」，避免残留「思考中」字样
+      if (activeTurnRefs?.thinkingDurationEl) {
+        const elapsed = ((Date.now() - thinkingStartTime) / 1000).toFixed(1);
+        activeTurnRefs.thinkingDurationEl.textContent = `已中断 (${elapsed}s)`;
+      }
+
+      // 等待结算期间任务被挂起/切换：丢弃本次发送并回填输入内容
+      const afterWaitTask = taskManager.getCurrentActiveTask();
+      if (!afterWaitTask || afterWaitTask.id !== interruptTaskId || afterWaitTask.isSuspended) {
+        searchInput.value = query;
+        updateInputState();
+        autoResizeSearchInput();
+        return;
+      }
+    }
 
     const savedSelected = configService.getSelectedModel();
     const modelName =
