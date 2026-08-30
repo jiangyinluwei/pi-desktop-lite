@@ -1439,25 +1439,25 @@ window.addEventListener("DOMContentLoaded", () => {
 
         if (btnSaveEditProv && inlineEditForm) {
           btnSaveEditProv.addEventListener("click", async () => {
-            const inputApiType = inlineEditForm.querySelector(".input-edit-api-type");
-            const inputBaseUrl = inlineEditForm.querySelector(".input-edit-base-url");
-            const inputApiKey = inlineEditForm.querySelector(".input-edit-api-key");
-            const inputDevRole = inlineEditForm.querySelector(".input-edit-developer-role");
-            const inputReasoningEffort = inlineEditForm.querySelector(".input-edit-reasoning-effort");
-
-            const newApiType = inputApiType?.value.trim() || "openai-completions";
-            const newBaseUrl = inputBaseUrl?.value.trim();
-            if (!newBaseUrl) {
-              await sketchAlert("接口地址 (Base URL) 不能为空", { type: "warning", title: "参数缺失" });
-              inputBaseUrl?.focus();
-              return;
-            }
-            const newApiKey = inputApiKey?.value.trim() || null;
-            const newDevRole = !!inputDevRole?.checked;
-            const newReasoningEffort = !!inputReasoningEffort?.checked;
-
             btnSaveEditProv.disabled = true;
             try {
+              const inputApiType = inlineEditForm.querySelector("select.input-edit-api-type") || inlineEditForm.querySelector(".input-edit-api-type");
+              const inputBaseUrl = inlineEditForm.querySelector(".input-edit-base-url");
+              const inputApiKey = inlineEditForm.querySelector(".input-edit-api-key");
+              const inputDevRole = inlineEditForm.querySelector(".input-edit-developer-role");
+              const inputReasoningEffort = inlineEditForm.querySelector(".input-edit-reasoning-effort");
+
+              const newApiType = (inputApiType?.value || "").trim() || "openai-completions";
+              const newBaseUrl = (inputBaseUrl?.value || "").trim();
+              if (!newBaseUrl) {
+                await sketchAlert("接口地址 (Base URL) 不能为空", { type: "warning", title: "参数缺失" });
+                inputBaseUrl?.focus();
+                return;
+              }
+              const newApiKey = (inputApiKey?.value || "").trim() || null;
+              const newDevRole = !!inputDevRole?.checked;
+              const newReasoningEffort = !!inputReasoningEffort?.checked;
+
               await configService.saveCustomProvider({
                 provider_id: pKey,
                 api_type: newApiType,

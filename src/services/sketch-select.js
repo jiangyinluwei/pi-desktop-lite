@@ -93,6 +93,17 @@ export class SketchSelect {
       }
     }
 
+    // 代理 value 属性到原生 select，防止外部 querySelector 选中 wrapper 时 .value 丢失
+    Object.defineProperty(this.wrapper, "value", {
+      get: () => this.nativeSelect.value,
+      set: (val) => {
+        this.nativeSelect.value = val;
+        this.syncValueFromNative();
+      },
+      configurable: true,
+      enumerable: true
+    });
+
     // 触发器按钮
     this.trigger = document.createElement("button");
     this.trigger.type = "button";
