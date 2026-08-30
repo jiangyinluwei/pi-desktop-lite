@@ -530,7 +530,7 @@
                     <div class="form-grid-2">
                       <div class="form-field">
                         <label for="custom-provider-id" class="form-label">运营商标识 (Provider ID) <span class="req">*</span></label>
-                        <input type="text" id="custom-provider-id" class="flat-input" placeholder="如 siliconflow, ollama, oneapi, volcengine" required />
+                        <input type="text" id="custom-provider-id" class="flat-input" placeholder="如 siliconflow, ollama, oneapi, volcengine" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" required />
                       </div>
                       <div class="form-field">
                         <label for="custom-api-type" class="form-label">接口类型 (API Protocol) <span class="req">*</span></label>
@@ -545,12 +545,12 @@
 
                     <div class="form-field">
                       <label for="custom-base-url" class="form-label">接口地址 (Base URL) <span class="req">*</span></label>
-                      <input type="url" id="custom-base-url" class="flat-input" placeholder="如 https://api.siliconflow.cn/v1 或 http://localhost:11434/v1" required />
+                      <input type="url" id="custom-base-url" class="flat-input" placeholder="如 https://api.siliconflow.cn/v1 或 http://localhost:11434/v1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" required />
                     </div>
 
                     <div class="form-field">
                       <label for="custom-api-key" class="form-label">API Key (可选 / 支持 $ENV_VAR 环境变量插值)</label>
-                      <input type="password" id="custom-api-key" class="flat-input" placeholder="sk-... (Ollama 可留空或填 ollama)" />
+                      <input type="password" id="custom-api-key" class="flat-input" placeholder="sk-... (Ollama 可留空或填 ollama)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
                     </div>
 
                     <div class="form-grid-2" style="margin-top: 2px;">
@@ -702,9 +702,15 @@
                     </svg>
                     安装推荐插件
                   </button>
-                  <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-check-all-package-updates" title="检查已安装组件更新">
+                  <button type="button" class="flat-btn flat-btn-primary mini hidden" id="btn-update-all-packages" title="一键更新所有有可用更新的组件">
                     <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M8 2v9M4 7l4 4 4-4M2 14h12" />
+                    </svg>
+                    一键全部更新
+                  </button>
+                  <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-check-all-package-updates" title="检查已安装组件更新">
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M1 4v4h4M15 12v-4h-4M14 4A7 7 0 0 0 3.5 5.5L1 8M15 8l-2.5 2.5A7 7 0 0 1 2 12" />
                     </svg>
                     检查组件更新
                   </button>

@@ -253,6 +253,13 @@ const setupOutputTokensAutoSnap = (inputEl) => {
 };
 ```
 
+### 5.3 手绘草图质感自定义填表与智能联想规范 (Sketch AutoFill)
+- 表单输入框严禁使用浏览器原生 Autofill / Autocomplete 弹窗；
+- 全量 `<input>` 必须声明 `autocomplete="off"`、`autocorrect="off"`、`autocapitalize="off"`、`spellcheck="false"`；
+- 关键表单输入框通过 `enhanceInputAutoFill`（位于 `src/services/sketch-autofill.js`）挂载手绘联想浮层（支持运营商/模型/URL预设与历史记忆池，实现全表字段智能联动填充）；
+- 动态卡片创建完毕后必须调用 `enhanceAllAutoFills(container)`；
+- 完整开发规范与示例详见专用技能：[`sketch-form-autofill-pattern`](file:///.agents/skills/sketch-form-autofill-pattern/SKILL.md)。
+
 ---
 
 ## 🎨 6. 视觉设计与 CSS 几何工程铁律 (Engineering Aesthetics)

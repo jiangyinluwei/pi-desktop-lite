@@ -14,7 +14,7 @@ import { notificationService } from "./notification-service.js";
  * @property {Array<any>} attachments 附带的文件概述胶囊
  * @property {string} model 使用的模型 ID 或显示名称
  * @property {string} provider 服务商 (如 anthropic, openai)
- * @property {'thinking' | 'streaming' | 'tool_exec' | 'completed' | 'error' | 'aborted'} status 运行状态
+ * @property {'thinking' | 'streaming' | 'tool_exec' | 'paused' | 'completed' | 'error' | 'aborted'} status 运行状态
  * @property {number} startedAt 开始时间戳
  * @property {number | null} completedAt 完成时间戳
  * @property {string} thinkingText 累积的思考过程文本
@@ -138,13 +138,18 @@ export class TaskManager extends EventTarget {
   }
 
   /**
-   * 获取所有活跃中（思考、流式、工具执行）的任务
+   * 获取所有活跃中（思考、流式、工具执行、待确认）的任务
    * @returns {Array<TaskItem>}
    */
   getActiveTasks() {
     const active = [];
     for (const task of this.tasks.values()) {
-      if (task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec") {
+      if (
+        task.status === "thinking" ||
+        task.status === "streaming" ||
+        task.status === "tool_exec" ||
+        task.status === "paused"
+      ) {
         active.push(task);
       }
     }
@@ -162,12 +167,16 @@ export class TaskManager extends EventTarget {
   }
 
   /**
-   * 获取正在后台活跃运行的挂起任务
+   * 获取正在后台活跃运行或待确认的挂起任务
    * @returns {Array<TaskItem>}
    */
   getActiveSuspendedTasks() {
     return this.getSuspendedTasks().filter(
-      (t) => t.status === "thinking" || t.status === "streaming" || t.status === "tool_exec"
+      (t) =>
+        t.status === "thinking" ||
+        t.status === "streaming" ||
+        t.status === "tool_exec" ||
+        t.status === "paused"
     );
   }
 
@@ -180,7 +189,7 @@ export class TaskManager extends EventTarget {
   }
 
   /**
-   * 获取挂起任务中的已完成数量
+   * 获取挂起任务中的已完成数量（含正常完成、异常结束、已终止）
    * @returns {number}
    */
   getCompletedSuspendedCount() {
@@ -247,7 +256,7 @@ export class TaskManager extends EventTarget {
     const task = this.tasks.get(taskId);
     if (!task) return;
 
-    if (task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec") {
+    if (task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec" || task.status === "paused") {
       try {
         await piClient.abort(taskId);
         await piClient.destroyTask(taskId);
@@ -286,7 +295,17 @@ export class TaskManager extends EventTarget {
     piClient.addEventListener("agent-error", (e) => {
       const detail = e.detail || {};
       const taskId = detail.task_id || detail.taskId || this.currentActiveTaskId;
-      if (!taskId || !this.tasks.has(taskId)) return;
+      if (!taskId || !this.tasks.has(taskId)) {
+        if (this.currentActiveTaskId && this.tasks.has(this.currentActiveTaskId)) {
+          const currentTask = this.tasks.get(this.currentActiveTaskId);
+          currentTask.status = "error";
+          currentTask.completedAt = Date.now();
+          currentTask.errorMessage = detail.message || "模型调用发生异常";
+          this.dispatchEvent(new CustomEvent("task-updated", { detail: currentTask }));
+          this.dispatchEvent(new CustomEvent("tasks-changed", { detail: { tasks: this.getAllTasks() } }));
+        }
+        return;
+      }
 
       const task = this.tasks.get(taskId);
       task.status = "error";
@@ -359,10 +378,57 @@ export class TaskManager extends EventTarget {
         }
         break;
 
+      case "extension_ui_request": {
+        const method = String(data.method || "").toLowerCase();
+        const INTERACTIVE_METHODS = [
+          "confirm",
+          "prompt",
+          "select",
+          "input",
+          "editor",
+          "form",
+          "ask_user",
+          "human_intervention",
+          "decision",
+        ];
+        if (INTERACTIVE_METHODS.includes(method) || data.interactive === true || data.requiresConfirmation === true) {
+          task.status = "paused";
+          task.activeToolName = null;
+        }
+        break;
+      }
+
+      case "turn_end":
+      case "message_start":
+      case "message_end":
+        if (data.message && (data.message.stopReason === "error" || data.message.errorMessage)) {
+          task.status = "error";
+          task.completedAt = Date.now();
+          task.errorMessage = parseErrorMessage(data.message.errorMessage || "模型执行出错");
+        }
+        break;
+
+      case "extension_error":
+        task.status = "error";
+        task.completedAt = Date.now();
+        task.errorMessage = parseErrorMessage(data.error || "扩展插件运行异常");
+        break;
+
       case "agent_end":
       case "agent_settled":
-        if (task.status === "completed") {
-          break; // 防止同一轮生成中 agent_end 与 agent_settled 重复触发
+        if (Array.isArray(data.messages)) {
+          const errMessage = data.messages.find(
+            (m) => m.stopReason === "error" || m.errorMessage
+          );
+          if (errMessage) {
+            task.status = "error";
+            task.completedAt = Date.now();
+            task.errorMessage = parseErrorMessage(errMessage.errorMessage || "模型调用发生异常终止");
+            break;
+          }
+        }
+        if (task.status === "completed" || task.status === "error" || task.status === "aborted") {
+          break; // 若已处于终态或异常状态则不重复覆盖
         }
         task.status = "completed";
         task.completedAt = Date.now();

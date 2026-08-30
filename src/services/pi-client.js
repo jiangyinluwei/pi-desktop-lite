@@ -83,6 +83,7 @@ class PiClient extends EventTarget {
   _dispatchErrorFromMessage(msgObj, fallback = "模型执行出错") {
     if (!msgObj) return false;
     if (msgObj.stopReason === "error" || msgObj.errorMessage) {
+      this.isStreaming = false;
       const errMsg = parseErrorMessage(msgObj.errorMessage || fallback);
       this.dispatchEvent(
         new CustomEvent("agent-error", {
@@ -91,6 +92,7 @@ class PiClient extends EventTarget {
             model: msgObj.model || this.currentModel?.id,
             provider: msgObj.provider || this.currentModel?.provider,
             raw: msgObj,
+            taskId: msgObj.task_id || msgObj.taskId,
           },
         })
       );
@@ -154,10 +156,15 @@ class PiClient extends EventTarget {
 
     // 检查通用 RPC 失败响应
     if (data.type === "response" && data.success === false) {
+      this.isStreaming = false;
       const errMsg = parseErrorMessage(data.error || "指令执行失败");
       this.dispatchEvent(
         new CustomEvent("agent-error", {
-          detail: { message: errMsg, raw: data },
+          detail: {
+            message: errMsg,
+            raw: data,
+            taskId: data.task_id || data.taskId,
+          },
         })
       );
       return;
@@ -233,11 +240,13 @@ class PiClient extends EventTarget {
         break;
 
       case "extension_error":
+        this.isStreaming = false;
         this.dispatchEvent(
           new CustomEvent("agent-error", {
             detail: {
               message: parseErrorMessage(data.error || "扩展插件运行异常"),
               raw: data,
+              taskId: data.task_id || data.taskId,
             },
           })
         );

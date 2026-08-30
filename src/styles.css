@@ -1918,6 +1918,271 @@ input::-ms-reveal {
   height: 0;
 }
 
+/* 彻底消灭浏览器/Webview 原生填表高亮与黄色/浅蓝色伪类背景变色 (Webkit Autofill Override) */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+textarea:-webkit-autofill:active,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus,
+select:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-base) inset !important;
+  box-shadow: 0 0 0 1000px var(--bg-base) inset !important;
+  -webkit-text-fill-color: var(--ink-primary) !important;
+  caret-color: var(--ink-primary) !important;
+  border-color: var(--sketch-border-subtle) !important;
+  transition: background-color 50000s ease-in-out 0s !important;
+  font-family: inherit !important;
+  font-size: inherit !important;
+}
+
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill:focus {
+  border-color: var(--ink-primary) !important;
+}
+
+/* ==========================================================================
+   手绘草图质感自定义填表与智能联想推荐系统 (Sketch AutoFill Dropdown)
+   ========================================================================== */
+.sketch-autofill-dropdown {
+  position: fixed;
+  z-index: 9999;
+  display: none;
+  flex-direction: column;
+  background-color: var(--sketch-box-bg);
+  border: 1.2px solid var(--sketch-border);
+  border-radius: 6px;
+  box-shadow: var(--sketch-shadow-hover);
+  padding: 6px;
+  gap: 4px;
+  outline: none;
+  font-family: inherit;
+  user-select: none;
+  transform-origin: top center;
+  box-sizing: border-box;
+}
+
+.sketch-autofill-dropdown.position-above {
+  transform-origin: bottom center;
+}
+
+.sketch-autofill-dropdown.open {
+  display: flex;
+  animation: sketchDropdownPopShake 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2) forwards;
+}
+
+.sketch-autofill-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 6px;
+  border-bottom: 1px dashed var(--sketch-border-subtle);
+  font-size: 11px;
+}
+
+.sketch-autofill-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.sketch-autofill-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-primary);
+}
+
+.sketch-autofill-icon svg {
+  display: block;
+}
+
+.sketch-autofill-tip {
+  font-size: 10px;
+  color: var(--ink-muted);
+}
+
+.sketch-autofill-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  max-height: 240px;
+  padding: 2px 0;
+}
+
+.sketch-autofill-group-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  padding: 5px 6px 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sketch-autofill-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.sketch-autofill-item:hover,
+.sketch-autofill-item.highlighted {
+  background-color: var(--sketch-tag-bg);
+  border-color: var(--sketch-border-subtle);
+}
+
+.sketch-autofill-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+}
+
+.sketch-autofill-item-icon svg {
+  display: block;
+}
+
+.sketch-autofill-item:hover .sketch-autofill-item-icon,
+.sketch-autofill-item.highlighted .sketch-autofill-item-icon {
+  color: var(--ink-primary);
+}
+
+.sketch-autofill-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sketch-autofill-item-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sketch-autofill-item-id {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: ui-monospace, monospace;
+  color: var(--ink-primary);
+}
+
+.sketch-autofill-item-name {
+  font-size: 11px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sketch-autofill-item-badge {
+  font-size: 9.5px;
+  font-weight: 500;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid var(--sketch-border-subtle);
+  color: var(--ink-muted);
+  background: transparent;
+  white-space: nowrap;
+}
+
+.sketch-autofill-item-badge.history {
+  border-color: #f59e0b;
+  color: #d97706;
+}
+
+@media (prefers-color-scheme: dark) {
+  .sketch-autofill-item-badge.history {
+    color: #fbbf24;
+    border-color: rgba(245, 158, 11, 0.4);
+  }
+}
+
+.sketch-autofill-item-desc {
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sketch-autofill-item-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  opacity: 0;
+  transform: translateX(-3px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  flex-shrink: 0;
+}
+
+.sketch-autofill-item-action svg {
+  display: block;
+}
+
+.sketch-autofill-item:hover .sketch-autofill-item-action,
+.sketch-autofill-item.highlighted .sketch-autofill-item-action {
+  opacity: 1;
+  transform: translateX(0);
+  color: var(--ink-primary);
+}
+
+.sketch-autofill-mark {
+  background: transparent;
+  color: var(--ink-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 700;
+}
+
+.sketch-autofill-empty {
+  padding: 12px 8px;
+  font-size: 11px;
+  color: var(--ink-muted);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.sketch-autofill-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 4px 6px 2px;
+  border-top: 1px dashed var(--sketch-border-subtle);
+}
+
+.sketch-autofill-clear-btn {
+  background: transparent;
+  border: none;
+  font-size: 10px;
+  color: var(--ink-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.sketch-autofill-clear-btn:hover {
+  color: #ef4444;
+  background: var(--sketch-tag-bg);
+}
+
 /* ==========================================================================
    手绘草图质感自定义下拉框 (Sketch Custom Select Dropdown)
    特性：迅速触发的弹出微抖动动效（Pop & Micro-Shake），边框/底色/字色适配素描纸与炭黑板
@@ -2045,7 +2310,7 @@ input::-ms-reveal {
   top: calc(100% + 4px);
   left: 0;
   width: 100%;
-  max-height: 220px;
+  max-height: 280px;
   overflow-y: auto;
   background-color: var(--sketch-box-bg);
   border: 1.2px solid var(--sketch-border);
@@ -2058,6 +2323,12 @@ input::-ms-reveal {
   gap: 2px;
   outline: none;
   transform-origin: top center;
+}
+
+/* 官方通道服务商选择下拉列表限高增加（容纳更多官方服务商选项） */
+#channel-config-official .sketch-select-dropdown,
+.sketch-select-wrapper[data-for-id="official-provider-select"] .sketch-select-dropdown {
+  max-height: 380px;
 }
 
 /* 展开态：触发迅速、轻快、不油腻的弹出微抖动动效 (Pop & Micro-Shake) */
@@ -4243,6 +4514,38 @@ input::-ms-reveal {
   background: rgba(239, 68, 68, 0.06);
 }
 
+.btn-queue-cancel.update-queued {
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.btn-queue-cancel.update-queued .thinking-dot {
+  background-color: #10b981;
+}
+
+.btn-queue-cancel.update-queued:hover {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.btn-queue-cancel.uninstall-queued {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.btn-queue-cancel.uninstall-queued .thinking-dot {
+  background-color: #ef4444;
+}
+
+.btn-queue-cancel.uninstall-queued:hover {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.1);
+}
+
 .package-progress-percent {
   font-size: 12px;
   font-weight: 600;
@@ -4547,11 +4850,29 @@ body.has-task-sidebar-open .app-container {
   background: rgba(22, 163, 74, 0.08);
 }
 
-.sidebar-task-card.status-aborted .task-card-status-badge,
-.sidebar-task-card.status-error .task-card-status-badge {
+.sidebar-task-card.status-paused .task-card-status-badge {
+  border-color: #ea580c;
+  color: #c2410c;
+  background: rgba(234, 88, 12, 0.08);
+}
+
+.sidebar-task-card.status-aborted .task-card-status-badge {
   border-color: #dc2626;
   color: #b91c1c;
   background: rgba(220, 38, 38, 0.08);
+}
+
+/* 异常终止 - 暗黄色手绘徽章 (Dark Amber / Ochre) */
+.sidebar-task-card.status-error .task-card-status-badge {
+  border-color: #b45309;
+  color: #92400e;
+  background: rgba(180, 83, 9, 0.1);
+}
+
+[data-theme="dark"] .sidebar-task-card.status-error .task-card-status-badge {
+  border-color: #d97706;
+  color: #f59e0b;
+  background: rgba(217, 119, 6, 0.16);
 }
 
 .sidebar-task-card .task-card-title {
@@ -4607,7 +4928,7 @@ body.has-task-sidebar-open .app-container {
   background: rgba(220, 38, 38, 0.08);
 }
 
-/* Flow 显式中止按钮 */
+/* Flow 显式中止按钮 (仅在 Flow 模式下允许显现，在 detailed / focus / settings 下绝对隐藏) */
 .flow-btn-abort {
   display: inline-flex;
   align-items: center;
@@ -4624,6 +4945,13 @@ body.has-task-sidebar-open .app-container {
   color: #dc2626;
   border-color: rgba(220, 38, 38, 0.35);
   background: rgba(220, 38, 38, 0.08);
+}
+
+.app-container:not([data-view="flow"]) .flow-btn-abort,
+.app-container[data-view="detailed"] .flow-btn-abort,
+.app-container[data-view="focus"] .flow-btn-abort,
+.app-container[data-view="settings"] .flow-btn-abort {
+  display: none !important;
 }
 
 /* ==========================================================================

@@ -6,6 +6,13 @@ import { conversationHistoryService } from "./services/conversation-history.js";
 import { promptHistoryNavigator } from "./services/prompt-history.js";
 import { invokeTauri } from "./services/tauri-bridge.js";
 import { enhanceAllSelects, enhanceSelect } from "./services/sketch-select.js";
+import {
+  enhanceInputAutoFill,
+  enhanceAllAutoFills,
+  PROVIDER_PRESETS,
+  COMMON_MODEL_PRESETS,
+  saveAutofillHistory
+} from "./services/sketch-autofill.js";
 import { ProgressStepper } from "./services/progress-stepper.js";
 import { startFloatingIcons, stopFloatingIcons } from "./services/floating-icons.js";
 import { notificationService } from "./services/notification-service.js";
@@ -188,6 +195,11 @@ window.addEventListener("DOMContentLoaded", () => {
     currentView = mode;
     if (appContainer) {
       appContainer.setAttribute("data-view", mode);
+    }
+
+    // 确保任何时候进入详细或专注视图时，终止方块按钮绝对隐藏
+    if (mode !== VIEW_FLOW && flowBtnAbort) {
+      flowBtnAbort.classList.add("hidden");
     }
 
     if (shouldFocusInput && searchInput) {
@@ -1151,9 +1163,58 @@ window.addEventListener("DOMContentLoaded", () => {
         if (inlineAddForm) {
           const inputNewMaxTokens = inlineAddForm.querySelector(".input-new-max-tokens");
           setupOutputTokensAutoSnap(inputNewMaxTokens);
+
+          // 增强新增模型 Model ID 的手绘智能联想与参数全表联动
+          const inputNewModelId = inlineAddForm.querySelector(".input-new-model-id");
+          const inputNewModelName = inlineAddForm.querySelector(".input-new-model-name");
+          const inputNewContextWin = inlineAddForm.querySelector(".input-new-context-win");
+          const inputNewReasoning = inlineAddForm.querySelector(".input-new-reasoning");
+
+          if (inputNewModelId) {
+            const matchedPreset = PROVIDER_PRESETS.find((p) => p.id.toLowerCase() === pKey.toLowerCase());
+            const modelPresets = (matchedPreset && Array.isArray(matchedPreset.models) && matchedPreset.models.length > 0)
+              ? matchedPreset.models
+              : COMMON_MODEL_PRESETS;
+
+            enhanceInputAutoFill(inputNewModelId, {
+              type: "model",
+              title: `推荐模型与参数预填 [${pKey.toUpperCase()}]`,
+              presets: modelPresets,
+              onSelect: (model) => {
+                if (inputNewModelName && (!inputNewModelName.value || inputNewModelName.value === model.id)) {
+                  inputNewModelName.value = model.name || model.id;
+                }
+                if (inputNewContextWin && model.contextWindow) {
+                  inputNewContextWin.value = model.contextWindow;
+                }
+                if (inputNewMaxTokens && model.maxTokens) {
+                  inputNewMaxTokens.value = model.maxTokens;
+                }
+                if (inputNewReasoning && model.reasoning !== undefined) {
+                  inputNewReasoning.checked = !!model.reasoning;
+                }
+              }
+            });
+          }
         }
 
         if (btnEditProvider && inlineEditForm) {
+          // 增强修改运营商的 Base URL 手绘智能联想
+          const inputEditBaseUrl = inlineEditForm.querySelector(".input-edit-base-url");
+          if (inputEditBaseUrl) {
+            enhanceInputAutoFill(inputEditBaseUrl, {
+              type: "url",
+              title: `接口地址建议 [${pKey.toUpperCase()}]`,
+              presets: [
+                { id: provData.baseUrl || "https://api.siliconflow.cn/v1", name: `${pKey.toUpperCase()} 当前地址` },
+                { id: "https://api.siliconflow.cn/v1", name: "硅基流动 (SiliconFlow)", tag: "推荐聚合" },
+                { id: "https://api.deepseek.com/v1", name: "DeepSeek 官方 API", tag: "官方直连" },
+                { id: "http://localhost:11434/v1", name: "Ollama 本地服务", tag: "本地部署" },
+                { id: "https://openrouter.ai/api/v1", name: "OpenRouter 全球聚合", tag: "全球聚合" }
+              ]
+            });
+          }
+
           btnEditProvider.addEventListener("click", () => {
             inlineEditForm.classList.toggle("hidden");
             if (!inlineEditForm.classList.contains("hidden") && inlineAddForm) {
@@ -1197,6 +1258,9 @@ window.addEventListener("DOMContentLoaded", () => {
                 supports_developer_role: newDevRole,
                 supports_reasoning_effort: newReasoningEffort,
               });
+
+              // 保存至 URL 历史沉淀
+              saveAutofillHistory("url", { id: newBaseUrl, value: newBaseUrl });
 
               alert(`运营商 [${pKey.toUpperCase()}] 配置已成功更新！`);
               loadCustomProvidersConfig();
@@ -1287,6 +1351,15 @@ window.addEventListener("DOMContentLoaded", () => {
                 maxTokens: maxTokensVal,
                 reasoning: reasoningVal,
                 isCustom: true,
+              });
+
+              // 沉淀至模型历史池
+              saveAutofillHistory("model", {
+                id: modelIdVal,
+                name: modelNameVal,
+                contextWindow: contextWinVal,
+                maxTokens: maxTokensVal,
+                reasoning: reasoningVal
               });
 
               alert(`模型 [${modelNameVal}] 已成功添加至运营商 [${pKey.toUpperCase()}] 并加入当前模型列表！`);
@@ -1487,10 +1560,62 @@ window.addEventListener("DOMContentLoaded", () => {
         customProvidersContainer.appendChild(card);
       });
       enhanceAllSelects(customProvidersContainer);
+      enhanceAllAutoFills(customProvidersContainer);
     } catch (e) {
       console.warn("[Main] Load custom providers failed:", e);
     }
   };
+
+  // 增强静态自定义运营商表单输入框
+  if (customProviderId) {
+    enhanceInputAutoFill(customProviderId, {
+      type: "provider",
+      onSelect: (preset) => {
+        if (customApiType) {
+          customApiType.value = preset.protocol || "openai-completions";
+          if (customApiType.__sketchSelect) {
+            customApiType.__sketchSelect.syncOptions();
+          }
+        }
+        if (customBaseUrl) {
+          if (!customBaseUrl.value || customBaseUrl.value.includes("api.siliconflow.cn") || customBaseUrl.value.includes("localhost:11434") || customBaseUrl.value.includes("api.deepseek.com")) {
+            customBaseUrl.value = preset.baseUrl || "";
+          }
+        }
+        const customDevRole = document.getElementById("custom-supports-dev-role");
+        if (customDevRole) {
+          customDevRole.checked = !!preset.devRole;
+        }
+        const customReasoningEffort = document.getElementById("custom-supports-reasoning-effort");
+        if (customReasoningEffort) {
+          customReasoningEffort.checked = preset.reasoningEffort !== undefined ? !!preset.reasoningEffort : true;
+        }
+      }
+    });
+  }
+
+  if (customBaseUrl) {
+    enhanceInputAutoFill(customBaseUrl, {
+      type: "url",
+      title: "常用接口地址与历史推荐",
+      presets: [
+        { id: "https://api.siliconflow.cn/v1", name: "硅基流动 (SiliconFlow)", tag: "推荐聚合" },
+        { id: "https://api.deepseek.com/v1", name: "DeepSeek 官方 API", tag: "官方直连" },
+        { id: "http://localhost:11434/v1", name: "Ollama 本地服务", tag: "本地部署" },
+        { id: "https://openrouter.ai/api/v1", name: "OpenRouter 全球聚合", tag: "全球聚合" },
+        { id: "https://dashscope.aliyuncs.com/compatible-mode/v1", name: "阿里云百炼 (DashScope)", tag: "通义千问" },
+        { id: "https://open.bigmodel.cn/api/paas/v4", name: "智谱开放平台 (BigModel)", tag: "智谱 GLM" },
+        { id: "https://api.groq.com/openai/v1", name: "Groq 极速端点", tag: "极速硬件" },
+        { id: "https://api.moonshot.cn/v1", name: "月之暗面 (Moonshot / Kimi)", tag: "Kimi" },
+        { id: "https://ark.cn-beijing.volces.com/api/v3", name: "火山方舟 / 豆包 (VolcEngine)", tag: "字节跳动" },
+        { id: "http://localhost:8000/v1", name: "vLLM 本地服务", tag: "私有部署" },
+        { id: "http://localhost:1234/v1", name: "LM Studio 本地服务", tag: "本地部署" }
+      ]
+    });
+  }
+
+  // 全局消灭原生 autofill 破相弹窗
+  enhanceAllAutoFills(document);
 
   // 第一步：保存/更新自定义运营商
   if (customProviderForm) {
@@ -1516,6 +1641,10 @@ window.addEventListener("DOMContentLoaded", () => {
           supports_developer_role: customDevRole ? !!customDevRole.checked : (apiType === "openai-responses"),
           supports_reasoning_effort: customReasoningEffort ? !!customReasoningEffort.checked : false,
         });
+
+        // 沉淀至运营商与 URL 历史池
+        saveAutofillHistory("provider", { id: providerId, name: providerId, baseUrl });
+        saveAutofillHistory("url", { id: baseUrl, value: baseUrl });
 
         alert(`运营商 [${providerId.toUpperCase()}] 已成功保存！现在可以在下方“步骤 2”中为该运营商添加具体模型或修改配置。`);
         customProviderId.value = "";
@@ -2027,6 +2156,7 @@ window.addEventListener("DOMContentLoaded", () => {
   let thinkingTimerInterval = null;
   let currentThinkingText = "";
   let currentResponseText = "";
+  let currentErrorMessage = null;
   let lastUserQuery = "";
   let hasReceivedDelta = false;
   let hasAutoCollapsedThinking = false;
@@ -2095,6 +2225,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   const resetStreamState = (query) => {
     lastUserQuery = query;
+    currentErrorMessage = null;
     hasReceivedDelta = false;
     hasAutoCollapsedThinking = false;
     if (flowUserText) flowUserText.textContent = query;
@@ -2125,6 +2256,7 @@ window.addEventListener("DOMContentLoaded", () => {
   };
 
   const finalizeStream = () => {
+    piClient.isStreaming = false;
     if (thinkingTimerInterval) {
       clearInterval(thinkingTimerInterval);
       thinkingTimerInterval = null;
@@ -2137,6 +2269,10 @@ window.addEventListener("DOMContentLoaded", () => {
     if (flowResponseContent) {
       const cursor = flowResponseContent.querySelector(".streaming-cursor");
       if (cursor) cursor.remove();
+    }
+    // 流式结束时隐藏 Flow 中止按钮
+    if (flowBtnAbort) {
+      flowBtnAbort.classList.add("hidden");
     }
   };
 
@@ -2168,8 +2304,21 @@ window.addEventListener("DOMContentLoaded", () => {
    * @param {{ message: string, model?: string, provider?: string }} errDetail
    */
   const renderErrorCard = (errDetail) => {
+    piClient.isStreaming = false;
+    currentErrorMessage = errDetail?.message || "与模型服务通信中断或返回异常";
+    const currentTask = taskManager.getCurrentActiveTask();
+    if (currentTask) {
+      currentTask.status = "error";
+      currentTask.completedAt = Date.now();
+      currentTask.errorMessage = currentErrorMessage;
+      taskManager.dispatchEvent(new CustomEvent("task-updated", { detail: currentTask }));
+      taskManager.dispatchEvent(new CustomEvent("tasks-changed", { detail: { tasks: taskManager.getAllTasks() } }));
+    }
     finalizeStream();
-    const errMsg = errDetail?.message || "与模型服务通信中断或返回异常";
+    if (flowBtnAbort) {
+      flowBtnAbort.classList.add("hidden");
+    }
+    const errMsg = currentErrorMessage;
 
     // 软件失焦时立即弹出报错终止通知 (带 Windows 默认提示音)
     notificationService.notifyError({
@@ -2228,8 +2377,13 @@ window.addEventListener("DOMContentLoaded", () => {
       </div>
     `;
 
-    // 如果未收到任何有效回答内容，直接替换错误卡片；若有部分内容，追加在末尾
-    if (!hasReceivedDelta) {
+    // 移除已存在的错误卡片，避免重复堆叠
+    const existingCard = flowResponseContent.querySelector(".sketch-error-card");
+    if (existingCard) {
+      existingCard.remove();
+    }
+
+    if (!currentResponseText || currentResponseText.trim().length === 0) {
       flowResponseContent.innerHTML = cardHtml;
     } else {
       flowResponseContent.insertAdjacentHTML("beforeend", cardHtml);
@@ -2617,6 +2771,12 @@ window.addEventListener("DOMContentLoaded", () => {
       await piClient.sendPrompt(promptToSend, imagePayloads, null, task.id);
     } catch (err) {
       console.error("Failed to send prompt to Pi:", err);
+      piClient.isStreaming = false;
+      task.status = "error";
+      task.completedAt = Date.now();
+      task.errorMessage = err.toString();
+      taskManager.dispatchEvent(new CustomEvent("task-updated", { detail: task }));
+      taskManager.dispatchEvent(new CustomEvent("tasks-changed", { detail: { tasks: taskManager.getAllTasks() } }));
       renderErrorCard({
         message: err.toString(),
         model: modelName,
@@ -2788,10 +2948,12 @@ window.addEventListener("DOMContentLoaded", () => {
         statusText = "流式生成中";
       } else if (task.status === "tool_exec") {
         statusText = `执行工具: ${task.activeToolName || "tool"}`;
+      } else if (task.status === "paused") {
+        statusText = "待确认";
       } else if (task.status === "aborted") {
         statusText = "已终止";
       } else if (task.status === "error") {
-        statusText = "异常出错";
+        statusText = "异常终止";
       }
 
       let card = existingCards.get(task.id);
@@ -2958,6 +3120,9 @@ window.addEventListener("DOMContentLoaded", () => {
 
     currentThinkingText = task.thinkingText || "";
     currentResponseText = task.responseText || "";
+    currentErrorMessage = task.errorMessage || (task.status === "error" ? "模型调用发生异常终止" : null);
+    hasReceivedDelta = Boolean(task.responseText && task.responseText.trim().length > 0);
+    hasAutoCollapsedThinking = false;
 
     if (thinkingTextStream) {
       thinkingTextStream.textContent = task.thinkingText || "";
@@ -2978,11 +3143,18 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     if (flowResponseContent) {
-      if (task.errorMessage) {
-        renderErrorCard({ message: task.errorMessage, model: task.model, provider: task.provider });
+      const isRunning = task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec";
+      const baseResponseHtml = renderMarkdown(task.responseText || "");
+
+      if (task.errorMessage || task.status === "error") {
+        flowResponseContent.innerHTML = baseResponseHtml;
+        renderErrorCard({
+          message: task.errorMessage || "模型调用发生异常终止",
+          model: task.model,
+          provider: task.provider,
+        });
       } else {
-        const isRunning = task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec";
-        flowResponseContent.innerHTML = renderMarkdown(task.responseText || "") + (isRunning ? `<span class="streaming-cursor"></span>` : "");
+        flowResponseContent.innerHTML = baseResponseHtml + (isRunning ? `<span class="streaming-cursor"></span>` : "");
       }
     }
 
@@ -3054,6 +3226,9 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     // 3. 切换至 Flow 模式
+    if (flowBtnAbort) {
+      flowBtnAbort.classList.add("hidden");
+    }
     setViewMode(VIEW_FLOW, true);
 
     // 4. 若关联底层 Pi 会话路径，则同步切换底层 Pi 会话
@@ -3065,7 +3240,7 @@ window.addEventListener("DOMContentLoaded", () => {
   };
 
   const archiveCurrentFlowToHistory = () => {
-    if (lastUserQuery && (currentResponseText || currentThinkingText)) {
+    if (lastUserQuery) {
       const toolCallsSnapshot = [];
       renderedToolCards.forEach((cardEl, id) => {
         toolCallsSnapshot.push({
@@ -3074,15 +3249,22 @@ window.addEventListener("DOMContentLoaded", () => {
         });
       });
 
-      conversationHistoryService.recordConversation({
-        query: lastUserQuery,
-        thinkingText: currentThinkingText,
-        responseText: currentResponseText,
-        toolCalls: toolCallsSnapshot,
-        thinkingDuration: thinkingDuration ? thinkingDuration.textContent : null,
-        modelId: piClient.currentModel?.id || "",
-        sessionPath: "",
-      });
+      let responseTextToSave = currentResponseText;
+      if (!responseTextToSave && (currentErrorMessage || flowResponseContent?.querySelector(".sketch-error-card"))) {
+        responseTextToSave = `> ⚠️ **模型调用失败**：${currentErrorMessage || "模型执行异常终止"}`;
+      }
+
+      if (responseTextToSave || currentThinkingText) {
+        conversationHistoryService.recordConversation({
+          query: lastUserQuery,
+          thinkingText: currentThinkingText,
+          responseText: responseTextToSave || "",
+          toolCalls: toolCallsSnapshot,
+          thinkingDuration: thinkingDuration ? thinkingDuration.textContent : null,
+          modelId: piClient.currentModel?.id || "",
+          sessionPath: "",
+        });
+      }
     }
   };
 
@@ -3682,6 +3864,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const installedPackagesCount = document.getElementById("installed-packages-count");
   const installedPackagesList = document.getElementById("installed-packages-list");
   const btnInstallRecommendedPackages = document.getElementById("btn-install-recommended-packages");
+  const btnUpdateAllPackages = document.getElementById("btn-update-all-packages");
   const btnCheckAllPackageUpdates = document.getElementById("btn-check-all-package-updates");
 
   const packagesSearchInput = document.getElementById("packages-search-input");
@@ -3737,6 +3920,12 @@ window.addEventListener("DOMContentLoaded", () => {
     );
   };
 
+  const getQueuedPackageTask = (pkgName) => {
+    return packageTaskQueue.find(
+      (t) => t.packageName.toLowerCase() === pkgName.toLowerCase()
+    );
+  };
+
   const isPackageInQueue = (pkgName) => {
     return getPackageQueueIndex(pkgName) !== -1;
   };
@@ -3760,6 +3949,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const refreshPackageViews = () => {
     renderInstalledPackages();
     updateRecommendedButtonVisibility();
+    updateBatchUpdateButtonVisibility();
     if (currentCatalogResult?.packages) {
       renderCatalogGrid(currentCatalogResult.packages);
     }
@@ -3973,6 +4163,30 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   };
 
+  // 动态更新“一键全部更新”按钮可见性（检测到 >= 2 个组件有可用更新时显现）
+  const updateBatchUpdateButtonVisibility = () => {
+    if (!btnUpdateAllPackages) return;
+
+    const updatablePkgs = installedPackages.filter((pkg) => {
+      const updateInfo = packageUpdatesMap.get(pkg.name);
+      return updateInfo && updateInfo.hasUpdate;
+    });
+
+    if (updatablePkgs.length >= 2) {
+      btnUpdateAllPackages.classList.remove("hidden");
+      const pendingUpdates = updatablePkgs.filter((pkg) => !isPackageBusy(pkg.name));
+      if (pendingUpdates.length > 0) {
+        btnUpdateAllPackages.disabled = false;
+        btnUpdateAllPackages.title = `一键将 ${updatablePkgs.length} 个有可用更新的组件加入队列自动按序升级`;
+      } else {
+        btnUpdateAllPackages.disabled = true;
+        btnUpdateAllPackages.title = "所有待更新组件已在队列中或正在执行";
+      }
+    } else {
+      btnUpdateAllPackages.classList.add("hidden");
+    }
+  };
+
   // 加载内嵌推荐插件列表
   const loadRecommendedPlugins = async () => {
     try {
@@ -3994,6 +4208,7 @@ window.addEventListener("DOMContentLoaded", () => {
       }
       renderInstalledPackages();
       updateRecommendedButtonVisibility();
+      updateBatchUpdateButtonVisibility();
       if (currentCatalogResult && currentCatalogResult.packages) {
         renderCatalogGrid(currentCatalogResult.packages);
       }
@@ -4042,9 +4257,26 @@ window.addEventListener("DOMContentLoaded", () => {
         `;
       } else if (isQueued) {
         const queuePos = getPackageQueueIndex(pkg.name) + 1;
+        const queuedTask = getQueuedPackageTask(pkg.name);
+        const taskAction = queuedTask ? queuedTask.action : "uninstall";
+        let queueText = `排队中 (#${queuePos})`;
+        let queueTitle = "点击取消排队";
+        let queueClass = "flat-btn flat-btn-secondary mini btn-queue-cancel";
+        if (taskAction === "update") {
+          queueText = `更新排队中 (#${queuePos})`;
+          queueTitle = "点击取消更新排队";
+          queueClass += " update-queued";
+        } else if (taskAction === "uninstall") {
+          queueText = `卸载排队中 (#${queuePos})`;
+          queueTitle = "点击取消卸载排队";
+          queueClass += " uninstall-queued";
+        } else if (taskAction === "install") {
+          queueText = `安装排队中 (#${queuePos})`;
+          queueTitle = "点击取消安装排队";
+        }
         actionsHtml = `
-          <button type="button" class="flat-btn flat-btn-secondary mini btn-queue-cancel" data-name="${escapeHtml(pkg.name)}" title="点击取消卸载排队">
-            <span class="thinking-dot"></span> 卸载排队中 (#${queuePos})
+          <button type="button" class="${queueClass}" data-name="${escapeHtml(pkg.name)}" title="${queueTitle}">
+            <span class="thinking-dot"></span> ${escapeHtml(queueText)}
           </button>
         `;
       } else {
@@ -4241,7 +4473,24 @@ window.addEventListener("DOMContentLoaded", () => {
         `;
       } else if (isQueued) {
         const queuePos = getPackageQueueIndex(pkg.name) + 1;
-        actionBtnHtml = `<button type="button" class="flat-btn flat-btn-secondary mini btn-queue-cancel" data-name="${escapeHtml(pkg.name)}" title="点击取消排队"><span class="thinking-dot"></span> 排队中 (#${queuePos})</button>`;
+        const queuedTask = getQueuedPackageTask(pkg.name);
+        const taskAction = queuedTask ? queuedTask.action : "install";
+        let queueText = `排队中 (#${queuePos})`;
+        let queueTitle = "点击取消排队";
+        let queueClass = "flat-btn flat-btn-secondary mini btn-queue-cancel";
+        if (taskAction === "update") {
+          queueText = `更新排队中 (#${queuePos})`;
+          queueTitle = "点击取消更新排队";
+          queueClass += " update-queued";
+        } else if (taskAction === "uninstall") {
+          queueText = `卸载排队中 (#${queuePos})`;
+          queueTitle = "点击取消卸载排队";
+          queueClass += " uninstall-queued";
+        } else if (taskAction === "install") {
+          queueText = `安装排队中 (#${queuePos})`;
+          queueTitle = "点击取消安装排队";
+        }
+        actionBtnHtml = `<button type="button" class="${queueClass}" data-name="${escapeHtml(pkg.name)}" title="${queueTitle}"><span class="thinking-dot"></span> ${escapeHtml(queueText)}</button>`;
       } else if (isInstalled && updateInfo?.hasUpdate) {
         actionBtnHtml = `<button type="button" class="flat-btn flat-btn-primary mini package-card-btn-action btn-catalog-update" data-name="${escapeHtml(pkg.name)}">更新到 v${escapeHtml(updateInfo.latestVersion)}</button>`;
       } else if (isInstalled) {
@@ -4500,6 +4749,7 @@ window.addEventListener("DOMContentLoaded", () => {
         });
       }
       renderInstalledPackages();
+      updateBatchUpdateButtonVisibility();
       if (currentCatalogResult?.packages) renderCatalogGrid(currentCatalogResult.packages);
 
       if (updateCount > 0) {
@@ -4536,10 +4786,31 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   };
 
+  // 一键更新所有有可用更新的组件
+  const handleUpdateAllPackages = () => {
+    const updatablePkgs = installedPackages.filter((pkg) => {
+      const updateInfo = packageUpdatesMap.get(pkg.name);
+      return updateInfo && updateInfo.hasUpdate && !isPackageBusy(pkg.name);
+    });
+
+    if (updatablePkgs.length === 0) return;
+
+    updatablePkgs.forEach((pkg) => {
+      enqueuePackageTask(pkg.name, "update");
+    });
+  };
+
   if (btnInstallRecommendedPackages) {
     btnInstallRecommendedPackages.addEventListener("click", (e) => {
       e.stopPropagation();
       handleInstallRecommendedPackages();
+    });
+  }
+
+  if (btnUpdateAllPackages) {
+    btnUpdateAllPackages.addEventListener("click", (e) => {
+      e.stopPropagation();
+      handleUpdateAllPackages();
     });
   }
 
@@ -4654,23 +4925,25 @@ window.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    // 2. Flow (界面3) -> 右键转入后台挂起 (若仍在运行) 或 归档至历史记录 (若已结束)
+    // 2. Flow (界面3) -> 右键转入后台挂起 (若仍在运行或处于暂停待确认态) 或 归档至历史记录 (若已结束/已中断)
     if (currentView === VIEW_FLOW) {
       const activeTask = taskManager.getCurrentActiveTask();
-      const isStreaming = activeTask
-        ? activeTask.status === "thinking" || activeTask.status === "streaming" || activeTask.status === "tool_exec"
+      const isRunning = activeTask
+        ? (activeTask.status === "thinking" || activeTask.status === "streaming" || activeTask.status === "tool_exec")
         : piClient.isStreaming;
+      const isPaused = activeTask ? activeTask.status === "paused" : false;
 
-      if (isStreaming) {
-        // 正在运行中 -> 右键/Esc 无感转入后台挂起 (isSuspended = true)
+      if (isRunning || isPaused) {
+        // 正在运行中或处于暂停/待确认状态 -> 右键/Esc 无感转入后台挂起 (isSuspended = true)
         const suspended = taskManager.suspendCurrentFlow();
         setViewMode(VIEW_FOCUS, true);
         const taskTitle = suspended?.title || "Task";
-        showGlobalToast(`已转入后台运行 (${taskTitle})`, 1500);
+        const pauseSuffix = isPaused ? " [待确认]" : "";
+        showGlobalToast(`已转入后台运行 (${taskTitle})${pauseSuffix}`, 1500);
         updateMiniTaskCapsuleUI();
         return;
       } else {
-        // 运行已结束 (Done / Completed / Aborted / Idle) -> 右键/Esc 归档为历史记录并清除 Task
+        // 运行已结束 (Done / Completed / Aborted / Error / Idle 中断或正常结束) -> 右键/Esc 归档为历史记录并清除 Task
         archiveCurrentFlowToHistory();
         if (activeTask) {
           taskManager.removeTask(activeTask.id);

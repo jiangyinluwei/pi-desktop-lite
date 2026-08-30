@@ -38,12 +38,12 @@
      - **四态界面层级流**：`半透明侧边栏 (最高优先级)` ➔ 右键立即平滑收起并解除主背景高斯模糊；`设置全页面 (界面4: settings)` ➔ 右键立即返回进入前的原界面；`Flow 交互版 (界面3)` ➔ 右键**转入后台持续运行 (Suspend to Background，绝不调用 abort)** 并回退至 `专注版 (界面2)`，顶部弹出 1.5s 手绘提示条 `已转入后台运行 (Task #1)`；`专注版 (界面2)` ➔ 右键回退至 `详细版 (界面1)` 并失焦；
      - **基础层回退**：详细版下优先失焦高亮组件 ➔ 清空当前输入 ➔ 触发业务回退分发。所有新功能模块必须接入 `window.__piRegisterStepBack`；
    - **Flow 界面「后台挂起」与「彻底终止」双通道解耦设计**：
-     - **通道 1：后台挂起 (Background)**：仅在 Flow 处于运行态时按鼠标右键或按 Esc，当前对话无感转入后台 `TaskManager`（`isSuspended = true`）持续推理与工具执行，界面回退至 Focus 界面，右上角 Mini 任务胶囊计数同步更新；前台正常完成的 Flow 绝不计入挂起任务；
-     - **通道 2：彻底终止 (Abort)**：在 Flow 界面输入框右侧显式提供手绘「⏹ 终止」按钮及侧边栏单任务终止操作，负责彻底终止 Agent 生成；
-     - **Flow 结束右键归档与 Task 清除**：当 Flow 完成后用户按鼠标右键或按 Esc，自动将对话沉淀快照至业务记忆服务（`conversationHistoryService`）并清理 Task 记录，回退至 Focus 界面；
+     - **通道 1：后台挂起与状态收纳 (Background & Paused / Waiting)**：在 Flow 处于运行态（`thinking` / `streaming` / `tool_exec`）或暂停待确认态（`paused` / 请求人工交互确认）时按鼠标右键或按 Esc，当前对话无感转入后台 `TaskManager`（`isSuspended = true`），界面回退至 Focus 界面，右上角 Mini 任务胶囊计数同步更新（暂停待确认任务在侧边栏明确标注「待确认」徽章）；前台正常完成或中断的 Flow 绝不计入挂起任务；
+     - **通道 2：彻底终止 (Abort) 与输入框按钮视图隔离**：在 Flow 界面输入框右侧显式提供手绘「⏹ 终止」按钮及侧边栏单任务终止操作，负责彻底终止 Agent 生成；该方块中止按钮受严格视图隔离保护，仅在 Flow 运行态显现，在详细版（界面1）、专注版（界面2）及设置全页面（界面4）下绝对禁止出现；
+     - **Flow 结束/中断右键归档与 Task 清除**：当 Flow 正常完成或处于“中断”状态（模型调用失败/报错/异常终止）时，逻辑判定为当前一段 Flow 已结束；此时用户按鼠标右键或按 Esc，自动将对话（含提问、思考、工具调用与报错诊断快照）沉淀至业务记忆服务（`conversationHistoryService`）并清理 Task 记录，回退至 Focus 界面；若已收纳为后台 Task 的任务发生中断，其状态展示为「异常终止」（暗黄色徽章）；
    - **多任务监控 Mini 胶囊、半透明侧边栏与背景高斯模糊 (`Mini Task Capsule & Details Sidebar`)**：
-     - **右上角 Mini 任务胶囊**：仅在存在后台挂起任务时显现，展示 `[ ✏️ 1/3 Task ]`（分子为已完成任务数，分母为总挂起任务数）；运行中呈现小铅笔微旋转呼吸动画（`spin-pulse`），全部完成转为实线手绘绿墨色；无挂起任务时保持隐藏；
-     - **半透明毛玻璃侧边栏**：点击 Mini 胶囊滑出 320px 半透明手绘侧边栏（`backdrop-filter: blur(14px)`），主界面区域自动触发 `filter: blur(4px); opacity: 0.6;` 高斯模糊；侧边栏展示每个挂起 Task 的模型、状态徽章、提问摘要与操作区（「进入 Flow」、「⏹ 终止」）；全域右键或按 Esc 优先平滑收起侧边栏并复原主背景；
+     - **右上角 Mini 任务胶囊**：仅在存在后台挂起任务时显现，展示 `[ ✏️ 1/3 Task ]`（分子为已完成任务数[含正常完成、异常终止、已终止]，分母为总挂起任务数）；运行中呈现小铅笔微旋转呼吸动画（`spin-pulse`），全部完成转为实线手绘绿墨色；无挂起任务时保持隐藏；
+     - **半透明毛玻璃侧边栏**：点击 Mini 胶囊滑出 320px 半透明手绘侧边栏（`backdrop-filter: blur(14px)`），主界面区域自动触发 `filter: blur(4px); opacity: 0.6;` 高斯模糊；侧边栏展示每个挂起 Task 的模型、状态徽章（「思考中」、「流式生成中」、「执行工具」、「待确认」、「异常终止」、「已终止」、「已完成」）、提问摘要与操作区（「进入 Flow」、「⏹ 终止」）；全域右键或按 Esc 优先平滑收起侧边栏并复原主背景；
    - **系统托盘与单实例多态唤醒路由调度**：
      - **活跃挂起 Task = 1**：直通进入该 Task 的 Flow 交互流；
      - **活跃挂起 Task >= 2**：进入 Focus 专注版 + 右上角显现 Mini 任务胶囊；
@@ -94,16 +94,21 @@
    - 封装 `SketchSelect` 统一增强原生 `<select>`，彻底消除系统原生 Native Popup 的破相与无动画问题；
    - **弹出微抖动动效（Pop & Micro-Shake）**：展开时在 180ms 内轻快弹出并伴随极微小自然回弹倾角过冲（`-0.6deg` ➔ `+0.35deg` ➔ `0deg`），迅速触发且绝不油腻；
    - 边框、底色、字色与手绘微箭头深度适配暖纸墨水与炭黑粉笔双模主题，并在底层双向 100% 保持与原生 `<select>` 数据与事件同步；
-9. **系统托盘、后台生命周期与单实例互斥铁律**：
+9. **手绘草图质感自定义填表与智能联想引擎规范 (Sketch AutoFill & Smart Suggestions Engine)**：
+   - **全域消灭浏览器原生填表与变色破相**：全量表单输入框严格声明 `autocomplete="off"`、`autocorrect="off"`、`autocapitalize="off"`、`spellcheck="false"`；在 CSS 中覆盖 WebKit `:-webkit-autofill` 伪类，使用 `box-shadow` 内阴影阻断黄色/浅蓝变色，深度自适应 Warm Oatmeal Paper（浅色）与 Charcoal Blackboard（深色）双模主题；
+   - **手绘浮层与 180ms 快速回弹动效**：继承 `SketchSelect` 设计规范，边框采用 `1.2px solid var(--sketch-border)`，微阴影 `var(--sketch-shadow-hover)`，180ms 快速回弹弹出微抖动动效（`sketchDropdownPopShake`）；
+   - **运营商与模型海量预设与全表智能联动**：内置 SiliconFlow、DeepSeek、Ollama、OneAPI、VolcEngine、OpenRouter、Groq、DashScope、Zhipu、Moonshot、MiniMax、StepFun、vLLM、LM Studio、Together AI 等丰富预设；选择任一运营商自动联动预填 Provider ID、协议（同步联动 `SketchSelect`）、Base URL、Dev-Role 及 Reasoning 推荐开关；在运营商卡片内新增模型时智能推荐适配模型并一键预填显示名称、上下文、最大输出 Tokens 及推理开关；
+   - **填表历史记忆沉淀与快速模糊检索**：自动将用户成功保存的运营商、模型及 URL 沉淀至 LocalStorage 历史池，以 `[历史]` 徽章优先置顶，支持键盘 ↑/↓ 切换、Enter 选中填入及 Esc / 全域右键 (Step Back) 收起；
+10. **系统托盘、后台生命周期与单实例互斥铁律**：
    - **单实例运行与防重复启动**：集成 `tauri-plugin-single-instance` 单实例互斥机制，软件同时只能启动一个实例。检测到重复启动时新实例直接退出返回，并自动唤醒、取消最小化并置顶聚焦已存在的应用主窗口；
    - **右上角关闭为后台休眠**：点击右上角关闭按钮或触发系统关闭请求（如 `CloseRequested`）时，统一通过 `window.hide()` 隐藏窗口，保持后台进程与右下角系统托盘图标驻留；
    - **系统托盘交互与菜单**：
      - **左键单击 / 双击**：唤醒、取消最小化并置顶聚焦主窗口；
      - **右键菜单**：提供 `打开`（唤醒并聚焦窗口）、`设置`（唤醒窗口并派发设置事件）、`退出`（调用 `app.exit(0)` 彻底杀死后台完全退出应用）。
-10. **Pi 进程与数据交互六大子系统规范**：
+11. **Pi 进程与数据交互六大子系统规范**：
    - **`pi_runner & host_pool` (进程监督、生命周期与多任务监管池)**：集成 Win32 Job Object 孤儿进程自动收割、多进程监管池（`PiHostPool` / `SessionHost` 支持 `MAX_CONCURRENT_TASKS = 3` 最大并发保护与 `--session-id <taskId>` 独立子进程隔离，并在事件中注入 `task_id` 实现多任务并发与事件精准路由）、严格 LF (`\n`) 字节流分帧器、滑动窗口崩溃抑制（30s 内超 2 次熔断告警）、内核多层自适应寻址管道（`PI_BINARY_PATH` > 用户一键更新内核目录 `~/.pi-dl/kernel/pi-windows-x64/` > 源码工作区 `.mytools` > Release 目录 `exe_dir` > 安装包资源 `resource_dir` > 系统 `PATH`）、Release 安装包内置内核资源自适应寻址（`bundle.resources` / `resource_dir`）、`default-area` 默认隔离工作区自动探测与工作目录严格锁定（优先锁定源码 `default-area` 杜绝临时产物干扰，并在目录内维护独立的 `AGENTS.md` 运行时自我描述与隔离规则，彻底阻断 Pi 内核向开发根目录 `AGENTS.md` 穿透溯源，打包时通过 `tauri.conf.json` 自动完整迁移至 Release 资源目录，预留动态切换接口）；
    - **`config_manager` (配置管理与目录映射)**：负责 `~/.pi/agent/` 目录下 `auth.json`、`models.json`、`settings.json` 的双向读写映射、官方可用模型目录拉取与模型白名单持久化；
-   - **`package_manager` (组件目录检索、一键安装/卸载与版本更新、插件默认配置预设与推荐插件一键安装)**：连通 Pi 官方 Package Catalog (pi.dev/packages)，基于轻量正则 HTML 解析与 15min TTL 缓存提取结构化组件信息；读取 `~/.pi/agent/settings.json` 与 `node_modules` 精确探测本地已安装组件及版本；调用 `pi install/remove npm:<pkg> -a` 执行非阻塞安装与卸载；内置全局单任务互斥锁（Mutex）与前端 FIFO 异步任务队列，支持连续点击加入队列并自动按序出队执行，杜绝并发冲突；接入 `ProgressStepper` 平滑步进引擎（阶段等待期间每 2s 自动 +1% 直到下个阶段 - 1%，新阶段触发立即跳变响应）；并发查询 npm registry API 进行 SemVer 版本比对与一键更新；内置 **插件默认配置预设映射系统 (`presets.json` 编译内嵌)**：支持包名别名匹配与目标配置文件智能写入校验；当软件触发组件安装时，自动检测并应用命中的推荐配置（如 `pi-web-access` 自动写入后台静默搜索与自动摘要模式 `workflow: auto-summary, autoOpenBrowser: false` 至 `~/.pi/web-search.json` 并回读校验）；在设置页已安装组件列表中，对存在映射但未生效的组件在「卸载」按钮左侧动态显现「推荐配置」手绘线框按钮，支持手动一键应用与校验；**内置推荐 Pi 插件列表 (`recommended-plugins.json` 编译内嵌至二进制)**，在「检查组件更新」按钮左侧集成「安装推荐插件」按钮，支持一键队列安装所有未安装的推荐插件（自动跳过已有插件，当全部推荐插件均已安装时动态自动隐藏）；
+   - **`package_manager` (组件目录检索、一键安装/卸载与版本更新、插件默认配置预设与推荐插件一键安装/一键全部更新)**：连通 Pi 官方 Package Catalog (pi.dev/packages)，基于轻量正则 HTML 解析与 15min TTL 缓存提取结构化组件信息；读取 `~/.pi/agent/settings.json` 与 `node_modules` 精确探测本地已安装组件及版本；调用 `pi install/remove npm:<pkg> -a` 执行非阻塞安装与卸载；内置全局单任务互斥锁（Mutex）与前端 FIFO 异步任务队列，支持连续点击加入队列并自动按序出队执行，杜绝并发冲突；支持排队状态精准感知（更新任务显示绿墨色「更新排队中」、卸载任务显示红色「卸载排队中」并支持点击取消排队）；检测到待更新组件 >= 2 时在「检查组件更新」左侧动态显现手绘「一键全部更新」按钮；接入 `ProgressStepper` 平滑步进引擎（阶段等待期间每 2s 自动 +1% 直到下个阶段 - 1%，新阶段触发立即跳变响应）；并发查询 npm registry API 进行 SemVer 版本比对与一键更新；内置 **插件默认配置预设映射系统 (`presets.json` 编译内嵌)**：支持包名别名匹配与目标配置文件智能写入校验；当软件触发组件安装时，自动检测并应用命中的推荐配置（如 `pi-web-access` 自动写入后台静默搜索与自动摘要模式 `workflow: auto-summary, autoOpenBrowser: false` 至 `~/.pi/web-search.json` 并回读校验）；在设置页已安装组件列表中，对存在映射但未生效的组件在「卸载」按钮左侧动态显现「推荐配置」手绘线框按钮，支持手动一键应用与校验；**内置推荐 Pi 插件列表 (`recommended-plugins.json` 编译内嵌至二进制)**，在「检查组件更新」按钮左侧集成「安装推荐插件」按钮，支持一键队列安装所有未安装的推荐插件（自动跳过已有插件，当全部推荐插件均已安装时动态自动隐藏）；
    - **`security` (安全与脱敏中间件)**：全量上行下行数据经过正则脱敏过滤器（API Key、Token 与本地私有目录自动掩码）；
    - **`version_watcher & kernel_updater` (抗抖动版本监测与一键内核更新引擎)**：启动延迟 2s 自检，6h 轮询带 ±8% Jitter 随机抖动与 15s Watchdog 超时熔断；支持“不再提醒更新”持久化（写入 `~/.pi-dl/config.json`，生效后直接跳过启动自检与后台自动轮询，不发网络请求；在设置页主动点击“检查更新”时自动重置恢复）；支持在设置页一键获取官方最新版本、折叠预览 Changelog 更新日志与提示框 8 秒自动平滑渐隐；支持流式 HTTP 管道下载与 `ProgressStepper` 平滑步进引擎（仅保留最右侧百分比，阶段等待期间每 2s 自动 +1% 直到下个阶段 - 1%，新阶段触发立即跳变响应）、支持一键取消更新（`pi_cancel_kernel_update` 安全终止下载流与清理临时文件），在 `~/.pi-dl/` 执行 staging 暂存、`--version` 预检校验、原子备份替换旧内核并热重启 `PiSupervisor`，实现零提权免安装无感热升级；
    - **`session` (并发内存会话索引与监听)**：基于 `DashMap` 并发内存缓存与 `notify` 文件监听提供毫秒级会话列表与分支树检索；
@@ -142,6 +147,7 @@
 | **`settings-view-pattern`** | [`.agents/skills/settings-view-pattern/SKILL.md`](file:///.agents/skills/settings-view-pattern/SKILL.md) | 指导桌面端 (Tauri 2 + Web 前端) 中项目设置独立全屏页面（Settings View - 第 4 态独立视图）的工程化实现与交互设计。涵盖非浮窗全屏视图状态机、3 秒定时平滑渐隐指引、~/.pi-dl/config.json 应用全局配置持久化与 ~/.pi/agent/ 双层映射、当前模型列表 MRU 最近选用自动排序与锁定保护、自定义模型 Token 规范智能吸附、手绘草图表单几何工程美学及全域右键/Esc 回退流水线规范。当用户提出"设置界面"、"配置页面"、"设置页写法"、"settings view"、"模型配置界面"、"持久化配置"、"设置规范"时使用此技能。 |
 | **`desktop-kernel-lifecycle`** | [`.agents/skills/desktop-kernel-lifecycle/SKILL.md`](file:///.agents/skills/desktop-kernel-lifecycle/SKILL.md) | 指导桌面端 (Tauri 2 + Rust) 作为 CLI/Agent 内核宿主时的进程生命周期管控、多环境自适应寻址、Release 安装包资源打包规范与 Windows 运行时六大踩坑归因与排查治理。当涉及"内核崩溃"、"进程反复重启"、"resource_dir"、"打包后无法运行"、"子进程黑框"、"CWD权限"、"环境变量丢失"、"JobObject"时使用此技能。 |
 | **`flow-interaction-pattern`** | [`.agents/skills/flow-interaction-pattern/SKILL.md`](file:///.agents/skills/flow-interaction-pattern/SKILL.md) | 指导 Flow 流式交互界面（界面3）的三大核心交互逻辑实现规范：①过程框体（思考卡片/工具调用卡片）可手动折叠展开；②"当前最下方框体展开、出现下一框时自动收起"的级联自动收起流水线；③Flow 界面任意区域滚轮事件委托至最外层滚动容器。当用户提出"flow界面交互"、"思考卡片折叠"、"工具调用卡折叠"、"自动收起"、"滚轮滚动"、"flow滚动条"、"卡片收起"时使用此技能。 |
+| **`sketch-form-autofill-pattern`** | [`.agents/skills/sketch-form-autofill-pattern/SKILL.md`](file:///.agents/skills/sketch-form-autofill-pattern/SKILL.md) | 指导桌面端中新增表单的规范写法、手绘草图质感自定义填表与智能联想推荐浮窗 (SketchAutoFill) 的标准用法。涵盖消灭原生填表变色、表单DOM布局、预设库挂载、全表智能联动填充、历史记忆沉淀及全域键盘与右键回退规范。当涉及"新增表单"、"表单写法"、"自定义填表"、"输入框建议"、"填表浮层"、"autofill"、"联想输入"时使用此技能。 |
 | **`code-hazards-remediation`** | [`.doc/code-hazards-remediation/SKILL.md`](file:///.doc/code-hazards-remediation/SKILL.md) | 针对项目全量代码健康度检查中定位的已知隐患矩阵（H1~H24）进行故障排查与自愈。当系统出现异常、挂死、数据丢失或性能瓶颈时，参照此隐患列表快速定位根因；一旦命中了某条隐患并完成修复，即从列表中剔除核销，直至所有已知隐患清零。 |
 
 
