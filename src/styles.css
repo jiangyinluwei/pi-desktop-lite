@@ -2199,9 +2199,9 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   user-select: none;
   background: transparent;
   transition: border-color 150ms ease, background 150ms ease;
+  outline: none;
 }
-.auto-reconnect-toggle:hover,
-.auto-reconnect-toggle:focus-within {
+.auto-reconnect-toggle:hover {
   border-color: var(--sketch-border-subtle);
   background: var(--bg-elevated, transparent);
 }
@@ -2215,6 +2215,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   clip: rect(0, 0, 0, 0);
   border: 0;
   white-space: nowrap;
+  outline: none;
 }
 .auto-reconnect-box {
   position: relative;
@@ -2226,7 +2227,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   border: 1.2px solid var(--sketch-border-subtle);
   border-radius: 4px 3px 5px 2px / 3px 5px 2px 4px;
   background: transparent;
-  transition: border-color 150ms ease, background 150ms ease;
+  transition: border-color 150ms ease;
   flex-shrink: 0;
 }
 .auto-reconnect-toggle:hover .auto-reconnect-box {
@@ -2236,19 +2237,15 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   opacity: 0;
   transform: scale(0.6);
   transition: opacity 150ms ease, transform 150ms ease;
-  color: var(--bg-primary, #fbf9f4);
+  color: var(--ink-primary);
 }
 .auto-reconnect-checkbox:checked + .auto-reconnect-box {
   border-color: var(--sketch-border);
-  background: var(--ink-primary, #262422);
+  background: transparent;
 }
 .auto-reconnect-checkbox:checked + .auto-reconnect-box .auto-reconnect-tick {
   opacity: 1;
   transform: scale(1);
-}
-.auto-reconnect-checkbox:focus-visible + .auto-reconnect-box {
-  outline: 2px solid var(--sketch-border);
-  outline-offset: 2px;
 }
 .auto-reconnect-label {
   font-size: 12px;
