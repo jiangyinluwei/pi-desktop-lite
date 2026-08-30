@@ -41,12 +41,12 @@ pub fn get_all_presets() -> &'static [PackagePreset] {
 
 /// 根据包名匹配对应的预设配置定义
 pub fn find_preset_for_package(package_name: &str) -> Option<PackagePreset> {
-    let clean_name = package_name.trim().trim_start_matches("npm:");
+    let clean_name = super::installer::extract_npm_package_name(package_name);
     let presets = get_all_presets();
     presets.iter().find(|preset| {
         preset.package_names.iter().any(|name| {
-            let clean_p_name = name.trim().trim_start_matches("npm:");
-            clean_p_name.eq_ignore_ascii_case(clean_name)
+            let clean_p_name = super::installer::extract_npm_package_name(name);
+            clean_p_name.eq_ignore_ascii_case(&clean_name)
         })
     }).cloned()
 }
