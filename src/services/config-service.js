@@ -10,6 +10,7 @@ const STORAGE_KEY_THEME = "pi_app_theme";
 const STORAGE_KEY_WHITELIST = "pi_model_whitelist";
 const STORAGE_KEY_SELECTED_MODEL = "pi_selected_model";
 const STORAGE_KEY_THINKING_LEVEL = "pi_thinking_level";
+const STORAGE_KEY_SEND_SHORTCUT = "pi_send_shortcut";
 const STORAGE_KEY_IGNORE_UPDATE = "pi_ignore_update_notification";
 
 class ConfigService extends EventTarget {
@@ -17,6 +18,7 @@ class ConfigService extends EventTarget {
     super();
     this.currentTheme = "system";
     this.defaultThinkingLevel = "medium";
+    this.sendShortcut = "enter"; // "enter" (Logic A) | "ctrlEnter" (Logic B)
     this.selectedModel = null;
     this.modelWhitelist = [];
     this.ignoreUpdateNotification = false;
@@ -49,6 +51,15 @@ class ConfigService extends EventTarget {
           this.defaultThinkingLevel = config.defaultThinkingLevel;
           localStorage.setItem(STORAGE_KEY_THINKING_LEVEL, this.defaultThinkingLevel);
         }
+        if (config.sendShortcut && ["enter", "ctrlEnter"].includes(config.sendShortcut)) {
+          this.sendShortcut = config.sendShortcut;
+          localStorage.setItem(STORAGE_KEY_SEND_SHORTCUT, this.sendShortcut);
+        } else {
+          const stored = localStorage.getItem(STORAGE_KEY_SEND_SHORTCUT);
+          if (stored && ["enter", "ctrlEnter"].includes(stored)) {
+            this.sendShortcut = stored;
+          }
+        }
         if (config.selectedModel && config.selectedModel.provider && config.selectedModel.modelId) {
           this.selectedModel = config.selectedModel;
           localStorage.setItem(STORAGE_KEY_SELECTED_MODEL, JSON.stringify(this.selectedModel));
@@ -78,6 +89,7 @@ class ConfigService extends EventTarget {
     const configData = {
       theme: this.getTheme(),
       defaultThinkingLevel: this.getDefaultThinkingLevel(),
+      sendShortcut: this.getSendShortcut(),
       selectedModel: this.getSelectedModel(),
       modelWhitelist: this.loadModelWhitelist(),
       ignoreUpdateNotification: this.getIgnoreUpdateNotification(),
@@ -88,6 +100,35 @@ class ConfigService extends EventTarget {
     } catch (e) {
       console.warn("[ConfigService] Failed to save app config to ~/.pi-dl/config.json:", e);
     }
+  }
+
+  /**
+   * 获取当前对话框发送快捷键逻辑 ("enter" | "ctrlEnter")
+   * @returns {"enter" | "ctrlEnter"}
+   */
+  getSendShortcut() {
+    return (
+      this.sendShortcut ||
+      localStorage.getItem(STORAGE_KEY_SEND_SHORTCUT) ||
+      "enter"
+    );
+  }
+
+  /**
+   * 设置并持久化对话框发送快捷键逻辑
+   * @param {"enter" | "ctrlEnter"} shortcut
+   * @param {boolean} [persistToFile=true]
+   */
+  async setSendShortcut(shortcut, persistToFile = true) {
+    if (!["enter", "ctrlEnter"].includes(shortcut)) {
+      shortcut = "enter";
+    }
+    this.sendShortcut = shortcut;
+    localStorage.setItem(STORAGE_KEY_SEND_SHORTCUT, shortcut);
+    if (persistToFile) {
+      await this.saveAppConfig();
+    }
+    this.dispatchEvent(new CustomEvent("send-shortcut-change", { detail: { sendShortcut: shortcut } }));
   }
 
   /**

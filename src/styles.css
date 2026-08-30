@@ -10,8 +10,8 @@
   --sketch-border: #262422;
   --sketch-border-subtle: #d6cfc4;
   --sketch-border-hover: #1c1a17;
-  --sketch-box-bg: #ffffff;
-  --sketch-box-bg-focus: #ffffff;
+  --sketch-box-bg: #f8f6f1;
+  --sketch-box-bg-focus: #fcfaf6;
   --sketch-tag-bg: #f5f0e6;
   --sketch-tag-border: #dcd4c6;
   --sketch-tag-hover-bg: #ece5d8;
@@ -869,17 +869,19 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 
 .sketch-search-box {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   flex: 1;
   width: 100%;
-  height: 52px;
+  min-height: 52px;
+  height: auto;
   background: var(--sketch-box-bg);
   /* 手绘自然微有机曲线边角 */
   border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
   border: 1.5px solid var(--sketch-border-subtle);
   box-shadow: var(--sketch-shadow);
-  padding: 0 16px;
+  padding: 13px 16px;
   position: relative;
+  box-sizing: border-box;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, background-color 0.2s ease, padding 0.2s ease, border-radius 0.2s ease;
 }
 
@@ -905,7 +907,7 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   transform: translateY(-1px) scale(1.002);
 }
 
-/* 搜索/导入图标（支持点击导入文件） */
+/* 搜索/导入图标（换行后位于第一行，起到首行缩进的作用） */
 .search-icon {
   display: flex;
   align-items: center;
@@ -915,8 +917,13 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   flex-shrink: 0;
   cursor: pointer;
   border-radius: 4px;
-  padding: 4px;
+  padding: 3px;
+  width: 24px;
+  height: 24px;
   border: 1px solid transparent;
+  align-self: flex-start;
+  margin-top: 0;
+  box-sizing: border-box;
   transition: color 0.2s ease, transform 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
 }
 
@@ -940,12 +947,12 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 /* 输入框与格言跑马灯包装层 */
 .search-input-wrapper {
   flex: 1;
-  height: 100%;
+  min-height: 24px;
+  height: auto;
   position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   min-width: 0;
-  overflow: hidden;
   gap: 6px;
 }
 
@@ -1141,14 +1148,17 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   padding-right: 0;
 }
 
-/* 输入框 */
+/* 输入框 (支持 textarea 多行换行自适应，最大容纳 16 行，超出显示隐藏式极简滚动条) */
 .search-input {
   width: 100%;
-  height: 100%;
+  height: 24px;
+  min-height: 24px;
+  max-height: 384px; /* 16 行 * 24px = 384px */
   background: transparent;
   border: none;
   outline: none;
   font-size: 15.5px;
+  line-height: 24px;
   font-family: inherit;
   color: var(--ink-primary);
   user-select: text;
@@ -1156,21 +1166,64 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   z-index: 2;
   padding: 0;
   margin: 0;
+  resize: none;
+  overflow-y: auto;
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sketch-border-subtle) transparent;
+}
+
+/* 隐藏式极简滚动条规范 (Rule 7: Minimal Slim Hidden Scrollbar) */
+.search-input::-webkit-scrollbar {
+  width: 4px;
+}
+
+.search-input::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.search-input::-webkit-scrollbar-button {
+  display: none;
+}
+
+.search-input::-webkit-scrollbar-thumb {
+  background-color: var(--sketch-border-subtle);
+  border-radius: 4px;
+  opacity: 0.45;
+  transition: background-color 0.2s ease;
+}
+
+.search-input:hover::-webkit-scrollbar-thumb {
+  background-color: var(--sketch-border);
+}
+
+.search-input::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ink-primary);
+  width: 6px;
 }
 
 .search-input::placeholder {
   color: transparent;
 }
 
-/* 快捷引导徽章 */
+/* 快捷引导徽章与发送示意框 (常态透明微边框，悬停高亮，点击可直接发送) */
 .search-action-hint {
   display: flex;
   align-items: center;
   margin-left: 8px;
   user-select: none;
+  flex-shrink: 0;
+  cursor: pointer;
+  align-self: flex-end;
+  margin-bottom: 0;
+  height: 24px;
+  -webkit-app-region: no-drag;
 }
 
 .sketch-kbd {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11.5px;
   font-weight: 600;
@@ -1181,11 +1234,45 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   padding: 3px 7px;
   line-height: 1;
   transition: all 0.2s ease;
+  user-select: none;
+}
+
+.sketch-kbd .hint-send-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  transition: color 0.2s ease, transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.sketch-kbd .hint-send-icon svg {
+  display: block;
 }
 
 .sketch-search-box:focus-within .sketch-kbd {
   color: var(--ink-primary);
   border-color: var(--sketch-border);
+}
+
+.sketch-search-box:focus-within .sketch-kbd .hint-send-icon {
+  color: var(--ink-primary);
+}
+
+.search-action-hint:hover .sketch-kbd {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  background: var(--sketch-panel-bg, rgba(0, 0, 0, 0.05));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.search-action-hint:hover .hint-send-icon {
+  color: var(--ink-primary);
+  transform: translateX(1px);
+}
+
+.search-action-hint:active .sketch-kbd {
+  transform: translateY(1px);
 }
 
 /* ==========================================================================
@@ -1262,6 +1349,8 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
   transform: scale(0.85);
   margin-left: 4px;
   flex-shrink: 0;
+  align-self: flex-end;
+  margin-bottom: -2px;
 }
 
 .icon-button.clear-btn.visible {
@@ -1885,6 +1974,64 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 }
 
 .theme-option.active .theme-icon {
+  color: var(--ink-primary);
+}
+
+/* 发送快捷键分段选择器 */
+.send-shortcut-segmented-control {
+  display: flex;
+  gap: 8px;
+  max-width: 480px;
+}
+
+.shortcut-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.shortcut-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  transition: color 0.15s ease;
+}
+
+.shortcut-icon svg {
+  display: block;
+}
+
+.shortcut-option:hover {
+  border-color: var(--sketch-border);
+  color: var(--ink-primary);
+}
+
+.shortcut-option:hover .shortcut-icon {
+  color: var(--ink-primary);
+}
+
+.shortcut-option.active {
+  background: transparent;
+  border: 1.5px solid var(--ink-primary);
+  color: var(--ink-primary);
+  font-weight: 600;
+}
+
+.shortcut-option.active .shortcut-icon {
   color: var(--ink-primary);
 }
 
@@ -4943,6 +5090,8 @@ body.has-task-sidebar-open .app-container {
   border: 1px solid transparent;
   border-radius: 4px;
   cursor: pointer;
+  align-self: flex-end;
+  margin-bottom: 0;
   transition: all 0.15s ease;
 }
 

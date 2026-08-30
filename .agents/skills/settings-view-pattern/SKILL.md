@@ -119,6 +119,7 @@ graph TD
   {
     "theme": "system",
     "defaultThinkingLevel": "medium",
+    "sendShortcut": "enter",
     "selectedModel": {
       "provider": "anthropic",
       "modelId": "claude-3-7-sonnet"

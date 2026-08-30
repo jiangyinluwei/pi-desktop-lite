@@ -253,8 +253,8 @@
                 <span class="search-motto-item search-motto-repeat" id="search-motto-text-2">别等完美，先打个草稿</span>
               </div>
             </div>
-            <input type="text" id="search-input" class="search-input" placeholder="" autocomplete="off"
-              spellcheck="false" />
+            <textarea id="search-input" class="search-input" rows="1" placeholder="" autocomplete="off"
+              spellcheck="false"></textarea>
           </div>
 
           <!-- 手绘风格清空按钮 -->
@@ -274,9 +274,18 @@
             </svg>
           </button>
 
-          <!-- 快捷键引导徽章 -->
-          <div class="search-action-hint" id="search-hint">
-            <span class="sketch-kbd">↵ Enter</span>
+          <!-- 快捷键引导徽章与发送示意框 (点击亦可直接发送) -->
+          <div class="search-action-hint" id="search-hint" role="button" tabindex="0" title="发送 (Enter)" aria-label="发送 (Enter)">
+            <span class="sketch-kbd" id="search-hint-kbd">
+              <span class="hint-send-icon" aria-hidden="true">
+                <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.4"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14.5 1.5 L7 9" />
+                  <path d="M14.5 1.5 L10 14.5 L7 9 L1.5 6 Z" />
+                </svg>
+              </span>
+              <span class="hint-key-text" id="hint-key-text">Enter</span>
+            </span>
           </div>
         </form>
       </div>
@@ -419,6 +428,34 @@
                 <option value="max">Max (最大思考上限)</option>
               </select>
               <span class="form-hint">适用于 Claude 3.7、DeepSeek-R1、o1/o3-mini 等支持思考过程的模型。</span>
+            </div>
+
+            <!-- 对话框发送与换行逻辑 -->
+            <div class="settings-group">
+              <label class="group-label">对话框发送与换行逻辑</label>
+              <div class="send-shortcut-segmented-control" id="send-shortcut-segmented-control">
+                <button type="button" class="shortcut-option active" data-shortcut-val="enter">
+                  <span class="shortcut-icon" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M14.5 1.5 L7 9" />
+                      <path d="M14.5 1.5 L10 14.5 L7 9 L1.5 6 Z" />
+                    </svg>
+                  </span>
+                  <span class="shortcut-name">Enter 发送 / Ctrl+Enter 换行</span>
+                </button>
+                <button type="button" class="shortcut-option" data-shortcut-val="ctrlEnter">
+                  <span class="shortcut-icon" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M14.5 1.5 L7 9" />
+                      <path d="M14.5 1.5 L10 14.5 L7 9 L1.5 6 Z" />
+                    </svg>
+                  </span>
+                  <span class="shortcut-name">Ctrl+Enter 发送 / Enter 换行</span>
+                </button>
+              </div>
+              <span class="form-hint">切换后对话框右侧示意框将即时同步对应按键与发送图标。</span>
             </div>
           </div>
 

@@ -64,6 +64,7 @@ const ICONS = {
   code: `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5.5 5 2.5 8 5.5 11" /><polyline points="10.5 5 13.5 8 10.5 11" /><line x1="9" y1="4" x2="7" y2="12" /></svg>`,
   lightbulb: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2 C5.5 2, 4 3.8, 4 6 C4 7.6, 5.2 9, 5.8 10.2 H10.2 C10.8 9, 12 7.6, 12 6 C12 3.8, 10.5 2, 8 2 Z" /><line x1="6" y1="12" x2="10" y2="12" /><line x1="7" y1="14" x2="9" y2="14" /></svg>`,
   stop: `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5" /></svg>`,
+  send: `<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 1.5 L7 9" /><path d="M14.5 1.5 L10 14.5 L7 9 L1.5 6 Z" /></svg>`,
 };
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -108,6 +109,9 @@ window.addEventListener("DOMContentLoaded", () => {
   const miniTaskCapsule = document.getElementById("mini-task-capsule");
   const capsuleTaskText = document.getElementById("capsule-task-text");
   const flowBtnAbort = document.getElementById("flow-btn-abort");
+  const searchHint = document.getElementById("search-hint");
+  const searchHintKbd = document.getElementById("search-hint-kbd");
+  const hintKeyText = document.getElementById("hint-key-text");
   const globalToastBanner = document.getElementById("global-toast-banner");
   const globalToastText = document.getElementById("global-toast-text");
   const taskDetailsSidebar = document.getElementById("task-details-sidebar");
@@ -320,10 +324,61 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   };
 
+  // ==========================================================================
+  // 发送逻辑与快捷键切换控制 (Send Shortcut Logic: enter | ctrlEnter)
+  // ==========================================================================
+  const updateSendShortcutUI = (shortcut) => {
+    const isEnter = shortcut !== "ctrlEnter";
+    if (hintKeyText) {
+      hintKeyText.textContent = isEnter ? "Enter" : "Ctrl+Enter";
+    }
+    if (searchHint) {
+      searchHint.setAttribute("title", isEnter ? "发送 (Enter)" : "发送 (Ctrl+Enter)");
+      searchHint.setAttribute("aria-label", isEnter ? "发送 (Enter)" : "发送 (Ctrl+Enter)");
+    }
+
+    const shortcutButtons = document.querySelectorAll(".shortcut-option");
+    shortcutButtons.forEach((btn) => {
+      if (btn.getAttribute("data-shortcut-val") === (isEnter ? "enter" : "ctrlEnter")) {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+    });
+  };
+
+  const initSendShortcutControl = () => {
+    const currentShortcut = configService.getSendShortcut();
+    updateSendShortcutUI(currentShortcut);
+
+    const shortcutButtons = document.querySelectorAll(".shortcut-option");
+    shortcutButtons.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const targetShortcut = btn.getAttribute("data-shortcut-val") || "enter";
+        configService.setSendShortcut(targetShortcut);
+        updateSendShortcutUI(targetShortcut);
+      });
+    });
+
+    configService.addEventListener("send-shortcut-change", (e) => {
+      const activeShortcut = e.detail?.sendShortcut || configService.getSendShortcut();
+      updateSendShortcutUI(activeShortcut);
+    });
+
+    if (searchHint) {
+      searchHint.addEventListener("click", (e) => {
+        e.preventDefault();
+        submitCurrentPrompt();
+      });
+    }
+  };
+
   // 异步预加载 ~/.pi-dl/config.json 并初始化主题与控件
   (async () => {
     await configService.loadAppConfig();
     initThemeControl();
+    initSendShortcutControl();
   })();
 
   // ==========================================================================
@@ -2783,6 +2838,7 @@ window.addEventListener("DOMContentLoaded", () => {
     searchInput.value = "";
     clearAttachedFiles();
     updateInputState();
+    autoResizeSearchInput();
 
     try {
       // 优先直接将多模态文件注入模型（构造原生图片 Payload 与绝对路径直传模型）
@@ -2819,12 +2875,22 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  // 表单回车提交
-  searchForm.addEventListener("submit", (e) => {
-    e.preventDefault();
+  const submitCurrentPrompt = () => {
+    if (!searchInput) return;
     const query = searchInput.value.trim();
     if (query || attachedFiles.length > 0) {
       handleFlowQuery(query, attachedFiles);
+      autoResizeSearchInput();
+    } else {
+      searchInput.focus();
+    }
+  };
+
+  // 表单回车提交
+  searchForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (configService.getSendShortcut() !== "ctrlEnter") {
+      submitCurrentPrompt();
     }
   });
 
@@ -3597,6 +3663,19 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  const MAX_INPUT_LINES = 16;
+  const INPUT_LINE_HEIGHT = 24;
+  const MAX_INPUT_HEIGHT = MAX_INPUT_LINES * INPUT_LINE_HEIGHT; // 384px
+
+  // 输入框多行内容高度自适应（换行自动增加高度，最多容纳16行，超出显示极简滚动条）
+  const autoResizeSearchInput = () => {
+    if (!searchInput) return;
+    searchInput.style.height = "24px";
+    const scrollHeight = searchInput.scrollHeight;
+    const targetHeight = Math.min(Math.max(scrollHeight, 24), MAX_INPUT_HEIGHT);
+    searchInput.style.height = `${targetHeight}px`;
+  };
+
   // 控制清空按钮显隐与格言跑马灯层可见性
   const updateInputState = () => {
     if (!searchInput) return;
@@ -3616,13 +3695,17 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  searchInput.addEventListener("input", updateInputState);
+  searchInput.addEventListener("input", () => {
+    updateInputState();
+    autoResizeSearchInput();
+  });
 
   clearBtn.addEventListener("click", () => {
     searchInput.value = "";
     clearAttachedFiles();
     promptHistoryNavigator.resetIndex();
     updateInputState();
+    autoResizeSearchInput();
     searchInput.focus();
   });
 
@@ -3630,15 +3713,56 @@ window.addEventListener("DOMContentLoaded", () => {
     searchInput.value = val;
     searchInput.setSelectionRange(val.length, val.length);
     updateInputState();
+    autoResizeSearchInput();
   };
 
   searchInput.addEventListener("keydown", (e) => {
+    const sendMode = configService.getSendShortcut();
+
+    if (e.key === "Enter") {
+      // 避免中文拼音输入法选词上屏时误触发
+      if (e.isComposing || e.keyCode === 229) {
+        return;
+      }
+
+      if (sendMode === "enter") {
+        // 发送逻辑 A：Enter 发送，Ctrl+Enter / Shift+Enter 换行
+        if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
+          e.preventDefault();
+          submitCurrentPrompt();
+        } else if (e.ctrlKey || e.metaKey || e.shiftKey) {
+          e.preventDefault();
+          const start = searchInput.selectionStart;
+          const end = searchInput.selectionEnd;
+          const val = searchInput.value;
+          searchInput.value = val.substring(0, start) + "\n" + val.substring(end);
+          searchInput.selectionStart = searchInput.selectionEnd = start + 1;
+          updateInputState();
+          autoResizeSearchInput();
+        }
+      } else {
+        // 发送逻辑 B：Ctrl+Enter 发送，Enter 换行
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          submitCurrentPrompt();
+        } else {
+          // Enter 换行：textarea 原生插入换行，延时刷新高度与输入状态
+          setTimeout(() => {
+            updateInputState();
+            autoResizeSearchInput();
+          }, 0);
+        }
+      }
+      return;
+    }
+
     if (e.key === "Escape") {
       if (searchInput.value.length > 0 || attachedFiles.length > 0) {
         searchInput.value = "";
         clearAttachedFiles();
         promptHistoryNavigator.resetIndex();
         updateInputState();
+        autoResizeSearchInput();
       } else {
         searchInput.blur();
       }
@@ -5044,6 +5168,7 @@ window.addEventListener("DOMContentLoaded", () => {
       searchInput.value = "";
       clearAttachedFiles();
       updateInputState();
+      autoResizeSearchInput();
       return;
     }
 
