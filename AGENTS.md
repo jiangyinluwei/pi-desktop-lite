@@ -99,28 +99,34 @@
    - **手绘浮层与 180ms 快速回弹动效**：继承 `SketchSelect` 设计规范，边框采用 `1.2px solid var(--sketch-border)`，微阴影 `var(--sketch-shadow-hover)`，180ms 快速回弹弹出微抖动动效（`sketchDropdownPopShake`）；
    - **运营商与模型海量预设与全表智能联动**：内置 SiliconFlow、DeepSeek、Ollama、OneAPI、VolcEngine、OpenRouter、Groq、DashScope、Zhipu、Moonshot、MiniMax、StepFun、vLLM、LM Studio、Together AI 等丰富预设；选择任一运营商自动联动预填 Provider ID、协议（同步联动 `SketchSelect`）、Base URL、Dev-Role 及 Reasoning 推荐开关；在运营商卡片内新增模型时智能推荐适配模型并一键预填显示名称、上下文、最大输出 Tokens 及推理开关；
    - **填表历史记忆沉淀与快速模糊检索**：自动将用户成功保存的运营商、模型及 URL 沉淀至 LocalStorage 历史池，以 `[历史]` 徽章优先置顶，支持键盘 ↑/↓ 切换、Enter 选中填入及 Esc / 全域右键 (Step Back) 收起；
-10. **系统托盘、后台生命周期与单实例互斥铁律**：
-   - **单实例运行与防重复启动**：集成 `tauri-plugin-single-instance` 单实例互斥机制，软件同时只能启动一个实例。检测到重复启动时新实例直接退出返回，并自动唤醒、取消最小化并置顶聚焦已存在的应用主窗口；
-   - **右上角关闭为后台休眠**：点击右上角关闭按钮或触发系统关闭请求（如 `CloseRequested`）时，统一通过 `window.hide()` 隐藏窗口，保持后台进程与右下角系统托盘图标驻留；
-   - **系统托盘交互与菜单**：
-     - **左键单击 / 双击**：唤醒、取消最小化并置顶聚焦主窗口；
-     - **右键菜单**：提供 `打开`（唤醒并聚焦窗口）、`设置`（唤醒窗口并派发设置事件）、`退出`（调用 `app.exit(0)` 彻底杀死后台完全退出应用）。
-11. **Pi 进程与数据交互六大子系统规范**：
-   - **`pi_runner & host_pool` (进程监督、生命周期与多任务监管池)**：集成 Win32 Job Object 孤儿进程自动收割、多进程监管池（`PiHostPool` / `SessionHost` 支持 `MAX_CONCURRENT_TASKS = 3` 最大并发保护与 `--session-id <taskId>` 独立子进程隔离，并在事件中注入 `task_id` 实现多任务并发与事件精准路由）、严格 LF (`\n`) 字节流分帧器、滑动窗口崩溃抑制（30s 内超 2 次熔断告警）、内核多层自适应寻址管道（`PI_BINARY_PATH` > 用户一键更新内核目录 `~/.pi-dl/kernel/pi-windows-x64/` > 源码工作区 `.mytools` > Release 目录 `exe_dir` > 安装包资源 `resource_dir` > 系统 `PATH`）、Release 安装包内置内核资源自适应寻址（`bundle.resources` / `resource_dir`）、`default-area` 默认隔离工作区自动探测与工作目录严格锁定（优先锁定源码 `default-area` 杜绝临时产物干扰，并在目录内维护独立的 `AGENTS.md` 运行时自我描述与隔离规则，彻底阻断 Pi 内核向开发根目录 `AGENTS.md` 穿透溯源，打包时通过 `tauri.conf.json` 自动完整迁移至 Release 资源目录，预留动态切换接口）；
-   - **`config_manager` (配置管理与目录映射)**：负责 `~/.pi/agent/` 目录下 `auth.json`、`models.json`、`settings.json` 的双向读写映射、官方可用模型目录拉取与模型白名单持久化；
-   - **`package_manager` (组件目录检索、一键安装/卸载与版本更新、插件默认配置预设与推荐插件一键安装/一键全部更新)**：连通 Pi 官方 Package Catalog (pi.dev/packages)，基于轻量正则 HTML 解析与 15min TTL 缓存提取结构化组件信息；读取 `~/.pi/agent/settings.json` 与 `node_modules` 精确探测本地已安装组件及版本；调用 `pi install/remove npm:<pkg> -a` 执行非阻塞安装与卸载；内置全局单任务互斥锁（Mutex）与前端 FIFO 异步任务队列，支持连续点击加入队列并自动按序出队执行，杜绝并发冲突；支持排队状态精准感知（更新任务显示绿墨色「更新排队中」、卸载任务显示红色「卸载排队中」并支持点击取消排队）；检测到待更新组件 >= 2 时在「检查组件更新」左侧动态显现手绘「一键全部更新」按钮；接入 `ProgressStepper` 平滑步进引擎（阶段等待期间每 2s 自动 +1% 直到下个阶段 - 1%，新阶段触发立即跳变响应）；并发查询 npm registry API 进行 SemVer 版本比对与一键更新；内置 **插件默认配置预设映射系统 (`presets.json` 编译内嵌)**：支持包名别名匹配与目标配置文件智能写入校验；当软件触发组件安装时，自动检测并应用命中的推荐配置（如 `pi-web-access` 自动写入后台静默搜索与自动摘要模式 `workflow: auto-summary, autoOpenBrowser: false` 至 `~/.pi/web-search.json` 并回读校验）；在设置页已安装组件列表中，对存在映射但未生效的组件在「卸载」按钮左侧动态显现「推荐配置」手绘线框按钮，支持手动一键应用与校验；**内置推荐 Pi 插件列表 (`recommended-plugins.json` 编译内嵌至二进制)**，在「检查组件更新」按钮左侧集成「安装推荐插件」按钮，支持一键队列安装所有未安装的推荐插件（自动跳过已有插件，当全部推荐插件均已安装时动态自动隐藏）；
-   - **`security` (安全与脱敏中间件)**：全量上行下行数据经过正则脱敏过滤器（API Key、Token 与本地私有目录自动掩码）；
-   - **`version_watcher & kernel_updater` (抗抖动版本监测与一键内核更新引擎)**：启动延迟 2s 自检，6h 轮询带 ±8% Jitter 随机抖动与 15s Watchdog 超时熔断；支持“不再提醒更新”持久化（写入 `~/.pi-dl/config.json`，生效后直接跳过启动自检与后台自动轮询，不发网络请求；在设置页主动点击“检查更新”时自动重置恢复）；支持在设置页一键获取官方最新版本、折叠预览 Changelog 更新日志与提示框 8 秒自动平滑渐隐；支持流式 HTTP 管道下载与 `ProgressStepper` 平滑步进引擎（仅保留最右侧百分比，阶段等待期间每 2s 自动 +1% 直到下个阶段 - 1%，新阶段触发立即跳变响应）、支持一键取消更新（`pi_cancel_kernel_update` 安全终止下载流与清理临时文件），在 `~/.pi-dl/` 执行 staging 暂存、`--version` 预检校验、原子备份替换旧内核并热重启 `PiSupervisor`，实现零提权免安装无感热升级；
-   - **`session` (并发内存会话索引与监听)**：基于 `DashMap` 并发内存缓存与 `notify` 文件监听提供毫秒级会话列表与分支树检索；
-   - **`model_management & error_handling` (模型切换与异常自愈)**：支持通过 `pi_get_state`、`pi_get_available_models`、`pi_set_model`、`pi_set_thinking_level` 进行运行时模型感知与切换，捕获全链路 RPC 报错并渲染手绘异常诊断卡片提供一键重试与模型切换。
-11. **Windows 系统通知与失焦调度铁律 (`Windows Native Toast Notification & Blur-Trigger Pipeline`)**：
-   - **失焦触发铁律与原生双重锁**：仅在软件处于**失去焦点 (Blurred / Background)** 状态时才会触发通知；前端基于 `document.hasFocus()`、`window.onfocus / onblur`、`visibilitychange` 与 Tauri `window-focus-change` 进行多维校验，后端 `pi_show_notification` 叠加原生窗口句柄 `window.is_focused()` 双重锁防护，当软件处于焦点状态 (Focused) 时绝对拦截丢弃，绝不打扰用户；
-   - **身份与 Logo 绑定**：启动时自动设置进程 AUMID 为 `com.pidl.desktop`，并在用户注册表（`HKCU\Software\Classes\AppUserModelId\com.pidl.desktop`）写入应用名称 `pi-dl` 与持久化手绘 Logo 图标路径（`~/.pi-dl/icons/app-logo.png`），彻底杜绝开发态（`npm run dev`）Toast 顶部被系统误显示为 `Windows PowerShell`；仅在通知左上角保留精致手绘小 Logo 标识与 `pi-dl` 应用名，文本下方保持纯净无冗余大图；
-   - **人工回归立即通知与交互事件精确过滤**：仅当模型或扩展插件发出真正需要人工介入与交互确认的请求（如 `confirm`/`prompt`/`select`/`input`/`form` 等）时才在失焦时弹出 Windows 原生 Toast 通知与系统默认提示音，被动的小部件注册（`setWidget`）、状态栏更新（`setStatus`）与启动通知（`notify`）一律静默过滤，彻底杜绝冷启动与初始化阶段误弹通知；
-   - **报错终止立即通知**：当模型执行异常中断、RPC 报错或发生致命错误终止时，立即弹出通知；
-   - **输出完成与多任务并行调度**：若模型输出完成时仍有其他任务在并行运行（如包管理器安装/更新队列、内核升级等），暂不弹出通知；当**所有任务全部完成**后，统一弹出“所有任务已完成”通知；
-   - **通知点击唤醒与 Flow 自动定位**：当用户在 Windows 桌面或通知中心点击通知时，后端通过 `on_activated` 自动唤醒、取消最小化并置顶聚焦主窗口，前端捕获 `notification-clicked` 自动退出设置全屏页、切换至该段对话的 Flow 流式交互模式并滚动定位到底部；
-   - **底层架构实现**：后端基于 `tauri-winrt-notification` / `tauri-plugin-notification = "2"`（Windows 原生 WinRT Toast 通知，自带默认通知音），前端通过 `NotificationService` 结合 `document.hasFocus()`、`window.onfocus / onblur`、`visibilitychange` 与 Tauri `window-focus-change` 进行全方位交叉验证，配合并发任务池 `TaskTracker` 进行精确的任务生命周期管理。
+10. **手绘草图质感模态弹窗系统规范 (SketchModal Center Dialog Pattern)**：
+    - **全域彻底消除 Web 原生弹窗与 Emoji**：全面禁止使用浏览器原生 `window.alert()` / `window.confirm()` / `window.prompt()` 与系统 Emoji；
+    - **软件框体绝对中心定位与毛玻璃遮罩**：模态弹窗严格固定在软件视口正中央（`position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;`），背景使用半透明暗化与毛玻璃高斯模糊遮罩（`backdrop-filter: blur(4px)`）；
+    - **手绘草图框线与 180ms 微抖动动效 (Pop & Micro-Shake)**：卡片框体采用 `1.4px solid var(--sketch-border)` 与不对称有机圆角（`border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;`），弹出时在 180ms 内快速展开并伴随自然轻微倾斜过冲回弹（`sketchModalPopShake`）；
+    - **全域右键 (Step Back) 优先拦截与无障碍键盘流**：弹窗激活时，鼠标右键点击任意位置或按 Esc 立即取消/关闭弹窗并消耗拦截回退事件（绝不穿透至下层视图或触发视图切换）；Enter 键快速确认，内置焦点管理与键盘 Tab 循环陷阱（Focus Trap）；
+    - **语义化类型与双模主题自适应**：封装 `sketchAlert`、`sketchConfirm`、`sketchPrompt`，支持 `info`、`success`、`warning`、`error`、`confirm` 手绘矢量 SVG 图标（`currentColor` 与低饱和度语义颜色），确认按钮遵循常态透明无边框、悬浮显框及危险操作（删除/卸载）红色预警微交互；
+11. **系统托盘、后台生命周期与单实例互斥铁律**：
+    - **单实例运行与防重复启动**：集成 `tauri-plugin-single-instance` 单实例互斥机制，软件同时只能启动一个实例。检测到重复启动时新实例直接退出返回，并自动唤醒、取消最小化并置顶聚焦已存在的应用主窗口；
+    - **右上角关闭为后台休眠**：点击右上角关闭按钮或触发系统关闭请求（如 `CloseRequested`）时，统一通过 `window.hide()` 隐藏窗口，保持后台进程与右下角系统托盘图标驻留；
+    - **系统托盘交互与菜单**：
+      - **左键单击 / 双击**：唤醒、取消最小化并置顶聚焦主窗口；
+      - **右键菜单**：提供 `打开`（唤醒并聚焦窗口）、`设置`（唤醒窗口并派发设置事件）、`退出`（调用 `app.exit(0)` 彻底杀死后台完全退出应用）。
+12. **Pi 进程与数据交互六大子系统规范**：
+    - **`pi_runner & host_pool` (进程监督、生命周期与多任务监管池)**：集成 Win32 Job Object 孤儿进程自动收割、多进程监管池（`PiHostPool` / `SessionHost` 支持 `MAX_CONCURRENT_TASKS = 3` 最大并发保护与 `--session-id <taskId>` 独立子进程隔离，并在事件中注入 `task_id` 实现多任务并发与事件精准路由）、严格 LF (`\n`) 字节流分帧器、滑动窗口崩溃抑制（30s 内超 2 次熔断告警）、内核多层自适应寻址管道（`PI_BINARY_PATH` > 用户一键更新内核目录 `~/.pi-dl/kernel/pi-windows-x64/` > 源码工作区 `.mytools` > Release 目录 `exe_dir` > 安装包资源 `resource_dir` > 系统 `PATH`）、Release 安装包内置内核资源自适应寻址（`bundle.resources` / `resource_dir`）、`default-area` 默认隔离工作区自动探测与工作目录严格锁定（优先锁定源码 `default-area` 杜绝临时产物干扰，并在目录内维护独立的 `AGENTS.md` 运行时自我描述与隔离规则，彻底阻断 Pi 内核向开发根目录 `AGENTS.md` 穿透溯源，打包时通过 `tauri.conf.json` 自动完整迁移至 Release 资源目录，预留动态切换接口）；
+    - **`config_manager` (配置管理与目录映射)**：负责 `~/.pi/agent/` 目录下 `auth.json`、`models.json`、`settings.json` 的双向读写映射、官方可用模型目录拉取与模型白名单持久化；
+    - **`package_manager` (组件目录检索、一键安装/卸载与版本更新、插件默认配置预设与推荐插件一键安装/一键全部更新)**：连通 Pi 官方 Package Catalog (pi.dev/packages)，基于轻量正则 HTML 解析与 15min TTL 缓存提取结构化组件信息；读取 `~/.pi/agent/settings.json` 与 `node_modules` 精确探测本地已安装组件及版本；调用 `pi install/remove npm:<pkg> -a` 执行非阻塞安装与卸载；内置全局单任务互斥锁（Mutex）与前端 FIFO 异步任务队列，支持连续点击加入队列并自动按序出队执行，杜绝并发冲突；支持排队状态精准感知（更新任务显示绿墨色「更新排队中」、卸载任务显示红色「卸载排队中」并支持点击取消排队）；检测到待更新组件 >= 2 时在「检查组件更新」左侧动态显现手绘「一键全部更新」按钮；接入 `ProgressStepper` 平滑步进引擎（阶段等待期间每 2s 自动 +1% 直到下个阶段 - 1%，新阶段触发立即跳变响应）；并发查询 npm registry API 进行 SemVer 版本比对与一键更新；内置 **插件默认配置预设映射系统 (`presets.json` 编译内嵌)**：支持包名别名匹配与目标配置文件智能写入校验；当软件触发组件安装时，自动检测并应用命中的推荐配置（如 `pi-web-access` 自动写入后台静默搜索与自动摘要模式 `workflow: auto-summary, autoOpenBrowser: false` 至 `~/.pi/web-search.json` 并回读校验）；在设置页已安装组件列表中，对存在映射但未生效的组件在「卸载」按钮左侧动态显现「推荐配置」手绘线框按钮，支持手动一键应用与校验；**内置推荐 Pi 插件列表 (`recommended-plugins.json` 编译内嵌至二进制)**，在「检查组件更新」按钮左侧集成「安装推荐插件」按钮，支持一键队列安装所有未安装的推荐插件（自动跳过已有插件，当全部推荐插件均已安装时动态自动隐藏）；
+    - **`security` (安全与脱敏中间件)**：全量上行下行数据经过正则脱敏过滤器（API Key、Token 与本地私有目录自动掩码）；
+    - **`version_watcher & kernel_updater` (抗抖动版本监测与一键内核更新引擎)**：启动延迟 2s 自检，6h 轮询带 ±8% Jitter 随机抖动与 15s Watchdog 超时熔断；支持“不再提醒更新”持久化（写入 `~/.pi-dl/config.json`，生效后直接跳过启动自检与后台自动轮询，不发网络请求；在设置页主动点击“检查更新”时自动重置恢复）；支持在设置页一键获取官方最新版本、折叠预览 Changelog 更新日志与提示框 8 秒自动平滑渐隐；支持流式 HTTP 管道下载与 `ProgressStepper` 平滑步进引擎（仅保留最右侧百分比，阶段等待期间每 2s 自动 +1% 直到下个阶段 - 1%，新阶段触发立即跳变响应）、支持一键取消更新（`pi_cancel_kernel_update` 安全终止下载流与清理临时文件），在 `~/.pi-dl/` 执行 staging 暂存、`--version` 预检校验、原子备份替换旧内核并热重启 `PiSupervisor`，实现零提权免安装无感热升级；
+    - **`session` (并发内存会话索引与监听)**：基于 `DashMap` 并发内存缓存与 `notify` 文件监听提供毫秒级会话列表与分支树检索；
+    - **`model_management & error_handling` (模型切换与异常自愈)**：支持通过 `pi_get_state`、`pi_get_available_models`、`pi_set_model`、`pi_set_thinking_level` 进行运行时模型感知与切换，捕获全链路 RPC 报错并渲染手绘异常诊断卡片提供一键重试与模型切换。
+13. **Windows 系统通知与失焦调度铁律 (`Windows Native Toast Notification & Blur-Trigger Pipeline`)**：
+    - **失焦触发铁律与原生双重锁**：仅在软件处于**失去焦点 (Blurred / Background)** 状态时才会触发通知；前端基于 `document.hasFocus()`、`window.onfocus / onblur`、`visibilitychange` 与 Tauri `window-focus-change` 进行多维校验，后端 `pi_show_notification` 叠加原生窗口句柄 `window.is_focused()` 双重锁防护，当软件处于焦点状态 (Focused) 时绝对拦截丢弃，绝不打扰用户；
+    - **身份与 Logo 绑定**：启动时自动设置进程 AUMID 为 `com.pidl.desktop`，并在用户注册表（`HKCU\Software\Classes\AppUserModelId\com.pidl.desktop`）写入应用名称 `pi-dl` 与持久化手绘 Logo 图标路径（`~/.pi-dl/icons/app-logo.png`），彻底杜绝开发态（`npm run dev`）Toast 顶部被系统误显示为 `Windows PowerShell`；仅在通知左上角保留精致手绘小 Logo 标识与 `pi-dl` 应用名，文本下方保持纯净无冗余大图；
+    - **人工回归立即通知与交互事件精确过滤**：仅当模型或扩展插件发出真正需要人工介入与交互确认的请求（如 `confirm`/`prompt`/`select`/`input`/`form` 等）时才在失焦时弹出 Windows 原生 Toast 通知与系统默认提示音，被动的小部件注册（`setWidget`）、状态栏更新（`setStatus`）与启动通知（`notify`）一律静默过滤，彻底杜绝冷启动与初始化阶段误弹通知；
+    - **报错终止立即通知**：当模型执行异常中断、RPC 报错或发生致命错误终止时，立即弹出通知；
+    - **输出完成与多任务并行调度**：若模型输出完成时仍有其他任务在并行运行（如包管理器安装/更新队列、内核升级等），暂不弹出通知；当**所有任务全部完成**后，统一弹出“所有任务已完成”通知；
+    - **通知点击唤醒与 Flow 自动定位**：当用户在 Windows 桌面或通知中心点击通知时，后端通过 `on_activated` 自动唤醒、取消最小化并置顶聚焦主窗口，前端捕获 `notification-clicked` 自动退出设置全屏页、切换至该段对话的 Flow 流式交互模式并滚动定位到底部；
+    - **底层架构实现**：后端基于 `tauri-winrt-notification` / `tauri-plugin-notification = "2"`（Windows 原生 WinRT Toast 通知，自带默认通知音），前端通过 `NotificationService` 结合 `document.hasFocus()`、`window.onfocus / onblur`、`visibilitychange` 与 Tauri `window-focus-change` 进行全方位交叉验证，配合并发任务池 `TaskTracker` 进行精确的任务生命周期管理。
 
 ---
 
@@ -135,6 +141,7 @@
 | :--- | :--- | :--- |
 | **`auto-compile-and-fix`** | [`.agents/skills/auto-compile-and-fix/SKILL.md`](file:///.agents/skills/auto-compile-and-fix/SKILL.md) | 任何任务或代码编写完成后触发，指导编译验证与错误自愈流程。 |
 | **`sketch-drafting-ui`** | [`.agents/skills/sketch-drafting-ui/SKILL.md`](file:///.agents/skills/sketch-drafting-ui/SKILL.md) | 参考 Anthropic Research 与 Pi.dev 设计美学，指导前端 UI 简约线条、手绘/工程绘图草图风格、大范围微渐变纸质背景及系统自适应明暗双色方案。 |
+| **`sketch-modal-pattern`** | [`.agents/skills/sketch-modal-pattern/SKILL.md`](file:///.agents/skills/sketch-modal-pattern/SKILL.md) | 指导手绘素描质感居中固定模态弹窗系统 (SketchModal) 的设计与交互规范（毛玻璃遮罩、Pop-Shake 微抖动、全域右键/Esc优先拦截、焦点陷阱与双模自适应）。 |
 | **`craft-web`** | [`.agents/skills/craft-web/SKILL.md`](file:///.agents/skills/craft-web/SKILL.md) | Web 前端界面与代码精细化打磨、去 AI 模板味、排版色彩动效设计与交付前规范核查。 |
 | **`ai-export-to-production`** | [`.agents/skills/ai-export-to-production/SKILL.md`](file:///.agents/skills/ai-export-to-production/SKILL.md) | AI 原型平台（v0/bolt/lovable/AI Studio）导出代码的生产工程化重构与规范化。 |
 | **`api-integration`** | [`.agents/skills/api-integration/SKILL.md`](file:///.agents/skills/api-integration/SKILL.md) | 基于 API 接口文档规范化接入后端接口，实现类型化模块封装与三态处理。 |

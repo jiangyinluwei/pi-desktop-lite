@@ -17,6 +17,7 @@ import { ProgressStepper } from "./services/progress-stepper.js";
 import { startFloatingIcons, stopFloatingIcons } from "./services/floating-icons.js";
 import { notificationService } from "./services/notification-service.js";
 import { taskManager } from "./services/task-manager.js";
+import { sketchAlert, sketchConfirm, sketchPrompt, SketchModal } from "./services/sketch-modal.js";
 
 /**
  * 简单 HTML 转义防 XSS
@@ -693,7 +694,7 @@ window.addEventListener("DOMContentLoaded", () => {
             }
           } catch (err) {
             console.error("Failed to switch model:", err);
-            alert(`切换模型失败: ${err}`);
+            await sketchAlert(`切换模型失败: ${err}`, { type: "error", title: "切换模型失败" });
           } finally {
             selectBtn.disabled = false;
           }
@@ -703,10 +704,10 @@ window.addEventListener("DOMContentLoaded", () => {
       // 移除按钮点击（激活中的模型已禁止删除）
       const removeBtn = item.querySelector(".btn-remove-model");
       if (removeBtn && !isActive) {
-        removeBtn.addEventListener("click", (e) => {
+        removeBtn.addEventListener("click", async (e) => {
           e.stopPropagation();
           if (isActive) {
-            alert("当前模型正在使用中，禁止删除！");
+            await sketchAlert("当前模型正在使用中，禁止删除！", { type: "warning", title: "模型保护" });
             return;
           }
           configService.removeModelFromWhitelist(m.provider, m.id);
@@ -953,10 +954,10 @@ window.addEventListener("DOMContentLoaded", () => {
         await configService.saveProviderApiKey(provider, key);
         currentOfficialAuth = await configService.getAuthConfig();
         renderOfficialProviderDetails(provider);
-        alert(`官方通道 [${provider}] API Key 已成功保存至 ~/.pi/agent/auth.json！`);
+        await sketchAlert(`官方通道 [${provider}] API Key 已成功保存至 ~/.pi/agent/auth.json！`, { type: "success", title: "保存成功" });
       } catch (err) {
         console.error("Save API Key failed:", err);
-        alert(`保存失败: ${err}`);
+        await sketchAlert(`保存失败: ${err}`, { type: "error", title: "保存失败" });
       } finally {
         btnSaveOfficialKey.disabled = false;
       }
@@ -986,11 +987,11 @@ window.addEventListener("DOMContentLoaded", () => {
             officialKeyStatus.style.color = "#10b981";
           }
         } else {
-          alert(`未从官网拉取到新模型，已保持当前目录。`);
+          await sketchAlert(`未从官网拉取到新模型，已保持当前目录。`, { type: "info", title: "拉取完成" });
         }
       } catch (err) {
         console.error("[Main] Fetch official models failed:", err);
-        alert(`从官网拉取模型失败: ${err}`);
+        await sketchAlert(`从官网拉取模型失败: ${err}`, { type: "error", title: "拉取失败" });
       } finally {
         btnFetchOfficialModels.disabled = false;
         if (btnFetchOfficialModelsText) {
@@ -1240,7 +1241,7 @@ window.addEventListener("DOMContentLoaded", () => {
             const newApiType = inputApiType?.value.trim() || "openai-completions";
             const newBaseUrl = inputBaseUrl?.value.trim();
             if (!newBaseUrl) {
-              alert("接口地址 (Base URL) 不能为空");
+              await sketchAlert("接口地址 (Base URL) 不能为空", { type: "warning", title: "参数缺失" });
               inputBaseUrl?.focus();
               return;
             }
@@ -1262,11 +1263,11 @@ window.addEventListener("DOMContentLoaded", () => {
               // 保存至 URL 历史沉淀
               saveAutofillHistory("url", { id: newBaseUrl, value: newBaseUrl });
 
-              alert(`运营商 [${pKey.toUpperCase()}] 配置已成功更新！`);
+              await sketchAlert(`运营商 [${pKey.toUpperCase()}] 配置已成功更新！`, { type: "success", title: "更新成功" });
               loadCustomProvidersConfig();
             } catch (err) {
               console.error("Save custom provider failed:", err);
-              alert(`更新运营商配置失败: ${err}`);
+              await sketchAlert(`更新运营商配置失败: ${err}`, { type: "error", title: "更新失败" });
             } finally {
               btnSaveEditProv.disabled = false;
             }
@@ -1277,7 +1278,11 @@ window.addEventListener("DOMContentLoaded", () => {
         const btnDeleteProvider = card.querySelector(".btn-delete-provider");
         if (btnDeleteProvider) {
           btnDeleteProvider.addEventListener("click", async () => {
-            if (confirm(`确定要删除运营商 [${pKey.toUpperCase()}] 及其全部模型配置吗？`)) {
+            const confirmed = await sketchConfirm(`确定要删除运营商 [${pKey.toUpperCase()}] 及其全部模型配置吗？`, {
+              title: "删除运营商确认",
+              isDanger: true
+            });
+            if (confirmed) {
               await configService.deleteCustomProvider(pKey);
               // 清理白名单中该运营商的模型
               models.forEach((m) => configService.removeModelFromWhitelist(pKey, m.id));
@@ -1318,7 +1323,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
             const modelIdVal = inputModelId?.value.trim();
             if (!modelIdVal) {
-              alert("请输入模型标识 (Model ID)");
+              await sketchAlert("请输入模型标识 (Model ID)", { type: "warning", title: "参数缺失" });
               inputModelId?.focus();
               return;
             }
@@ -1362,12 +1367,12 @@ window.addEventListener("DOMContentLoaded", () => {
                 reasoning: reasoningVal
               });
 
-              alert(`模型 [${modelNameVal}] 已成功添加至运营商 [${pKey.toUpperCase()}] 并加入当前模型列表！`);
+              await sketchAlert(`模型 [${modelNameVal}] 已成功添加至运营商 [${pKey.toUpperCase()}] 并加入当前模型列表！`, { type: "success", title: "添加成功" });
               loadCustomProvidersConfig();
               renderWhitelistModels(piClient.currentModel);
             } catch (err) {
               console.error("Add model failed:", err);
-              alert(`添加模型失败: ${err}`);
+              await sketchAlert(`添加模型失败: ${err}`, { type: "error", title: "添加失败" });
             } finally {
               btnConfirmAddModel.disabled = false;
             }
@@ -1507,12 +1512,12 @@ window.addEventListener("DOMContentLoaded", () => {
                     });
                   }
 
-                  alert(`模型 [${updatedName}] 配置已成功更新！`);
+                  await sketchAlert(`模型 [${updatedName}] 配置已成功更新！`, { type: "success", title: "更新成功" });
                   loadCustomProvidersConfig();
                   renderWhitelistModels(piClient.currentModel);
                 } catch (err) {
                   console.error("Update model failed:", err);
-                  alert(`更新模型失败: ${err}`);
+                  await sketchAlert(`更新模型失败: ${err}`, { type: "error", title: "更新失败" });
                 } finally {
                   btnSaveEditModel.disabled = false;
                 }
@@ -1543,7 +1548,11 @@ window.addEventListener("DOMContentLoaded", () => {
             const delBtn = chip.querySelector(".btn-delete-custom-model");
             if (delBtn) {
               delBtn.addEventListener("click", async () => {
-                if (confirm(`确定要删除模型 [${m.name || m.id}] 吗？`)) {
+                const confirmed = await sketchConfirm(`确定要删除模型 [${m.name || m.id}] 吗？`, {
+                  title: "删除模型确认",
+                  isDanger: true
+                });
+                if (confirmed) {
                   await configService.deleteCustomModel(pKey, m.id);
                   configService.removeModelFromWhitelist(pKey, m.id);
                   loadCustomProvidersConfig();
@@ -1646,7 +1655,7 @@ window.addEventListener("DOMContentLoaded", () => {
         saveAutofillHistory("provider", { id: providerId, name: providerId, baseUrl });
         saveAutofillHistory("url", { id: baseUrl, value: baseUrl });
 
-        alert(`运营商 [${providerId.toUpperCase()}] 已成功保存！现在可以在下方“步骤 2”中为该运营商添加具体模型或修改配置。`);
+        await sketchAlert(`运营商 [${providerId.toUpperCase()}] 已成功保存！现在可以在下方“步骤 2”中为该运营商添加具体模型或修改配置。`, { type: "success", title: "保存成功" });
         customProviderId.value = "";
         customBaseUrl.value = "";
         customApiKey.value = "";
@@ -1654,7 +1663,7 @@ window.addEventListener("DOMContentLoaded", () => {
         loadCustomProvidersConfig();
       } catch (err) {
         console.error("Save custom provider failed:", err);
-        alert(`保存运营商失败: ${err}`);
+        await sketchAlert(`保存运营商失败: ${err}`, { type: "error", title: "保存失败" });
       } finally {
         if (saveBtn) saveBtn.disabled = false;
       }
@@ -1870,7 +1879,7 @@ window.addEventListener("DOMContentLoaded", () => {
     btnUpdateKernel.addEventListener("click", async () => {
       const targetVer = latestUpdateInfo?.latest_version;
       if (!targetVer) {
-        alert("未找到可用更新版本");
+        await sketchAlert("未找到可用更新版本", { type: "info", title: "检查更新" });
         return;
       }
 
@@ -4654,10 +4663,11 @@ window.addEventListener("DOMContentLoaded", () => {
       await loadInstalledPackages();
     } catch (err) {
       console.error(`[PackageManager] Task ${action} error for ${packageName}:`, err);
-      alert(
+      await sketchAlert(
         `组件 ${packageName} ${
           action === "uninstall" ? "卸载" : action === "update" ? "更新" : "安装"
-        } 失败：\n${err?.toString() || "未知错误"}`
+        } 失败：\n${err?.toString() || "未知错误"}`,
+        { type: "error", title: "组件操作失败" }
       );
     } finally {
       packageOperationMap.delete(packageName);
@@ -4702,7 +4712,10 @@ window.addEventListener("DOMContentLoaded", () => {
       await loadInstalledPackages();
     } catch (err) {
       console.error(`[PackageManager] Failed to apply preset for ${packageName}:`, err);
-      alert(`应用组件【${packageName}】推荐配置失败：\n${err?.toString() || "未知错误"}`);
+      await sketchAlert(`应用组件【${packageName}】推荐配置失败：\n${err?.toString() || "未知错误"}`, {
+        type: "error",
+        title: "应用推荐配置失败"
+      });
       if (btnElement) {
         btnElement.disabled = false;
         btnElement.textContent = "推荐配置";
@@ -4716,8 +4729,12 @@ window.addEventListener("DOMContentLoaded", () => {
   };
 
   // 卸载组件
-  const handleUninstallPackage = (packageName) => {
-    if (!confirm(`确定要从系统中卸载扩展组件「${packageName}」吗？\n（将加入操作队列自动执行）`)) {
+  const handleUninstallPackage = async (packageName) => {
+    const confirmed = await sketchConfirm(`确定要从系统中卸载扩展组件「${packageName}」吗？\n（将加入操作队列自动执行）`, {
+      title: "卸载扩展组件确认",
+      isDanger: true
+    });
+    if (!confirmed) {
       return;
     }
     enqueuePackageTask(packageName, "uninstall");
@@ -4753,13 +4770,13 @@ window.addEventListener("DOMContentLoaded", () => {
       if (currentCatalogResult?.packages) renderCatalogGrid(currentCatalogResult.packages);
 
       if (updateCount > 0) {
-        alert(`检查完成：发现 ${updateCount} 个组件有可用更新！`);
+        await sketchAlert(`检查完成：发现 ${updateCount} 个组件有可用更新！`, { type: "success", title: "检查完成" });
       } else {
-        alert("已安装组件均为最新版本！");
+        await sketchAlert("已安装组件均为最新版本！", { type: "info", title: "检查完成" });
       }
     } catch (err) {
       console.error("[PackageManager] Check updates error:", err);
-      alert(`检查更新失败：${err?.toString() || "网络错误"}`);
+      await sketchAlert(`检查更新失败：${err?.toString() || "网络错误"}`, { type: "error", title: "检查更新失败" });
     } finally {
       btnCheckAllPackageUpdates.disabled = false;
       btnCheckAllPackageUpdates.innerHTML = origText;

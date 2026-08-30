@@ -34,6 +34,7 @@
 - 📜 **隐藏式极简滚动条体系**：全域消除上下图标与滚动槽，常态为 4px 隐匿窄竖条，悬浮可滚动内容区不高亮，仅鼠标移入滚动条本身范围时自适应放大至 6px 并高亮加深；
 - 📐 **手绘草图质感自定义下拉框 (Pop-Shake)**：封装 `SketchSelect` 组件，展开时触发迅速轻快的弹出微抖动动画（Pop & Micro-Shake，约 180ms 快速回弹），边框、底色、字色完美适配纸质与黑板双模，双向同步原生 `<select>` 数据与事件；
 - 🖊️ **手绘草图质感自定义填表与智能联想推荐系统 (`Sketch AutoFill & Smart Suggestions Engine`)**：彻底消灭浏览器/Webview 原生破相的表单填表下拉框与黄/蓝背景变色伪类（覆盖 WebKit `:-webkit-autofill`）；提供与 `SketchSelect` 一脉相承的 180ms 快速回弹弹出微抖动动效（Pop & Micro-Shake）；内置 SiliconFlow (硅基流动)、DeepSeek、Ollama、OneAPI、VolcEngine (火山方舟)、OpenRouter、Groq、DashScope (阿里百炼)、Zhipu (智谱)、Moonshot (Kimi)、MiniMax、StepFun、vLLM、LM Studio、Together AI 等海量预设；一键全表智能联动填充 Provider ID、协议（同步联动 `SketchSelect`）、Base URL、Dev-Role 及 Reasoning 推荐开关；在新增模型时提供适配模型推荐与上下文/Token上限一键预填；自动将用户填写的自定义配置沉淀至本地历史池，以 `[历史]` 徽章优先置顶展示，支持键盘 ↑/↓ 导航、Enter 填入及全域右键/Esc 回退收起；
+- 💬 **手绘草图质感居中模态弹窗系统 (`SketchModal Center Dialog System`)**：彻底消除 Web 原生 `alert` / `confirm` / `prompt` 弹窗与系统 Emoji；弹出位置固定在软件视口绝对正中心，配备半透明毛玻璃高斯模糊遮罩；采用 1.4px 实墨草图线框与不对称有机微圆角，提供 180ms 灵动弹出微抖动动效（Pop & Micro-Shake）；全域右键 (Step Back) 与 Esc 优先拦截并消耗回退事件，支持 Enter 确认与焦点循环陷阱（Focus Trap）；双模主题自适应，支持 `info`、`success`、`warning`、`error`、`confirm` 语义化手绘矢量 SVG 图标与危险操作红色预警；
 - ⚡ **高性能纯 Rust (Tauri 2) 后端核心架构**：
   - 🪟 **单实例互斥与防重复启动 (`single-instance`)**：全局保证软件仅有一个实例运行，检测到重复启动时新进程直接退出，并自动将已有主窗口取消最小化、唤醒并置顶聚焦；
   - 🛡️ **`pi_runner` (进程监督与孤儿收割)**：Windows 原生 Win32 Job Object 内核级级联收割，杜绝僵尸进程；严格 `\n` (LF) 字节流分帧器；滑动窗口崩溃自愈（30s 内超 2 次熔断保护）；`default-area` 默认隔离工作区自动探测与工作目录锁定（源码工作区优先 + 独立 `AGENTS.md` 防穿透规则与自动播种保障，打包时完整打包至 Release 资源目录，预留动态切换接口）；
