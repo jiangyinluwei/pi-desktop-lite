@@ -29,7 +29,8 @@
     <!-- 顶部轻量模型快速切换标签 -->
     <button type="button" class="flow-model-tag" id="flow-model-tag" data-tauri-no-drag title="点击打开模型与设置">
       <span class="flow-model-icon" aria-hidden="true">
-        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5"
+          stroke-linecap="round" stroke-linejoin="round">
           <path d="M8.5 1.5 L3.5 9 L7.5 9 L6.5 14.5 L12.5 7 L8.5 7 Z" />
         </svg>
       </span>
@@ -37,11 +38,13 @@
     </button>
 
     <div class="titlebar-drag-area" data-tauri-drag-region></div>
-    
+
     <!-- 右上角手绘 Mini 任务胶囊 [✏️ 1/3 Task] -->
-    <button type="button" class="mini-task-capsule hidden" id="mini-task-capsule" data-tauri-no-drag aria-label="后台任务" title="点击展开后台对话任务监控">
+    <button type="button" class="mini-task-capsule hidden" id="mini-task-capsule" data-tauri-no-drag aria-label="后台任务"
+      title="点击展开后台对话任务监控">
       <span class="capsule-pencil-icon" aria-hidden="true">
-        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5"
+          stroke-linecap="round" stroke-linejoin="round">
           <path d="M11.5 2.5 L13.5 4.5 L4.5 13.5 L2 14 L2.5 11.5 Z" />
           <path d="M9.8 4.2 L11.8 6.2" />
         </svg>
@@ -85,7 +88,8 @@
             <!-- 用户问题卡片 -->
             <div class="flow-user-prompt-card" id="flow-user-prompt">
               <div class="prompt-icon">
-                <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round">
                   <path d="M4 10 L16 10 M11 5 L16 10 L11 15" />
                 </svg>
               </div>
@@ -98,7 +102,8 @@
             <!-- 运行态上下文/Inner-Skill 注入胶囊标签 (仅在成功注入时显现) -->
             <div class="flow-injection-capsule hidden" id="flow-injection-capsule" role="status" aria-live="polite">
               <span class="capsule-icon" aria-hidden="true">
-                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" stroke-linejoin="round">
                   <path d="M8.5 1.5 L3.5 9 L7.5 9 L6.5 14.5 L12.5 7 L8.5 7 Z" />
                 </svg>
               </span>
@@ -114,7 +119,8 @@
                   <span class="thinking-duration" id="thinking-duration">已深度思考 1.8 秒</span>
                 </div>
                 <div class="thinking-arrow-icon" aria-hidden="true">
-                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"
+                    stroke-linecap="round">
                     <polyline points="4 6 8 10 12 6" />
                   </svg>
                 </div>
@@ -124,7 +130,8 @@
                   <ul class="thinking-steps">
                     <li class="step-item done">
                       <span class="step-marker" aria-hidden="true">
-                        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor"
+                          stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
                           <path d="M3.5 8.5 L6.5 11.5 L12.5 4.5" />
                         </svg>
                       </span>
@@ -132,7 +139,8 @@
                     </li>
                     <li class="step-item done">
                       <span class="step-marker" aria-hidden="true">
-                        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor"
+                          stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
                           <path d="M3.5 8.5 L6.5 11.5 L12.5 4.5" />
                         </svg>
                       </span>
@@ -141,7 +149,8 @@
                     <li class="step-item in-progress">
                       <span class="step-marker" aria-hidden="true">
                         <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor" stroke="none">
-                          <path d="M8 1.2 C8 4.8, 8.5 7.5, 14.8 8 C8.5 8.5, 8 11.2, 8 14.8 C8 11.2, 7.5 8.5, 1.2 8 C7.5 7.5, 8 4.8, 8 1.2 Z" />
+                          <path
+                            d="M8 1.2 C8 4.8, 8.5 7.5, 14.8 8 C8.5 8.5, 8 11.2, 8 14.8 C8 11.2, 7.5 8.5, 1.2 8 C7.5 7.5, 8 4.8, 8 1.2 Z" />
                         </svg>
                       </span>
                       <span class="step-text">生成结构化响应：已完成状态机与右键回退流水线映射</span>
@@ -165,8 +174,10 @@
                 </ul>
                 <p class="sketch-callout">
                   <span class="callout-icon" aria-hidden="true">
-                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M8 2 C5.5 2, 3.8 3.8, 4 6.2 C4.2 7.8, 5.5 9.2, 6 10.5 L10 10.5 C10.5 9.2, 11.8 7.8, 12 6.2 C12.2 3.8, 10.5 2, 8 2 Z" />
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <path
+                        d="M8 2 C5.5 2, 3.8 3.8, 4 6.2 C4.2 7.8, 5.5 9.2, 6 10.5 L10 10.5 C10.5 9.2, 11.8 7.8, 12 6.2 C12.2 3.8, 10.5 2, 8 2 Z" />
                       <path d="M6 12.5 L10 12.5" />
                       <path d="M7 14.5 L9 14.5" />
                     </svg>
@@ -222,7 +233,8 @@
         <!-- 手绘线条素描搜索框 -->
         <form class="sketch-search-box" id="search-form" onsubmit="return false;">
           <!-- 导入图标与文件选择 -->
-          <div class="search-icon" id="search-icon-box" role="button" tabindex="0" aria-label="导入文件" title="点击导入文件，或直接将图片/文档拖入此处">
+          <div class="search-icon" id="search-icon-box" role="button" tabindex="0" aria-label="导入文件"
+            title="点击导入文件，或直接将图片/文档拖入此处">
             <svg viewBox="0 0 50 50" width="18" height="18" fill="currentColor">
               <path
                 d="M 1.78125 -0.03125 C 1.300781 0.078125 0.960938 0.507813 0.96875 1 L 0.96875 49 C 0.972656 49.566406 1.433594 50.027344 2 50.03125 L 32 50.03125 C 32.566406 50.027344 33.027344 49.566406 33.03125 49 L 33.03125 39 L 30.96875 39 L 30.96875 47.96875 L 3.03125 47.96875 L 3.03125 2.03125 L 30.96875 2.03125 L 30.96875 11 L 33.03125 11 L 33.03125 1 L 33.027344 0.433594 32.566406 -0.0273438 32 -0.03125 L 2 -0.03125 C 1.925781 -0.0390625 1.855469 -0.0390625 1.78125 -0.03125 Z M 24.78125 15.09375 C 24.554688 15.125 24.34375 15.238281 24.1875 15.40625 L 15.28125 24.28125 L 14.59375 25 L 15.28125 25.71875 L 24.1875 34.59375 C 24.429688 34.890625 24.816406 35.027344 25.191406 34.941406 C 25.5625 34.855469 25.855469 34.5625 25.941406 34.191406 C 26.027344 33.816406 25.890625 33.429688 25.59375 33.1875 L 18.4375 26 L 48 26 C 48.359375 26.003906 48.695313 25.816406 48.878906 25.503906 C 49.058594 25.191406 49.058594 24.808594 48.878906 24.496094 C 48.695313 24.183594 48.359375 23.996094 48 24 L 18.4375 24 L 25.59375 16.8125 C 25.90625 16.515625 25.996094 16.050781 25.8125 15.660156 C 25.625 15.265625 25.210938 15.039063 24.78125 15.09375 Z" />
@@ -255,7 +267,8 @@
           </button>
 
           <!-- Flow 模式显式手绘「⏹ 中止」按钮 -->
-          <button type="button" id="flow-btn-abort" class="icon-button flow-btn-abort hidden" aria-label="中止生成" title="彻底中止当前 Agent (Abort)">
+          <button type="button" id="flow-btn-abort" class="icon-button flow-btn-abort hidden" aria-label="中止生成"
+            title="彻底中止当前 Agent (Abort)">
             <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" stroke="none">
               <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" />
             </svg>
@@ -296,8 +309,10 @@
         <!-- 显目用户操作提示 -->
         <div class="topbar-hint-banner" id="topbar-hint-banner">
           <span class="hint-icon" aria-hidden="true">
-            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M8 2 C5.5 2, 3.8 3.8, 4 6.2 C4.2 7.8, 5.5 9.2, 6 10.5 L10 10.5 C10.5 9.2, 11.8 7.8, 12 6.2 C12.2 3.8, 10.5 2, 8 2 Z" />
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path
+                d="M8 2 C5.5 2, 3.8 3.8, 4 6.2 C4.2 7.8, 5.5 9.2, 6 10.5 L10 10.5 C10.5 9.2, 11.8 7.8, 12 6.2 C12.2 3.8, 10.5 2, 8 2 Z" />
               <path d="M6 12.5 L10 12.5" />
               <path d="M7 14.5 L9 14.5" />
             </svg>
@@ -311,21 +326,24 @@
         <!-- 左侧 Tab 列表 -->
         <nav class="settings-tabs-nav" aria-label="设置分类">
           <button type="button" class="settings-tab-btn active" data-tab="tab-appearance">
-            <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="10" cy="10" r="7" />
               <path d="M10 3v14a7 7 0 0 0 0-14z" fill="currentColor" />
             </svg>
-            外观与常规
+            常规
           </button>
           <button type="button" class="settings-tab-btn" data-tab="tab-current-models">
-            <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="4" width="14" height="12" rx="2" />
               <path d="M7 8h6M7 12h4" />
             </svg>
             模型配置
           </button>
           <button type="button" class="settings-tab-btn" data-tab="tab-packages">
-            <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="3" width="6" height="6" rx="1" />
               <rect x="11" y="3" width="6" height="6" rx="1" />
               <rect x="3" y="11" width="6" height="6" rx="1" />
@@ -334,7 +352,8 @@
             内核
           </button>
           <button type="button" class="settings-tab-btn" data-tab="tab-sessions">
-            <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M17 12a4 4 0 0 1-4 4H7l-4 3V6a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v6z" />
             </svg>
             会话记录
@@ -343,10 +362,10 @@
 
         <!-- 右侧面板内容区 -->
         <div class="settings-tab-content">
-          <!-- 1. 外观与常规面板 -->
+          <!-- 1. 常规面板 -->
           <div class="tab-pane active" id="pane-appearance">
             <div class="pane-header">
-              <h3 class="pane-title">外观与常规设置</h3>
+              <h3 class="pane-title">常规设置</h3>
               <p class="pane-desc">管理软件界面主题色调与默认对话行为。</p>
             </div>
 
@@ -356,7 +375,8 @@
               <div class="theme-segmented-control" id="theme-segmented-control">
                 <button type="button" class="theme-option active" data-theme-val="system">
                   <span class="theme-icon" aria-hidden="true">
-                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
                       <circle cx="8" cy="8" r="6" />
                       <path d="M8 2 A6 6 0 0 1 8 14 Z" fill="currentColor" stroke="none" />
                     </svg>
@@ -365,16 +385,19 @@
                 </button>
                 <button type="button" class="theme-option" data-theme-val="light">
                   <span class="theme-icon" aria-hidden="true">
-                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
                       <circle cx="8" cy="8" r="3.2" />
-                      <path d="M8 1.5v1.5M8 13v1.5M1.5 8h1.5M13 8h1.5M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" />
+                      <path
+                        d="M8 1.5v1.5M8 13v1.5M1.5 8h1.5M13 8h1.5M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" />
                     </svg>
                   </span>
                   <span class="theme-name">浅色模式</span>
                 </button>
                 <button type="button" class="theme-option" data-theme-val="dark">
                   <span class="theme-icon" aria-hidden="true">
-                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
                       <path d="M13.2 10.5 A6 6 0 1 1 5.5 2.8 A5 5 0 0 0 13.2 10.5 Z" />
                     </svg>
                   </span>
@@ -417,11 +440,17 @@
             <div class="channel-toggle-bar" id="channel-toggle-bar">
               <button type="button" class="flat-btn channel-toggle-btn" id="btn-toggle-official">
                 <span>官方通道配置 - 展开</span>
-                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6 L8 10 L12 6" /></svg>
+                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 6 L8 10 L12 6" />
+                </svg>
               </button>
               <button type="button" class="flat-btn channel-toggle-btn" id="btn-toggle-custom">
                 <span>自定义通道配置 - 展开</span>
-                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6 L8 10 L12 6" /></svg>
+                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 6 L8 10 L12 6" />
+                </svg>
               </button>
             </div>
 
@@ -462,7 +491,8 @@
                     </div>
                     <a href="#" target="_blank" rel="noreferrer" class="flat-link" id="official-provider-doc">
                       <span>获取 API Key</span>
-                      <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor"
+                        stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="M6 3.5h6.5V10M12.5 3.5L4 12" />
                       </svg>
                     </a>
@@ -472,9 +502,12 @@
                   <div class="form-row">
                     <label class="form-label" for="official-api-key-input">API Key：</label>
                     <div class="input-with-action">
-                      <input type="password" id="official-api-key-input" class="flat-input" placeholder="输入 API Key (如 sk-ant-...)" autocomplete="off" />
-                      <button type="button" class="flat-btn flat-btn-secondary" id="btn-toggle-key-visibility" title="显示/隐藏" aria-label="显示/隐藏">
-                        <svg id="icon-key-visibility" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                      <input type="password" id="official-api-key-input" class="flat-input"
+                        placeholder="输入 API Key (如 sk-ant-...)" autocomplete="off" />
+                      <button type="button" class="flat-btn flat-btn-secondary" id="btn-toggle-key-visibility"
+                        title="显示/隐藏" aria-label="显示/隐藏">
+                        <svg id="icon-key-visibility" viewBox="0 0 16 16" width="13" height="13" fill="none"
+                          stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
                           <path d="M1.5 8 C3.5 4.5, 12.5 4.5, 14.5 8 C12.5 11.5, 3.5 11.5, 1.5 8 Z" />
                           <circle cx="8" cy="8" r="2.2" />
                         </svg>
@@ -487,13 +520,17 @@
 
                 <!-- 官方可用模型罗列 -->
                 <div class="official-models-section">
-                  <div class="section-sub-header" style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                  <div class="section-sub-header"
+                    style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
                     <div class="section-title-wrap">
                       <h4 class="sub-title">官方可用模型列表</h4>
                       <span class="sub-hint">点击可一键添加至“当前模型列表”</span>
                     </div>
-                    <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-fetch-official-models" style="display: inline-flex; align-items: center; gap: 4px;">
-                      <svg id="icon-fetch-official-models" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-fetch-official-models"
+                      style="display: inline-flex; align-items: center; gap: 4px;">
+                      <svg id="icon-fetch-official-models" viewBox="0 0 16 16" width="12" height="12" fill="none"
+                        stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"
+                        aria-hidden="true">
                         <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c2.3 0 4.3 1.4 5.1 3.5M13.5 2.5v3.5H10" />
                       </svg>
                       <span id="btn-fetch-official-models-text">从官网拉取最新模型</span>
@@ -529,11 +566,15 @@
                   <form class="custom-provider-form" id="custom-provider-form">
                     <div class="form-grid-2">
                       <div class="form-field">
-                        <label for="custom-provider-id" class="form-label">运营商标识 (Provider ID) <span class="req">*</span></label>
-                        <input type="text" id="custom-provider-id" class="flat-input" placeholder="如 siliconflow, ollama, oneapi, volcengine" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" required />
+                        <label for="custom-provider-id" class="form-label">运营商标识 (Provider ID) <span
+                            class="req">*</span></label>
+                        <input type="text" id="custom-provider-id" class="flat-input"
+                          placeholder="如 siliconflow, ollama, oneapi, volcengine" autocomplete="off" autocorrect="off"
+                          autocapitalize="off" spellcheck="false" required />
                       </div>
                       <div class="form-field">
-                        <label for="custom-api-type" class="form-label">接口类型 (API Protocol) <span class="req">*</span></label>
+                        <label for="custom-api-type" class="form-label">接口类型 (API Protocol) <span
+                            class="req">*</span></label>
                         <select id="custom-api-type" class="flat-select" required>
                           <option value="openai-completions" selected>openai-completions</option>
                           <option value="openai-responses">openai-responses</option>
@@ -545,17 +586,22 @@
 
                     <div class="form-field">
                       <label for="custom-base-url" class="form-label">接口地址 (Base URL) <span class="req">*</span></label>
-                      <input type="url" id="custom-base-url" class="flat-input" placeholder="如 https://api.siliconflow.cn/v1 或 http://localhost:11434/v1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" required />
+                      <input type="url" id="custom-base-url" class="flat-input"
+                        placeholder="如 https://api.siliconflow.cn/v1 或 http://localhost:11434/v1" autocomplete="off"
+                        autocorrect="off" autocapitalize="off" spellcheck="false" required />
                     </div>
 
                     <div class="form-field">
                       <label for="custom-api-key" class="form-label">API Key (可选 / 支持 $ENV_VAR 环境变量插值)</label>
-                      <input type="password" id="custom-api-key" class="flat-input" placeholder="sk-... (Ollama 可留空或填 ollama)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+                      <input type="password" id="custom-api-key" class="flat-input"
+                        placeholder="sk-... (Ollama 可留空或填 ollama)" autocomplete="off" autocorrect="off"
+                        autocapitalize="off" spellcheck="false" />
                     </div>
 
                     <div class="form-grid-2" style="margin-top: 2px;">
                       <div class="form-field checkbox-field">
-                        <label class="checkbox-label" title="开启后以 developer role 发送系统提示词。国内/聚合平台如 DeepSeek、火山方舟等请勿勾选，否则会导致 400 invalid developer role 错误。">
+                        <label class="checkbox-label"
+                          title="开启后以 developer role 发送系统提示词。国内/聚合平台如 DeepSeek、火山方舟等请勿勾选，否则会导致 400 invalid developer role 错误。">
                           <input type="checkbox" id="custom-supports-dev-role" />
                           <span>启用 developer 角色 (兼容端点请勿勾)</span>
                         </label>
@@ -569,7 +615,8 @@
                     </div>
 
                     <div class="form-actions">
-                      <button type="submit" class="flat-btn flat-btn-primary" id="btn-save-custom-provider">+ 保存/更新运营商</button>
+                      <button type="submit" class="flat-btn flat-btn-primary" id="btn-save-custom-provider">+
+                        保存/更新运营商</button>
                     </div>
                   </form>
                 </div>
@@ -604,7 +651,8 @@
                   </div>
                   <div class="status-actions">
                     <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-restart-host">
-                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+                        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M2.5 8a5.5 5.5 0 0 1 9.39-3.89L13.5 5.5" />
                         <path d="M13.5 2v3.5H10" />
                         <path d="M13.5 8a5.5 5.5 0 0 1-9.39 3.89L2.5 10.5" />
@@ -613,7 +661,8 @@
                       重启内核
                     </button>
                     <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-check-update">
-                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+                        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M8 2v9M4 7l4 4 4-4M2 14h12" />
                       </svg>
                       检查更新
@@ -624,27 +673,33 @@
                   <div class="update-notice-main">
                     <span class="update-icon" aria-hidden="true">
                       <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" stroke="none">
-                        <path d="M8 1.2 C8 4.8, 8.5 7.5, 14.8 8 C8.5 8.5, 8 11.2, 8 14.8 C8 11.2, 7.5 8.5, 1.2 8 C7.5 7.5, 8 4.8, 8 1.2 Z" />
+                        <path
+                          d="M8 1.2 C8 4.8, 8.5 7.5, 14.8 8 C8.5 8.5, 8 11.2, 8 14.8 C8 11.2, 7.5 8.5, 1.2 8 C7.5 7.5, 8 4.8, 8 1.2 Z" />
                       </svg>
                     </span>
                     <span class="update-msg" id="update-msg">发现新版本！</span>
                   </div>
                   <div class="update-notice-actions hidden" id="update-notice-actions">
-                    <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-toggle-changelog" title="查看新版本特性与更新日志">
-                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                    <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-toggle-changelog"
+                      title="查看新版本特性与更新日志">
+                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+                        stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M3 3h10v10H3z" />
                         <path d="M6 6h4M6 9h4M6 12h2" />
                       </svg>
                       更新日志
                     </button>
-                    <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-ignore-update" title="不再提醒更新">
-                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                    <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-ignore-update"
+                      title="不再提醒更新">
+                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+                        stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M12 4L4 12M4 4l8 8" />
                       </svg>
                       不再提醒更新
                     </button>
                     <button type="button" class="flat-btn flat-btn-primary mini" id="btn-update-kernel">
-                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+                        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M8 2v8M4 6l4 4 4-4M2 13h12" />
                       </svg>
                       一键更新内核
@@ -658,7 +713,8 @@
                     <span class="progress-stage-text" id="kernel-progress-stage">正在准备下载内核...</span>
                     <div class="progress-header-right">
                       <span class="progress-percent-text" id="kernel-progress-percent">0%</span>
-                      <button type="button" class="flat-btn flat-btn-secondary mini btn-cancel-update" id="btn-cancel-update" title="取消内核更新">
+                      <button type="button" class="flat-btn flat-btn-secondary mini btn-cancel-update"
+                        id="btn-cancel-update" title="取消内核更新">
                         取消
                       </button>
                     </div>
@@ -673,8 +729,10 @@
                 <div class="kernel-changelog-drawer hidden" id="kernel-changelog-drawer">
                   <div class="changelog-drawer-header">
                     <span class="changelog-title">版本更新日志 (<span id="changelog-version-tag">最新</span>)</span>
-                    <button type="button" class="drawer-close-btn" id="btn-close-changelog" title="收起更新日志" aria-label="关闭更新日志">
-                      <svg viewBox="0 0 14 14" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <button type="button" class="drawer-close-btn" id="btn-close-changelog" title="收起更新日志"
+                      aria-label="关闭更新日志">
+                      <svg viewBox="0 0 14 14" width="10" height="10" fill="none" stroke="currentColor"
+                        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M3 3l8 8M11 3l-8 8" />
                       </svg>
                     </button>
@@ -688,28 +746,36 @@
 
             <!-- 已安装组件区域 (Collapsible Panel) -->
             <div class="installed-packages-wrapper" id="installed-packages-wrapper">
-              <div class="installed-section-header" id="installed-section-toggle" role="button" tabindex="0" aria-expanded="true">
+              <div class="installed-section-header" id="installed-section-toggle" role="button" tabindex="0"
+                aria-expanded="true">
                 <div class="installed-header-title">
-                  <svg class="fold-arrow" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="fold-arrow" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M4 6 L8 10 L12 6" />
                   </svg>
                   <span>已安装组件 (<span id="installed-packages-count">0</span>)</span>
                 </div>
                 <div class="installed-header-actions">
-                  <button type="button" class="flat-btn flat-btn-secondary mini hidden" id="btn-install-recommended-packages" title="一键队列安装推荐扩展组件">
+                  <button type="button" class="flat-btn flat-btn-secondary mini hidden"
+                    id="btn-install-recommended-packages" title="一键队列安装推荐扩展组件">
                     <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" stroke="none">
-                      <path d="M8 1.2 C8 4.8, 8.5 7.5, 14.8 8 C8.5 8.5, 8 11.2, 8 14.8 C8 11.2, 7.5 8.5, 1.2 8 C7.5 7.5, 8 4.8, 8 1.2 Z" />
+                      <path
+                        d="M8 1.2 C8 4.8, 8.5 7.5, 14.8 8 C8.5 8.5, 8 11.2, 8 14.8 C8 11.2, 7.5 8.5, 1.2 8 C7.5 7.5, 8 4.8, 8 1.2 Z" />
                     </svg>
                     安装推荐插件
                   </button>
-                  <button type="button" class="flat-btn flat-btn-primary mini hidden" id="btn-update-all-packages" title="一键更新所有有可用更新的组件">
-                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                  <button type="button" class="flat-btn flat-btn-primary mini hidden" id="btn-update-all-packages"
+                    title="一键更新所有有可用更新的组件">
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
                       <path d="M8 2v9M4 7l4 4 4-4M2 14h12" />
                     </svg>
                     一键全部更新
                   </button>
-                  <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-check-all-package-updates" title="检查已安装组件更新">
-                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                  <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-check-all-package-updates"
+                    title="检查已安装组件更新">
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
                       <path d="M1 4v4h4M15 12v-4h-4M14 4A7 7 0 0 0 3.5 5.5L1 8M15 8l-2.5 2.5A7 7 0 0 1 2 12" />
                     </svg>
                     检查组件更新
@@ -727,13 +793,17 @@
             <div class="packages-filter-bar">
               <div class="search-input-group">
                 <div class="filter-search-input-wrap">
-                  <svg class="search-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="search-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="7" cy="7" r="4.5" />
                     <line x1="10.5" y1="10.5" x2="14" y2="14" />
                   </svg>
-                  <input type="text" id="packages-search-input" class="flat-input" placeholder="搜索组件名称、描述或作者..." autocomplete="off" />
-                  <button type="button" class="btn-clear-search hidden" id="btn-clear-package-search" title="清空搜索" aria-label="清空搜索">
-                    <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+                  <input type="text" id="packages-search-input" class="flat-input" placeholder="搜索组件名称、描述或作者..."
+                    autocomplete="off" />
+                  <button type="button" class="btn-clear-search hidden" id="btn-clear-package-search" title="清空搜索"
+                    aria-label="清空搜索">
+                    <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round">
                       <line x1="3.5" y1="3.5" x2="12.5" y2="12.5" />
                       <line x1="12.5" y1="3.5" x2="3.5" y2="12.5" />
                     </svg>
@@ -758,7 +828,8 @@
                   </select>
                 </div>
                 <button type="button" class="flat-btn flat-btn-primary" id="btn-search-packages">
-                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4"
+                    stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="7" cy="7" r="4.5" />
                     <line x1="10.5" y1="10.5" x2="14" y2="14" />
                   </svg>
@@ -771,7 +842,8 @@
             <div class="packages-catalog-section">
               <div class="packages-summary-row">
                 <span class="packages-total-info" id="packages-total-info">正在加载官方组件目录...</span>
-                <span class="packages-catalog-source">数据源：<a href="https://pi.dev/packages" target="_blank" rel="noreferrer" class="flat-link">pi.dev/packages</a></span>
+                <span class="packages-catalog-source">数据源：<a href="https://pi.dev/packages" target="_blank"
+                    rel="noreferrer" class="flat-link">pi.dev/packages</a></span>
               </div>
 
               <div class="packages-catalog-grid" id="packages-catalog-grid">
@@ -791,7 +863,8 @@
             </div>
 
             <!-- 扩展安装/更新/卸载实时手绘进度浮动卡片 -->
-            <div class="package-progress-float-card hidden" id="package-progress-float-card" role="status" aria-live="polite">
+            <div class="package-progress-float-card hidden" id="package-progress-float-card" role="status"
+              aria-live="polite">
               <div class="package-progress-card-inner">
                 <div class="package-progress-header">
                   <div class="package-progress-title-wrap">
@@ -802,8 +875,10 @@
                   </div>
                   <div class="package-progress-header-right">
                     <span class="package-progress-percent" id="package-progress-percent">0%</span>
-                    <button type="button" class="package-progress-close-btn" id="btn-close-package-progress" aria-label="关闭提示">
-                      <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <button type="button" class="package-progress-close-btn" id="btn-close-package-progress"
+                      aria-label="关闭提示">
+                      <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor"
+                        stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="4" y1="4" x2="12" y2="12" />
                         <line x1="12" y1="4" x2="4" y2="12" />
                       </svg>
@@ -839,7 +914,8 @@
   <!-- 全局手绘微提示条 (如：已转入后台运行 / 任务上限提醒) -->
   <div class="global-toast-banner hidden" id="global-toast-banner" role="status" aria-live="polite">
     <span class="toast-icon" id="global-toast-icon" aria-hidden="true">
-      <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+        stroke-linecap="round" stroke-linejoin="round">
         <circle cx="8" cy="8" r="6" />
         <line x1="8" y1="5" x2="8" y2="9" />
         <circle cx="8" cy="11.5" r="0.5" fill="currentColor" />
@@ -855,8 +931,10 @@
         <h3 class="sidebar-title">后台对话任务</h3>
         <span class="sidebar-summary" id="task-sidebar-summary">已完成 0 / 共 0 个</span>
       </div>
-      <button type="button" class="sidebar-close-btn" id="btn-close-task-sidebar" aria-label="关闭侧边栏" title="收起 (Esc / 右键)">
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+      <button type="button" class="sidebar-close-btn" id="btn-close-task-sidebar" aria-label="关闭侧边栏"
+        title="收起 (Esc / 右键)">
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"
+          stroke-linecap="round">
           <line x1="3.5" y1="3.5" x2="12.5" y2="12.5" />
           <line x1="12.5" y1="3.5" x2="3.5" y2="12.5" />
         </svg>

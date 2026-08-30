@@ -148,7 +148,7 @@ graph TD
 
 ### 4.1 4 大核心 Tab 导航结构
 设置视图采用极简 4 大 Tab：
-1. **外观与常规 (`pane-appearance`)**
+1. **常规 (`pane-appearance`)**
 2. **模型配置 (`pane-current-models`)**：整合已添加模型列表与折叠式官方/自定义通道配置
 3. **内核 (`pane-packages`)**：Pi 内核状态、一键热更新与扩展组件市场
 4. **会话记录 (`pane-sessions`)**：历史会话检索与管理
