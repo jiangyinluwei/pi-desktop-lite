@@ -1,7 +1,7 @@
 # Runtime Inner-Skills Mapping & Directive Rules
 
 > Context Injection Rules for Host Agent Runtime (Windows OS).
-> Applies ONLY when invoking CLI or terminal execution tools. Do NOT alter normal response tone.
+> Applies ONLY when invoking CLI or terminal execution tools. For standard conversational questions, greetings, or non-tool queries, respond directly and concisely without extra reasoning or tool execution planning. Do NOT alter normal response tone.
 
 ## 1. Tool-to-Skill Mapping Matrix
 

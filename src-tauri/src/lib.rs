@@ -491,13 +491,6 @@ fn show_and_focus_main_window(app: &tauri::AppHandle) {
     }
 }
 
-// TEMP-DIAG
-#[tauri::command]
-fn pi_diag_report(payload: String) {
-    println!("DIAG_PAYLOAD: {payload}");
-    let _ = std::fs::write(std::env::temp_dir().join("pidl-diag-report.txt"), &payload);
-}
-
 // ==========================================================================
 // 主启动入口
 // ==========================================================================
@@ -572,39 +565,10 @@ pub fn run() {
             pi_inspect_file,
             pi_read_file_text_preview,
             pi_prepare_image_payload,
-            pi_diag_report,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
-            }
-
-            // TEMP-DIAG: 启动 10 秒后回传已安装组件 DOM 状态
-            if let Some(diag_window) = app.get_webview_window("main") {
-                tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-                    let js = r#"
-                      (async () => {
-                        try {
-                          const c = document.getElementById('installed-packages-count');
-                          const l = document.getElementById('installed-packages-list');
-                          const pane = document.getElementById('pane-packages');
-                          const payload = {
-                            count: c ? c.textContent : null,
-                            listChildren: l ? l.children.length : null,
-                            listHtml: l ? l.innerHTML.slice(0, 800) : null,
-                            paneActive: pane ? pane.classList.contains('active') : null,
-                            viewMode: document.getElementById('app-container')?.getAttribute('data-view') || null,
-                            bodySnippet: document.body.innerText.slice(0, 1200),
-                          };
-                          await window.__TAURI__.core.invoke('pi_diag_report', { payload: JSON.stringify(payload) });
-                        } catch (e) {
-                          await window.__TAURI__.core.invoke('pi_diag_report', { payload: 'EVAL_ERR: ' + String(e) });
-                        }
-                      })()
-                    "#;
-                    let _ = diag_window.eval(js);
-                });
             }
 
             // 0. 初始化 Windows 通知身份（注册 AUMID 与 Logo 图标，消除 PowerShell 标题）

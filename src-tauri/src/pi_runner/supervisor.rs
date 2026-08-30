@@ -622,8 +622,8 @@ impl PiSupervisor {
     /// 3. 当前运行 exe 所在目录及其 resources/default-area (便携/绿色版)
     /// 4. Tauri Resource 目录 (正式安装版)
     /// 5. 自动兜底创建并写入种子 AGENTS.md 确保防向上穿透
-    pub fn get_default_workspace(app_handle: Option<&AppHandle>) -> PathBuf {
-        // 1. 显式环境变量覆盖
+    pub fn get_default_workspace(_app_handle: Option<&AppHandle>) -> PathBuf {
+        // 1. 显式环境变量覆盖（自动化测试与自定义指定）
         if let Ok(env_ws) = std::env::var("PI_WORKSPACE") {
             let p = PathBuf::from(env_ws);
             if p.is_dir() {
@@ -631,45 +631,7 @@ impl PiSupervisor {
             }
         }
 
-        // 2. 优先检查当前源码与工作区目录（开发模式下 100% 优先锁定项目内的 default-area）
-        if let Ok(curr_dir) = std::env::current_dir() {
-            let candidates = [
-                curr_dir.join("default-area"),
-                curr_dir.join("../default-area"),
-            ];
-            for candidate in &candidates {
-                if candidate.is_dir() {
-                    return candidate.clone();
-                }
-            }
-        }
-
-        // 3. 检查当前运行 exe 所在目录及其 resources 目录 (Release 独立分发/安装目录)
-        if let Ok(current_exe) = std::env::current_exe() {
-            if let Some(exe_dir) = current_exe.parent() {
-                let candidates = [
-                    exe_dir.join("default-area"),
-                    exe_dir.join("resources").join("default-area"),
-                ];
-                for candidate in &candidates {
-                    if candidate.is_dir() {
-                        return candidate.clone();
-                    }
-                }
-            }
-        }
-
-        // 4. 检查 Tauri Resource 目录 (安装包标准资源释放目录)
-        if let Some(app) = app_handle {
-            if let Ok(resource_dir) = app.path().resource_dir() {
-                let candidate = resource_dir.join("default-area");
-                if candidate.is_dir() {
-                    return candidate;
-                }
-            }
-        }
-
-        // 5. 若上述路径均不存在，则在安全位置创建 default-area 并播种 AGENTS.md
+        // 2. 优先使用用户独立数据目录下的隔离工作区（彻底杜绝 Git 根目录向上穿透与无关 AGENTS.md / Skills 污染）
         let target_dir = if let Some(home) = dirs::home_dir() {
             home.join(".pi-dl").join("default-area")
         } else if let Ok(curr) = std::env::current_dir() {
@@ -679,11 +641,11 @@ impl PiSupervisor {
         };
 
         if let Err(e) = std::fs::create_dir_all(&target_dir) {
-            log::warn!("[Supervisor] Failed to create fallback workspace dir {:?}: {}", target_dir, e);
+            log::warn!("[Supervisor] Failed to create default workspace dir {:?}: {}", target_dir, e);
         } else {
             let agents_md = target_dir.join("AGENTS.md");
             if !agents_md.exists() {
-                let seed_content = "# Pi Agent 运行时工作区指南 (AGENTS.md)\n\n欢迎使用 Pi Desktop Lite 默认工作区 (`default-area`)。\n\n## 关于 Pi Agent\n我是由 Pi Desktop Lite 驱动的本地智能助手，当前目录为我的隔离工作空间。\n";
+                let seed_content = "# Pi Agent 运行时工作区指南 (AGENTS.md)\n\n欢迎使用 **Pi Desktop Lite** 默认工作区 (`default-area`)。\n\n## 🤖 关于 Pi Agent (自我描述)\n我是 **Pi Agent**，由轻量桌面客户端 (Pi Desktop Lite) 驱动的本地智能助手。当前目录为我的隔离工作空间。\n\n## 📁 默认工作空间说明\n- 当前目录为默认隔离工作空间；\n- 用户在会话中生成的文件、代码产物或执行的脚本将默认置于此目录下。\n";
                 let _ = std::fs::write(&agents_md, seed_content);
             }
         }

@@ -191,10 +191,5 @@ window.addEventListener("DOMContentLoaded", () => {
   initSearchInput(ctx);
   initPackagesPanel(ctx);
   initGlobalInteractions(ctx);
-
-  // TEMP-DIAG: auto-open settings for visual diagnosis
-  setTimeout(() => {
-    const diagBtn = document.getElementById("settings-btn");
-    if (diagBtn) diagBtn.click();
-  }, 3000);
 });
+
