@@ -114,6 +114,20 @@ export function initFlowStream(ctx) {
     if (flowBtnAbort) {
       flowBtnAbort.classList.add("hidden");
     }
+    // 正常完成且无错误时，为当前轮次输出卡片挂载保存按钮
+    if (
+      flow.activeTurnRefs &&
+      !flow.currentErrorMessage &&
+      flow.currentResponseText &&
+      flow.currentResponseText.trim() &&
+      typeof api.attachResponseSaveButton === "function"
+    ) {
+      api.attachResponseSaveButton(flow.activeTurnRefs, {
+        query: flow.lastUserQuery,
+        responseText: flow.currentResponseText,
+        thinkingText: flow.currentThinkingText,
+      });
+    }
   };
 
   /**
@@ -394,6 +408,13 @@ export function initFlowStream(ctx) {
       targetResponseEl.innerHTML = cardHtml;
     } else {
       targetResponseEl.insertAdjacentHTML("beforeend", cardHtml);
+    }
+
+    // 报错时确保移除可能已挂载的保存按钮
+    if (flow.activeTurnRefs && typeof api.attachResponseSaveButton === "function") {
+      api.attachResponseSaveButton(flow.activeTurnRefs, {
+        errorMessage: flow.currentErrorMessage,
+      });
     }
 
     const btnRetry = document.getElementById("btn-err-retry");

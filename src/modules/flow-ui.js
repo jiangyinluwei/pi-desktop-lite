@@ -1,6 +1,7 @@
 import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
+import { invokeTauri } from "../services/tauri-bridge.js";
 
 /**
  * Flow 渲染核心：Markdown、轮次 DOM、悬浮提问提示与上下定位导航
@@ -304,7 +305,7 @@ export function initFlowUi(ctx) {
     const injectionTextEl = injectionCapsuleEl.querySelector(".capsule-text");
     const failoverTextEl = failoverCapsuleEl.querySelector(".capsule-text");
 
-    return {
+    const turnRefs = {
       groupEl,
       userTextEl,
       promptAttachmentsEl,
@@ -318,8 +319,139 @@ export function initFlowUi(ctx) {
       thinkingTextStreamEl,
       thinkingBodyEl,
       toolCallsContainerEl,
+      responseCardEl,
       responseContentEl,
     };
+
+    // 若当前为已有成功输出且未处于报错状态，直接挂载保存按钮
+    if (responseText && responseText.trim() && !errorMessage) {
+      attachResponseSaveButton(turnRefs, {
+        query,
+        responseText,
+        thinkingText,
+      });
+    }
+
+    return turnRefs;
+  };
+
+  /**
+   * 将指定轮次内容导出并保存为 Markdown 文件到桌面
+   * @param {Object} turnData
+   * @param {string} [turnData.query=""]
+   * @param {string} [turnData.responseText=""]
+   * @param {string} [turnData.thinkingText=""]
+   * @param {HTMLButtonElement} [btnEl=null]
+   */
+  const saveTurnOutputToDesktop = async (turnData = {}, btnEl = null) => {
+    const query = turnData.query || flow.lastUserQuery || "";
+    const responseText = turnData.responseText || flow.currentResponseText || "";
+    const thinkingText = turnData.thinkingText || flow.currentThinkingText || "";
+
+    if (!responseText || !responseText.trim()) {
+      if (typeof window.sketchAlert === "function") {
+        await window.sketchAlert("当前无有效的输出结果可保存", { type: "warning", title: "无法保存" });
+      }
+      return;
+    }
+
+    try {
+      if (btnEl) {
+        btnEl.classList.add("saving");
+        btnEl.innerHTML = `<span class="btn-icon">${ICONS.sparkle}</span><span>保存中...</span>`;
+      }
+
+      // 生成文件名：根据提问前缀 + 时间戳
+      const cleanTitle = (query || "输出结果")
+        .replace(/[\r\n\\/:*?"<>|]+/g, "_")
+        .trim()
+        .slice(0, 30);
+      const timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 15);
+      const filename = `${cleanTitle || "pi_output"}_${timestamp}.md`;
+
+      // 拼装 Markdown 内容：仅包含“用户提问”与“回答结果”
+      let mdContent = "";
+      if (query && query.trim()) {
+        mdContent += `### 用户提问\n\n${query.trim()}\n\n---\n\n`;
+      }
+      mdContent += `### 回答结果\n\n${responseText.trim()}\n`;
+
+      const savedPath = await invokeTauri("pi_save_markdown_to_desktop", {
+        filename,
+        content: mdContent,
+      });
+
+      if (btnEl) {
+        btnEl.classList.remove("saving");
+        btnEl.classList.add("saved");
+        btnEl.innerHTML = `<span class="btn-icon">${ICONS.check}</span><span>已保存至桌面</span>`;
+        setTimeout(() => {
+          btnEl.classList.remove("saved");
+          btnEl.innerHTML = `<span class="btn-icon">${ICONS.save}</span><span>保存</span>`;
+        }, 2200);
+      }
+
+      // 友好提示
+      if (typeof window.sketchAlert === "function") {
+        await window.sketchAlert(`输出结果已成功保存为 Markdown 文件！\n\n保存路径：\n${savedPath || "桌面"}`, {
+          type: "success",
+          title: "保存成功",
+        });
+      }
+    } catch (err) {
+      console.error("[Flow] Failed to save markdown output to desktop:", err);
+      if (btnEl) {
+        btnEl.classList.remove("saving");
+        btnEl.innerHTML = `<span class="btn-icon">${ICONS.save}</span><span>保存</span>`;
+      }
+      if (typeof window.sketchAlert === "function") {
+        await window.sketchAlert(`保存失败: ${err?.message || err || "未知错误"}`, {
+          type: "error",
+          title: "保存失败",
+        });
+      }
+    }
+  };
+
+  /**
+   * 为指定轮次的回答卡片挂载或更新手绘保存按钮
+   * @param {Object} turnRefs 包含 responseCardEl / responseContentEl 等引用的对象
+   * @param {Object} [turnData={}] 包含 query, responseText, thinkingText 的数据对象
+   */
+  const attachResponseSaveButton = (turnRefs, turnData = {}) => {
+    if (!turnRefs || !turnRefs.responseCardEl) return;
+    const responseCardEl = turnRefs.responseCardEl;
+    const responseText = turnData.responseText !== undefined ? turnData.responseText : (flow.currentResponseText || "");
+
+    // 如果没有回答文本，或者存在报错卡片 / errorMessage，则移除保存按钮
+    const hasError = Boolean(turnData.errorMessage) || Boolean(responseCardEl.querySelector(".sketch-error-card"));
+    if (!responseText || !responseText.trim() || hasError) {
+      const existingActions = responseCardEl.querySelector(".flow-response-actions");
+      if (existingActions) existingActions.remove();
+      return;
+    }
+
+    let actionsEl = responseCardEl.querySelector(".flow-response-actions");
+    if (!actionsEl) {
+      actionsEl = document.createElement("div");
+      actionsEl.className = "flow-response-actions";
+      responseCardEl.appendChild(actionsEl);
+    }
+
+    actionsEl.innerHTML = `
+      <button type="button" class="flow-save-btn" title="将输出结果以 Markdown 格式保存到桌面">
+        <span class="btn-icon">${ICONS.save}</span>
+        <span>保存</span>
+      </button>
+    `;
+
+    const saveBtn = actionsEl.querySelector(".flow-save-btn");
+    if (saveBtn) {
+      saveBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await saveTurnOutputToDesktop(turnData, saveBtn);
+      });
+    }
   };
 
   /**
@@ -626,4 +758,6 @@ export function initFlowUi(ctx) {
   api.createFlowTurnGroupElement = createFlowTurnGroupElement;
   api.updateFlowQuestionTip = updateFlowQuestionTip;
   api.updateFlowTurnNav = updateFlowTurnNav;
+  api.attachResponseSaveButton = attachResponseSaveButton;
+  api.saveTurnOutputToDesktop = saveTurnOutputToDesktop;
 }

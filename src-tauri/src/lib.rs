@@ -82,6 +82,42 @@ fn pi_inspect_file(path: String) -> Result<FileInspectionResult, String> {
 }
 
 #[tauri::command]
+fn pi_save_markdown_to_desktop(filename: Option<String>, content: String) -> Result<String, String> {
+    let desktop = dirs::desktop_dir()
+        .or_else(|| dirs::home_dir().map(|h| h.join("Desktop")))
+        .ok_or_else(|| "无法获取系统桌面目录路径".to_string())?;
+
+    if !desktop.exists() {
+        std::fs::create_dir_all(&desktop).map_err(|e| format!("创建桌面目录失败: {}", e))?;
+    }
+
+    let default_name = format!("pi_output_{}.md", chrono::Local::now().format("%Y%m%d_%H%M%S"));
+    let raw_name = filename.unwrap_or(default_name);
+    let trimmed = raw_name.trim();
+
+    // 清理非法文件名字符
+    let invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '\r', '\n'];
+    let mut safe_name: String = trimmed
+        .chars()
+        .map(|c| if invalid_chars.contains(&c) { '_' } else { c })
+        .collect();
+
+    if safe_name.is_empty() {
+        safe_name = format!("pi_output_{}.md", chrono::Local::now().format("%Y%m%d_%H%M%S"));
+    }
+
+    if !safe_name.to_lowercase().ends_with(".md") {
+        safe_name.push_str(".md");
+    }
+
+    let target_path = desktop.join(&safe_name);
+    std::fs::write(&target_path, content.as_bytes())
+        .map_err(|e| format!("写入 Markdown 文件失败: {}", e))?;
+
+    Ok(target_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 fn pi_read_file_text_preview(path: String, max_chars: Option<usize>) -> Result<String, String> {
     let p = Path::new(&path);
     if !p.exists() {
@@ -655,6 +691,7 @@ pub fn run() {
             pi_inspect_file,
             pi_read_file_text_preview,
             pi_prepare_image_payload,
+            pi_save_markdown_to_desktop,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
