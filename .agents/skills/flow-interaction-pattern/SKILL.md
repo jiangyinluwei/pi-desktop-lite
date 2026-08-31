@@ -399,7 +399,10 @@ window.addEventListener("pi:view-change", () => updateFlowQuestionTip()); // 进
 - **锚定与定位同源（问题1）**：当前锚定轮次与定位目标使用同一元素（最终输出内容顶），且判定阈值加上提示吸附高度——点击一次后锚定随之推进，可**连续多次**向上/向下逐轮定位（修复「只能点一次」的问题）；
 - **交互铁律（鼠标弹起才响应）**：所有定位效果仅在**鼠标弹起（mouseup）**时触发——
   - 按下后移出按钮再弹起**不会生效**：`mouseleave` 时即作废按下状态（`cancelNavPress`），且 `mouseup` 仅当指针仍在按钮上时才会派发到按钮；
-  - 「上」按钮弹起 → 定位到**上一个**对话的最终输出内容顶部（当前锚定轮次 - 1）；
+  - 「上」按钮弹起 → 按**两段式优化**定位（`OUTPUT_TOP_PROXIMITY_PX = 100`）：
+    - **情形 1**：视口顶边位于第 N 轮对话开头下方、且距第 N 轮最终输出顶部 ≤ 100px（含其上方思考/提问区）→ 定位到**第 N-1 轮**最终输出顶部（`scrollToTurnStart(n - 1)`）；
+    - **情形 2**：视口顶边已深入第 N 轮最终输出（> 100px，位于其底部之上，或已越过其底部）→ 先定位到**第 N 轮**最终输出顶部（`scrollToTurnStart(n)`），避免误跳过当前轮，再逐级向上回退；
+    - 其中 N = `getCurrentTurnIndex()`（最后一个「整组对话起点 <= 视口顶边」的轮次）；N ≤ 0 时无可回退直接 return；
   - 「下」按钮弹起（未满 3 秒）→ 定位到**下一个**对话的最终输出内容顶部（当前锚定轮次 + 1）；
 - **长按「下」满 1.5 秒（问题4）**：1.5 秒定时器到点**立即**定位到会话最底部（`scrollTop = scrollHeight`），**无需弹起**；弹起后不再重复定位；
 - **长按视觉反馈**：按下添加 `holding`（scale 微缩），「下」按钮按住时触发 1.5 秒由左至右背景填充动画（`transition: transform 1.5s linear`）与手绘轻微抖动（`flowNavHoldShake`）；按住满 1.5s 定位后添加 `long-press`（图标轻呼吸 `flowNavHoldPulse` + title 变为「已定位到会话最底部」）；
@@ -584,19 +587,38 @@ const getTurnResponseAnchor = (group) =>
   group?.querySelector(".response-content") ||
   group;
 
+// 视口顶边「内容线」：滚动区顶边 + 顶部悬浮提示吸附高度（锚定判定与定位偏移共用同一基准）
+const getViewportTopLine = () => {
+  if (!flowScrollArea) return 0;
+  return flowScrollArea.getBoundingClientRect().top + getStickyTipOffset();
+};
+
 // 当前锚定轮次：取「最终输出内容顶部 <= 视口顶边(+提示吸附高度)」的最后一个轮次；
 // 与定位使用同一目标，点击后锚定随之推进，可连续多次向上/向下定位（修复二次点击失效）。
 const getAnchoredTurnIndex = () => {
   if (!flowScrollArea || !flowConversation) return -1;
   const groups = flowConversation.querySelectorAll(".flow-message-group");
   if (groups.length === 0) return -1;
-  const areaTop = flowScrollArea.getBoundingClientRect().top;
-  const threshold = areaTop + getStickyTipOffset();
+  const threshold = getViewportTopLine();
   let anchor = 0;
   for (let i = 0; i < groups.length; i++) {
     if (getTurnResponseAnchor(groups[i]).getBoundingClientRect().top <= threshold) anchor = i; else break;
   }
   return anchor;
+};
+
+// 当前所在轮次 N：最后一个「整组对话起点（用户提问卡顶部）<= 视口顶边」的轮次；
+// 用于「上」按钮两段式定位（情形 1 / 情形 2）的基准轮次判定。
+const getCurrentTurnIndex = () => {
+  if (!flowScrollArea || !flowConversation) return -1;
+  const groups = flowConversation.querySelectorAll(".flow-message-group");
+  if (groups.length === 0) return -1;
+  const viewTop = getViewportTopLine();
+  let n = 0;
+  for (let i = 0; i < groups.length; i++) {
+    if (groups[i].getBoundingClientRect().top <= viewTop) n = i; else break;
+  }
+  return n;
 };
 
 // 定位到第 index 段对话「最终输出内容」顶部（对齐显示窗体顶部，扣除顶部悬浮提示吸附高度）
@@ -613,10 +635,26 @@ const scrollToTurnStart = (index) => {
   flowScrollArea.scrollTop = nextTop; // scroll-behavior: smooth 平滑滚动
 };
 
+// 「上」按钮两段式优化定位（见 3.6.1 情形 1 / 情形 2 判定）
+const OUTPUT_TOP_PROXIMITY_PX = 100;
 const scrollToPreviousTurn = () => {
-  const anchor = getAnchoredTurnIndex();
-  if (anchor <= 0) return; // 已是第一轮
-  scrollToTurnStart(anchor - 1);
+  if (!flowConversation) return;
+  const groups = flowConversation.querySelectorAll(".flow-message-group");
+  if (groups.length === 0) return;
+
+  const viewTop = getViewportTopLine();
+  const n = getCurrentTurnIndex();
+  if (n < 0) return;
+
+  const respTop = getTurnResponseAnchor(groups[n]).getBoundingClientRect().top;
+  if (viewTop <= respTop + OUTPUT_TOP_PROXIMITY_PX) {
+    // 情形 1：第 N 轮最终输出顶部向上 100px 范围内（含其上方思考/提问区）→ 回退第 N-1 轮最终输出顶部
+    if (n <= 0) return; // 已是第一轮
+    scrollToTurnStart(n - 1);
+  } else {
+    // 情形 2：已深入第 N 轮最终输出（或越过其底部）→ 先定位第 N 轮最终输出顶部
+    scrollToTurnStart(n);
+  }
 };
 const scrollToNextTurn = () => {
   const anchor = getAnchoredTurnIndex();
