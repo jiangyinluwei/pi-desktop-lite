@@ -11,10 +11,10 @@
     "windows": [
       {
         "title": "pi-dl",
-        "width": 900,
+        "width": 1000,
         "height": 620,
-        "minWidth": 500,
-        "minHeight": 400,
+        "minWidth": 1000,
+        "minHeight": 620,
         "center": true,
         "decorations": false,
         "shadow": true,
