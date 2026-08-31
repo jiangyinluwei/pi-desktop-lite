@@ -305,12 +305,12 @@
 }
 
 .status-dot.status-ready {
-  background-color: #52796f;
+  background-color: #62998b;
 }
 
 @media (prefers-color-scheme: dark) {
   .status-dot.status-ready {
-    background-color: #6b9080;
+    background-color: #67a16f;
   }
 }
 
@@ -468,13 +468,11 @@
   background: var(--ink-primary);
   border-radius: 2px;
   transition: width 0.2s ease-out;
-  background-image: repeating-linear-gradient(
-    -45deg,
-    transparent,
-    transparent 5px,
-    rgba(255, 255, 255, 0.15) 5px,
-    rgba(255, 255, 255, 0.15) 10px
-  );
+  background-image: repeating-linear-gradient(-45deg,
+      transparent,
+      transparent 5px,
+      rgba(255, 255, 255, 0.15) 5px,
+      rgba(255, 255, 255, 0.15) 10px);
 }
 
 .kernel-progress-sub-msg {
@@ -615,4 +613,3 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-

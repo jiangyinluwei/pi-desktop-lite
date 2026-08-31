@@ -717,12 +717,70 @@ export function initTaskPanel(ctx) {
       return card;
     };
 
+    /**
+     * 计算文本的视觉字符权重长度
+     * 汉字/全角字符按 1 计算，半角/英文/符号按 0.55 计算，保底 4
+     */
+    const getTextVisualLength = (text) => {
+      if (!text || typeof text !== "string") return 4;
+      let len = 0;
+      for (let i = 0; i < text.length; i++) {
+        const code = text.charCodeAt(i);
+        if (code > 255) {
+          len += 1.0;
+        } else {
+          len += 0.55;
+        }
+      }
+      return Math.max(4, len);
+    };
+
+    /**
+     * 根据当前行各项的标题文本动态生成带补正的 CSS Grid 列定义
+     * 规则：根据实际标题文本长度分配比例，添加补正使得任意两框体宽度比例不超过 1:2，自适应且避免越界
+     */
+    const computeAdaptiveGridColumns = (items) => {
+      if (!items || items.length === 0) return "minmax(0, 1fr)";
+      if (items.length === 1) return "minmax(0, 1fr)";
+
+      const lengths = items.map((item) => {
+        const title = item.title || item.query || "";
+        return getTextVisualLength(title);
+      });
+
+      const minL = Math.min(...lengths);
+      const maxL = Math.max(...lengths);
+
+      // 若所有项长度一致或最小值为 0，则均分
+      if (maxL <= minL || minL === 0) {
+        return items.map(() => "minmax(0, 1fr)").join(" ");
+      }
+
+      // 最大比例上限限制在 2.0 (即比例不超过 1 : 2)
+      const targetMaxRatio = Math.min(2.0, maxL / minL);
+
+      // 将各项长度平滑映射至 [1.0, targetMaxRatio]
+      const weights = lengths.map((l) => {
+        const normalized = (l - minL) / (maxL - minL);
+        const weight = 1.0 + normalized * (targetMaxRatio - 1.0);
+        return Number(weight.toFixed(3));
+      });
+
+      return weights.map((w) => `minmax(0, ${w}fr)`).join(" ");
+    };
+
+    // 第 1 行：根据标题实际长度动态按比例（不超过1:2）分配自适应列宽
+    messagesPrimaryRow.style.gridTemplateColumns = computeAdaptiveGridColumns(primaryItems);
+
     primaryItems.forEach((conv) => {
       messagesPrimaryRow.appendChild(createMessageCard(conv));
     });
 
     // 下方展开区域：每 4 个切分为一行，每行渐出耗时 1 秒，前一行完全显现后下一行再启动渐出 (--row-delay: 0s, 1s, 2s...)
     const rowChunkSize = 4;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 600;
+    const bottomLimit = viewportHeight - 10;
+
     for (let i = 0; i < expandedItems.length; i += rowChunkSize) {
       const chunk = expandedItems.slice(i, i + rowChunkSize);
       const rowIndex = Math.floor(i / rowChunkSize); // 0: 第2行(0s~1s), 1: 第3行(1s~2s), 2: 第4行(2s~3s)...
@@ -730,17 +788,34 @@ export function initTaskPanel(ctx) {
       rowEl.className = "messages-expanded-row";
       rowEl.dataset.rowIndex = String(rowIndex);
       rowEl.style.setProperty("--row-delay", `${rowIndex * 1}s`);
+      rowEl.style.gridTemplateColumns = computeAdaptiveGridColumns(chunk);
 
       chunk.forEach((conv) => {
         rowEl.appendChild(createMessageCard(conv));
       });
 
       messagesExpandedGrid.appendChild(rowEl);
+
+      // 若当前行显示后，高度会超过界面底部，则到此为止、不再显示后续
+      const rowRect = rowEl.getBoundingClientRect();
+      if (rowRect.bottom > bottomLimit) {
+        rowEl.remove();
+        break;
+      }
     }
   };
 
   conversationHistoryService.addEventListener("conversations-change", () => {
     renderConversationMessages();
+  });
+
+  // 监听窗口尺寸变化，自适应重算并更新历史讯息可展示的行数
+  let drawerResizeTimer = null;
+  window.addEventListener("resize", () => {
+    if (drawerResizeTimer) clearTimeout(drawerResizeTimer);
+    drawerResizeTimer = setTimeout(() => {
+      renderConversationMessages();
+    }, 100);
   });
 
   // --------------------------------------------------------------------------

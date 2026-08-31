@@ -10,6 +10,7 @@
   align-items: center;
   width: 100%;
   max-width: 600px;
+  box-sizing: border-box;
   margin-top: 20px;
   position: relative;
   transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1),
@@ -24,12 +25,13 @@
   display: none !important;
 }
 
-/* 第 1 行：常态展示最多 3 个讯息方框 */
+/* 第 1 行：常态展示最多 3 个讯息方框，自适应平分可用宽度 */
 .messages-primary-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
   gap: 10px;
   width: 100%;
+  box-sizing: border-box;
   transition: all 0.25s ease;
 }
 
@@ -40,7 +42,8 @@
   left: 0;
   right: 0;
   width: 100%;
-  max-height: calc(100vh - 380px);
+  box-sizing: border-box;
+  max-height: calc(100vh - 80px);
   overflow: hidden;
   pointer-events: none;
   padding-top: 8px;
@@ -60,15 +63,17 @@
   flex-direction: column;
   gap: 8px;
   width: 100%;
+  box-sizing: border-box;
 }
 
 /* 下方展开行：默认常态（移出渐隐态）
    耗时 2 秒从完全显示平滑淡出至完全透明，无延迟，反向平滑过渡，GPU 合成器原生渲染绝无闪烁 */
 .messages-expanded-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   width: 100%;
+  box-sizing: border-box;
   opacity: 0;
   pointer-events: none;
   transition: opacity 2s linear 0s;
@@ -92,6 +97,10 @@
   border: 1px solid var(--sketch-tag-border);
   border-radius: 255px 10px 225px 8px / 8px 225px 10px 255px;
   padding: 8px 10px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -128,17 +137,17 @@
    -------------------------------------------------------------------------- */
 .sketch-card-circle-overlay {
   position: absolute;
-  top: -4px;
-  left: -5px;
-  right: -5px;
-  bottom: -4px;
-  width: calc(100% + 10px);
-  height: calc(100% + 8px);
+  top: -3px;
+  left: -2px;
+  right: -2px;
+  bottom: -3px;
+  width: calc(100% + 4px);
+  height: calc(100% + 6px);
   pointer-events: none;
   z-index: 4;
   overflow: visible;
   opacity: 0;
-  transform: scale(0.97);
+  transform: scale(0.98);
   transition: opacity 0.15s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -206,6 +215,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   padding-right: 14px;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 .message-card-meta {
@@ -215,12 +227,21 @@
   margin-top: 3px;
   font-size: 10px;
   color: var(--ink-muted);
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .message-card-time {
   font-size: 10px;
   color: var(--ink-muted);
   opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex-shrink: 0;
 }
 
 /* 卡片右上角悬浮显示关闭/隐藏 "×" 按钮 */
