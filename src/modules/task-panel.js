@@ -740,8 +740,8 @@ export function initTaskPanel(ctx) {
      * 规则：根据实际标题文本长度分配比例，添加补正使得任意两框体宽度比例不超过 1:2，自适应且避免越界
      */
     const computeAdaptiveGridColumns = (items) => {
-      if (!items || items.length === 0) return "minmax(0, 1fr)";
-      if (items.length === 1) return "minmax(0, 1fr)";
+      if (!items || items.length === 0) return "minmax(0, 280px)";
+      if (items.length === 1) return "minmax(0, 280px)";
 
       const lengths = items.map((item) => {
         const title = item.title || item.query || "";

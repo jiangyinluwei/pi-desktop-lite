@@ -100,7 +100,7 @@
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  max-width: 100%;
+  max-width: 280px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
