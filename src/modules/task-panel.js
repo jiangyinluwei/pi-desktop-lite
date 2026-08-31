@@ -636,6 +636,9 @@ export function initTaskPanel(ctx) {
       const timeStr = formatRelativeTime(conv.lastViewedAt || conv.createdAt);
 
       card.innerHTML = `
+        <svg class="sketch-card-circle-overlay" viewBox="0 0 200 60" preserveAspectRatio="none" aria-hidden="true">
+          <path class="sketch-circle-loop" d="M 14,32 C 10,13 36,4 102,4.5 C 168,5 192,15 190,32 C 187,49 162,56 98,55.5 C 34,55 8,45 10,27 C 12,14 38,5.5 106,6" />
+        </svg>
         <button type="button" class="message-card-close-btn" title="不在列表中显示" aria-label="隐藏讯息">
           ${ICONS.close}
         </button>
@@ -645,17 +648,55 @@ export function initTaskPanel(ctx) {
         </div>
       `;
 
-      // 绑定点击卡片恢复对话事件
-      card.addEventListener("click", (e) => {
-        if (e.target.closest(".message-card-close-btn")) return;
+      let clickCount = 0;
+
+      const resetClickState = () => {
+        clickCount = 0;
+        card.classList.remove("click-pending");
+      };
+
+      const handleTrigger = () => {
+        resetClickState();
         restoreConversationToFlow(conv);
+      };
+
+      // 绑定点击卡片事件：需左键连续点击两次或双击触发
+      card.addEventListener("click", (e) => {
+        if (e.target.closest(".message-card-close-btn")) {
+          resetClickState();
+          return;
+        }
+        if (e.button !== 0) return; // 仅限鼠标左键
+
+        clickCount += 1;
+        if (clickCount >= 2) {
+          handleTrigger();
+        } else {
+          card.classList.add("click-pending");
+        }
       });
 
+      // 绑定双击事件兜底
+      card.addEventListener("dblclick", (e) => {
+        if (e.target.closest(".message-card-close-btn")) {
+          resetClickState();
+          return;
+        }
+        if (e.button !== 0) return;
+        handleTrigger();
+      });
+
+      // 鼠标移出当前框体时重置点击计数与状态，移回后需重新点两次
+      card.addEventListener("mouseleave", () => {
+        resetClickState();
+      });
+
+      // 键盘回车或空格支持
       card.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
           if (!e.target.closest(".message-card-close-btn")) {
             e.preventDefault();
-            restoreConversationToFlow(conv);
+            handleTrigger();
           }
         }
       });
@@ -665,6 +706,7 @@ export function initTaskPanel(ctx) {
       if (closeBtn) {
         closeBtn.addEventListener("click", (e) => {
           e.stopPropagation();
+          resetClickState();
           card.classList.add("removing");
           setTimeout(() => {
             conversationHistoryService.hideConversation(conv.id);

@@ -106,7 +106,7 @@
               box-shadow 0.18s ease;
   text-align: left;
   outline: none;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .sketch-message-card.removing {
@@ -120,6 +120,75 @@
   border-color: var(--sketch-border);
   transform: translateY(-1.5px);
   box-shadow: var(--sketch-shadow-hover);
+}
+
+/* --------------------------------------------------------------------------
+   手绘风格“圈中”效果 (Hand-drawn Sketch Circle Overlay)
+   第一次单击触发动态红笔/炭墨圈中动画，移出框体即刻消失
+   -------------------------------------------------------------------------- */
+.sketch-card-circle-overlay {
+  position: absolute;
+  top: -4px;
+  left: -5px;
+  right: -5px;
+  bottom: -4px;
+  width: calc(100% + 10px);
+  height: calc(100% + 8px);
+  pointer-events: none;
+  z-index: 4;
+  overflow: visible;
+  opacity: 0;
+  transform: scale(0.97);
+  transition: opacity 0.15s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sketch-circle-loop {
+  fill: none;
+  stroke: #be3a2b;
+  stroke-width: 1.8px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 620;
+  stroke-dashoffset: 620;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.08));
+}
+
+:root[data-theme="dark"] .sketch-circle-loop {
+  stroke: #e06c5f;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .sketch-circle-loop,
+  :root[data-theme="system"] .sketch-circle-loop {
+    stroke: #e06c5f;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+  }
+}
+
+.sketch-message-card.click-pending {
+  border-color: var(--sketch-border);
+  background: var(--sketch-tag-hover-bg);
+  box-shadow: 0 0 0 1px var(--sketch-border-subtle), var(--sketch-shadow-hover);
+}
+
+.sketch-message-card.click-pending .sketch-card-circle-overlay {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.sketch-message-card.click-pending .sketch-circle-loop {
+  animation: sketchCircleDraw 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes sketchCircleDraw {
+  0% {
+    stroke-dashoffset: 620;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
 }
 
 .sketch-message-card:active {
