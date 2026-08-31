@@ -153,14 +153,26 @@ pub fn find_pi_binary(app_handle: Option<&AppHandle>) -> Option<PathBuf> {
   1. 子进程若直接继承当前未知的父工作目录，若安装在只读目录（如 `C:\Program Files`）下，Agent 在当前目录生成文件或检索项目时会抛出 `EACCES / EPERM` 权限异常导致崩溃；
   2. 开发调试（`npm run dev`）时，Pi CLI 内核会逐级向上寻找 `AGENTS.md`。若工作区未包含独立的 `AGENTS.md`，内核会穿透读取到项目源码根目录的 `AGENTS.md`（该文件为 Antigravity 编码开发规则，而非 Pi 运行时约束），产生行为偏差。
 - **底层根因**：子进程工作目录（CWD）未显式指定与自适应隔离，且工作区内缺乏运行时自洽的代理规则文件阻断向上溯源。
-- **治理标准**：
-  1. 统一在项目与打包体系内置独立的 `default-area` 目录，并在其内部维护 `default-area/AGENTS.md`（Pi 运行时自我描述与工作区规则）；
-  2. 探测流水线严格遵循“环境变量 `PI_WORKSPACE` > 源码工作区相对路径 `curr_dir/default-area` (开发态优先) > Release/便携目录 `exe_dir/default-area` > 安装包资源目录 `resource_dir/default-area` > 安全目录兜底创建并播种 `AGENTS.md`”；
-  3. `tauri.conf.json` 中配置 `"../default-area": "default-area"`，确保开发态的 `default-area`（包含 `AGENTS.md` 及未来增加的约束/skills）在打包时完整迁移至 Release 资源目录。
+- **治理标准（多预设工作区「模板 → 运行时副本」双轨模型）**：
+  1. **双轨模型**：内置预设为**只读模板**（仓库 `default-area/` 与 `workspaces/*/`，打包进资源目录并与 `default-area` 同级），运行时为**可写用户副本**（`~/.pi-dl/workspaces/<id>/`，首次选中整目录复制、已存在绝不覆盖；`default-area` 保持 `~/.pi-dl/default-area` 旧路径零迁移零覆盖）；
+  2. **解析优先级**（`PiSupervisor::resolve_workspace()`）：`PI_WORKSPACE` 环境变量 > `custom_workspace` 运行时覆盖 > 配置文件 `workspace.activeId`（存在且合法 → `ensure_runtime_workspace(id)` 返回路径）> 兜底 `~/.pi-dl/default-area`；`workspace` 模块负责模板多层寻址发现、运行时物化复制与 `~/.pi-dl/config.json` 的 `workspace.activeId` 读写；
+  3. **打包映射**：`tauri.conf.json` 中配置 `"../default-area": "default-area"`、`"../workspaces/code-area": "code-area"`、`"../workspaces/research-area": "research-area"`，确保开发态模板（含 `AGENTS.md` 及未来约束/skills）在打包时完整迁移至 Release 资源目录且同级并列；
+  4. **`host_pool` 工作区传递修复要点**：`SessionHost::start()` 必须新增 `workspace: PathBuf` 参数（替代静态 `get_default_workspace`），由 `PiHostPool::get_or_create_host()` 在创建任务时通过 `primary_supervisor.resolve_workspace().await` 解析当前生效工作区并传入——每个 Task 子进程在**创建时**锁定当前 CWD，切换后新任务自动用新工作区，已运行任务保持旧 CWD 不可迁移。
   ```rust
-  let workspace = self.resolve_workspace().await;
-  let _ = std::fs::create_dir_all(&workspace);
-  cmd.current_dir(&workspace);
+  // supervisor.rs —— 解析当前生效工作区
+  let active_id = crate::workspace::read_active_workspace_id();
+  if active_id != "default-area" {
+      if let Some(template) = crate::workspace::find_template_dir(&self.app_handle, &active_id) {
+          if let Ok(runtime) = crate::workspace::ensure_runtime_workspace(&active_id, &template) {
+              return runtime;
+          }
+      }
+  }
+  Self::get_default_workspace(Some(&self.app_handle))
+
+  // host_pool.rs —— 创建任务时锁定当前生效工作区
+  let workspace = self.primary_supervisor.resolve_workspace().await;
+  host.start(initial_model, initial_thinking_level, workspace).await?;
   ```
 
 ---
@@ -239,6 +251,8 @@ pub fn find_pi_binary(app_handle: Option<&AppHandle>) -> Option<PathBuf> {
 - [ ] `tauri.conf.json` 中 `bundle.resources` 是否采用对象映射（如 `"../.mytools/...": "target-dir"`）而非相对路径数组？
 - [ ] 所有子进程拉起命令是否配置了 `#[cfg(windows)] cmd.creation_flags(0x08000000)`？
 - [ ] 子进程工作目录（CWD）是否具备权限容错机制？
+- [ ] `SessionHost::start()` 是否接收当前生效工作区（`workspace: PathBuf`）并锁定 CWD，而非静态 `get_default_workspace`？
+- [ ] 多预设工作区模板（`default-area` + `workspaces/*`）是否与打包产物同级映射，运行时副本是否“首次复制、已存在绝不覆盖”？
 - [ ] 子进程 PATH 追加是否使用 `std::env::var("PATH")` 与 `cmd.env("PATH", ...)` 避免环境块大小写损坏？
 - [ ] 内核寻址探测优先级是否将源码工作区（`.mytools`）置于 `target/debug` 之前？
 - [ ] Win32 Job Object 是否配置了 `JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK`？

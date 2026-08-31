@@ -1,7 +1,7 @@
 ---
 name: settings-view-pattern
 description: |
-  指导桌面端 (Tauri 2 + Web 前端) 中项目设置独立全屏页面（Settings View - 第 4 态独立视图）的工程化实现与交互设计。涵盖非浮窗全屏视图状态机、3 秒定时平滑渐隐指引、~/.pi-dl/config.json 应用全局配置持久化与 ~/.pi/agent/ 双层映射、当前模型列表 MRU 最近选用自动排序与锁定保护、自定义模型 Token 规范智能吸附、手绘草图表单几何工程美学及全域右键/Esc 回退流水线规范。当用户提出"设置界面"、"配置页面"、"设置页写法"、"settings view"、"模型配置界面"、"持久化配置"、"设置规范"时使用此技能。
+  指导桌面端 (Tauri 2 + Web 前端) 中项目设置独立全屏页面（Settings View - 第 4 态独立视图）的工程化实现与交互设计。涵盖非浮窗全屏视图状态机、3 秒定时平滑渐隐指引、~/.pi-dl/config.json 应用全局配置持久化与 ~/.pi/agent/ 双层映射、5 大 Tab 导航（常规 / 模型配置 / 内核 / 会话记录 / 工作区）、当前模型列表 MRU 最近选用自动排序与锁定保护、模型配置「自动重连切换」Checkbox 与 modelFailover 推荐参数块持久化及内核 pi_apply_model_failover_preset 探测式注入、多预设工作区面板（模板→运行时副本切换）、自定义模型 Token 规范智能吸附、手绘草图表单几何工程美学及全域右键/Esc 回退流水线规范。当用户提出"设置界面"、"配置页面"、"设置页写法"、"settings view"、"模型配置界面"、"持久化配置"、"设置规范"、"自动重连切换"、"工作区"时使用此技能。
 ---
 
 # 项目设置独立全屏页面工程规范与实现指南 (Settings View Pattern)
@@ -159,12 +159,13 @@ graph TD
 
 ## 📋 4. 模型配置与折叠式通道抽屉规范 (Model Configuration & Channel Drawers)
 
-### 4.1 4 大核心 Tab 导航结构
-设置视图采用极简 4 大 Tab：
+### 4.1 5 大核心 Tab 导航结构
+设置视图采用极简 5 大 Tab：
 1. **常规 (`pane-appearance`)**
 2. **模型配置 (`pane-current-models`)**：整合已添加模型列表与折叠式官方/自定义通道配置
 3. **内核 (`pane-packages`)**：Pi 内核状态、一键热更新与扩展组件市场
 4. **会话记录 (`pane-sessions`)**：历史会话检索与管理
+5. **工作区 (`pane-workspaces`)**：多预设工作区模板→运行时副本切换（见 4.5）
 
 ### 4.2 模型列表展示与折叠式通道抽屉交互 (Drawer State Machine)
 - **限高与滚动条**：模型列表容器限制 `max-height: 240px;` 并启用隐匿极简滚动条；
@@ -227,6 +228,20 @@ touchModelAsRecentlyUsed(provider, modelId) {
 - **双向感知铁律**：当在上方「当前模型列表」中点击「×」移除某个模型时，必须立即联动触发 `loadCustomProvidersConfig()` 与 `renderOfficialProviderDetails(...)`；
 - **状态无缝复原**：移除后，下方官方通道或自定义通道内对应的模型项将实时重新计算 `configService.isModelInWhitelist(provider, modelId)`，其操作按钮从置灰的 `<button disabled>已添加</button>` 瞬间复原为可点击的 `<button>+ 添加到当前列表</button>`，彻底杜绝状态滞后；
 - **抽屉展开按需刷新**：用户点击展开「官方通道配置」或「自定义通道配置」抽屉时，同样自动刷新该通道列表以呈现最新白名单状态。
+
+### 4.7 工作区面板 (Workspace Panel)
+- **Tab 落点**：设置页第 5 个 Tab —— `data-tab="tab-workspaces"` + `#pane-workspaces`；点击该 Tab 时通过 `api.loadWorkspaces()` 拉取并渲染（与 `tab-packages` 的按需加载模式一致），打开设置页时亦在 `openSettingsView` 中预热刷新；
+- **DOM 结构**：
+  1. **当前工作区卡片**（`.workspace-current-card`）：名称（`#workspace-active-name`）+ ID 徽章（`#workspace-active-badge`）+ 运行时绝对路径（`#workspace-active-path`，`title` 悬浮完整路径）；
+  2. **预设工作区列表**（`#workspace-list`）：卡片式每项含名称、`id` 徽章、描述、已物化运行时路径、状态（「使用中」绿色墨徽章 /「切换」按钮）；
+- **服务与模块划分**：
+  - `src/services/workspace-service.js`：纯 IPC 封装 `pi_list_workspaces` / `pi_get_active_workspace` / `pi_set_active_workspace`，**不碰 DOM**；
+  - `src/modules/workspace-panel.js`：渲染列表、切换交互、刷新 `ctx.settings.activeWorkspace`；
+- **切换交互**：
+  - 点击「切换」先调用 `piClient.getActiveTasks()`，当运行时任务数 > 0 时走 `sketchConfirm`（居中 / 毛玻璃 / 180ms 回弹 / 右键与 Esc 优先拦截）确认“仅对之后的新会话生效”；
+  - 确认后调用 `pi_set_active_workspace(id)`，后端物化运行时副本（首次复制、已存在绝不覆盖）→ 持久化 `workspace.activeId` → 切换 → 主宿主空闲自动重启重锚 CWD；
+  - 刷新列表与当前卡片，并按返回的 `activeTasks` / `restarted` 展示 Toast 提示；
+- **样式铁律**：复用现有卡片 / 分组 / 徽章 / Flat 按钮 token，不新增色板；按钮常态透明无边框、悬浮显框；全图标内联 `currentColor` SVG，全域零 Emoji。
 
 ---
 

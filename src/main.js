@@ -15,6 +15,7 @@ import { initModelPanel } from "./modules/model-panel.js";
 import { initCustomProviderPanel } from "./modules/custom-provider-panel.js";
 import { initKernelPanel } from "./modules/kernel-panel.js";
 import { initSessionsPanel } from "./modules/sessions-panel.js";
+import { initWorkspacePanel } from "./modules/workspace-panel.js";
 import { initWindowControls } from "./modules/window-controls.js";
 import { initFlowUi } from "./modules/flow-ui.js";
 import { initFlowStream } from "./modules/flow-stream.js";
@@ -103,6 +104,10 @@ window.addEventListener("DOMContentLoaded", () => {
     btnNewSession: document.getElementById("btn-new-session"),
     sessionsList: document.getElementById("sessions-list"),
     sessionCount: document.getElementById("session-count"),
+    workspaceList: document.getElementById("workspace-list"),
+    workspaceActiveName: document.getElementById("workspace-active-name"),
+    workspaceActivePath: document.getElementById("workspace-active-path"),
+    workspaceActiveBadge: document.getElementById("workspace-active-badge"),
     currentModelProvider: document.getElementById("current-model-provider"),
     currentModelName: document.getElementById("current-model-name"),
     currentModelInfo: document.getElementById("current-model-info"),
@@ -182,6 +187,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initCustomProviderPanel(ctx);
   initKernelPanel(ctx);
   initSessionsPanel(ctx);
+  initWorkspacePanel(ctx);
   initWindowControls(ctx);
   initFlowUi(ctx);
   initFlowStream(ctx);

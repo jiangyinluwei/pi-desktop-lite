@@ -19,7 +19,7 @@
   - **界面1（初始界面-详细版 `detailed`）**：默认完整视图，包含沉浸标题栏、手绘齿轮设置按钮、完整输入框功能（导入图标/清空/Enter快捷引导）、**方向键上下翻阅历史输入记录与草稿暂存 (`ArrowUp / ArrowDown Navigation & Draft Preservation`)**（聚焦输入框按方向键上下智能切换历史提问，光标自动移至末尾，首次翻阅自动暂存未提交草稿，翻回底部无缝恢复草稿，直通 Pi 原生会话目录 `~/.pi/agent/sessions/*.jsonl` 提取全量历史提问，并联动跑马灯与清空按钮）、**文件直接拖入与手绘概述胶囊（Overview Capsule）**（支持图片与各类文档/代码拖入或点击导入，在输入框内部渲染手绘矢量图标、文件名截断、绝对路径悬停 Tooltip 与手绘「×」移除按钮，发送时自动注入文件的系统绝对路径；多模态反馈智能分流：支持多模态则正常输出，纯文本模型若命中多模态限制则自动展示手绘草图建议条并提供一键直达安装扩展组件）、**动态历史对话讯息方框抽屉**（首行常态展示 3 个，鼠标悬浮绝对定位向下平滑展开且消除整体上移，下方每行 4 个依次延迟 1 秒级联渐出[每行耗时 1 秒平滑从透明渐变至显示，第 2 行 0s~1s, 第 3 行 1s~2s, 第 4 行 2s~3s...]，移出时触发 2 秒平滑渐隐[耗时 2 秒从完全显示淡出至完全透明]，自适应视口高度，支持 MRU 最近浏览排序、条目需左键双击或同一框体内左键连续两次单击[首击呈现手绘草图动态圈中特效，移出框体自动重置消失]触发恢复 Flow 对话与悬浮「×」局部隐藏）及内置自适应灵感格言跑马灯（超长文本自动从右向左无缝循环滚动）；
   - **界面2（初始界面-专注版 `focus`）**：单击/聚焦输入框即可自动进入，界面极简纯粹，仅保留居中手绘 $\pi$ Logo 徽标与纯净手绘输入框（支持格言自适应滚动），彻底隐藏所有多余按钮；
   - **界面3（Flow 流式交互版 `flow`）**：输入内容并回车触发，手绘 Logo 优雅移至左上角，提问卡片展示手绘附件微徽章，主体区展示手绘思考过程卡片（最新一轮默认展开、限高滚动、随输出或新框出现触发自动收起、支持手动折叠与耗时记录）、工具调用卡片（支持 bash / powershell / 文件编辑等可手动/级联折叠日志）与纯净 Markdown 流式回答（最终回答卡片常态展示），支持全区域滚轮委托滑动，输入框平滑下移并自适应拉长；**多段对话顶部悬浮当前提问提示 (`Flow Floating Question Tip`)**：当思考/输出内容超出屏幕高度触发滚动条后，顶部以手绘胶囊样式始终悬浮吸附于对话区域上方、靠左对齐，纯提醒无任何鼠标行为（`pointer-events: none`，内容未溢出时自动隐藏）；**多段对话按滚动位置锚定切换 (`Turn Anchoring`)**：视口顶边定位于第 N 段至第 N+1 段对话之间时，顶部提示自动切换显示第 N 段对话的提问文本；**多段对话右侧上下轮次定位导航 (`Flow Turn Navigation`)**：当对话轮次 ≥ 2 时，在 Flow 内容区**右侧外部**（窗体内右边距处，垂直方向由 JS 动态对齐 Flow 内容区底部）纵向显现手绘「上 / 下」按钮——每轮定位到「该轮最终输出内容」的顶部并对齐显示窗体顶部；「上」在鼠标弹起时按两段式优化定位（视口顶边距当前轮最终输出顶部 ≤ 100px 或处于其上方思考/提问区时，回退定位到上一个对话的最终输出顶部；已深入当前轮最终输出内部时，先定位到当前轮最终输出顶部，再逐级向上回退），「下」在鼠标弹起时定位到下一个对话；锚定与定位同源，可连续多次点击逐轮定位；长按「下」满 1.5 秒**立即**定位到会话最底部（无需弹起，按下伴随由左至右背景填充及轻微抖动动画）；所有定位效果仅在鼠标弹起时响应（按下后移出按钮再弹起不生效）；**原生支持同一工作流多轮连续对话 (Multi-turn Continuous Workflow)**：在 Flow 模式下后续提问均保留在同一会话工作流与底层 SessionHost 进程，历史各轮提问、思考折叠链、工具日志与回答在上方按序保留，最新一轮动态追加在下方，多轮对话完整沉淀；**运行中提交拦截与「终止并发送」流水线 (Mid-stream Submit Intercept & Interrupt-Send)**：当前轮处于运行态或待确认时提交输入，弹出手绘确认弹窗（「终止并发送」/「等待完成」）——等待则原样保留输入；终止并发送则先取消在途自愈、下发 `abort` 并等待旧轮结算（agent-end/agent-error，6s 超时兜底）后才开启新轮下发新提问，结算期双守卫抑制提前归档、错误卡与 Task 提前置终态，旧轮仅标记「已中断」，彻底杜绝旧轮流式残留混入新轮；**模型自动重连切换自愈流水线 (`ModelFailoverEngine`)**：勾选「自动重连切换」后，模型调用返回瞬态错误（429/5xx/网络类）自动按 2/4/8s 退避重连（上限 24 次），永久错误（401/404/额度不足等）自动按白名单 MRU 顺序切换模型并重发，全程不渲染错误卡、不提前归档历史、临时切换不污染 MRU，候选成功输出才转正常切换并持久化；过程展示手绘「自动重连中 n/24 · Xs 后重试 / 正在自动切换至 X」进度胶囊，成功淡出「已恢复连接」或「已自动切换至 X · 已记入最近使用」，全部失败恢复原模型并渲染错误卡附自愈摘要；「⏹ 终止」与侧边栏任务终止可随时取消，右键后台挂起后自愈继续运行；
-  - **界面4（项目设置独立全屏页面 `settings`）**：非浮窗全屏视图，整合常规、模型配置、内核与包管理、会话记录。
+  - **界面4（项目设置独立全屏页面 `settings`）**：非浮窗全屏视图，整合常规、模型配置、内核与包管理、会话记录、工作区。
 - 📎 **多格式文件拖入、手绘概述胶囊与多模态自适应系统 (`File Drag-Drop & Multimodal System`)**：
   - 支持直接将图片（png/jpg/jpeg/gif/webp/svg/bmp 等）与文档/代码（docx/pdf/txt/md/json/py/rs 等）拖拽至输入框或点击导入图标选取；
   - 输入框内以手绘微边框胶囊展示，悬停显现绝对路径，点击「×」快速剔除；
@@ -37,14 +37,15 @@
 - 💬 **手绘草图质感居中模态弹窗系统 (`SketchModal Center Dialog System`)**：彻底消除 Web 原生 `alert` / `confirm` / `prompt` 弹窗与系统 Emoji；弹出位置固定在软件视口绝对正中心，配备半透明毛玻璃高斯模糊遮罩；采用 1.4px 实墨草图线框与不对称有机微圆角，提供 180ms 灵动弹出微抖动动效（Pop & Micro-Shake）；全域右键 (Step Back) 与 Esc 优先拦截并消耗回退事件，支持 Enter 确认与焦点循环陷阱（Focus Trap）；双模主题自适应，支持 `info`、`success`、`warning`、`error`、`confirm` 语义化手绘矢量 SVG 图标与危险操作红色预警；
 - ⚡ **高性能纯 Rust (Tauri 2) 后端核心架构**：
   - 🪟 **单实例互斥与防重复启动 (`single-instance`)**：全局保证软件仅有一个实例运行，检测到重复启动时新进程直接退出，并自动将已有主窗口取消最小化、唤醒并置顶聚焦；
-  - 🛡️ **`pi_runner` (进程监督与孤儿收割)**：Windows 原生 Win32 Job Object 内核级级联收割，杜绝僵尸进程；严格 `\n` (LF) 字节流分帧器；滑动窗口崩溃自愈（30s 内超 2 次熔断保护）；`default-area` 默认隔离工作区自动探测与物理隔离锁定（优先锁定用户独立数据目录 `~/.pi-dl/default-area`，彻底杜绝 Git 仓库向上穿透加载源码根目录 `AGENTS.md` / Skills 引起过度推演，自动播种极简干净 `AGENTS.md`，预留动态切换接口）；
+  - 🛡️ **`pi_runner` (进程监督与孤儿收割)**：Windows 原生 Win32 Job Object 内核级级联收割，杜绝僵尸进程；严格 `\n` (LF) 字节流分帧器；滑动窗口崩溃自愈（30s 内超 2 次熔断保护）；**多预设工作区「模板 → 运行时副本」双轨模型**（内置预设只读模板打包进资源目录并与 `default-area` 同级，运行时为可写用户副本 `~/.pi-dl/workspaces/<id>/`，首次选中整目录复制、已存在绝不覆盖；`default-area` 保持 `~/.pi-dl/default-area` 旧路径零迁移零覆盖；`PiSupervisor::resolve_workspace()` 按 `PI_WORKSPACE` 环境变量 > 运行时覆盖 > 配置 `workspace.activeId` > 兜底 default-area 的优先级解析，`SessionHost::start()` 创建任务时传入当前生效工作区并锁定 CWD）；
   - 🧩 **`package_manager` (官方组件市场、生命周期与智能配置预设)**：连通 Pi 官方 Package Catalog (pi.dev/packages)，基于轻量正则解析与 15min TTL 缓存提取结构化组件；精确探测本地已安装组件及版本；内置全局单任务互斥锁（Mutex）与 FIFO 异步任务队列，支持批量连续点击加入队列并自动按序出队执行；支持队列状态精准感知（更新任务显示绿墨色「更新排队中」、卸载任务显示红色「卸载排队中」）；检测到待更新组件 >= 2 时在「检查组件更新」左侧动态显现手绘「一键全部更新」按钮；接入 `ProgressStepper` 平滑步进引擎（阶段等待期间每 2s 自动 +1% 直到下个阶段 - 1%，新阶段触发立即跳变响应）；调用 `pi install/remove npm:<pkg> -a` 执行非阻塞安装与卸载；并发查询 npm registry API 进行 SemVer 版本比对与一键更新；**内置插件默认配置预设映射系统 (`presets.json` 编译内嵌至二进制)**，触发插件安装时自动应用推荐配置（如 `pi-web-access` 自动静默后台与禁用弹窗），未配置项在已安装列表支持一键「推荐配置」手动应用；**内置推荐 Pi 插件列表 (`recommended-plugins.json` 编译内嵌至二进制)**，在「检查组件更新」按钮左侧集成「安装推荐插件」按钮，支持一键队列安装所有未安装的推荐插件（自动跳过已有插件，当全部推荐插件均已安装时动态自动隐藏）；
   - 🔒 **`security` (正则数据脱敏中间件)**：过滤 API Key / Token / 凭据并脱敏本地私有路径为 `[USER_HOME]`；
   - 🔄 **`version_watcher & kernel_updater` (抗抖动版本监测与一键内核更新引擎)**：启动延迟 2s 自检，6h 周期轮询带 ±8% Jitter 随机抖动与 15s Watchdog 超时熔断；支持“不再提醒更新”持久化（写入 `~/.pi-dl/config.json`，生效后直接跳过启动自检与后台自动轮询，不发网络请求；在设置页主动点击“检查更新”时自动重置恢复）；提示框 8 秒平滑自动渐隐；支持流式 HTTP 管道下载与 `ProgressStepper` 平滑步进引擎（仅保留最右侧百分比，阶段等待期间每 2s 自动 +1% 直到下个阶段 - 1%，新阶段触发立即跳变响应）、支持一键取消更新（`pi_cancel_kernel_update` 安全终止下载流与清理临时文件），在 `~/.pi-dl/` 执行 staging 暂存、`--version` 预检校验、原子备份替换旧内核并热重启 `PiSupervisor`，实现零提权免安装无感热升级；
   - 📁 **`session` (并发内存索引与监听)**：基于 `DashMap` 并发内存缓存与 `notify` 监听 `~/.pi/sessions/`，实现毫秒级会话检索与分支树导航；
   - ⚙️ **`config_manager` (配置管理与目录映射)**：双向管理 `~/.pi-dl/config.json` 及 `~/.pi/agent/` 下的 `auth.json`、`models.json`、`settings.json`；
 - ⚙️ **工程级独立设置全页面与模型配置系统 (Settings View)**：
-  - 🖥️ **独立全页面视图 (4 大 Tab 导航)**：作为与详细版/专注版/Flow版平级的独立全屏视图，整合「常规」、「模型配置」（集成当前模型列表与折叠式官方/自定义通道配置）、「内核」、「会话记录」，右上角操作指引（“**提示：在任意位置点击鼠标右键或按 Esc 即可快速回退**”）进入后 3 秒自动平滑渐隐；
+  - 🖥️ **独立全页面视图 (5 大 Tab 导航)**：作为与详细版/专注版/Flow版平级的独立全屏视图，整合「常规」、「模型配置」（集成当前模型列表与折叠式官方/自定义通道配置）、「内核」、「会话记录」、「工作区」，右上角操作指引（“**提示：在任意位置点击鼠标右键或按 Esc 即可快速回退**”）进入后 3 秒自动平滑渐隐；
+  - 🗂️ **多预设工作区模板→运行时副本 (`Multi-Workspace Presets`)**：随安装包内置多套工作区模板（`default-area` 默认、`code-area` 代码工程区、`research-area` 深度调研区），打包进资源目录并与 `default-area` 同级；在设置页「工作区」Tab 可查看当前工作区（名称 + ID 徽章 + 运行时绝对路径）与全部预设列表并一键切换；首次选中时整目录复制模板到 `~/.pi-dl/workspaces/<id>/`（已存在绝不覆盖，升级不影响用户副本），`default-area` 沿用旧路径零迁移零覆盖；切换对之后的新会话生效，任务运行中切换会弹出确认；底层 `PiSupervisor::resolve_workspace()` 解析优先级为 `PI_WORKSPACE` 环境变量 > 运行时覆盖 > 配置 `workspace.activeId` > 兜底 `default-area`，`SessionHost` 创建任务时锁定当前生效工作区 CWD；
   - 📐 **主界面统一配色与非嵌套线框设计**：设置界面配色与主界面完全统一，去除所有高饱和鲜艳颜色，统一采用低饱和度功能色；严格减少层叠 Panel 卡片与胶囊 Tips，外层采用标准细边框（`var(--sketch-border-subtle)`）包裹，内部采用透明底色；
   - 💾 **应用全局配置持久化 (`~/.pi-dl/config.json`)**：界面主题色、默认思考推理深度（Thinking Level）、对话框发送快捷键逻辑（`sendShortcut`: `enter` [Enter发送/Ctrl+Enter换行] 与 `ctrlEnter` [Ctrl+Enter发送/Enter换行]）、默认选中模型及模型顺序、**自动重连切换开关（`autoReconnectSwitch`，默认开启）与模型自愈推荐参数块（`modelFailover`：重连上限 24 次 / 2-4-8s 退避 / 单候选重连预算 2 次 / 重连耗尽升级切换 / 永久错误自动切换）**等统一持久化至 `~/.pi-dl/config.json`（自动创建目录）；
   - ⌨️ **对话框多行换行自适应与发送逻辑双模切换 (`Auto-Expanding Textarea & Send Shortcut Switch`)**：
@@ -457,6 +458,17 @@ npm run build:check
 npm run build
 ```
 
+### 6. 多工作区切换（设置 → 工作区）
+
+1. 点击主界面左下角手绘齿轮按钮进入「设置」独立全屏页；
+2. 在左侧 Tab 栏点击 **「工作区」**；
+3. 顶部「当前工作区」卡片展示生效工作区名称、ID 徽章与运行时绝对路径；
+4. 下方「预设工作区」列表罗列全部内置模板（`default-area`、`code-area`、`research-area`），已物化的条目展示运行时路径，当前项标记「使用中」；
+5. 点击非当前项的「切换」按钮即完成切换：
+   - 首次选中会整目录复制模板到 `~/.pi-dl/workspaces/<id>/`（`default-area` 沿用 `~/.pi-dl/default-area`，零迁移零覆盖）；
+   - 若有任务正在运行会先弹出手绘确认，明确“仅对之后的新会话生效”；
+   - 主宿主空闲时自动重启内核重新锚定 CWD；否则提示“主会话将在空闲后重启生效”。
+
 ---
 
 ## 📁 目录结构
@@ -466,6 +478,9 @@ pi-desktop-lite/
 ├── .agents/skills/             # 项目技能规范定义 (auto-compile-and-fix, iterative-modification-hygiene, sketch-drafting-ui, clean-code-refactoring 等)
 ├── .mytools/pi-body/           # 最新 Pi Agent Release 引擎包 (打包发布时自动内嵌作为 App Bundle Resources，开箱即用)
 ├── default-area/               # Pi 默认工作区目录（含 AGENTS.md 运行时自我描述，打包与运行时隔离工作空间）
+├── workspaces/                 # 多预设工作区模板源（code-area 代码工程区 / research-area 深度调研区，打包时与 default-area 同级迁移）
+│   ├── code-area/              #   代码工程向模板（workspace.json + AGENTS.md + README.md）
+│   └── research-area/          #   深度调研向模板（workspace.json + AGENTS.md + README.md）
 ├── scripts/                    # 自动化与环境配置脚本 (tauri.js, check.js)
 ├── src/                        # 前端页面源码与运行时资源
 │   ├── assets/                 # 静态资源 (logo.svg, logo.ico, 手绘 SVG 图标)
@@ -489,12 +504,14 @@ pi-desktop-lite/
 │   │   ├── file-attachments.js # 文件拖入、概述胶囊与多模态路径注入
 │   │   ├── search-input.js     # 输入交互、历史翻阅、格言跑马灯与焦点控制
 │   │   ├── packages-panel.js   # 扩展组件市场与安装/更新/卸载队列
+│   │   ├── workspace-panel.js  # 多预设工作区设置面板（当前卡片/预设列表/切换确认）
 │   │   └── global-interactions.js # 全局右键/Esc 回退与窗口生命周期保护
 │   ├── services/               # 前端服务层
 │   │   ├── tauri-bridge.js     # 统一 Tauri IPC 跨平台调用桥接器
 │   │   ├── config-service.js   # ~/.pi/agent 配置与模型白名单管理服务
 │   │   ├── pi-client.js        # 对接 Rust 后端 supervisor 的流式通信客户端
 │   │   ├── session-service.js  # 历史会话管理与切换服务
+│   │   ├── workspace-service.js # 多预设工作区 IPC 服务（列表/当前/切换）
 │   │   └── version-service.js  # 版本检测与更新通知服务
 │   ├── styles/                 # 按功能域拆分的手绘样式（styles.css 仅作 @import 聚合入口）
 │   │   ├── tokens.css          # 浅色 / 深色主题令牌
@@ -521,6 +538,7 @@ pi-desktop-lite/
 │       ├── lib.rs              # Tauri 状态初始化、命令注册、事件广播与托盘集成
 │       ├── main.rs             # 程序主入口
 │       ├── config_manager.rs   # [核心] 配置管理与目录映射
+│       ├── workspace/          # [核心] 多预设工作区模块（模板发现 / 运行时物化 / workspace.activeId 配置读写）
 │       ├── package_manager/    # [核心] 官网组件市场检索、安装/卸载与版本更新子系统
 │       ├── pi_runner/          # [核心] 进程管理、Win32 Job Object 孤儿收割、严格 LF 分帧器、Inner-Skills 动态注入引擎
 │       ├── security/           # [核心] 正则脱敏中间件 (API Key / 用户隐私路径自动脱敏)

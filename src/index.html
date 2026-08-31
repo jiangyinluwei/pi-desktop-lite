@@ -413,6 +413,16 @@
             </svg>
             会话记录
           </button>
+          <button type="button" class="settings-tab-btn" data-tab="tab-workspaces">
+            <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2.5" y="3.5" width="7" height="7" rx="1.2" />
+              <rect x="10.5" y="3.5" width="7" height="7" rx="1.2" />
+              <rect x="2.5" y="11.5" width="7" height="5" rx="1.2" />
+              <rect x="10.5" y="11.5" width="7" height="5" rx="1.2" />
+            </svg>
+            工作区
+          </button>
         </nav>
 
         <!-- 右侧面板内容区 -->
@@ -997,6 +1007,32 @@
             </div>
             <div class="sessions-list" id="sessions-list">
               <div class="empty-sessions">暂无历史会话</div>
+            </div>
+          </div>
+
+          <!-- 7. 工作区面板 -->
+          <div class="tab-pane" id="pane-workspaces">
+            <div class="pane-header">
+              <h3 class="pane-title">工作区</h3>
+              <p class="pane-desc">选择 Pi Agent 的运行工作区。每个预设携带独立运行时约束与产物隔离空间，切换对新会话生效。</p>
+            </div>
+
+            <!-- 当前工作区卡片 -->
+            <div class="workspace-current-card">
+              <div class="workspace-current-title-row">
+                <span class="workspace-current-label">当前工作区</span>
+                <span class="flat-badge flat-badge-active" id="workspace-active-badge">default-area</span>
+              </div>
+              <div class="workspace-current-name" id="workspace-active-name">默认工作区</div>
+              <div class="workspace-current-path" id="workspace-active-path" title=""></div>
+            </div>
+
+            <!-- 预设工作区列表 -->
+            <div class="settings-group">
+              <label class="group-label">预设工作区</label>
+              <div class="workspaces-list" id="workspace-list">
+                <div class="empty-workspaces">正在加载工作区...</div>
+              </div>
             </div>
           </div>
         </div>

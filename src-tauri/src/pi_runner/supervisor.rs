@@ -250,7 +250,7 @@ impl PiSupervisor {
             cmd.creation_flags(0x08000000);
         }
 
-        // 1. 设置工作目录：使用 resolve_workspace() 锁定为 default-area（自动创建并确保存在）
+        // 1. 设置工作目录：使用 resolve_workspace() 锁定当前生效工作区（多预设模板→运行时副本，自动创建并确保存在）
         let workspace = self.resolve_workspace().await;
         if let Err(e) = std::fs::create_dir_all(&workspace) {
             log::warn!("[Supervisor] Failed to create workspace dir {:?}: {}", workspace, e);
@@ -653,13 +653,51 @@ impl PiSupervisor {
         target_dir
     }
 
-    /// 解析当前生效的工作区路径（支持预留的动态配置覆盖）
+    /// 解析当前生效的工作区路径（多预设模板 → 运行时副本）
+    ///
+    /// 优先级（严格按序）：
+    /// 1. PI_WORKSPACE 环境变量（测试/自动化覆盖，优先）
+    /// 2. custom_workspace 运行时覆盖（含 pi_set_active_workspace 写入）
+    /// 3. 配置文件 workspace.activeId：存在且合法 → ensure_runtime_workspace(id) 返回的路径
+    /// 4. 兜底 → ~/.pi-dl/default-area（保持现状）
     pub async fn resolve_workspace(&self) -> PathBuf {
+        // 1. 显式环境变量覆盖（自动化测试与自定义指定）
+        if let Ok(env_ws) = std::env::var("PI_WORKSPACE") {
+            let p = PathBuf::from(env_ws);
+            if p.is_dir() {
+                return p;
+            }
+        }
+
+        // 2. custom_workspace 运行时覆盖
         if let Some(custom) = self.custom_workspace.read().await.as_ref() {
             if custom.is_dir() {
                 return custom.clone();
             }
         }
+
+        // 3. 配置文件 workspace.activeId
+        let active_id = crate::workspace::read_active_workspace_id();
+        if active_id != "default-area" {
+            if let Some(template) =
+                crate::workspace::find_template_dir(&self.app_handle, &active_id)
+            {
+                if let Ok(runtime) =
+                    crate::workspace::ensure_runtime_workspace(&active_id, &template)
+                {
+                    if runtime.is_dir() {
+                        log::info!(
+                            "[Supervisor] Active workspace resolved from config: {} -> {:?}",
+                            active_id,
+                            runtime
+                        );
+                        return runtime;
+                    }
+                }
+            }
+        }
+
+        // 4. 兜底 → ~/.pi-dl/default-area
         Self::get_default_workspace(Some(&self.app_handle))
     }
 

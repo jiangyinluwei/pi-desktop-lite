@@ -4,6 +4,7 @@ use crate::pi_runner::protocol::{FollowUpRequest, PromptRequest, SteerRequest};
 use crate::pi_runner::supervisor::PiSupervisor;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Instant;
@@ -58,10 +59,12 @@ impl SessionHost {
     }
 
     /// 启动该任务专属的 Pi RPC 子进程
+    /// @param workspace 创建任务时锁定的当前生效工作区（CWD），切换工作区后新任务自动使用新路径
     pub async fn start(
         &self,
         initial_model: Option<(String, String)>,
         initial_thinking_level: Option<String>,
+        workspace: PathBuf,
     ) -> Result<(), String> {
         let binary_path = PiSupervisor::find_pi_binary(Some(&self.app_handle))
             .ok_or_else(|| "Could not find pi executable in bundled resources, .mytools or PATH".to_string())?;
@@ -94,8 +97,7 @@ impl SessionHost {
             cmd.creation_flags(0x08000000);
         }
 
-        // 锁定工作空间至 default-area
-        let workspace = PiSupervisor::get_default_workspace(Some(&self.app_handle));
+        // 锁定工作空间至调用方传入的当前生效工作区（多预设模板→运行时副本，任务创建时快照锁定）
         if let Err(e) = std::fs::create_dir_all(&workspace) {
             log::warn!("[SessionHost:{}] Failed to create workspace dir {:?}: {}", self.task_id, workspace, e);
         }
@@ -496,7 +498,9 @@ impl PiHostPool {
             self.job_object.clone(),
         ));
 
-        host.start(initial_model, initial_thinking_level).await?;
+        // 修复多预设工作区缺口：任务子进程创建时锁定当前生效工作区（切换后新任务自动用新工作区）
+        let workspace = self.primary_supervisor.resolve_workspace().await;
+        host.start(initial_model, initial_thinking_level, workspace).await?;
 
         {
             let mut hosts = self.hosts.write().await;

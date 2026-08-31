@@ -136,6 +136,9 @@ export function initViewMode(ctx) {
     api.loadCustomProvidersConfig();
     api.loadInstalledPackages();
     api.loadRecommendedPlugins();
+    if (typeof api.loadWorkspaces === "function") {
+      api.loadWorkspaces();
+    }
     if (!api.hasCatalogLoadedOnce()) {
       api.loadCatalogPackages(1);
     }

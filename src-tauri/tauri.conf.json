@@ -39,7 +39,9 @@
     ],
     "resources": {
       "../.mytools/pi-body/pi-windows-x64": "pi-windows-x64",
-      "../default-area": "default-area"
+      "../default-area": "default-area",
+      "../workspaces/code-area": "code-area",
+      "../workspaces/research-area": "research-area"
     },
     "windows": {
       "nsis": {

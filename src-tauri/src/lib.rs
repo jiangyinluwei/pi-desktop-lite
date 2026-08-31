@@ -4,6 +4,7 @@ pub mod pi_runner;
 pub mod security;
 pub mod session;
 pub mod version_watcher;
+pub mod workspace;
 
 use config_manager::{
     pi_add_custom_model, pi_add_custom_provider_model, pi_apply_model_failover_preset,
@@ -398,6 +399,92 @@ async fn pi_set_workspace(
 }
 
 // ==========================================================================
+// 多预设工作区指令 (Workspace Presets)
+// ==========================================================================
+
+/// 列出全部内置工作区预设（模板 + 运行时状态）
+#[tauri::command]
+fn pi_list_workspaces(app: tauri::AppHandle) -> Result<Vec<workspace::WorkspaceTemplate>, String> {
+    Ok(workspace::list_preset_templates(&app))
+}
+
+/// 解析当前生效工作区（含运行时覆盖/环境变量优先级）
+#[tauri::command]
+async fn pi_get_active_workspace(
+    app: tauri::AppHandle,
+    supervisor: State<'_, PiSupervisor>,
+) -> Result<serde_json::Value, String> {
+    let path = supervisor.get_workspace().await;
+    let active_id = workspace::read_active_workspace_id();
+
+    // 判定生效来源 id：环境变量 > 配置 activeId（路径一致）> custom
+    let effective_id = if std::env::var("PI_WORKSPACE")
+        .map(|v| Path::new(&v).is_dir())
+        .unwrap_or(false)
+    {
+        "env".to_string()
+    } else {
+        let expected = workspace::runtime_workspace_path(&active_id);
+        if expected.to_string_lossy().eq(path.to_string_lossy().as_ref()) {
+            active_id.clone()
+        } else {
+            "custom".to_string()
+        }
+    };
+
+    let name = workspace::find_template_dir(&app, &active_id)
+        .map(|dir| workspace::template_meta_for_path(&dir, &active_id).0)
+        .unwrap_or_else(|| {
+            if active_id == "default-area" {
+                "默认工作区".to_string()
+            } else {
+                active_id.clone()
+            }
+        });
+
+    Ok(serde_json::json!({
+        "id": effective_id,
+        "name": name,
+        "path": path.to_string_lossy().to_string(),
+    }))
+}
+
+/// 切换当前激活的工作区：校验 → 物化运行时副本 → 持久化 → set_workspace → 空闲则重启重锚 CWD
+#[tauri::command]
+async fn pi_set_active_workspace(
+    app: tauri::AppHandle,
+    supervisor: State<'_, PiSupervisor>,
+    host_pool: State<'_, PiHostPool>,
+    id: String,
+) -> Result<serde_json::Value, String> {
+    let template = workspace::find_template_dir(&app, &id)
+        .ok_or_else(|| format!("工作区 [{}] 不存在", id))?;
+
+    let runtime = workspace::ensure_runtime_workspace(&id, &template)?;
+    workspace::write_active_workspace_id(&id)?;
+    supervisor.set_workspace(runtime.clone()).await;
+
+    let active_tasks = host_pool.get_active_tasks_count().await;
+    let mut restarted = false;
+
+    // 主宿主空闲（无运行任务且处于 Ready）时自动重启以重新锚定 CWD；否则跳过由空闲后重启生效
+    let status = supervisor.get_status().await;
+    if active_tasks == 0 && matches!(status, HostStatus::Ready { .. }) {
+        if let Err(e) = supervisor.restart().await {
+            log::warn!("[Workspace] Failed to restart supervisor after switch to {}: {}", id, e);
+        } else {
+            restarted = true;
+        }
+    }
+
+    Ok(serde_json::json!({
+        "path": runtime.to_string_lossy().to_string(),
+        "restarted": restarted,
+        "activeTasks": active_tasks,
+    }))
+}
+
+// ==========================================================================
 // 会话索引与树状历史指令
 // ==========================================================================
 
@@ -524,6 +611,9 @@ pub fn run() {
             pi_set_thinking_level,
             pi_get_workspace,
             pi_set_workspace,
+            pi_list_workspaces,
+            pi_get_active_workspace,
+            pi_set_active_workspace,
             pi_list_sessions,
             pi_get_prompt_history,
             pi_get_session_tree,

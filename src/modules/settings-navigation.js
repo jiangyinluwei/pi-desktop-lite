@@ -44,6 +44,9 @@ export function initSettingsNavigation(ctx) {
                 api.loadCatalogPackages(1);
               }
             }
+            if (targetTab === "tab-workspaces") {
+              if (typeof api.loadWorkspaces === "function") api.loadWorkspaces();
+            }
           } else {
             pane.classList.remove("active");
           }
