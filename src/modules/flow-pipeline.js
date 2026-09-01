@@ -29,13 +29,24 @@ export function initFlowPipeline(ctx) {
   const activeToolSkillMappings = new Map();
 
   const getSkillLabel = (skillName) => {
-    if (skillName === "windows-bash-compatibility") {
-      return "已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)";
+    switch (skillName) {
+      case "windows-bash-compatibility":
+        return "已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)";
+      case "document-multimodal-inspection":
+        return "已激活运行态技能：document-multimodal-inspection (多格式文档与 OCR 解析规范)";
+      case "multi-agent-orchestration":
+        return "已激活运行态技能：multi-agent-orchestration (多 Agent 并行协作规范)";
+      case "web-search-silent-access":
+        return "已激活运行态技能：web-search-silent-access (静默联网搜索与摘要规范)";
+      case "persistent-memory-retrieval":
+        return "已激活运行态技能：persistent-memory-retrieval (持久化记忆检索规范)";
+      case "dynamic-workflows-orchestration":
+        return "已激活运行态技能：dynamic-workflows-orchestration (动态工作流编排规范)";
+      case "active-context-pruning":
+        return "已激活运行态技能：active-context-pruning (长会话主动上下文修剪规范)";
+      default:
+        return `已激活运行态技能：${skillName} (运行态约束)`;
     }
-    if (skillName === "document-multimodal-inspection") {
-      return "已激活运行态技能：document-multimodal-inspection (多格式文档与 OCR 解析规范)";
-    }
-    return `已激活运行态技能：${skillName} (运行态约束)`;
   };
 
   const loadInnerSkillMappings = async () => {
@@ -56,17 +67,44 @@ export function initFlowPipeline(ctx) {
       }
     } catch (err) {
       console.warn("[Main] Failed to load skill mappings from RULES.md:", err);
-      // 安全降级
-      ["bash", "powershell", "terminal", "cmd", "execute_command"].forEach((t) => {
-        activeToolSkillMappings.set(t, {
+      // 安全降级：初始化内置默认映射
+      const fallbackRules = [
+        {
+          tools: ["bash", "powershell", "terminal", "cmd", "execute_command"],
           skill: "windows-bash-compatibility",
-          label: getSkillLabel("windows-bash-compatibility"),
-        });
-      });
-      ["read_file", "docparser", "ocr", "deword", "pi-ocr", "pi-docparser", "extract_text"].forEach((t) => {
-        activeToolSkillMappings.set(t, {
+        },
+        {
+          tools: ["read_file", "docparser", "ocr", "deword", "pi-ocr", "pi-docparser", "extract_text", "image_ocr"],
           skill: "document-multimodal-inspection",
-          label: getSkillLabel("document-multimodal-inspection"),
+        },
+        {
+          tools: ["subagent", "pi-subagents", "spawn_agent", "parallel_tasks", "delegate_task", "subtask_spawn"],
+          skill: "multi-agent-orchestration",
+        },
+        {
+          tools: ["web_search", "pi-web-access", "search_web", "fetch_web_page", "web_access", "browse_page"],
+          skill: "web-search-silent-access",
+        },
+        {
+          tools: ["memory_retrieve", "memory_store", "pi-memory", "recall_memory", "search_memory"],
+          skill: "persistent-memory-retrieval",
+        },
+        {
+          tools: ["dynamic_workflows", "execute_workflow", "pipeline_step", "run_workflow"],
+          skill: "dynamic-workflows-orchestration",
+        },
+        {
+          tools: ["context_prune", "prune_context", "pai-acp", "compress_context"],
+          skill: "active-context-pruning",
+        },
+      ];
+
+      fallbackRules.forEach((rule) => {
+        rule.tools.forEach((t) => {
+          activeToolSkillMappings.set(t.toLowerCase(), {
+            skill: rule.skill,
+            label: getSkillLabel(rule.skill),
+          });
         });
       });
     }

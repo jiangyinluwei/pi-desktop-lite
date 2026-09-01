@@ -485,7 +485,7 @@ pi-desktop-lite/
 ├── src-tauri/                  # Tauri (Rust) high-performance backend core
 │   ├── Cargo.toml              # Dependencies: tokio, serde, dashmap, notify, reqwest, regex, windows-sys
 │   ├── tauri.conf.json         # Window configuration, transparency & security policies
-│   ├── inner-skills/           # [Core] Runtime constraints dynamically injected into Pi Agent (RULES.md, windows-bash-compatibility)
+│   ├── inner-skills/           # [Core] Runtime constraints dynamically injected into Pi Agent (RULES.md, bash, multimodal/OCR, subagents, web search, memory, workflows, ACP)
 │   └── src/
 │       ├── lib.rs              # Tauri initialization, command registry, event bus & tray integration
 │       ├── main.rs             # Application entrypoint

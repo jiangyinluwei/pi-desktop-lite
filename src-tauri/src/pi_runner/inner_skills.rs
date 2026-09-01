@@ -6,6 +6,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 const EMBEDDED_RULES_MD: &str = include_str!("../../inner-skills/RULES.md");
 const EMBEDDED_BASH_SKILL_MD: &str = include_str!("../../inner-skills/windows-bash-compatibility/SKILL.md");
 const EMBEDDED_DOC_SKILL_MD: &str = include_str!("../../inner-skills/document-multimodal-inspection/SKILL.md");
+const EMBEDDED_SUBAGENTS_SKILL_MD: &str = include_str!("../../inner-skills/multi-agent-orchestration/SKILL.md");
+const EMBEDDED_WEB_SKILL_MD: &str = include_str!("../../inner-skills/web-search-silent-access/SKILL.md");
+const EMBEDDED_MEMORY_SKILL_MD: &str = include_str!("../../inner-skills/persistent-memory-retrieval/SKILL.md");
+const EMBEDDED_WORKFLOW_SKILL_MD: &str = include_str!("../../inner-skills/dynamic-workflows-orchestration/SKILL.md");
+const EMBEDDED_PRUNING_SKILL_MD: &str = include_str!("../../inner-skills/active-context-pruning/SKILL.md");
 
 /// 规则映射定义项
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -111,8 +116,64 @@ impl InnerSkillInjector {
                     "pi-ocr".to_string(),
                     "pi-docparser".to_string(),
                     "extract_text".to_string(),
+                    "image_ocr".to_string(),
                 ],
                 skill_name: "document-multimodal-inspection".to_string(),
+                enforcement: "Mandatory".to_string(),
+            });
+            mappings.push(SkillMapping {
+                tools: vec![
+                    "subagent".to_string(),
+                    "pi-subagents".to_string(),
+                    "spawn_agent".to_string(),
+                    "parallel_tasks".to_string(),
+                    "delegate_task".to_string(),
+                    "subtask_spawn".to_string(),
+                ],
+                skill_name: "multi-agent-orchestration".to_string(),
+                enforcement: "Mandatory".to_string(),
+            });
+            mappings.push(SkillMapping {
+                tools: vec![
+                    "web_search".to_string(),
+                    "pi-web-access".to_string(),
+                    "search_web".to_string(),
+                    "fetch_web_page".to_string(),
+                    "web_access".to_string(),
+                    "browse_page".to_string(),
+                ],
+                skill_name: "web-search-silent-access".to_string(),
+                enforcement: "Mandatory".to_string(),
+            });
+            mappings.push(SkillMapping {
+                tools: vec![
+                    "memory_retrieve".to_string(),
+                    "memory_store".to_string(),
+                    "pi-memory".to_string(),
+                    "recall_memory".to_string(),
+                    "search_memory".to_string(),
+                ],
+                skill_name: "persistent-memory-retrieval".to_string(),
+                enforcement: "Mandatory".to_string(),
+            });
+            mappings.push(SkillMapping {
+                tools: vec![
+                    "dynamic_workflows".to_string(),
+                    "execute_workflow".to_string(),
+                    "pipeline_step".to_string(),
+                    "run_workflow".to_string(),
+                ],
+                skill_name: "dynamic-workflows-orchestration".to_string(),
+                enforcement: "Mandatory".to_string(),
+            });
+            mappings.push(SkillMapping {
+                tools: vec![
+                    "context_prune".to_string(),
+                    "prune_context".to_string(),
+                    "pai-acp".to_string(),
+                    "compress_context".to_string(),
+                ],
+                skill_name: "active-context-pruning".to_string(),
                 enforcement: "Mandatory".to_string(),
             });
         }
@@ -131,6 +192,11 @@ impl InnerSkillInjector {
         match skill_name.trim().to_lowercase().as_str() {
             "windows-bash-compatibility" => Some(EMBEDDED_BASH_SKILL_MD),
             "document-multimodal-inspection" => Some(EMBEDDED_DOC_SKILL_MD),
+            "multi-agent-orchestration" => Some(EMBEDDED_SUBAGENTS_SKILL_MD),
+            "web-search-silent-access" => Some(EMBEDDED_WEB_SKILL_MD),
+            "persistent-memory-retrieval" => Some(EMBEDDED_MEMORY_SKILL_MD),
+            "dynamic-workflows-orchestration" => Some(EMBEDDED_WORKFLOW_SKILL_MD),
+            "active-context-pruning" => Some(EMBEDDED_PRUNING_SKILL_MD),
             _ => None,
         }
     }
@@ -229,9 +295,80 @@ mod tests {
             injector.resolve_skill_for_tool("pi-ocr"),
             Some("document-multimodal-inspection".to_string())
         );
+        assert_eq!(
+            injector.resolve_skill_for_tool("pi-docparser"),
+            Some("document-multimodal-inspection".to_string())
+        );
 
-        // 未在 RULES.md 映射的工具不应触发任何 inner-skill
-        assert_eq!(injector.resolve_skill_for_tool("web_search"), None);
+        // 测试多 Agent 调度工具是否正确映射到 multi-agent-orchestration
+        assert_eq!(
+            injector.resolve_skill_for_tool("subagent"),
+            Some("multi-agent-orchestration".to_string())
+        );
+        assert_eq!(
+            injector.resolve_skill_for_tool("pi-subagents"),
+            Some("multi-agent-orchestration".to_string())
+        );
+        assert_eq!(
+            injector.resolve_skill_for_tool("spawn_agent"),
+            Some("multi-agent-orchestration".to_string())
+        );
+
+        // 测试联网搜索工具是否正确映射到 web-search-silent-access
+        assert_eq!(
+            injector.resolve_skill_for_tool("web_search"),
+            Some("web-search-silent-access".to_string())
+        );
+        assert_eq!(
+            injector.resolve_skill_for_tool("pi-web-access"),
+            Some("web-search-silent-access".to_string())
+        );
+        assert_eq!(
+            injector.resolve_skill_for_tool("search_web"),
+            Some("web-search-silent-access".to_string())
+        );
+
+        // 测试记忆检索工具是否正确映射到 persistent-memory-retrieval
+        assert_eq!(
+            injector.resolve_skill_for_tool("memory_retrieve"),
+            Some("persistent-memory-retrieval".to_string())
+        );
+        assert_eq!(
+            injector.resolve_skill_for_tool("pi-memory"),
+            Some("persistent-memory-retrieval".to_string())
+        );
+
+        // 测试动态工作流工具是否正确映射到 dynamic-workflows-orchestration
+        assert_eq!(
+            injector.resolve_skill_for_tool("dynamic_workflows"),
+            Some("dynamic-workflows-orchestration".to_string())
+        );
+        assert_eq!(
+            injector.resolve_skill_for_tool("execute_workflow"),
+            Some("dynamic-workflows-orchestration".to_string())
+        );
+
+        // 测试上下文修剪工具是否正确映射到 active-context-pruning
+        assert_eq!(
+            injector.resolve_skill_for_tool("context_prune"),
+            Some("active-context-pruning".to_string())
+        );
+        assert_eq!(
+            injector.resolve_skill_for_tool("pai-acp"),
+            Some("active-context-pruning".to_string())
+        );
+
+        // 未在 RULES.md 映射的随机工具不应触发任何 inner-skill
+        assert_eq!(injector.resolve_skill_for_tool("unknown_fake_tool_xyz"), None);
+
+        // 验证各 Skill 的详细内容均可正常获取
+        assert!(injector.get_skill_detail("windows-bash-compatibility").is_some());
+        assert!(injector.get_skill_detail("document-multimodal-inspection").is_some());
+        assert!(injector.get_skill_detail("multi-agent-orchestration").is_some());
+        assert!(injector.get_skill_detail("web-search-silent-access").is_some());
+        assert!(injector.get_skill_detail("persistent-memory-retrieval").is_some());
+        assert!(injector.get_skill_detail("dynamic-workflows-orchestration").is_some());
+        assert!(injector.get_skill_detail("active-context-pruning").is_some());
 
         // 测试 Prompt 持续注入 RULES.md 原文
         let (processed, info) = injector.process_prompt_with_info("hello");
@@ -241,5 +378,3 @@ mod tests {
         assert!(processed.ends_with("hello"));
     }
 }
-
-

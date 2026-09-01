@@ -487,7 +487,7 @@ pi-desktop-lite/
 ├── src-tauri/                  # Tauri (Rust) 高性能后端核心
 │   ├── Cargo.toml              # 依赖: tokio, serde, dashmap, notify, reqwest, regex, windows-sys
 │   ├── tauri.conf.json         # 窗口无边框、原生透明与安全策略配置
-│   ├── inner-skills/           # [核心] 桌面应用运行时动态注入 Pi Agent 的内置约束技能与规则 (RULES.md, windows-bash-compatibility)
+│   ├── inner-skills/           # [核心] 桌面应用运行时动态注入 Pi Agent 的内置约束技能与规则 (RULES.md, bash兼容, OCR文档解析, 多Agent, 联网搜索, 长期记忆, 工作流, 上下文修剪)
 │   └── src/
 │       ├── lib.rs              # Tauri 状态初始化、命令注册、事件广播与托盘集成
 │       ├── main.rs             # 程序主入口

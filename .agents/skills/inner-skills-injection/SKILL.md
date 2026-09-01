@@ -80,7 +80,17 @@ src-tauri/inner-skills/
 ├── RULES.md                                  # 运行态映射总纲 (Single Source of Truth, < 100 Tokens)
 ├── windows-bash-compatibility/               # 独立 Skill 1: Windows 命令行与终端兼容规范
 │   └── SKILL.md
-└── document-multimodal-inspection/           # 独立 Skill 2: 多格式文档与目录深度遍历/OCR解析规范
+├── document-multimodal-inspection/           # 独立 Skill 2: 多格式文档与目录深度遍历/OCR解析规范
+│   └── SKILL.md
+├── multi-agent-orchestration/                # 独立 Skill 3: 多智能体并行与子任务协作调度规范
+│   └── SKILL.md
+├── web-search-silent-access/                 # 独立 Skill 4: 静默后台联网搜索与自动网页摘要规范
+│   └── SKILL.md
+├── persistent-memory-retrieval/              # 独立 Skill 5: 持久化记忆与跨会话上下文检索规范
+│   └── SKILL.md
+├── dynamic-workflows-orchestration/          # 独立 Skill 6: 动态工作流与自动化流水线编排规范
+│   └── SKILL.md
+└── active-context-pruning/                   # 独立 Skill 7: 主动上下文修剪与长会话压缩规范
     └── SKILL.md
 ```
 
@@ -114,15 +124,25 @@ src-tauri/inner-skills/
 | Invoked Tool / Intent | Target Inner-Skill | Enforcement Level |
 | :--- | :--- | :--- |
 | `bash`, `terminal`, `powershell`, `cmd`, `execute_command` | `windows-bash-compatibility` | **Mandatory** |
-| `read_file`, `docparser`, `ocr`, `deword`, `pi-ocr`, `pi-docparser`, `extract_text` | `document-multimodal-inspection` | **Mandatory** |
+| `read_file`, `docparser`, `ocr`, `deword`, `pi-ocr`, `pi-docparser`, `extract_text`, `image_ocr` | `document-multimodal-inspection` | **Mandatory** |
+| `subagent`, `pi-subagents`, `spawn_agent`, `parallel_tasks`, `delegate_task`, `subtask_spawn` | `multi-agent-orchestration` | **Mandatory** |
+| `web_search`, `pi-web-access`, `search_web`, `fetch_web_page`, `web_access`, `browse_page` | `web-search-silent-access` | **Mandatory** |
+| `memory_retrieve`, `memory_store`, `pi-memory`, `recall_memory`, `search_memory` | `persistent-memory-retrieval` | **Mandatory** |
+| `dynamic_workflows`, `execute_workflow`, `pipeline_step`, `run_workflow` | `dynamic-workflows-orchestration` | **Mandatory** |
+| `context_prune`, `prune_context`, `pai-acp`, `compress_context` | `active-context-pruning` | **Mandatory** |
 
 ---
 
 ## 2. Mandatory Core Directives (Baseline)
 
 When invoking tools or planning actions:
-1. Terminal & CLI Execution (`windows-bash-compatibility`): Always use forward slashes '/'; quote paths; append auto-confirm (-y); disable pagers; NO_COLOR=1; forbid spontaneous file creation (e.g. output.txt).
-2. Folder & Multi-Format Documents (`document-multimodal-inspection`): Proactively traverse directories; for .docx, .doc, .pdf, .pptx, .xlsx, or images, never read raw binary via cat; automatically invoke specialized parsers or OCR components (pi-ocr, deword, pi-docparser) to extract authentic text and tables; batch synthesize factual insights.
+1. Terminal & CLI Execution (`windows-bash-compatibility`): Always use forward slashes '/'; quote paths; append auto-confirm (-y); disable pagers; NO_COLOR=1; forbid spontaneous file creation.
+2. Folder & Multi-Format Documents (`document-multimodal-inspection`): Proactively traverse directories; never cat raw binary; automatically invoke specialized parsers or OCR (pi-ocr, deword, pi-docparser); batch synthesize findings.
+3. Multi-Agent Scheduling (`multi-agent-orchestration`): Clear subtask boundaries; non-blocking parallel dispatch; timeout containment; synthesize findings.
+4. Silent Web Access (`web-search-silent-access`): Silent background execution; multi-source cross-verification; extract authentic citations and dates.
+5. Persistent Memory (`persistent-memory-retrieval`): Proactively retrieve historical context; match semantic relevance; safe incremental storage; exclude secrets.
+6. Dynamic Workflows (`dynamic-workflows-orchestration`): Stage-wise prerequisite validation; graceful fault tolerance; transparent milestone progress.
+7. Active Context Pruning (`active-context-pruning`): Progressively prune raw tool payloads; protect core goals and latest code snippets.
 </runtime_context_rules>
 
 用户原始提问内容
