@@ -106,7 +106,7 @@ src-tauri/inner-skills/
 ### 4.2 阶段二：即时工具拦截与技能激活呈现 (Just-In-Time Skill Feedback)
 - **触发时机**：当且仅当底层 Pi Agent **决策并即将/正在调用映射工具时**；
 - **事件捕获**：前端捕获 `toolcall-delta-start`、`tool-start` 与 `bash-update` 事件；
-- **前端胶囊显现**：在 AI 思考卡片上方平滑淡入草图胶囊，展示当前命中的运行态技能名称；
+- **前端胶囊显现**：在 AI 思考卡片上方平滑淡入草图胶囊，展示当前命中的运行态技能名称；若单轮内触发多个不同运行态技能，在文本后以中文逗号连续追加（如 `已激活运行态技能：XXX1，XXX2，XXX3 ......`）；
 - **生命周期自愈**：每次提交新提问（`resetStreamState`）时胶囊自动归零隐去，直到下一次有实际工具调用触发。
 
 ### 4.3 信封式隔离结构 (`<runtime_context_rules>`)
@@ -184,7 +184,7 @@ description: 简明扼要描述该运行态技能在何种场景下被触发与�
    - 在 `get_skill_detail` 中添加该 Skill 的分支匹配；
    - 补充 `#[cfg(test)]` 单元测试断言。
 2. **前端模块 (`src/modules/flow-pipeline.js`)**：
-   - 在 `getSkillLabel` 中增加该 Skill 对应的中文友好标签（如 `⚡ 已激活运行态技能：your-new-skill-name (某某规范)`）。
+   - 在 `getSkillDisplayName` 中增加该 Skill 对应的中文友好标签（如 `your-new-skill-name (某某规范)`），多技能触发时由 `formatActivatedSkillsText` 统一以中文逗号拼装展示（`已激活运行态技能：XXX1，XXX2，XXX3 ......`）。
 3. **闭环验证**：
    - 运行 `npm run check` 确保前端 AST 检查与 Rust 编译零错误（Exit Code 0）。
 

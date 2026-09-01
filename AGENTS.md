@@ -115,7 +115,7 @@
   - 所有具体领域规则一律在 `src-tauri/inner-skills/<skill-name>/SKILL.md` 中独立封装，通过映射矩阵命中后动态激活与呈现反馈；
 - **两阶段动态映射与即时触发体系**：
   1. **阶段一：背景持续静默注入 (`RULES.md` Silent Baseline)**：每轮提问透明封入精炼纯英文 `<runtime_context_rules>`（`RULES.md` 原文），静默无扰，常规问答不显现 UI 胶囊；
-  2. **阶段二：动态映射解析与即时激活呈现 (Just-In-Time Skill Feedback)**：Rust 引擎动态解析 `RULES.md` 矩阵生成映射表；当且仅当底层 Agent 触发调用命中映射的工具（如 `bash` 命中 `windows-bash-compatibility`、`ocr`/`deword` 命中 `document-multimodal-inspection`）时，即时在思考卡片上方呈现手绘草图胶囊；未在 `RULES.md` 映射的工具绝不误触；
+  2. **阶段二：动态映射解析与即时激活呈现 (Just-In-Time Skill Feedback)**：Rust 引擎动态解析 `RULES.md` 矩阵生成映射表；当且仅当底层 Agent 触发调用命中映射的工具（如 `bash` 命中 `windows-bash-compatibility`、`ocr`/`deword` 命中 `document-multimodal-inspection`）时，即时在思考卡片上方呈现手绘草图胶囊；多技能触发时在文本后以中文逗号连续追加（如：`已激活运行态技能：XXX1，XXX2，XXX3 ......`）；未在 `RULES.md` 映射的工具绝不误触；
   3. **`<runtime_context_rules>` 信封隔离**：明确声明约束仅在触发工具调用时生效，保障正常对话生成的自然性。
 
 | 文件 / Skill 名称 | 路径 | 运行态注入机制与作用 |

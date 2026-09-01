@@ -151,6 +151,7 @@ export function initFlowUi(ctx) {
     thinkingDurationText = "",
     responseText = "",
     toolCalls = [],
+    injectedSkills = [],
     isOpenThinking = true,
     isAborted = false,
     errorMessage = null,
@@ -191,13 +192,21 @@ export function initFlowUi(ctx) {
     groupEl.appendChild(userPromptCard);
 
     // 2. 运行态上下文/Inner-Skill 注入胶囊
+    const activatedSkillsSet = new Set(Array.isArray(injectedSkills) ? injectedSkills : []);
+    const hasInjectedSkills = activatedSkillsSet.size > 0;
+    const initialSkillText = hasInjectedSkills
+      ? (typeof api.formatActivatedSkillsText === "function"
+          ? api.formatActivatedSkillsText(activatedSkillsSet)
+          : `已激活运行态技能：${Array.from(activatedSkillsSet).join("，")}`)
+      : "已激活运行态技能：windows-bash-compatibility";
+
     const injectionCapsuleEl = document.createElement("div");
-    injectionCapsuleEl.className = "flow-injection-capsule hidden";
+    injectionCapsuleEl.className = `flow-injection-capsule ${hasInjectedSkills ? "" : "hidden"}`;
     injectionCapsuleEl.setAttribute("role", "status");
     injectionCapsuleEl.setAttribute("aria-live", "polite");
     injectionCapsuleEl.innerHTML = `
       <span class="capsule-icon" aria-hidden="true">${ICONS.sparkle}</span>
-      <span class="capsule-text">已注入运行态技能：windows-bash-compatibility</span>
+      <span class="capsule-text">${escapeHtml(initialSkillText)}</span>
     `;
     groupEl.appendChild(injectionCapsuleEl);
 
@@ -311,6 +320,7 @@ export function initFlowUi(ctx) {
       promptAttachmentsEl,
       injectionCapsuleEl,
       injectionTextEl,
+      activatedSkills: activatedSkillsSet,
       failoverCapsuleEl,
       failoverTextEl,
       thinkingCardEl,

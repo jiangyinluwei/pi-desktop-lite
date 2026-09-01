@@ -28,26 +28,37 @@ export function initFlowPipeline(ctx) {
 
   const activeToolSkillMappings = new Map();
 
-  const getSkillLabel = (skillName) => {
+  const getSkillDisplayName = (skillName) => {
     switch (skillName) {
       case "windows-bash-compatibility":
-        return "已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)";
+        return "windows-bash-compatibility (Windows Shell 兼容规范)";
       case "document-multimodal-inspection":
-        return "已激活运行态技能：document-multimodal-inspection (多格式文档与 OCR 解析规范)";
+        return "document-multimodal-inspection (多格式文档与 OCR 解析规范)";
       case "multi-agent-orchestration":
-        return "已激活运行态技能：multi-agent-orchestration (多 Agent 并行协作规范)";
+        return "multi-agent-orchestration (多 Agent 并行协作规范)";
       case "web-search-silent-access":
-        return "已激活运行态技能：web-search-silent-access (静默联网搜索与摘要规范)";
+        return "web-search-silent-access (静默联网搜索与摘要规范)";
       case "persistent-memory-retrieval":
-        return "已激活运行态技能：persistent-memory-retrieval (持久化记忆检索规范)";
+        return "persistent-memory-retrieval (持久化记忆检索规范)";
       case "dynamic-workflows-orchestration":
-        return "已激活运行态技能：dynamic-workflows-orchestration (动态工作流编排规范)";
+        return "dynamic-workflows-orchestration (动态工作流编排规范)";
       case "active-context-pruning":
-        return "已激活运行态技能：active-context-pruning (长会话主动上下文修剪规范)";
+        return "active-context-pruning (长会话主动上下文修剪规范)";
       default:
-        return `已激活运行态技能：${skillName} (运行态约束)`;
+        return `${skillName} (运行态约束)`;
     }
   };
+
+  const formatActivatedSkillsText = (skillNames) => {
+    if (!skillNames) return "";
+    const arr = Array.from(skillNames);
+    if (arr.length === 0) return "";
+    const labels = arr.map((s) => getSkillDisplayName(s));
+    return `已激活运行态技能：${labels.join("，")}`;
+  };
+
+  api.getSkillDisplayName = getSkillDisplayName;
+  api.formatActivatedSkillsText = formatActivatedSkillsText;
 
   const loadInnerSkillMappings = async () => {
     try {
@@ -59,7 +70,7 @@ export function initFlowPipeline(ctx) {
             item.tools.forEach((t) => {
               activeToolSkillMappings.set(t.toLowerCase(), {
                 skill: item.skill_name,
-                label: getSkillLabel(item.skill_name),
+                displayName: getSkillDisplayName(item.skill_name),
               });
             });
           }
@@ -103,7 +114,7 @@ export function initFlowPipeline(ctx) {
         rule.tools.forEach((t) => {
           activeToolSkillMappings.set(t.toLowerCase(), {
             skill: rule.skill,
-            label: getSkillLabel(rule.skill),
+            displayName: getSkillDisplayName(rule.skill),
           });
         });
       });
@@ -114,10 +125,22 @@ export function initFlowPipeline(ctx) {
     if (!rawToolName || !flow.activeTurnRefs?.injectionCapsuleEl || !flow.activeTurnRefs?.injectionTextEl) return;
     const nameLower = rawToolName.toString().toLowerCase().trim();
     const mapped = activeToolSkillMappings.get(nameLower);
-    if (mapped) {
-      flow.activeTurnRefs.injectionTextEl.textContent = mapped.label || `已激活运行态技能：${mapped.skill}`;
-      flow.activeTurnRefs.injectionCapsuleEl.classList.remove("hidden");
-      if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    if (mapped && mapped.skill) {
+      if (!flow.activeTurnRefs.activatedSkills) {
+        flow.activeTurnRefs.activatedSkills = new Set();
+      }
+      const wasEmpty = flow.activeTurnRefs.activatedSkills.size === 0;
+      const alreadyHas = flow.activeTurnRefs.activatedSkills.has(mapped.skill);
+
+      if (!alreadyHas) {
+        flow.activeTurnRefs.activatedSkills.add(mapped.skill);
+        flow.activeTurnRefs.injectionTextEl.textContent = formatActivatedSkillsText(flow.activeTurnRefs.activatedSkills);
+      }
+
+      if (wasEmpty || !alreadyHas) {
+        flow.activeTurnRefs.injectionCapsuleEl.classList.remove("hidden");
+        if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+      }
     }
   };
 

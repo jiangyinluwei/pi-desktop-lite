@@ -157,6 +157,18 @@ export function initFlowStream(ctx) {
     if (flow.activeTurnRefs?.toolCallsContainerEl) {
       flow.activeTurnRefs.toolCallsContainerEl.innerHTML = "";
     }
+    // 重置运行态技能胶囊
+    if (flow.activeTurnRefs) {
+      if (flow.activeTurnRefs.activatedSkills) {
+        flow.activeTurnRefs.activatedSkills.clear();
+      }
+      if (flow.activeTurnRefs.injectionCapsuleEl) {
+        flow.activeTurnRefs.injectionCapsuleEl.classList.add("hidden");
+      }
+      if (flow.activeTurnRefs.injectionTextEl) {
+        flow.activeTurnRefs.injectionTextEl.textContent = "";
+      }
+    }
     // 重开思考卡片并重置耗时计时
     api.expandThinkingCard(flow.activeTurnRefs.thinkingCardEl, flow.activeTurnRefs.thinkingToggleBtn);
     flow.thinkingStartTime = Date.now();
