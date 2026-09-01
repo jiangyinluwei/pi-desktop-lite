@@ -39,6 +39,7 @@
 3. **全域右键“返回上一步 (Step Back)”与四态界面流**：
    - 全域彻底禁用浏览器默认右键菜单（`contextmenu` 拦截）；
    - **四态界面层级流**：`半透明侧边栏 (最高优先级)` ➔ `设置全页面 (界面4: settings)` ➔ `Flow 交互版 (界面3: 运行态/暂停态转入后台挂起，已结束/中断态归档至历史记录)` ➔ `专注版 (界面2)` ➔ `详细版 (界面1)` ➔ 输入框失焦/清空；
+   - **设置页 → Flow 定向回退特例 (`flowFromSettings`)**：从设置页会话记录 Tab「进入 Flow」时置 `view.flowFromSettings = true`；Flow 中右键/Esc 时若空闲/已结束 → 清标志、不挂起不归档，直接回设置页会话记录 Tab（`previousMode: VIEW_DETAILED` 钉住 `view.previous`，再右键照常回界面1）；若运行/暂停 → 清标志后走正常挂起通道；`setViewMode` 对任何离开 Flow 的路径兜底清标志；
    - **Flow 挂起与终止双通道解耦**：右键/Esc 转入后台挂起（`isSuspended = true`，进入 `TaskManager`，绝不调用 abort） vs 显式「⏹ 终止」按钮彻底终止 Agent 生成并追加手动终止提示；
    - **输入框防抖**：在详细版下对着输入框点击右键时静默屏蔽，杜绝界面瞬切抖动；所有新模块均需接入 `window.__piRegisterStepBack`；
 4. **手绘 SVG 矢量图元规范（全域消除默认 Emoji）**：
@@ -117,7 +118,7 @@
 
 - **`src/main.js`**：唯一编排入口。只负责收集 DOM 引用（`ctx.el`）、构建共享上下文（`ctx.view` / `ctx.settings` / `ctx.flow` / `ctx.attachments` / `ctx.api`）并按依赖顺序初始化各模块；
 - **`src/lib/`**：跨模块共享基础件（`dom-utils.js` HTML/CSS 转义、`icons.js` currentColor 手绘 SVG 图元、`view-constants.js` 四态常量）；
-- **`src/modules/`**：按功能域拆分的 UI 业务模块（`view-mode.js`、`settings-navigation.js`、`model-panel.js`、`custom-provider-panel.js`、`kernel-panel.js`、`flow-ui.js`、`flow-stream.js`、`flow-pipeline.js`、`task-panel.js`、`packages-panel.js`、`workspace-panel.js`、`global-interactions.js` 等）。跨模块调用一律通过 `ctx.api.<fn>()`，共享状态一律收敛至 `ctx.*`；
+- **`src/modules/`**：按功能域拆分的 UI 业务模块（`view-mode.js`、`settings-navigation.js`、`model-panel.js`、`custom-provider-panel.js`、`kernel-panel.js`、`flow-ui.js`、`flow-stream.js`、`flow-pipeline.js`、`task-panel.js`、`packages-panel.js`、`workspace-panel.js`、`sessions-panel.js`（会话记录列表、搜索筛选、进入 Flow 管线与界面会话清空）、`global-interactions.js` 等）。跨模块调用一律通过 `ctx.api.<fn>()`，共享状态一律收敛至 `ctx.*`；
 - **`src/styles/`**：按功能域拆分的样式（`tokens.css` / `base.css` / `layout.css` / `flow.css` / `settings.css` / `packages.css` / `overlays.css` 等），`src/styles.css` 仅为 `@import` 聚合入口，新增样式必须写入对应功能域子文件；
 - **`src/services/`**：与 UI 解耦的前端服务层（IPC 桥接、配置、流式客户端、任务/会话/历史/工作区等，含 `workspace-service.js`），**禁止**在 service 中直接操作 UI DOM。
 

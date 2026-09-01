@@ -216,7 +216,7 @@ export function initTaskPanel(ctx) {
               renderTaskSidebarList();
               updateMiniTaskCapsuleUI();
             });
-            actions.appendChild(btnAbort);
+            actions.prepend(btnAbort);
           }
         } else if (!isRunning && btnAbort) {
           btnAbort.remove();
@@ -232,9 +232,14 @@ export function initTaskPanel(ctx) {
             <span class="task-card-status-badge">${escapeHtml(statusText)}</span>
           </div>
           <div class="task-card-title" title="${escapeHtml(task.query || task.title)}">${escapeHtml(task.title || task.query)}</div>
-          <div class="task-card-actions">
-            <button type="button" class="task-card-action-btn btn-enter-flow">进入 Flow</button>
-            ${isRunning ? `<button type="button" class="task-card-action-btn btn-abort-task">⏹ 终止</button>` : ""}
+          <div class="task-card-footer">
+            <div class="task-card-actions">
+              ${isRunning ? `<button type="button" class="task-card-action-btn btn-abort-task">⏹ 终止</button>` : ""}
+            </div>
+            <div class="task-hover-prompt" aria-hidden="true">
+              <span class="prompt-text">进入 Flow</span>
+              <span class="hover-arrow">→</span>
+            </div>
           </div>
         `;
 
@@ -243,15 +248,6 @@ export function initTaskPanel(ctx) {
           restoreTaskToFlow(task);
           closeTaskSidebar();
         });
-
-        const btnEnter = card.querySelector(".btn-enter-flow");
-        if (btnEnter) {
-          btnEnter.addEventListener("click", (e) => {
-            e.stopPropagation();
-            restoreTaskToFlow(task);
-            closeTaskSidebar();
-          });
-        }
 
         const btnAbort = card.querySelector(".btn-abort-task");
         if (btnAbort) {
@@ -328,6 +324,90 @@ export function initTaskPanel(ctx) {
     }
   });
 
+  // ==========================================================================
+  // Flow 历史轮次共享渲染器：清空会话区 → 逐轮渲染 → 末轮回填 flow.* 状态 → 切视图 → 滚动到底
+  // 供 restoreTaskToFlow / restoreConversationToFlow 与内核会话还原管线 (enterKernelSessionFlow) 共用
+  // ==========================================================================
+  const renderTurnsIntoFlow = (task, turns, options = {}) => {
+    if (!task || !Array.isArray(turns) || turns.length === 0) return;
+
+    const {
+      isRunning = false,
+      syncModelName = false,
+      sessionPath = null,
+    } = options;
+
+    taskManager.setActiveTask(task.id);
+
+    if (flowConversation) {
+      flowConversation.innerHTML = "";
+    }
+
+    turns.forEach((turn, idx) => {
+      const isLast = idx === turns.length - 1;
+      const isOpen = isLast && isRunning && (!turn.responseText || turn.responseText.trim().length === 0);
+
+      const groupRefs = api.createFlowTurnGroupElement({
+        query: turn.query || "",
+        attachments: turn.attachments || [],
+        thinkingText: turn.thinkingText || "",
+        thinkingDurationText: turn.thinkingDurationText || turn.thinkingDuration || "已完成思考",
+        responseText: turn.responseText || "",
+        toolCalls: turn.toolCalls || [],
+        isOpenThinking: isOpen,
+        isAborted: turn.isAborted || turn.responseText?.includes("刚刚会话已手动终止"),
+        errorMessage: turn.errorMessage,
+      });
+
+      if (flowConversation && groupRefs?.groupEl) {
+        flowConversation.appendChild(groupRefs.groupEl);
+      }
+
+      if (isLast) {
+        flow.activeTurnRefs = groupRefs;
+        flow.lastUserQuery = turn.query || "";
+        flow.lastSentAttachments = turn.attachments || [];
+        flow.currentThinkingText = turn.thinkingText || "";
+        flow.currentResponseText = turn.responseText || "";
+        flow.currentErrorMessage = turn.errorMessage || null;
+        flow.hasReceivedDelta = Boolean(turn.responseText && turn.responseText.trim().length > 0);
+        flow.hasAutoCollapsedThinking = !isOpen;
+
+        if (isRunning && groupRefs.responseContentEl) {
+          groupRefs.responseContentEl.innerHTML = api.renderMarkdown(turn.responseText || "") + `<span class="streaming-cursor"></span>`;
+        }
+      } else {
+        // 历史轮次全部收起思考卡片与工具卡片
+        api.collapseThinkingCard(groupRefs.thinkingCardEl, groupRefs.thinkingToggleBtn);
+      }
+    });
+
+    if (syncModelName && flowModelName) {
+      flowModelName.textContent = task.model || "Model";
+    }
+
+    if (flowBtnAbort) {
+      if (isRunning) {
+        flowBtnAbort.classList.remove("hidden");
+      } else {
+        flowBtnAbort.classList.add("hidden");
+      }
+    }
+
+    api.setViewMode(VIEW_FLOW, true);
+
+    // 同步切换底层 Pi 会话
+    if (sessionPath) {
+      sessionService.switchSession(sessionPath).catch((err) => {
+        console.warn("[Main] Session sync switch warning:", err);
+      });
+    }
+
+    if (flowScrollArea) {
+      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    }
+  };
+
   const restoreTaskToFlow = (task) => {
     if (!task) return;
 
@@ -369,62 +449,7 @@ export function initTaskPanel(ctx) {
 
     const isRunning = task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec";
 
-    turns.forEach((turn, idx) => {
-      const isLast = idx === turns.length - 1;
-      const isOpen = isLast && isRunning && (!turn.responseText || turn.responseText.trim().length === 0);
-
-      const groupRefs = api.createFlowTurnGroupElement({
-        query: turn.query || "",
-        attachments: turn.attachments || [],
-        thinkingText: turn.thinkingText || "",
-        thinkingDurationText: turn.thinkingDurationText || "已完成思考",
-        responseText: turn.responseText || "",
-        toolCalls: turn.toolCalls || [],
-        isOpenThinking: isOpen,
-        isAborted: turn.isAborted || (!isLast && turn.responseText?.includes("刚刚会话已手动终止")),
-        errorMessage: turn.errorMessage,
-      });
-
-      if (flowConversation && groupRefs?.groupEl) {
-        flowConversation.appendChild(groupRefs.groupEl);
-      }
-
-      if (isLast) {
-        flow.activeTurnRefs = groupRefs;
-        flow.lastUserQuery = turn.query || "";
-        flow.lastSentAttachments = turn.attachments || [];
-        flow.currentThinkingText = turn.thinkingText || "";
-        flow.currentResponseText = turn.responseText || "";
-        flow.currentErrorMessage = turn.errorMessage || null;
-        flow.hasReceivedDelta = Boolean(turn.responseText && turn.responseText.trim().length > 0);
-        flow.hasAutoCollapsedThinking = !isOpen;
-
-        if (isRunning && groupRefs.responseContentEl) {
-          groupRefs.responseContentEl.innerHTML = api.renderMarkdown(turn.responseText || "") + `<span class="streaming-cursor"></span>`;
-        }
-      } else {
-        // 历史轮次全部收起思考卡片与工具卡片
-        api.collapseThinkingCard(groupRefs.thinkingCardEl, groupRefs.thinkingToggleBtn);
-      }
-    });
-
-    if (flowModelName) {
-      flowModelName.textContent = task.model || "Model";
-    }
-
-    if (flowBtnAbort) {
-      if (isRunning) {
-        flowBtnAbort.classList.remove("hidden");
-      } else {
-        flowBtnAbort.classList.add("hidden");
-      }
-    }
-
-    api.setViewMode(VIEW_FLOW, true);
-
-    if (flowScrollArea) {
-      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
-    }
+    renderTurnsIntoFlow(task, turns, { isRunning, syncModelName: true });
   };
 
   const restoreConversationToFlow = (conv) => {
@@ -473,56 +498,7 @@ export function initTaskPanel(ctx) {
     task.toolCalls = lastTurn?.toolCalls || conv.toolCalls || [];
     task.thinkingDurationText = lastTurn?.thinkingDurationText || conv.thinkingDuration || "已完成思考";
 
-    taskManager.setActiveTask(task.id);
-
-    if (flowConversation) {
-      flowConversation.innerHTML = "";
-    }
-
-    turns.forEach((turn, idx) => {
-      const isLast = idx === turns.length - 1;
-      const groupRefs = api.createFlowTurnGroupElement({
-        query: turn.query || "",
-        attachments: turn.attachments || [],
-        thinkingText: turn.thinkingText || "",
-        thinkingDurationText: turn.thinkingDurationText || turn.thinkingDuration || "已完成思考",
-        responseText: turn.responseText || "",
-        toolCalls: turn.toolCalls || [],
-        isOpenThinking: false,
-        isAborted: turn.isAborted || turn.responseText?.includes("刚刚会话已手动终止"),
-        errorMessage: turn.errorMessage,
-      });
-
-      if (flowConversation && groupRefs?.groupEl) {
-        flowConversation.appendChild(groupRefs.groupEl);
-      }
-
-      // 历史所有轮次收起思考卡片
-      api.collapseThinkingCard(groupRefs.thinkingCardEl, groupRefs.thinkingToggleBtn);
-
-      if (isLast) {
-        flow.activeTurnRefs = groupRefs;
-        flow.lastUserQuery = turn.query || "";
-        flow.currentThinkingText = turn.thinkingText || "";
-        flow.currentResponseText = turn.responseText || "";
-      }
-    });
-
-    if (flowBtnAbort) {
-      flowBtnAbort.classList.add("hidden");
-    }
-    api.setViewMode(VIEW_FLOW, true);
-
-    // 同步切换底层 Pi 会话
-    if (conv.sessionPath) {
-      sessionService.switchSession(conv.sessionPath).catch((err) => {
-        console.warn("[Main] Session sync switch warning:", err);
-      });
-    }
-
-    if (flowScrollArea) {
-      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
-    }
+    renderTurnsIntoFlow(task, turns, { sessionPath: conv.sessionPath || null });
   };
 
   const archiveCurrentFlowToHistory = () => {
@@ -840,6 +816,7 @@ export function initTaskPanel(ctx) {
   api.closeTaskSidebar = closeTaskSidebar;
   api.renderTaskSidebarList = renderTaskSidebarList;
   api.restoreTaskToFlow = restoreTaskToFlow;
+  api.renderTurnsIntoFlow = renderTurnsIntoFlow;
   api.archiveCurrentFlowToHistory = archiveCurrentFlowToHistory;
   api.renderConversationMessages = renderConversationMessages;
 }

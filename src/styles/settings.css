@@ -693,3 +693,286 @@ textarea:-webkit-autofill:focus {
 }
 
 
+
+/* ==========================================================================
+   会话记录面板（自 custom-provider.css 迁移归位至本会话分区）
+   ========================================================================== */
+#pane-sessions.tab-pane.active {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  gap: 0;
+}
+
+#pane-sessions .pane-header-row {
+  flex-shrink: 0;
+  margin-bottom: 2px;
+}
+
+.sessions-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 16px 0;
+  flex-shrink: 0;
+}
+
+.sessions-search-box {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 6px;
+  background: transparent;
+  transition: border-color 0.16s ease;
+}
+
+.sessions-search-box:hover,
+.sessions-search-box:focus-within {
+  border-color: var(--sketch-border);
+}
+
+.sessions-search-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+}
+
+.sessions-search-box input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--ink-primary);
+}
+
+.sessions-search-box input::placeholder {
+  color: var(--ink-muted);
+}
+
+/* SketchSelect wrapper 默认 width:100%，在工具栏 flex 行内会挤压搜索框，收窄为内容自适应 */
+.sessions-toolbar .sketch-select-wrapper {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 118px;
+}
+
+.sessions-toolbar .flat-select {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  padding-top: 2px;
+  padding-right: 4px;
+}
+
+.empty-sessions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 16px;
+  font-size: 12px;
+  color: var(--ink-muted);
+  font-style: normal;
+  text-align: center;
+  border: 1px dashed var(--sketch-border-subtle);
+  border-radius: 6px;
+}
+
+.empty-sessions-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+  transform: scale(1.3);
+  margin-bottom: 2px;
+  color: var(--ink-muted);
+}
+
+.session-item {
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--sketch-border-subtle);
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  transition: border-color 0.16s ease, background-color 0.16s ease, transform 0.16s ease;
+  user-select: none;
+  outline: none;
+}
+
+.session-item:hover,
+.session-item:focus-visible {
+  border-color: var(--sketch-border);
+  background: var(--sketch-tag-bg);
+  transform: translateY(-1px);
+}
+
+.session-item.active {
+  border-color: var(--sketch-border);
+  background: var(--sketch-tag-bg);
+}
+
+.session-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.session-item-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+}
+
+.session-type-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+  transition: color 0.16s ease;
+}
+
+.session-item:hover .session-type-icon,
+.session-item:focus-visible .session-type-icon {
+  color: var(--ink-primary);
+}
+
+.session-name {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.session-item-meta-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.session-date {
+  font-size: 11px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  font-feature-settings: "tnum";
+}
+
+.session-snippet {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  line-height: 1.45;
+  margin-left: 20px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.session-item-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.session-tags-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.session-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 4px;
+  padding: 1px 6px;
+  background: transparent;
+  line-height: 1.3;
+}
+
+.session-workspace-pill .pill-icon {
+  display: inline-flex;
+  align-items: center;
+  opacity: 0.8;
+}
+
+.session-id-tag {
+  font-size: 10px;
+  color: var(--ink-muted);
+  font-family: var(--font-mono, monospace);
+  opacity: 0.7;
+  letter-spacing: 0.02em;
+}
+
+/* 悬浮响应提示（常态隐藏，hover/focus 触发渐显并让箭头向右微抖动） */
+.session-hover-prompt {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  pointer-events: none;
+  user-select: none;
+  margin-left: auto;
+}
+
+.session-item:hover .session-hover-prompt,
+.session-item:focus-visible .session-hover-prompt {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.session-hover-prompt .hover-arrow {
+  display: inline-block;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.session-item:hover .session-hover-prompt .hover-arrow,
+.session-item:focus-visible .session-hover-prompt .hover-arrow {
+  animation: arrow-wiggle-right 0.38s ease-out both;
+}

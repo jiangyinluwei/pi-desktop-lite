@@ -20,7 +20,10 @@ use package_manager::{
     pi_update_package,
 };
 use pi_runner::{FollowUpRequest, HostStatus, PiHostPool, PiSupervisor, PromptRequest, SteerRequest};
-use session::{parse_session_entries, SessionEntrySummary, SessionIndexCache, SessionMetadata, SessionWatcher};
+use session::{
+    parse_session_entries, parse_session_turns, SessionEntrySummary, SessionIndexCache,
+    SessionMetadata, SessionTurnDetail, SessionWatcher,
+};
 use std::path::Path;
 use std::sync::Arc;
 use tauri::{
@@ -555,6 +558,12 @@ fn pi_get_session_tree(session_path: String) -> Result<Vec<SessionEntrySummary>,
 }
 
 #[tauri::command]
+fn pi_get_session_detail(session_path: String) -> Result<Vec<SessionTurnDetail>, String> {
+    let path = Path::new(&session_path);
+    parse_session_turns(path)
+}
+
+#[tauri::command]
 async fn pi_switch_session(
     supervisor: State<'_, PiSupervisor>,
     session_path: String,
@@ -653,6 +662,7 @@ pub fn run() {
             pi_list_sessions,
             pi_get_prompt_history,
             pi_get_session_tree,
+            pi_get_session_detail,
             pi_switch_session,
             pi_new_session,
             pi_get_inner_skills_rules,

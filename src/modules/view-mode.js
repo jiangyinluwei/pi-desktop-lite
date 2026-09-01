@@ -35,6 +35,11 @@ export function initViewMode(ctx) {
       view.previous = view.mode;
     }
 
+    // 兜底：任何非回退路径离开 Flow 时复位 flowFromSettings 来源标志
+    if (view.mode === VIEW_FLOW && mode !== VIEW_FLOW) {
+      view.flowFromSettings = false;
+    }
+
     view.mode = mode;
     if (appContainer) {
       appContainer.setAttribute("data-view", mode);
@@ -104,11 +109,15 @@ export function initViewMode(ctx) {
       thinkingToggleBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
     });
   }
-  const openSettingsView = async (targetTab = null) => {
+  const openSettingsView = async (targetTab = null, options = {}) => {
     if (view.mode !== VIEW_SETTINGS) {
-      view.previous = view.mode;
+      setViewMode(VIEW_SETTINGS, false);
     }
-    setViewMode(VIEW_SETTINGS, false);
+    // 定向回退特例：显式覆写 previous（须在 setViewMode 之后执行，
+    // 否则其「进入设置页记录原界面」守卫会将 previous 覆写回 Flow）
+    if (options?.previousMode) {
+      view.previous = options.previousMode;
+    }
 
     if (targetTab) {
       const tabBtn = document.querySelector(`.settings-tab-btn[data-tab="${targetTab}"]`);

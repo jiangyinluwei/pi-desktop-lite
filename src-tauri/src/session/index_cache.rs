@@ -42,12 +42,22 @@ impl SessionIndexCache {
         }
     }
 
-    /// 全量扫描指定目录
+    /// 全量扫描指定目录（递归：会话文件存放于按 CWD 命名的二级子目录中）
     pub fn scan_directory(&self, dir: &Path) {
+        self.scan_directory_recursive(dir, 0);
+    }
+
+    fn scan_directory_recursive(&self, dir: &Path, depth: usize) {
+        // 防御深度上限，正常层级不超过 2 层
+        if depth > 4 {
+            return;
+        }
         if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let p = entry.path();
-                if p.is_file() && p.extension().and_then(|e| e.to_str()) == Some("jsonl") {
+                if p.is_dir() {
+                    self.scan_directory_recursive(&p, depth + 1);
+                } else if p.extension().and_then(|e| e.to_str()) == Some("jsonl") {
                     self.update_file(&p);
                 }
             }

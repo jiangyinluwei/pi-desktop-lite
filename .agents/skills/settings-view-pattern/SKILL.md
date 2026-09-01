@@ -164,7 +164,7 @@ graph TD
 1. **常规 (`pane-appearance`)**
 2. **模型配置 (`pane-current-models`)**：整合已添加模型列表与折叠式官方/自定义通道配置
 3. **内核 (`pane-packages`)**：Pi 内核状态、一键热更新与扩展组件市场
-4. **会话记录 (`pane-sessions`)**：历史会话检索与管理
+4. **会话记录 (`pane-sessions`)**：内核全量会话检索与管理（详见 4.6 会话记录 Tab 规范）
 5. **工作区 (`pane-workspaces`)**：多预设工作区模板→运行时副本切换（见 4.5）
 
 ### 4.2 模型列表展示与折叠式通道抽屉交互 (Drawer State Machine)
@@ -244,6 +244,23 @@ touchModelAsRecentlyUsed(provider, modelId) {
 - **样式铁律**：复用现有卡片 / 分组 / 徽章 / Flat 按钮 token，不新增色板；按钮常态透明无边框、悬浮显框；全图标内联 `currentColor` SVG，全域零 Emoji。
 
 ---
+
+### 4.8 会话记录 Tab 规范 (Sessions Panel)
+
+> **硬约束**：程序**不提供**任何直接删除 Pi 内核会话的功能/入口/命令；所有清空/隐藏操作仅作用于 UI 展示层，绝不触碰 `~/.pi` 下的内核会话 JSONL 文件。
+
+- **数据源与工具栏**：`pi_list_sessions` 返回全量 `SessionMetadata`（后端按 `modified_at` 倒序），前端纯内存过滤零后端成本。`pane-header-row` 提供「清空界面会话」按钮（`#btn-clear-ui-sessions`），下方 `.sessions-toolbar` 一行容纳搜索框（`#sessions-search-input`，手绘盒式外观 + 200ms 防抖）与 SketchSelect 时间筛选（`#sessions-time-filter`，原生 `<select class="flat-select">` + `enhanceSelect`）；
+- **过滤语义**：**硬过滤**——仅保留 `has_complete_turn = true` 的会话（Rust `parse_session_file` 逐行判定：存在至少一轮「剥离 `<runtime_context_rules>` 信封后非空的真实用户提问 → 后续 assistant 非空回答」；该标记同时使列表摘要净化为真实提问文本）；关键字命中 `first_message` / `session_id` / `cwd`（不区分大小写）；时间档位（全部/24h/7d/30d）按 `modified_at` 计算，解析失败的记录视为不匹配非「全部时间」档；过滤状态（keyword/timeRange）持久于 `sessions-panel.js` 模块级变量，`pi:sessions-updated` 事件重渲染时保留；空态区分「暂无历史会话」与「无匹配会话」；计数显示过滤后数量（如 `12/34`），无过滤时显示总数；
+- **统一进入管线 (`enterKernelSessionFlow`)**：会话条目左键点击与「进入 Flow」按钮走同一条管线（按钮带 loading 态防重复触发）：
+  1. 若 TaskManager 存在活跃任务，先 `api.archiveCurrentFlowToHistory()` 归档当前 Flow 现场（防覆盖）；
+  2. `sessionService.getSessionDetail(path)` → Rust `pi_get_session_detail`（`parse_session_turns` 按 user/assistant/toolResult 顺序配对，剥离 `<runtime_context_rules>` 信封与「[附带本地文件绝对路径]」尾注，thinking/toolCall 块逐字段防御解析，超长工具结果截断 4000 字符）；
+  3. `conversationHistoryService.recordConversation({ id: "kernel_" + session_id, ... })` 以 `kernel_` 前缀隔离沉淀界面1 讯息卡片（自带 MRU 刷新 + 反隐藏，受 60 条上限约束）；
+  4. 绑定/复用 TaskManager Task（id = convId），经共享渲染器 `api.renderTurnsIntoFlow(task, turns)` 还原 Flow 多轮（思考卡收起、工具卡默认折叠、滚动到底）并切换内核会话（`pi_switch_session`）；
+  5. 解析失败降级：仅渲染首条提问空轮次 + `sketchAlert` 提示；
+  6. 直接 `setViewMode(VIEW_FLOW)`，**不调用** `closeSettingsView()`（避免先跳回 previous 的中间态抖动）；
+- **清空语义 (F2)**：「清空界面会话」→ `sketchConfirm`（isDanger）二次确认（文案明示「仅影响界面展示，不会删除 Pi 内核会话文件」）→ `conversationHistoryService.clearAllConversations()`（清内存 + 删除 `pi_conversation_history` 与 `pi_hidden_conversation_ids` 两键 + 广播 `conversations-change`）→ toast「已清空界面会话记录」；
+- **右键回退特例 (`flowFromSettings`)**：进入 Flow 时置 `view.flowFromSettings = true`；Flow 中右键/Esc 时空闲/已结束态 → 清标志、不挂起不归档、`openSettingsView("sessions", { previousMode: VIEW_DETAILED })` 定向回设置页会话记录 Tab（Flow 现场保留，再右键照常回界面1）；运行/暂停态 → 清标志后走正常挂起通道；`setViewMode` 对任何离开 Flow 的路径兜底清标志；
+- **历史渲染去重**：Flow 轮次渲染统一收敛至 `task-panel.js` 共享函数 `renderTurnsIntoFlow(task, turns, { isRunning, syncModelName, sessionPath })`，`restoreTaskToFlow` / `restoreConversationToFlow` / `enterKernelSessionFlow` 三者共用，禁止再各自内联渲染循环。
 
 ## 🎯 5. 自定义模型配置与 Token 规范智能吸附 (Token Snapping)
 
@@ -352,6 +369,17 @@ const setupOutputTokensAutoSnap = (inputEl) => {
   - **即时响应跳变**：触发下个阶段后（如 35%），立即跳至 35%，并以该阶段继续平滑步进；到达 100% 或终态（`completed` / `uninstalled` / `error` / `cancelled`）时立即停止定时器；
   - 提供卡片内置微进度条（`.card-progress-wrap`）与右下角手绘浮动进度卡（`.package-progress-float-card`），搭配动态斜纹（`sketchStripesMove`）与平滑退出动效；
 - **非阻塞 CLI 桥接**：执行 `pi install/remove npm:<pkg> -a` 必须附带 `-a` (`--approve`) 保证非交互执行。
+
+---
+
+## 📜 7.5 会话记录面板规范 (Sessions History Panel Pattern)
+
+- **高度 100% 自动匹配当前框体**：`#pane-sessions.tab-pane.active` 采用 `flex: 1; height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 0;`，其内部 `.sessions-list` 设置 `flex: 1; min-height: 0; max-height: none; overflow-y: auto;`，彻底摒弃写死高度，自适应窗口缩放与拉伸；
+- **会话条目精细外观 (Session Item Aesthetics)**：
+  - **语义化标题与摘要**：优先提取用户首条提问内容作为主标题（超长自动截断并在 tooltip 呈现完整内容），副行两行优雅展现多行提问摘要；
+  - **多维手绘元数据标签 (Meta Pills)**：展示消息条数徽标（如 `3 条消息`）、工作区所属文件夹（带手绘文件夹图标 `ICONS.folder`）与会话 ID 短码（如 `#a1b2c3`）；
+  - **整卡点击与悬浮响应动效**：卡片本身点击即可直接进入 Flow；常态下消除独立按钮以保持极简留白；鼠标悬浮（`:hover`）或键盘聚焦时右下角平滑浮现「进入 Flow →」文本，且右箭头触发 `arrow-wiggle-right` 向右微抖动动效（Task Flow 侧边栏卡片保持同款一致规范）；
+  - **手绘空状态**：无会话或搜索无匹配时展示手绘素描对话气泡与居中温和提示。
 
 ---
 

@@ -222,6 +222,22 @@ class ConversationHistoryService extends EventTarget {
   }
 
   /**
+   * 清空全部界面展示会话记录（仅清 UI 展示层与 localStorage，
+   * 绝不触碰 ~/.pi 下的 Pi 内核会话 JSONL 文件）
+   */
+  clearAllConversations() {
+    this.conversations = [];
+    this.hiddenIds.clear();
+    try {
+      localStorage.removeItem(STORAGE_KEY_HISTORY);
+      localStorage.removeItem(STORAGE_KEY_HIDDEN);
+    } catch (err) {
+      console.warn("[ConversationHistory] Failed to clear storage keys:", err);
+    }
+    this.dispatchEvent(new CustomEvent("conversations-change", { detail: [] }));
+  }
+
+  /**
    * 根据 ID 获取完整对话对象
    * @param {string} id
    * @returns {Object|null}

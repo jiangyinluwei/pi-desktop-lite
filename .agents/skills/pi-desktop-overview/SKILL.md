@@ -48,7 +48,8 @@ description: |
 - **界面 4：项目设置独立全屏页面 (`settings`)**
   - 作为与详细版/专注版/Flow版平级的独立全屏视图，整合「常规」、「模型配置」（集成当前模型列表与折叠式官方/自定义通道配置）、「内核」、「会话记录」、「工作区」5 大 Tab 导航；
   - 右上角操作指引（“**提示：在任意位置点击鼠标右键或按 Esc 即可快速回退**”）进入后 3 秒自动平滑渐隐；
-  - 主界面统一配色与非嵌套线框设计（低饱和度功能色、细边框 `var(--sketch-border-subtle)`、透明底色）。
+  - 主界面统一配色与非嵌套线框设计（低饱和度功能色、细边框 `var(--sketch-border-subtle)`、透明底色）；
+  - **会话记录 Tab (`pane-sessions`)**：基于 `pi_list_sessions` 全量内核会话元数据的前端内存过滤——硬过滤仅保留 `has_complete_turn` 会话（至少一轮「真实用户提问 → 完整回答」）+ 关键字搜索（防抖 200ms，命中 `first_message`/`session_id`/`cwd`）与 SketchSelect 时间档位筛选（全部/24h/7d/30d，按 `modified_at`），计数显示过滤后数量（如 `66/208`）；每个会话条目提供「进入 Flow」按钮，走统一 `enterKernelSessionFlow` 管线（Rust `pi_get_session_detail` 完整解析轮次 → `recordConversation` 以 `kernel_` 前缀沉淀界面1 讯息卡片 → 绑定 TaskManager → 共享渲染器 `renderTurnsIntoFlow` 还原 Flow 多轮 → 切内核会话）；「清空界面会话」按钮经 sketchConfirm 二次确认后仅清 UI 展示层（`conversationHistoryService.clearAllConversations()`），绝不删除 `~/.pi` 内核会话 JSONL 文件；程序不提供任何直接删除内核会话的能力。
 
 ---
 
@@ -128,7 +129,7 @@ description: |
 - **`package_manager` (官方组件市场与队列)**：连通 pi.dev/packages，15min TTL 缓存提取，全局单任务互斥锁与 FIFO 异步队列，ProgressStepper 平滑步进；
 - **`security` (数据脱敏中间件)**：全量上行下行数据经过正则脱敏过滤器（API Key、Token 与本地私有目录自动掩码）；
 - **`version_watcher & kernel_updater` (无感热更新引擎)**：启动 2s 延迟自检 + 6h Jitter 轮询，支持不再提醒持久化，流式下载 + ProgressStepper，Staging 暂存、`--version` 预检、原子备份替换与热重启；
-- **`session` (并发内存索引与监听)**：基于 `DashMap` 并发内存缓存与 `notify` 监听 `~/.pi/sessions/`，实现毫秒级会话检索与分支树导航；
+- **`session` (并发内存索引与监听)**：基于 `DashMap` 并发内存缓存与 `notify` **递归**监听 Pi 内核真实会话根目录 `~/.pi/agent/sessions/`（内含按 CWD 命名的子目录；不存在时回退旧路径 `~/.pi/sessions`），实现毫秒级全量会话检索与分支树导航；
 - **`config_manager` (配置管理与目录映射)**：双向管理 `~/.pi-dl/config.json` 及 `~/.pi/agent/` 下的 `auth.json`、`models.json`、`settings.json`。
 
 ---
@@ -141,7 +142,7 @@ description: |
       ↓
 [设置全页面 (界面4: settings)] ➔ 返回进入前的原界面
       ↓
-[Flow 交互版 (界面3)] ➔ 运行态/暂停态转入后台挂起 (Suspend)，已完成/中断态归档至历史记录，回退至界面2
+[Flow 交互版 (界面3)] ➔ 运行态/暂停态转入后台挂起 (Suspend)，已完成/中断态归档至历史记录，回退至界面2；特例：从设置页会话记录 Tab 进入的 Flow（`view.flowFromSettings` 标志）在空闲/已结束态右键/Esc 定向回设置页会话记录 Tab（不挂起、不归档、Flow 现场保留，且 `view.previous` 钉为界面1，再右键照常回界面1），运行/暂停态仍清标志后走正常挂起通道
       ↓
 [专注版 (界面2)] ➔ 回退至详细版 (界面1) 并失焦
       ↓

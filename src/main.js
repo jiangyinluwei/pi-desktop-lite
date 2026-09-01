@@ -101,7 +101,9 @@ window.addEventListener("DOMContentLoaded", () => {
     changelogVersionTag: document.getElementById("changelog-version-tag"),
     btnCloseChangelog: document.getElementById("btn-close-changelog"),
     kernelChangelogContent: document.getElementById("kernel-changelog-content"),
-    btnNewSession: document.getElementById("btn-new-session"),
+    btnClearUiSessions: document.getElementById("btn-clear-ui-sessions"),
+    sessionsSearchInput: document.getElementById("sessions-search-input"),
+    sessionsTimeFilter: document.getElementById("sessions-time-filter"),
     sessionsList: document.getElementById("sessions-list"),
     sessionCount: document.getElementById("session-count"),
     workspaceList: document.getElementById("workspace-list"),
@@ -151,6 +153,7 @@ window.addEventListener("DOMContentLoaded", () => {
     view: {
       mode: "detailed",
       previous: "detailed",
+      flowFromSettings: false,
       hintBannerTimeout: null,
     },
     settings: {

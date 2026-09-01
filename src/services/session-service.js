@@ -52,19 +52,24 @@ class SessionService extends EventTarget {
   }
 
   /**
+   * 获取指定会话的完整轮次详情（提问 / 思考 / 工具调用 / 回答）
+   * @param {string} sessionPath
+   */
+  async getSessionDetail(sessionPath) {
+    try {
+      return (await invokeTauri("pi_get_session_detail", { sessionPath })) || [];
+    } catch (err) {
+      console.error("[SessionService] Failed to get session detail:", err);
+      return [];
+    }
+  }
+
+  /**
    * 切换到目标会话
    * @param {string} sessionPath
    */
   async switchSession(sessionPath) {
     return await invokeTauri("pi_switch_session", { sessionPath });
-  }
-
-  /**
-   * 开启一个新会话
-   * @param {string} [parentSession]
-   */
-  async newSession(parentSession = null) {
-    return await invokeTauri("pi_new_session", { parentSession });
   }
 }
 

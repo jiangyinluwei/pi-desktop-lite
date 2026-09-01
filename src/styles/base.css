@@ -121,5 +121,13 @@ body::-webkit-scrollbar-thumb:active,
   opacity: 1 !important;
 }
 
-
-
+/* ==========================================================================
+   全局通用动效：箭头向右微抖动 (Arrow Micro-Shake / Wiggle)
+   ========================================================================== */
+@keyframes arrow-wiggle-right {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(4px); }
+  50% { transform: translateX(1px); }
+  75% { transform: translateX(3.5px); }
+  100% { transform: translateX(2px); }
+}

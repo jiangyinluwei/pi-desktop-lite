@@ -53,11 +53,24 @@ export function initGlobalInteractions(ctx) {
 
     // 2. Flow (界面3) -> 右键转入后台挂起 (若仍在运行或处于暂停待确认态) 或 归档至历史记录 (若已结束/已中断)
     if (view.mode === VIEW_FLOW) {
+      // 定向回退特例：从设置页会话记录 Tab 进入的 Flow（flowFromSettings 标志）
+      // 空闲/已结束态 → 不挂起、不归档，直接回设置页会话记录 Tab（Flow 现场保留）；
+      // 运行/暂停态 → 清标志后落入下方原有挂起通道，防运行中误回设置页丢失感知。
+      const flowFromSettings = Boolean(view.flowFromSettings);
+      if (flowFromSettings) {
+        view.flowFromSettings = false;
+      }
+
       const activeTask = taskManager.getCurrentActiveTask();
       const isRunning = activeTask
         ? (activeTask.status === "thinking" || activeTask.status === "streaming" || activeTask.status === "tool_exec")
         : piClient.isStreaming;
       const isPaused = activeTask ? activeTask.status === "paused" : false;
+
+      if (flowFromSettings && !isRunning && !isPaused) {
+        api.openSettingsView("tab-sessions", { previousMode: VIEW_DETAILED });
+        return;
+      }
 
       if (isRunning || isPaused) {
         // 正在运行中或处于暂停/待确认状态 -> 右键/Esc 无感转入后台挂起 (isSuspended = true)

@@ -1003,9 +1003,26 @@
             <div class="pane-header-row">
               <div>
                 <h3 class="pane-title">会话记录 (<span id="session-count">0</span>)</h3>
-                <p class="pane-desc">浏览与切换本地历史会话记录。</p>
+                <p class="pane-desc">浏览、搜索本地 Pi 内核会话并进入 Flow 查看完整历史轮次。</p>
               </div>
-              <button type="button" class="flat-btn flat-btn-primary mini" id="btn-new-session">+ 新建会话</button>
+              <button type="button" class="flat-btn flat-btn-primary mini" id="btn-clear-ui-sessions">清空界面会话</button>
+            </div>
+            <div class="sessions-toolbar">
+              <div class="sessions-search-box">
+                <span class="sessions-search-icon" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
+                    <circle cx="7" cy="7" r="4.5" />
+                    <line x1="10.5" y1="10.5" x2="14" y2="14" />
+                  </svg>
+                </span>
+                <input type="text" id="sessions-search-input" placeholder="搜索会话内容 / ID / 工作区" autocomplete="off" spellcheck="false" />
+              </div>
+              <select class="flat-select" id="sessions-time-filter" aria-label="按时间筛选会话">
+                <option value="all">全部时间</option>
+                <option value="24h">最近24小时</option>
+                <option value="7d">最近7天</option>
+                <option value="30d">最近30天</option>
+              </select>
             </div>
             <div class="sessions-list" id="sessions-list">
               <div class="empty-sessions">暂无历史会话</div>

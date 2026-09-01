@@ -11,7 +11,16 @@ pub struct SessionWatcher {
 impl SessionWatcher {
     pub fn get_default_sessions_dir() -> PathBuf {
         dirs::home_dir()
-            .map(|h| h.join(".pi").join("sessions"))
+            .map(|h| {
+                // Pi 内核真实会话根目录为 ~/.pi/agent/sessions（内含按 CWD 命名的子目录）；
+                // 仅当其不存在时回退旧路径 ~/.pi/sessions
+                let agent_sessions = h.join(".pi").join("agent").join("sessions");
+                if agent_sessions.exists() {
+                    agent_sessions
+                } else {
+                    h.join(".pi").join("sessions")
+                }
+            })
             .unwrap_or_else(|| PathBuf::from(".pi/sessions"))
     }
 
@@ -60,7 +69,8 @@ impl SessionWatcher {
         .ok();
 
         if let Some(ref mut w) = watcher {
-            if let Err(e) = w.watch(&sessions_dir, RecursiveMode::NonRecursive) {
+            // 递归监听：会话文件存放于按 CWD 命名的二级子目录中
+            if let Err(e) = w.watch(&sessions_dir, RecursiveMode::Recursive) {
                 log::warn!("[SessionWatcher] Failed to watch {}: {}", sessions_dir.display(), e);
             } else {
                 log::info!("[SessionWatcher] Watching session directory: {}", sessions_dir.display());
