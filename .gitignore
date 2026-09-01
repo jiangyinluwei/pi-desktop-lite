@@ -24,4 +24,4 @@ dist-ssr
 *.sw?
 
 .doc/
-.mytools/
+.mytools/*
