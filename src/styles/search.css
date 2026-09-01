@@ -168,34 +168,60 @@
   height: auto;
   position: relative;
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: stretch;
   min-width: 0;
-  gap: 6px;
+  gap: 0;
 }
 
-/* 概述胶囊附件容器 */
+/* 概述胶囊附件容器 (置于输入框内部上方，支持多项自然换行与极简滚动条) */
 .attached-capsules-container {
-  display: inline-flex;
+  display: none;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  flex-shrink: 0;
-  max-width: 60%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
+  width: 100%;
+  max-height: 110px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sketch-border-subtle) transparent;
   z-index: 3;
 }
 
 .attached-capsules-container::-webkit-scrollbar {
+  width: 4px;
+}
+
+.attached-capsules-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.attached-capsules-container::-webkit-scrollbar-button {
   display: none;
+}
+
+.attached-capsules-container::-webkit-scrollbar-thumb {
+  background-color: var(--sketch-border-subtle);
+  border-radius: 4px;
+  opacity: 0.45;
+}
+
+.attached-capsules-container::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ink-primary);
+}
+
+.search-input-wrapper.has-capsules .attached-capsules-container {
+  display: flex;
 }
 
 /* 概述胶囊单项 (Sketch Overview Capsule) */
 .sketch-file-capsule {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   height: 26px;
+  max-width: 100%;
   padding: 0 6px 0 8px;
   background: var(--sketch-panel-bg, rgba(0, 0, 0, 0.04));
   border: 1px solid var(--sketch-border-subtle);
@@ -208,6 +234,7 @@
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   animation: capsulePop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 @keyframes capsulePop {
@@ -239,7 +266,7 @@
 }
 
 .capsule-file-name {
-  max-width: 130px;
+  max-width: min(240px, calc(100vw - 220px));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

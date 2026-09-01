@@ -43,45 +43,133 @@ pub struct FileInspectionResult {
     pub name: String,
     pub ext: String,
     pub size: u64,
-    pub category: String, // "image", "document", "code", "other"
+    pub category: String, // "image", "document", "code", "folder", "other"
     pub is_text: bool,
 }
 
-#[tauri::command]
-fn pi_inspect_file(path: String) -> Result<FileInspectionResult, String> {
-    let p = Path::new(&path);
-    if !p.exists() {
-        return Err(format!("文件不存在: {}", path));
+/// 检查单个文件并判定其支持类型与分类（自动过滤非解析类二进制文件）
+fn inspect_single_file(p: &Path, display_name: Option<String>) -> Option<FileInspectionResult> {
+    if !p.is_file() {
+        return None;
     }
 
-    let meta = std::fs::metadata(p).map_err(|e| e.to_string())?;
-    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string();
-    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let meta = std::fs::metadata(p).ok()?;
     let size = meta.len();
 
+    // 过滤超大文件 (> 30MB)
+    if size > 30 * 1024 * 1024 {
+        return None;
+    }
+
+    let file_name = p.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string();
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let name = display_name.unwrap_or_else(|| file_name.clone());
+
+    // 显式排除常见编译二进制、压缩包与非文本媒体格式
+    let ignore_exts = [
+        "exe", "dll", "so", "dylib", "bin", "obj", "o", "a", "lib", "wasm", "class",
+        "pyc", "pyo", "pyd", "node", "zip", "tar", "gz", "7z", "rar", "bz2", "xz",
+        "iso", "mp4", "mp3", "wav", "avi", "mov", "mkv", "flv", "wmv", "ttf", "otf",
+        "woff", "woff2", "eot", "lockb", "pdb", "ilk", "exp", "res",
+    ];
+    if ignore_exts.contains(&ext.as_str()) {
+        return None;
+    }
+
     let image_exts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "tiff", "avif"];
-    let doc_exts = ["doc", "docx", "pdf", "txt", "md", "markdown", "csv", "xlsx", "xls", "ppt", "pptx", "rtf"];
-    let code_exts = ["js", "jsx", "ts", "tsx", "rs", "py", "go", "java", "c", "cpp", "h", "hpp", "html", "css", "json", "yaml", "yml", "toml", "xml", "sql", "sh", "bash", "ps1", "bat", "env"];
+    let doc_exts = [
+        "doc", "docx", "pdf", "txt", "md", "markdown", "mdx", "csv", "tsv", "xlsx",
+        "xls", "ppt", "pptx", "rtf", "log",
+    ];
+    let code_exts = [
+        "js", "jsx", "ts", "tsx", "mjs", "cjs", "vue", "svelte", "astro",
+        "html", "htm", "css", "scss", "sass", "less", "rs", "py", "pyw", "go",
+        "java", "c", "cpp", "cc", "cxx", "h", "hpp", "hxx", "cs", "php", "rb",
+        "swift", "kt", "kts", "scala", "dart", "lua", "r", "pl", "pm", "sh",
+        "bash", "zsh", "fish", "ps1", "psm1", "bat", "cmd", "json", "jsonc",
+        "json5", "yaml", "yml", "toml", "xml", "ini", "conf", "config", "env",
+        "properties", "sql", "graphql", "gql", "proto", "prisma", "dockerfile",
+        "makefile", "cmake",
+    ];
+
+    // 无扩展名或点开头的特殊代码/配置文件名
+    let special_code_names = [
+        "dockerfile", "makefile", "cmakelists.txt", "gemfile", "rakefile",
+        "procfile", "vagrantfile", "jenkinsfile", ".env", ".gitignore",
+        ".dockerignore", ".editorconfig", ".prettierrc", ".eslintrc",
+        "cargo.lock", "package.json", "tsconfig.json", "license", "readme",
+    ];
+
+    let lower_name = file_name.to_lowercase();
+    let is_special = special_code_names.iter().any(|&s| lower_name == s || lower_name.ends_with(s));
 
     let (category, is_text) = if image_exts.contains(&ext.as_str()) {
         ("image".to_string(), ext == "svg")
     } else if doc_exts.contains(&ext.as_str()) {
-        let is_plain = ["txt", "md", "markdown", "csv", "rtf"].contains(&ext.as_str());
+        let is_plain = ["txt", "md", "markdown", "mdx", "csv", "tsv", "log", "rtf"].contains(&ext.as_str());
         ("document".to_string(), is_plain)
-    } else if code_exts.contains(&ext.as_str()) {
+    } else if code_exts.contains(&ext.as_str()) || is_special {
         ("code".to_string(), true)
     } else {
         ("other".to_string(), false)
     };
 
-    Ok(FileInspectionResult {
-        path,
+    // 仅保留明确支持的 code / document / image 分类
+    if category == "other" {
+        return None;
+    }
+
+    Some(FileInspectionResult {
+        path: p.to_string_lossy().to_string(),
         name,
         ext,
         size,
         category,
         is_text,
     })
+}
+
+#[tauri::command]
+fn pi_inspect_paths(paths: Vec<String>) -> Result<Vec<FileInspectionResult>, String> {
+    let mut results = Vec::new();
+    let max_count = 100;
+
+    for path_str in paths {
+        if results.len() >= max_count {
+            break;
+        }
+        let p = Path::new(&path_str);
+        if !p.exists() {
+            continue;
+        }
+
+        if p.is_dir() {
+            let folder_name = p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(&path_str)
+                .to_string();
+            results.push(FileInspectionResult {
+                path: p.to_string_lossy().to_string(),
+                name: folder_name,
+                ext: String::new(),
+                size: 0,
+                category: "folder".to_string(),
+                is_text: false,
+            });
+        } else if p.is_file() {
+            if let Some(inspected) = inspect_single_file(p, None) {
+                results.push(inspected);
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+#[tauri::command]
+fn pi_inspect_file(path: String) -> Result<Vec<FileInspectionResult>, String> {
+    pi_inspect_paths(vec![path])
 }
 
 #[tauri::command]
@@ -708,6 +796,7 @@ pub fn run() {
             pi_check_package_updates,
             pi_update_package,
             pi_apply_package_preset,
+            pi_inspect_paths,
             pi_inspect_file,
             pi_read_file_text_preview,
             pi_prepare_image_payload,

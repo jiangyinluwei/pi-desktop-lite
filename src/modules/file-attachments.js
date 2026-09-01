@@ -25,6 +25,7 @@ export function initFileAttachments(ctx) {
   // ==========================================================================
 
   const getFileCategoryIcon = (category) => {
+    if (category === "folder" || category === "directory") return ICONS.folder;
     if (category === "image") return ICONS.image;
     if (category === "code") return ICONS.code;
     return ICONS.document;
@@ -49,7 +50,7 @@ export function initFileAttachments(ctx) {
       capsule.innerHTML = `
         <span class="capsule-file-icon">${getFileCategoryIcon(file.category)}</span>
         <span class="capsule-file-name">${escapeHtml(file.name)}</span>
-        <button type="button" class="capsule-remove-btn" aria-label="移除 ${escapeHtml(file.name)}" title="移除文件">
+        <button type="button" class="capsule-remove-btn" aria-label="移除 ${escapeHtml(file.name)}" title="移除">
           ${ICONS.close}
         </button>
       `;
@@ -71,38 +72,86 @@ export function initFileAttachments(ctx) {
   const addAttachedFiles = async (paths) => {
     if (!Array.isArray(paths) || paths.length === 0) return;
 
-    for (const rawPath of paths) {
-      if (typeof rawPath !== "string" || !rawPath.trim()) continue;
-      const path = rawPath.trim();
-      if (attachments.files.some((f) => f.path === path)) continue;
+    const validPaths = paths
+      .map((p) => (typeof p === "string" ? p.trim() : ""))
+      .filter((p) => Boolean(p));
+    if (validPaths.length === 0) return;
 
-      try {
-        const fileMeta = await invokeTauri("pi_inspect_file", { path });
-        if (fileMeta) {
-          attachments.files.push(fileMeta);
+    let inspectedList = [];
+    try {
+      const res = await invokeTauri("pi_inspect_paths", { paths: validPaths });
+      if (Array.isArray(res)) {
+        inspectedList = res;
+      }
+    } catch (_) {
+      // 降级使用单个 pi_inspect_file 遍历
+      for (const p of validPaths) {
+        try {
+          const singleRes = await invokeTauri("pi_inspect_file", { path: p });
+          if (Array.isArray(singleRes)) {
+            inspectedList.push(...singleRes);
+          } else if (singleRes) {
+            inspectedList.push(singleRes);
+          }
+        } catch (err) {
+          console.warn("[FileAttachments] Inspect failed for path:", p, err);
         }
-      } catch (_) {
-        const normalized = path.replace(/\\/g, "/");
-        const name = normalized.split("/").pop() || "file";
+      }
+    }
+
+    // 兜底本地简易识别（若 Rust 接口因故未命中但属于基础文件时）
+    if (inspectedList.length === 0) {
+      for (const p of validPaths) {
+        const normalized = p.replace(/\\/g, "/");
+        const name = normalized.split("/").filter(Boolean).pop() || "file";
         const ext = name.includes(".") ? name.split(".").pop().toLowerCase() : "";
         const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"];
         const codeExts = ["js", "jsx", "ts", "tsx", "rs", "py", "go", "java", "c", "cpp", "json", "yaml", "yml", "html", "css", "md", "sql", "sh"];
         let category = "document";
         if (imageExts.includes(ext)) category = "image";
         else if (codeExts.includes(ext)) category = "code";
+        else if (!ext) category = "folder";
 
-        attachments.files.push({
-          path,
+        inspectedList.push({
+          path: p,
           name,
           ext,
           category,
           size: 0,
-          is_text: category !== "image",
+          is_text: category !== "image" && category !== "folder",
         });
       }
     }
 
-    renderAttachedCapsules();
+    if (inspectedList.length === 0) {
+      api.showGlobalToast?.("未检测到支持解析的文件或目录", 2000);
+      return;
+    }
+
+    let addedCount = 0;
+    for (const fileMeta of inspectedList) {
+      if (!fileMeta || !fileMeta.path) continue;
+      if (attachments.files.some((f) => f.path === fileMeta.path)) continue;
+      attachments.files.push(fileMeta);
+      addedCount++;
+    }
+
+    if (addedCount > 0) {
+      renderAttachedCapsules();
+      if (addedCount === 1) {
+        const item = attachments.files[attachments.files.length - 1];
+        if (item?.category === "folder" || item?.category === "directory") {
+          api.showGlobalToast?.(`已关联文件夹「${item.name}」`, 1800);
+        } else {
+          api.showGlobalToast?.(`已添加文件「${item.name}」`, 1800);
+        }
+      } else if (addedCount > 1) {
+        api.showGlobalToast?.(`已添加 ${addedCount} 个关联项`, 1800);
+      }
+    } else if (attachments.files.length > 0) {
+      api.showGlobalToast?.("所选项目已在关联列表中", 1500);
+    }
+
     if (searchInput) searchInput.focus();
   };
 

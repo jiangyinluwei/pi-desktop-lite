@@ -458,14 +458,14 @@ export function initFlowPipeline(ctx) {
     // 记录本次附带的文件用于多模态失败检测与自适应重试
     flow.lastSentAttachments = [...filesToAttach];
 
-    // 构造下发给模型的 Prompt 与上下文注入（实际注入内容为文件的系统绝对路径）
+    // 构造下发给模型的 Prompt 与上下文注入（实际注入内容为文件/目录的系统绝对路径）
     let promptToSend = query;
     if (filesToAttach.length > 0) {
       const pathsBlock = filesToAttach.map((f) => `- ${f.path || f.name}`).join("\n");
       if (query) {
-        promptToSend = `${query}\n\n[附带本地文件绝对路径]:\n${pathsBlock}`;
+        promptToSend = `${query}\n\n[附带本地文件/目录绝对路径]:\n${pathsBlock}`;
       } else {
-        promptToSend = `请查阅并分析以下文件内容：\n\n[附带本地文件绝对路径]:\n${pathsBlock}`;
+        promptToSend = `请查阅并分析以下本地文件/目录：\n\n[附带本地文件/目录绝对路径]:\n${pathsBlock}`;
       }
     }
 
