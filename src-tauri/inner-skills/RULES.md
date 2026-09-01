@@ -24,3 +24,7 @@ When planning, generating, or invoking commands via `bash` or terminal tools on 
    - Do NOT use `rm -rf` (use PowerShell `Remove-Item -Recurse -Force` or dedicated tools).
    - Do NOT use `touch` (use file write tools or `New-Item`).
    - Do NOT run background jobs with trailing `&` (use explicit background/daemon flags).
+6. **No Spontaneous File Creation (Strict Execution Boundary)**:
+   - Strictly FORBIDDEN from creating, writing, or redirecting output to files (e.g., `output.txt`, `temp.txt`, `summary.md`) unless the user EXPLICITLY commands you to save, write, or export a file.
+   - For analysis, reading, querying, or troubleshooting, deliver ALL insights and results directly in the conversational stream without touching the filesystem.
+

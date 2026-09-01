@@ -94,6 +94,7 @@ When invoking tool 'bash', 'terminal', 'powershell', 'cmd', 'execute_command':
 3. Disable Pagers: Never invoke pagers. Append --no-pager or prefix PAGER=cat / GIT_PAGER=cat.
 4. Encoding & Clean Output: Prefix NO_COLOR=1. Ensure clean UTF-8 console output.
 5. Cross-Platform Compatibility: Do NOT use 'export', 'rm -rf', 'touch', or trailing '&'.
+6. No Spontaneous File Creation: Strictly FORBIDDEN from creating/writing files (e.g. output.txt) unless user EXPLICITLY commands saving/exporting files.
 (Note: This directive applies ONLY when invoking tools. Do NOT alter normal response tone.)
 </runtime_context_rules>
 

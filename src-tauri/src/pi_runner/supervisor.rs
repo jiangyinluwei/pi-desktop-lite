@@ -656,7 +656,7 @@ impl PiSupervisor {
         } else {
             let agents_md = target_dir.join("AGENTS.md");
             if !agents_md.exists() {
-                let seed_content = "# Pi Agent 运行时工作区指南 (AGENTS.md)\n\n欢迎使用 **Pi Desktop Lite** 默认工作区 (`default-area`)。\n\n## 🤖 关于 Pi Agent (自我描述)\n我是 **Pi Agent**，由轻量桌面客户端 (Pi Desktop Lite) 驱动的本地智能助手。当前目录为我的隔离工作空间。\n\n## 📁 默认工作空间说明\n- 当前目录为默认隔离工作空间；\n- 用户在会话中生成的文件、代码产物或执行的脚本将默认置于此目录下。\n";
+                let seed_content = "# Pi Agent 运行时工作区指南 (AGENTS.md)\n\n欢迎使用 **Pi Desktop Lite** 默认工作区 (`default-area`)。\n\n## 🤖 关于 Pi Agent (自我描述)\n我是 **Pi Agent**，由轻量桌面客户端 (Pi Desktop Lite) 驱动的本地智能助手。当前目录为我的隔离工作空间。\n\n## 📁 默认工作空间说明\n- 当前目录为默认隔离工作空间；\n- 仅当用户明确指示创建或导出文件时，产物才放置于此目录下；未经要求严禁擅自落盘临时文件 (如 output.txt)；纯分析与问答一律直接在对话流中输出 Markdown。\n";
                 let _ = std::fs::write(&agents_md, seed_content);
             }
         }
