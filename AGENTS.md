@@ -99,6 +99,7 @@
 | **`desktop-kernel-lifecycle`** | [`.agents/skills/desktop-kernel-lifecycle/SKILL.md`](file:///.agents/skills/desktop-kernel-lifecycle/SKILL.md) | 指导桌面端 (Tauri 2 + Rust) 作为 CLI/Agent 内核宿主时的进程生命周期管控、多环境自适应寻址、Release 安装包资源打包规范与 Windows 运行时六大踩坑归因与排查治理。当涉及"内核崩溃"、"进程反复重启"、"resource_dir"、"打包后无法运行"、"子进程黑框"、"CWD权限"、"环境变量丢失"、"JobObject"时使用此技能。 |
 | **`flow-interaction-pattern`** | [`.agents/skills/flow-interaction-pattern/SKILL.md`](file:///.agents/skills/flow-interaction-pattern/SKILL.md) | 指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思考卡片/工具调用卡片）可手动折叠展开；②"当前最下方框体展开、出现下一框时自动收起"的级联自动收起流水线；③Flow 界面任意区域滚轮事件委托至最外层滚动容器；④多段对话顶部悬浮当前提问提示（含按滚动位置锚定切换）；⑤多段对话右侧上下轮次定位导航（Flow Turn Navigation，多轮 ≥ 2 显现于 flow 内容区右侧外部，定位到每轮最终输出内容顶部，鼠标弹起触发且可连续逐轮定位，长按「下」1.5 秒立即定位到底部，按下伴随背景填充与轻微抖动动效）；⑥模型自动重连切换自愈流水线（ModelFailoverEngine：瞬态错误 2/4/8s 退避重连 ≤24 次、永久错误按 MRU 自动切换模型、临时切换不刷 MRU、成功转正常切换、全部失败恢复原模型并渲染错误卡附自愈摘要、进度胶囊与事件结算时序）。当用户提出"flow界面交互"、"思考卡片折叠"、"工具调用卡折叠"、"自动收起"、"滚轮滚动"、"flow滚动条"、"卡片收起"、"悬浮提问提示"、"顶部悬浮tips"、"当前提问提示"、"上下按钮"、"轮次定位"、"多段对话优化"、"自动重连"、"自动切换模型"、"模型调用失败自愈"时使用此技能。 |
 | **`sketch-form-autofill-pattern`** | [`.agents/skills/sketch-form-autofill-pattern/SKILL.md`](file:///.agents/skills/sketch-form-autofill-pattern/SKILL.md) | 指导桌面端中新增表单的规范写法、手绘草图质感自定义填表与智能联想推荐浮窗 (SketchAutoFill) 的标准用法。涵盖消灭原生填表变色、表单DOM布局、预设库挂载、全表智能联动填充、历史记忆沉淀及全域键盘与右键回退规范。当涉及"新增表单"、"表单写法"、"自定义填表"、"输入框建议"、"填表浮层"、"autofill"、"联想输入"时使用此技能。 |
+| **`custom-workspace-pattern`** | [`.agents/skills/custom-workspace-pattern/SKILL.md`](file:///.agents/skills/custom-workspace-pattern/SKILL.md) | 指导面向企业客户、甲方或特定垂直领域开发与交付“私人定制工作区 (Custom / Private Workspace)”的设计规范、目录拓扑、防泄密物理隔离（`custom-workspaces/` + `.gitignore` + 严禁写入 `bundle.resources`）、5 大资产标准件、多能力组合编排与私有化线下交付流水线。当涉及"定制工作区"、"私有工作区"、"交付工作区"、"工作区模板设计"、"私有化部署"、"防泄密"时使用此技能。 |
 | **`code-hazards-remediation`** | [`.doc/code-hazards-remediation/SKILL.md`](file:///.doc/code-hazards-remediation/SKILL.md) | 针对项目全量代码健康度检查中定位的已知隐患矩阵（H1~H24）进行故障排查与自愈。当系统出现异常、挂死、数据丢失或性能瓶颈时，参照此隐患列表快速定位根因；一旦命中了某条隐患并完成修复，即从列表中剔除核销，直至所有已知隐患清零。 |
 
 ### 2. 应用内置运行态约束级 Inner-Skills (`src-tauri/inner-skills/`)
@@ -140,4 +141,8 @@
 - **正式发布构建（生成安装包）**：`npm run build`
 - **Rust 后端快速语法/类型检查**：`cargo check`（位于 `src-tauri` 目录）
 - **多预设工作区指令**：`pi_list_workspaces`（列出预设与运行时状态）、`pi_get_active_workspace`（解析当前生效工作区）、`pi_set_active_workspace(id)`（物化副本→持久化→切换→空闲重启重锚 CWD）；保留 `pi_get_workspace` / `pi_set_workspace`（高级自定义绝对路径入口）
+- **公共预设 vs 私人定制工作区分层原则**：
+  - **公共内置预设 (`workspaces/`)**：`default-area`、`code-area`、`research-area`，随安装包公开发布，注册于 `tauri.conf.json` 的 `bundle.resources`；
+  - **私人定制工作区 (`custom-workspaces/`)**：如 `enterprise-consulting-area` 等专有 Agent 解决方案，作为私有资产物理隔离，由 `.gitignore` 保护，严禁随安装包打包，由开发者线下加密定向分发交付给客户/乙方。
+
 

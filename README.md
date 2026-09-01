@@ -431,9 +431,10 @@ pi-desktop-lite/
 ├── .agents/skills/             # 项目技能规范定义 (auto-compile-and-fix, iterative-modification-hygiene, sketch-drafting-ui, clean-code-refactoring 等)
 ├── .mytools/pi-body/           # 最新 Pi Agent Release 引擎包 (打包发布时自动内嵌作为 App Bundle Resources，开箱即用)
 ├── default-area/               # Pi 默认工作区目录（含 AGENTS.md 运行时自我描述，打包与运行时隔离工作空间）
-├── workspaces/                 # 多预设工作区模板源（code-area 代码工程区 / research-area 深度调研区，打包时与 default-area 同级迁移）
+├── workspaces/                 # 公共预设工作区模板源（code-area 代码工程区 / research-area 深度调研区，随安装包打包发布）
 │   ├── code-area/              #   代码工程向模板（workspace.json + AGENTS.md + README.md）
 │   └── research-area/          #   深度调研向模板（workspace.json + AGENTS.md + README.md）
+├── custom-workspaces/          # [私有化] 私人定制/专有交付工作区（如 enterprise-consulting-area，.gitignore 物理隔离，不随安装包打包，定向交付）
 ├── scripts/                    # 自动化与环境配置脚本 (tauri.js, check.js)
 ├── src/                        # 前端页面源码与运行时资源
 │   ├── assets/                 # 静态资源 (logo.svg, logo.ico, 手绘 SVG 图标)
