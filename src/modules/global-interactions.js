@@ -1,6 +1,7 @@
 import { VIEW_DETAILED, VIEW_FOCUS, VIEW_FLOW } from "../lib/view-constants.js";
 import { piClient } from "../services/pi-client.js";
 import { taskManager } from "../services/task-manager.js";
+import { openExternalUrl } from "../services/tauri-bridge.js";
 
 /**
  * 全局右键/Esc 回退、窗口生命周期与关闭保护
@@ -163,5 +164,26 @@ export function initGlobalInteractions(ctx) {
     }
   });
 
+  // 全局拦截所有外部超链接点击，统一唤起系统默认浏览器打开
+  document.addEventListener(
+    "click",
+    (e) => {
+      const linkEl = e.target && typeof e.target.closest === "function" ? e.target.closest("a") : null;
+      if (!linkEl) return;
+      const href = linkEl.getAttribute("href");
+      if (!href) return;
 
+      const trimmedHref = href.trim();
+      if (
+        trimmedHref.startsWith("http://") ||
+        trimmedHref.startsWith("https://") ||
+        trimmedHref.startsWith("mailto:")
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        openExternalUrl(trimmedHref);
+      }
+    },
+    true
+  );
 }

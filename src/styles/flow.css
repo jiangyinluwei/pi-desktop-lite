@@ -571,25 +571,10 @@
 
 .response-content {
   font-size: 13.8px;
-  line-height: 1.65;
+  line-height: 1.7;
   color: var(--ink-primary);
   user-select: text;
-}
-
-.response-content p {
-  margin-bottom: 10px;
-}
-
-.response-content p:last-child {
-  margin-bottom: 0;
-}
-
-.response-content ul {
-  margin: 8px 0 12px 18px;
-}
-
-.response-content li {
-  margin-bottom: 5px;
+  word-break: break-word;
 }
 
 .sketch-callout {

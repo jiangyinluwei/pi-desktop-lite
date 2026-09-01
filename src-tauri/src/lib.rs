@@ -31,7 +31,15 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager, State, WindowEvent,
 };
+use tauri_plugin_opener::OpenerExt;
 use version_watcher::{pi_cancel_kernel_update, pi_update_kernel, VersionCheckResult, VersionScheduler};
+
+#[tauri::command]
+async fn pi_open_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    app.opener()
+        .open_url(&url, None::<&str>)
+        .map_err(|e| e.to_string())
+}
 
 // ==========================================================================
 // 窗口控制指令
@@ -768,6 +776,7 @@ pub fn run() {
             pi_resolve_tool_skill,
             pi_check_update,
             pi_get_cached_update,
+            pi_open_url,
             pi_update_kernel,
             pi_cancel_kernel_update,
             pi_get_auth_config,

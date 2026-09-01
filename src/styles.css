@@ -9,6 +9,7 @@
 @import url("./styles/base.css");
 @import url("./styles/layout.css");
 @import url("./styles/flow.css");
+@import url("./styles/markdown.css");
 @import url("./styles/search.css");
 @import url("./styles/message-drawer.css");
 @import url("./styles/animations.css");

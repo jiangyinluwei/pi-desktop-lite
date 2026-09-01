@@ -817,26 +817,45 @@ window.addEventListener("pi:view-change", () => updateFlowTurnNav());
 
 ---
 
+## 📌 9. Typedown 质感 Markdown 预览与全域超链接跳转规范 (Markdown Preview & Hyperlink Pattern)
+
+### 9.1 渲染引擎架构 (`src/lib/markdown-renderer.js`)
+- **设计定位**：参考 Windows 平台开源 Markdown 编辑器 **Typedown** 与 Typora 风格，融合手绘素描纸（浅色）与炭黑黑板（深色）双模主题；
+- **流式容错（Streaming Resilience）**：流式生成过程中自动修补未闭合代码围栏（```）、未完结表格（`|`）与行内标记，实时渲染不闪烁、不破坏布局；
+- **全套 GFM 与排版特性**：
+  1. **多级标题（H1 ~ H6）**：H1/H2 带有手绘实线/虚线下边框，阶梯字阶与舒适行距；
+  2. **代码块顶部信息栏与一键复制**：语言徽标（手绘代码图标 + `JS`/`PYTHON`/`RUST` 等大写标签）+ 右侧手绘「复制」按钮；点击后通过 `navigator.clipboard.writeText` 写入剪贴板，按钮即时切换为绿墨勾选 `已复制` 并维持 1.8 秒；
+  3. **轻量语法高亮**：内置 JS/TS、Python、Rust、Bash/Shell、JSON、HTML、CSS、SQL、YAML 等分词扫描器，支持关键字（`.tok-kw`）、字符串（`.tok-str`）、数字（`.tok-num`）、函数调用（`.tok-fn`）、注释（`.tok-cmt`）及内置对象；
+  4. **GFM 规范表格**：支持对齐语法（`:---` / `:---:` / `---:`）、斑马纹悬浮与横向平滑滚动；
+  5. **任务清单（Task Lists）**：支持 `- [ ]` 与 `- [x]`，手绘素描复选方框与划线完成态；
+  6. **GitHub Callout 警示框**：识别 `> [!NOTE]`、`> [!TIP]`、`> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]` 并以内联手绘 SVG 图标与左侧彩色描边卡片呈现。
+
+### 9.2 全域 HTTP/HTTPS 超链接跳转
+- **解析层**：Markdown 显式链接 `[text](url)` 与独立纯网址 `https://...` 自动识别为超链接，并附带手绘外部跳转微图标（`ICONS.externalLink`）；
+- **拦截与唤起**：
+  - `src/modules/global-interactions.js` 在 `document` 捕获阶段拦截所有 `a[href^="http://"]` / `a[href^="https://"]` / `a[href^="mailto:"]` 的点击事件；
+  - 阻止 Webview 内部导航（`e.preventDefault()`）；
+  - 调用 `src/services/tauri-bridge.js` 的 `openExternalUrl(url)`，通过 Rust 指令 `pi_open_url`（`tauri_plugin_opener`）唤起用户操作系统默认浏览器打开外部页面。
+
+---
+
 ## 📎 关联文件索引
 
 | 文件 | 关键内容 |
 |---|---|
-| [`src/services/task-manager.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/task-manager.js) | `TaskManager` 多任务状态机、`turns` 轮次数组、多轮开启 `startNewTurn`、任务挂起与中止（自愈期间错误分支以 `modelFailoverEngine` 门控跳过；「终止并发送」期间结算分支以 `pendingInterruptSend` 门控仅标记旧轮 aborted） |
-| [`src/services/model-failover.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/model-failover.js) | `ModelFailoverEngine` 自动重连切换引擎（错误分类、退避重连 ≤24 次、候选遍历、临时/正常切换、`failover-status` 事件、`cancel`） |
+| [`src/lib/markdown-renderer.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/lib/markdown-renderer.js) | `renderMarkdown` 流式 Markdown 预览渲染引擎、轻量分词高亮器、`initMarkdownInteractions` 代码块一键复制事件委托 |
+| [`src/styles/markdown.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles/markdown.css) | Typedown 质感 Markdown 预览样式表（标题、代码块、语法分词、表格、任务清单、警示框、超链接） |
+| [`src/services/tauri-bridge.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/tauri-bridge.js) | `invokeTauri` 与 `openExternalUrl`（调用后端 `pi_open_url` 或 `plugin:opener|open_url` 打开系统默认浏览器） |
+| [`src/modules/global-interactions.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/modules/global-interactions.js) | 全局拦截所有外部超链接点击，统一唤起系统默认浏览器打开 |
+| [`src/services/task-manager.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/task-manager.js) | `TaskManager` 多任务状态机、`turns` 轮次数组、多轮开启 `startNewTurn`、任务挂起与中止 |
+| [`src/services/model-failover.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/model-failover.js) | `ModelFailoverEngine` 自动重连切换引擎 |
 | [`src/services/pi-client.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/pi-client.js) | `extractErrorCode` / `classifyModelError` 错误分类、`agent-error` / `agent-end` / `retry-status` 事件流 |
 | [`src/services/conversation-history.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/conversation-history.js) | `ConversationHistoryService` 多轮快照沉淀与 MRU 恢复 |
 | [`src-tauri/src/pi_runner/host_pool.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/pi_runner/host_pool.rs) | `PiHostPool` 多进程监管池、独立子进程隔离与 `task_id` 分帧注入 |
-| [`src/services/prompt-history.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/prompt-history.js) | `PromptHistoryNavigator` 历史记录栈、草稿暂存与指针控制 |
-| [`src/main.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/main.js) | 前端编排入口：收集 DOM 引用、构建 `ctx`（view / settings / flow / attachments / api）并按依赖顺序初始化各模块 |
-| [`src/modules/flow-ui.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/modules/flow-ui.js) | `createFlowTurnGroupElement`（多轮 DOM 组）、`updateFlowTurnNav` / `scrollToTurnStart` / 上·下按钮事件绑定（多段对话定位导航）、`updateFlowQuestionTip` |
-| [`src/modules/flow-stream.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/modules/flow-stream.js) | `resetStreamState`（多轮追加）、`finalizeStream`、`resetCurrentTurnForResend`、`renderErrorCard` |
-| [`src/modules/flow-pipeline.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/modules/flow-pipeline.js) | `handleFlowQuery`（同一工作流路由 + 运行中提交拦截/终止并发送流水线 `waitForTurnSettled`）、`agent-end` / `agent-error` 结算门控、工具调用事件监听 |
-| [`src/modules/task-panel.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/modules/task-panel.js) | `restoreTaskToFlow` 与 `restoreConversationToFlow`（多轮还原）、`archiveCurrentFlowToHistory`（多轮快照沉淀）、任务胶囊与侧边栏 |
-| [`src/services/notification-service.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/notification-service.js) | 全局焦点追踪器、任务池追踪器、Windows 原生 Toast 通知分发 |
-| [`src-tauri/src/lib.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/lib.rs) | `tauri-plugin-notification` 初始化、`pi_show_notification`、`app-awakened` 广播与任务池 RPC |
-| [`src/styles.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles.css) | 样式聚合入口（`@import` 至 `src/styles/` 各功能域子文件） |
-| [`src/styles/flow.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles/flow.css) | `.flow-message-group`、`.agent-thinking-card`、`.flow-turn-nav` / `.flow-turn-nav-btn`（上下轮次定位导航） |
-| [`src/styles/tool-response.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles/tool-response.css) | `.tool-card`、`.response-content`、`.sketch-error-card` |
-| [`src/styles/overlays.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles/overlays.css) | `#mini-task-capsule`、`#task-details-sidebar`、`.global-toast-banner` |
-| [`src/index.html`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/index.html) | `#flow-conversation`、`#flow-btn-abort`、`#flow-scroll-area`、`#flow-turn-nav`（含 `#flow-turn-nav-up` / `#flow-turn-nav-down`） |
+| [`src/main.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/main.js) | 前端编排入口：收集 DOM 引用、构建 `ctx` 并按依赖顺序初始化各模块 |
+| [`src/modules/flow-ui.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/modules/flow-ui.js) | `createFlowTurnGroupElement`、`updateFlowTurnNav`、`renderMarkdown` 接入与复制事件初始化 |
+| [`src/modules/flow-stream.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/modules/flow-stream.js) | 流式输出 `text-delta` 事件实时渲染 Markdown 与光标更新 |
+| [`src/styles.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles.css) | 样式聚合入口（包含 `@import url("./styles/markdown.css");`） |
+| [`src-tauri/src/lib.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/lib.rs) | `pi_open_url` 指令（`tauri_plugin_opener`）、`pi_show_notification` 等 |
+
 

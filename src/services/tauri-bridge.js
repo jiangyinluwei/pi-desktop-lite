@@ -22,3 +22,42 @@ export async function invokeTauri(command, args = {}) {
     return null;
   }
 }
+
+/**
+ * 唤起系统默认浏览器打开外部超链接 (URL / HTTP / HTTPS / Mailto)
+ * @param {string} url 目标链接
+ * @returns {Promise<boolean>}
+ */
+export async function openExternalUrl(url) {
+  if (!url || typeof url !== "string") return false;
+  const targetUrl = url.trim();
+  if (!targetUrl) return false;
+
+  try {
+    if (window.__TAURI__?.opener?.openUrl) {
+      await window.__TAURI__.opener.openUrl(targetUrl);
+      return true;
+    }
+  } catch (err) {
+    console.warn("[Tauri Opener] plugin opener failed, trying invoke fallback:", err);
+  }
+
+  try {
+    if (window.__TAURI__?.core?.invoke) {
+      await invokeTauri("pi_open_url", { url: targetUrl });
+      return true;
+    }
+  } catch (err) {
+    console.warn("[Tauri Opener] pi_open_url invoke failed, trying browser window.open:", err);
+  }
+
+  // 浏览器降级通道
+  try {
+    const newWin = window.open(targetUrl, "_blank", "noopener,noreferrer");
+    return Boolean(newWin);
+  } catch (err) {
+    console.error("[Tauri Opener] window.open failed:", err);
+    return false;
+  }
+}
+

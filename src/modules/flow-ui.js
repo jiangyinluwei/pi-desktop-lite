@@ -2,6 +2,7 @@ import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
 import { invokeTauri } from "../services/tauri-bridge.js";
+import { renderMarkdown, initMarkdownInteractions } from "../lib/markdown-renderer.js";
 
 /**
  * Flow 渲染核心：Markdown、轮次 DOM、悬浮提问提示与上下定位导航
@@ -26,38 +27,8 @@ export function initFlowUi(ctx) {
   const thinkingToggleBtn = el.thinkingToggleBtn;
   const agentThinkingCard = el.agentThinkingCard;
 
-  // ==========================================================================
-  // 极简安全 Markdown 渲染器
-  // ==========================================================================
-  const renderMarkdown = (text) => {
-    if (!text) return "";
-    let html = escapeHtml(text);
-
-    // 1. 代码块 ```lang ... ```
-    html = html.replace(/```([a-zA-Z0-9_\-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
-      return `<pre><code class="language-${lang}">${code}</code></pre>`;
-    });
-
-    // 2. 行内代码 `code`
-    html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
-
-    // 3. 粗体与斜体
-    html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-
-    // 4. 引用块 >
-    html = html.replace(/^&gt;\s?(.*)$/gm, "<blockquote>$1</blockquote>");
-
-    // 5. 列表与换行
-    html = html.replace(/^- (.*)$/gm, "<li>$1</li>");
-    html = html.replace(/(<li>.*<\/li>)/s, "<ul>$1</ul>");
-
-    // 6. 段落换行
-    html = html.replace(/\n\n+/g, "</p><p>");
-    html = html.replace(/\n/g, "<br/>");
-
-    return `<p>${html}</p>`;
-  };
+  // 初始化代码块一键复制与 Markdown 内部交互委托
+  initMarkdownInteractions(document);
 
   // ==========================================================================
   // Flow 流式渲染核心
