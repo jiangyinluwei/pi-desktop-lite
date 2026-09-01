@@ -98,7 +98,7 @@
 | **`svg-asset-workflow`** | [`.agents/skills/svg-asset-workflow/SKILL.md`](file:///.agents/skills/svg-asset-workflow/SKILL.md) | 指导 SVG 矢量资产存放组织、currentColor 双模主题自适应、内联使用与无障碍交互规范。 |
 | **`desktop-rendering-optimization`** | [`.agents/skills/desktop-rendering-optimization/SKILL.md`](file:///.agents/skills/desktop-rendering-optimization/SKILL.md) | 桌面端与 Webview 渲染性能调优、窗口缩放白闪/黑屏排查、动画帧掉帧卡顿与重绘风暴根治规范。 |
 | **`clean-code-refactoring`** | [`.agents/skills/clean-code-refactoring/SKILL.md`](file:///.agents/skills/clean-code-refactoring/SKILL.md) | 指导在桌面端（Tauri/Rust）与 Web 前端混合项目中进行逻辑去重、结构精简、样板代码消除与架构轻量化重构。 |
-| **`inner-skills-injection`** | [`.agents/skills/inner-skills-injection/SKILL.md`](file:///.agents/skills/inner-skills-injection/SKILL.md) | 指导桌面端作为 Pi Agent 宿主代理时，运行态内置约束（Inner-Skills / RULES.md）的上下文强行注入架构、三态决策流水线、拓扑结构与前端反馈规范。 |
+| **`inner-skills-injection`** | [`.agents/skills/inner-skills-injection/SKILL.md`](file:///.agents/skills/inner-skills-injection/SKILL.md) | 指导桌面端作为 Pi Agent 宿主代理时，运行态内置约束（Inner-Skills / RULES.md）的“基于映射按需注入 (Mapping-Driven Injection)”核心开发原则、拓扑架构、三步标准 SOP、生命周期流水线与前端反馈规范。当涉及"运行态技能"、"上下文注入"、"inner-skill"、"RULES.md"、"映射注入"、"新增inner-skill"、"bash兼容注入"、"文档OCR注入"时使用。 |
 | **`settings-view-pattern`** | [`.agents/skills/settings-view-pattern/SKILL.md`](file:///.agents/skills/settings-view-pattern/SKILL.md) | 指导桌面端 (Tauri 2 + Web 前端) 中项目设置独立全屏页面（Settings View - 第 4 态独立视图）的工程化实现与交互设计。涵盖非浮窗全屏视图状态机、3 秒定时平滑渐隐指引、~/.pi-dl/config.json 应用全局配置持久化与 ~/.pi/agent/ 双层映射、当前模型列表 MRU 最近选用自动排序与锁定保护、模型配置「自动重连切换」Checkbox 与 `modelFailover` 推荐参数块持久化及内核 `pi_apply_model_failover_preset` 探测式注入、自定义模型 Token 规范智能吸附、手绘草图表单几何工程美学及全域右键/Esc 回退流水线规范。当用户提出"设置界面"、"配置页面"、"设置页写法"、"settings view"、"模型配置界面"、"持久化配置"、"设置规范"、"自动重连切换"时使用此技能。 |
 | **`desktop-kernel-lifecycle`** | [`.agents/skills/desktop-kernel-lifecycle/SKILL.md`](file:///.agents/skills/desktop-kernel-lifecycle/SKILL.md) | 指导桌面端 (Tauri 2 + Rust) 作为 CLI/Agent 内核宿主时的进程生命周期管控、多环境自适应寻址、Release 安装包资源打包规范与 Windows 运行时六大踩坑归因与排查治理。当涉及"内核崩溃"、"进程反复重启"、"resource_dir"、"打包后无法运行"、"子进程黑框"、"CWD权限"、"环境变量丢失"、"JobObject"时使用此技能。 |
 | **`flow-interaction-pattern`** | [`.agents/skills/flow-interaction-pattern/SKILL.md`](file:///.agents/skills/flow-interaction-pattern/SKILL.md) | 指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思考卡片/工具调用卡片）可手动折叠展开；②"当前最下方框体展开、出现下一框时自动收起"的级联自动收起流水线；③Flow 界面任意区域滚轮事件委托至最外层滚动容器；④多段对话顶部悬浮当前提问提示（含按滚动位置锚定切换）；⑤多段对话右侧上下轮次定位导航（Flow Turn Navigation，多轮 ≥ 2 显现于 flow 内容区右侧外部，定位到每轮最终输出内容顶部，鼠标弹起触发且可连续逐轮定位，长按「下」1.5 秒立即定位到底部，按下伴随背景填充与轻微抖动动效）；⑥模型自动重连切换自愈流水线（ModelFailoverEngine：瞬态错误 2/4/8s 退避重连 ≤24 次、永久错误按 MRU 自动切换模型、临时切换不刷 MRU、成功转正常切换、全部失败恢复原模型并渲染错误卡附自愈摘要、进度胶囊与事件结算时序）。当用户提出"flow界面交互"、"思考卡片折叠"、"工具调用卡折叠"、"自动收起"、"滚轮滚动"、"flow滚动条"、"卡片收起"、"悬浮提问提示"、"顶部悬浮tips"、"当前提问提示"、"上下按钮"、"轮次定位"、"多段对话优化"、"自动重连"、"自动切换模型"、"模型调用失败自愈"时使用此技能。 |
@@ -109,16 +109,20 @@
 ### 2. 应用内置运行态约束级 Inner-Skills (`src-tauri/inner-skills/`)
 > **作用对象**：桌面应用被用户运行（Runtime）时，作为 Pi Agent 的可视化宿主/代理，由 Rust 后端监督器（`PiSupervisor` & `InnerSkillInjector`）在每次下发 Prompt/FollowUp 时进行智能嗅探与动态强行注入。
 
-- **`RULES.md` 映射总纲**：位于 [`src-tauri/inner-skills/RULES.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/RULES.md)，作为工具到运行态 Skill 映射关系的**唯一事实来源（Single Source of Truth）**，采用极简纯英文（< 100 Tokens）定义映射矩阵与 6 大执行铁律（含禁止未经明确指令擅自生成 `output.txt` 等产物文件的负向铁律）；
+- **核心开发原则：RULES 映射索引化，Skill 独立模块化，按需匹配精准注入**：
+  - 严禁在 `RULES.md` 中编写长篇具体的领域规则，杜绝无差别全量注入导致的 Token 爆炸与模型对话过拟合；
+  - `RULES.md` 作为**轻量级映射事实来源（Single Source of Truth Mapping Table）**，采用极简纯英文（< 100 Tokens）定义映射矩阵与通用基线；
+  - 所有具体领域规则一律在 `src-tauri/inner-skills/<skill-name>/SKILL.md` 中独立封装，通过映射矩阵命中后动态激活与呈现反馈；
 - **两阶段动态映射与即时触发体系**：
   1. **阶段一：背景持续静默注入 (`RULES.md` Silent Baseline)**：每轮提问透明封入精炼纯英文 `<runtime_context_rules>`（`RULES.md` 原文），静默无扰，常规问答不显现 UI 胶囊；
-  2. **阶段二：动态映射解析与即时激活呈现 (Just-In-Time Skill Feedback)**：Rust 引擎动态解析 `RULES.md` 矩阵生成映射表；当且仅当底层 Agent 触发调用命中映射的工具（如 `bash` 命中 `windows-bash-compatibility`）时，即时在思考卡片上方呈现手绘草图胶囊；未在 `RULES.md` 映射的工具（如 `read_file`）绝不误触；
+  2. **阶段二：动态映射解析与即时激活呈现 (Just-In-Time Skill Feedback)**：Rust 引擎动态解析 `RULES.md` 矩阵生成映射表；当且仅当底层 Agent 触发调用命中映射的工具（如 `bash` 命中 `windows-bash-compatibility`、`ocr`/`deword` 命中 `document-multimodal-inspection`）时，即时在思考卡片上方呈现手绘草图胶囊；未在 `RULES.md` 映射的工具绝不误触；
   3. **`<runtime_context_rules>` 信封隔离**：明确声明约束仅在触发工具调用时生效，保障正常对话生成的自然性。
 
 | 文件 / Skill 名称 | 路径 | 运行态注入机制与作用 |
 | :--- | :--- | :--- |
-| **`RULES.md`** | [`src-tauri/inner-skills/RULES.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/RULES.md) | 纯英文运行态 Skill 映射矩阵与 6 大基础约束总览（低 Token 消耗，含严禁擅自落盘 output.txt 等临时文件的最小动作铁律）。 |
-| **`windows-bash-compatibility`** | [`src-tauri/inner-skills/windows-bash-compatibility/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/windows-bash-compatibility/SKILL.md) | 在 Windows 环境下调用终端/Shell 工具时强行注入，约束统一采用正斜杠 `/`、强制非交互 `-y`、禁用 Pager 翻页防卡死、语法跨平台替换及 UTF-8 编码声明。 |
+| **`RULES.md`** | [`src-tauri/inner-skills/RULES.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/RULES.md) | 纯英文运行态 Skill 映射矩阵与基线铁律总纲（低 Token 消耗，作为工具到 Skill 映射的唯一事实来源）。 |
+| **`windows-bash-compatibility`** | [`src-tauri/inner-skills/windows-bash-compatibility/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/windows-bash-compatibility/SKILL.md) | 在 Windows 环境下调用终端/Shell 工具（`bash`, `powershell`, `cmd` 等）时强行注入，约束统一采用正斜杠 `/`、强制非交互 `-y`、禁用 Pager 翻页防卡死、语法跨平台替换及 UTF-8 编码声明。 |
+| **`document-multimodal-inspection`** | [`src-tauri/inner-skills/document-multimodal-inspection/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/document-multimodal-inspection/SKILL.md) | 在涉及目录分析或读取多格式文档/图像（`read_file`, `docparser`, `ocr`, `deword`, `pi-ocr` 等）时强行注入，约束主动目录深度遍历、严禁仅凭文件名猜测、严禁普通文本工具裸读二进制，并强制自动调度专用文档解析与 OCR 组件提取内容。 |
 
 
 

@@ -28,6 +28,16 @@ export function initFlowPipeline(ctx) {
 
   const activeToolSkillMappings = new Map();
 
+  const getSkillLabel = (skillName) => {
+    if (skillName === "windows-bash-compatibility") {
+      return "已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)";
+    }
+    if (skillName === "document-multimodal-inspection") {
+      return "已激活运行态技能：document-multimodal-inspection (多格式文档与 OCR 解析规范)";
+    }
+    return `已激活运行态技能：${skillName} (运行态约束)`;
+  };
+
   const loadInnerSkillMappings = async () => {
     try {
       const mappings = await invokeTauri("pi_get_skill_mappings");
@@ -38,7 +48,7 @@ export function initFlowPipeline(ctx) {
             item.tools.forEach((t) => {
               activeToolSkillMappings.set(t.toLowerCase(), {
                 skill: item.skill_name,
-                label: `已激活运行态技能：${item.skill_name} (${item.skill_name === "windows-bash-compatibility" ? "Windows Shell 兼容规范" : "运行态约束"})`,
+                label: getSkillLabel(item.skill_name),
               });
             });
           }
@@ -47,10 +57,18 @@ export function initFlowPipeline(ctx) {
     } catch (err) {
       console.warn("[Main] Failed to load skill mappings from RULES.md:", err);
       // 安全降级
-      activeToolSkillMappings.set("bash", { skill: "windows-bash-compatibility", label: "已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)" });
-      activeToolSkillMappings.set("powershell", { skill: "windows-bash-compatibility", label: "已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)" });
-      activeToolSkillMappings.set("terminal", { skill: "windows-bash-compatibility", label: "已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)" });
-      activeToolSkillMappings.set("cmd", { skill: "windows-bash-compatibility", label: "已激活运行态技能：windows-bash-compatibility (Windows Shell 兼容规范)" });
+      ["bash", "powershell", "terminal", "cmd", "execute_command"].forEach((t) => {
+        activeToolSkillMappings.set(t, {
+          skill: "windows-bash-compatibility",
+          label: getSkillLabel("windows-bash-compatibility"),
+        });
+      });
+      ["read_file", "docparser", "ocr", "deword", "pi-ocr", "pi-docparser", "extract_text"].forEach((t) => {
+        activeToolSkillMappings.set(t, {
+          skill: "document-multimodal-inspection",
+          label: getSkillLabel("document-multimodal-inspection"),
+        });
+      });
     }
   };
 
@@ -461,11 +479,25 @@ export function initFlowPipeline(ctx) {
     // 构造下发给模型的 Prompt 与上下文注入（实际注入内容为文件/目录的系统绝对路径）
     let promptToSend = query;
     if (filesToAttach.length > 0) {
-      const pathsBlock = filesToAttach.map((f) => `- ${f.path || f.name}`).join("\n");
+      const pathsBlock = filesToAttach
+        .map((f) => {
+          const isFolder = f.category === "folder" || f.category === "directory";
+          const tag = isFolder ? "[目录/Folder]" : `[文件/${f.category || "File"}]`;
+          return `- ${tag}: ${f.path || f.name}`;
+        })
+        .join("\n");
+
+      const hasFolder = filesToAttach.some(
+        (f) => f.category === "folder" || f.category === "directory"
+      );
+      const folderGuidance = hasFolder
+        ? "\n\n（提示：附带项目中包含本地目录，请主动遍历检索其中的文件；若发现包含 .docx、.doc、.pdf、.pptx、.xlsx 或图像等格式，请自动调用专门的 OCR 或文档解析组件读取真实内容并深入分析）"
+        : "";
+
       if (query) {
-        promptToSend = `${query}\n\n[附带本地文件/目录绝对路径]:\n${pathsBlock}`;
+        promptToSend = `${query}\n\n[附带本地文件/目录绝对路径]:\n${pathsBlock}${folderGuidance}`;
       } else {
-        promptToSend = `请查阅并分析以下本地文件/目录：\n\n[附带本地文件/目录绝对路径]:\n${pathsBlock}`;
+        promptToSend = `请查阅并分析以下本地文件/目录：\n\n[附带本地文件/目录绝对路径]:\n${pathsBlock}${folderGuidance}`;
       }
     }
 

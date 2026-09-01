@@ -4,6 +4,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// 编译期内嵌默认规则清单（保障打包发布与离线环境下的可用性）
 const EMBEDDED_RULES_MD: &str = include_str!("../../inner-skills/RULES.md");
+const EMBEDDED_BASH_SKILL_MD: &str = include_str!("../../inner-skills/windows-bash-compatibility/SKILL.md");
+const EMBEDDED_DOC_SKILL_MD: &str = include_str!("../../inner-skills/document-multimodal-inspection/SKILL.md");
 
 /// 规则映射定义项
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -100,6 +102,19 @@ impl InnerSkillInjector {
                 skill_name: "windows-bash-compatibility".to_string(),
                 enforcement: "Mandatory".to_string(),
             });
+            mappings.push(SkillMapping {
+                tools: vec![
+                    "read_file".to_string(),
+                    "docparser".to_string(),
+                    "ocr".to_string(),
+                    "deword".to_string(),
+                    "pi-ocr".to_string(),
+                    "pi-docparser".to_string(),
+                    "extract_text".to_string(),
+                ],
+                skill_name: "document-multimodal-inspection".to_string(),
+                enforcement: "Mandatory".to_string(),
+            });
         }
 
         mappings
@@ -109,6 +124,15 @@ impl InnerSkillInjector {
     pub fn resolve_skill_for_tool(&self, tool_name: &str) -> Option<String> {
         let normalized = tool_name.trim().to_lowercase();
         self.tool_to_skill_map.get(&normalized).cloned()
+    }
+
+    /// 获取具体 Inner-Skill 的详细 SKILL.md 内容
+    pub fn get_skill_detail(&self, skill_name: &str) -> Option<&'static str> {
+        match skill_name.trim().to_lowercase().as_str() {
+            "windows-bash-compatibility" => Some(EMBEDDED_BASH_SKILL_MD),
+            "document-multimodal-inspection" => Some(EMBEDDED_DOC_SKILL_MD),
+            _ => None,
+        }
     }
 
     /// 获取所有动态解析的技能映射清单
@@ -188,8 +212,25 @@ mod tests {
             Some("windows-bash-compatibility".to_string())
         );
 
+        // 测试文档解析与 OCR 工具是否正确映射到 document-multimodal-inspection
+        assert_eq!(
+            injector.resolve_skill_for_tool("read_file"),
+            Some("document-multimodal-inspection".to_string())
+        );
+        assert_eq!(
+            injector.resolve_skill_for_tool("ocr"),
+            Some("document-multimodal-inspection".to_string())
+        );
+        assert_eq!(
+            injector.resolve_skill_for_tool("deword"),
+            Some("document-multimodal-inspection".to_string())
+        );
+        assert_eq!(
+            injector.resolve_skill_for_tool("pi-ocr"),
+            Some("document-multimodal-inspection".to_string())
+        );
+
         // 未在 RULES.md 映射的工具不应触发任何 inner-skill
-        assert_eq!(injector.resolve_skill_for_tool("read_file"), None);
         assert_eq!(injector.resolve_skill_for_tool("web_search"), None);
 
         // 测试 Prompt 持续注入 RULES.md 原文
