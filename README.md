@@ -1,6 +1,15 @@
 # pi-dl (Tauri Desktop App)
 
+<p align="center">
+  <a href="README_en.md">English</a> | <b>简体中文</b>
+</p>
+
 一个极简手绘与工程绘图线条风格的桌面端研究与搜索应用，完全忠于pi内核，基于 **Tauri 2 + 原生 Web 前端（HTML / CSS / JS）** 构建。
+
+<p align="center">
+  <img src="src/assets/111.png" alt="pi-dl 初始主界面" width="49%" />
+  <img src="src/assets/222.png" alt="pi-dl Flow 流式交互界面" width="49%" />
+</p>
 
 ---
 
@@ -490,7 +499,8 @@ pi-desktop-lite/
 │       └── version_watcher/    # [核心] Jitter 随机抖动版本监测与双源更新探测
 
 ├── AGENTS.md                   # 项目规则与代理行为准则
-├── README.md                   # 项目介绍与完整配置指南
+├── README.md                   # 项目介绍与完整配置指南（中文）
+├── README_en.md                # 英文介绍与完整配置指南（English）
 └── package.json
 
 ```
