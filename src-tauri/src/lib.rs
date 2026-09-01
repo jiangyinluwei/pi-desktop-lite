@@ -596,14 +596,23 @@ async fn pi_new_session(
 // ==========================================================================
 
 #[tauri::command]
+fn pi_has_kernel(supervisor: State<'_, PiSupervisor>) -> bool {
+    supervisor.has_kernel()
+}
+
+#[tauri::command]
 async fn pi_check_update(
     supervisor: State<'_, PiSupervisor>,
     scheduler: State<'_, Arc<VersionScheduler>>,
 ) -> Result<VersionCheckResult, String> {
-    let current_ver = supervisor
-        .get_version()
-        .await
-        .unwrap_or_else(|| crate::version_watcher::checker::FALLBACK_PI_VERSION.to_string());
+    let current_ver = if supervisor.has_kernel() {
+        supervisor
+            .get_version()
+            .await
+            .unwrap_or_else(|| crate::version_watcher::checker::FALLBACK_PI_VERSION.to_string())
+    } else {
+        "".to_string()
+    };
     Ok(scheduler.check_now(&current_ver).await)
 }
 
@@ -650,6 +659,7 @@ pub fn run() {
             pi_restart_host,
             pi_get_host_status,
             pi_get_version,
+            pi_has_kernel,
             pi_get_state,
             pi_get_available_models,
             pi_set_model,

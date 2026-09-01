@@ -492,6 +492,18 @@
   transform: translateY(1px);
 }
 
+.search-action-hint.disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.search-action-hint.disabled .sketch-kbd {
+  opacity: 0.5;
+  border-color: var(--sketch-kbd-border);
+  background: var(--sketch-kbd-bg);
+}
+
 /* ==========================================================================
    通用手绘图标与操作按钮规范 (Button Design Principle)
    核心原则：背景常态透明，常态无边框（1px transparent 占位防抖），悬浮（:hover）显现边框与微背景

@@ -186,12 +186,19 @@
   font-size: 11px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   cursor: pointer;
+  -webkit-app-region: no-drag;
   transition: all 0.18s ease-out;
   user-select: none;
 }
 
-[data-view="flow"] .flow-model-tag {
-  display: inline-flex;
+.flow-model-tag * {
+  cursor: pointer;
+}
+
+[data-view="flow"] .flow-model-tag,
+body.kernel-missing .flow-model-tag,
+.flow-model-tag.kernel-missing {
+  display: inline-flex !important;
 }
 
 .flow-model-tag:hover {
@@ -212,6 +219,14 @@
   justify-content: center;
   color: var(--ink-muted);
   opacity: 0.85;
+}
+
+body.kernel-missing .flow-model-tag .flow-model-icon,
+.flow-model-tag.kernel-missing .flow-model-icon {
+  color: var(--titlebar-close-hover, #dc2626);
+  opacity: 1;
+  animation: lightningJitter 0.5s infinite ease-in-out;
+  transform-origin: center center;
 }
 
 .flow-model-icon svg {

@@ -482,6 +482,13 @@
   font-size: 11px;
 }
 
+.flat-btn:disabled,
+.flat-btn[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .flat-btn-primary {
   background-color: var(--ink-primary);
   color: var(--bg-base);

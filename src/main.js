@@ -101,6 +101,7 @@ window.addEventListener("DOMContentLoaded", () => {
     changelogVersionTag: document.getElementById("changelog-version-tag"),
     btnCloseChangelog: document.getElementById("btn-close-changelog"),
     kernelChangelogContent: document.getElementById("kernel-changelog-content"),
+    kernelPackagesArea: document.getElementById("kernel-packages-area"),
     btnClearUiSessions: document.getElementById("btn-clear-ui-sessions"),
     sessionsSearchInput: document.getElementById("sessions-search-input"),
     sessionsTimeFilter: document.getElementById("sessions-time-filter"),

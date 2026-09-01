@@ -7,7 +7,7 @@ import { promptHistoryNavigator } from "../services/prompt-history.js";
 import { invokeTauri } from "../services/tauri-bridge.js";
 import { notificationService } from "../services/notification-service.js";
 import { taskManager } from "../services/task-manager.js";
-import { sketchConfirm } from "../services/sketch-modal.js";
+import { sketchAlert, sketchConfirm } from "../services/sketch-modal.js";
 import { modelFailoverEngine } from "../services/model-failover.js";
 
 /**
@@ -326,6 +326,14 @@ export function initFlowPipeline(ctx) {
    */
   const handleFlowQuery = async (query, filesToAttach = []) => {
     if (!query && filesToAttach.length === 0) return;
+
+    if (!piClient.hasKernel()) {
+      await sketchAlert("未检测到 Pi 内核，无法执行对话指令。\n请前往「设置 ➔ 内核」面板一键下载安装最新内核。", {
+        type: "warning",
+        title: "未检测到内核",
+      });
+      return;
+    }
 
     // 运行中提交拦截：同一 Flow 的当前轮仍在生成（思考/流式/工具执行/待确认）时，
     // 弹窗让用户选择「等待完成」或「终止并发送」。

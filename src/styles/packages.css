@@ -17,6 +17,17 @@
   border-color: var(--sketch-border);
 }
 
+/* 内核扩展组件内容区域 */
+.kernel-packages-area {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.kernel-packages-area.hidden {
+  display: none !important;
+}
+
 /* 1. 已安装组件折叠区域 */
 .installed-packages-wrapper {
   margin-bottom: 16px;

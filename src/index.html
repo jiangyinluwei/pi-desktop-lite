@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 
-<body>
+<body class="kernel-missing">
   <!-- 极简沉浸式标题栏（手绘线条窗口控制按钮） -->
   <header class="titlebar" id="titlebar" data-tauri-drag-region>
     <!-- Flow 模式下的左上角手绘品牌 Mini 标识（仅保留手绘 Π 图标） -->
@@ -27,14 +27,14 @@
     </div>
 
     <!-- 顶部轻量模型快速切换标签 -->
-    <button type="button" class="flow-model-tag" id="flow-model-tag" data-tauri-no-drag title="点击打开模型与设置">
+    <button type="button" class="flow-model-tag kernel-missing" id="flow-model-tag" data-tauri-no-drag title="点击打开模型与设置">
       <span class="flow-model-icon" aria-hidden="true">
         <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5"
           stroke-linecap="round" stroke-linejoin="round">
           <path d="M8.5 1.5 L3.5 9 L7.5 9 L6.5 14.5 L12.5 7 L8.5 7 Z" />
         </svg>
       </span>
-      <span class="flow-model-name" id="flow-model-name">模型加载中...</span>
+      <span class="flow-model-name" id="flow-model-name">未检测到pi内核</span>
     </button>
 
     <div class="titlebar-drag-area" data-tauri-drag-region></div>
@@ -750,12 +750,12 @@
                 <div class="status-card-row">
                   <div class="status-indicator-wrap">
                     <span class="kernel-label">pi内核</span>
-                    <span class="status-dot status-ready" id="host-status-dot"></span>
-                    <span class="status-text" id="host-status-text">Ready</span>
-                    <span class="version-chip" id="host-version-text">v0.84.3</span>
+                    <span class="status-dot status-stopped" id="host-status-dot"></span>
+                    <span class="status-text" id="host-status-text">未检测到内核</span>
+                    <span class="version-chip" id="host-version-text">未安装</span>
                   </div>
                   <div class="status-actions">
-                    <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-restart-host">
+                    <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-restart-host" disabled title="未检测到pi内核，无法重启">
                       <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
                         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M2.5 8a5.5 5.5 0 0 1 9.39-3.89L13.5 5.5" />
@@ -849,8 +849,10 @@
               </div>
             </div>
 
-            <!-- 已安装组件区域 (Collapsible Panel) -->
-            <div class="installed-packages-wrapper" id="installed-packages-wrapper">
+            <!-- 内核组件区域 (仅在检测到内核时显示) -->
+            <div class="kernel-packages-area hidden" id="kernel-packages-area">
+              <!-- 已安装组件区域 (Collapsible Panel) -->
+              <div class="installed-packages-wrapper" id="installed-packages-wrapper">
               <div class="installed-section-header" id="installed-section-toggle" role="button" tabindex="0"
                 aria-expanded="true">
                 <div class="installed-header-title">
@@ -995,6 +997,7 @@
                 </div>
                 <div class="package-progress-message" id="package-progress-message">正在初始化环境...</div>
               </div>
+            </div>
             </div>
           </div>
 

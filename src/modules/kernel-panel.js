@@ -39,6 +39,7 @@ export function initKernelPanel(ctx) {
   const btnCloseChangelog = el.btnCloseChangelog;
   const kernelChangelogContent = el.kernelChangelogContent;
   const autoReconnectSwitch = el.autoReconnectSwitch;
+  const kernelPackagesArea = el.kernelPackagesArea;
 
   // ==========================================================================
   // 6. 内核与版本控制逻辑 (包含一键更新、取消更新、不再提醒与 Changelog 抽屉)
@@ -73,6 +74,42 @@ export function initKernelPanel(ctx) {
   };
 
   const updateHostUI = (statusPayload) => {
+    const hasKernel = piClient.hasKernel();
+
+    if (!hasKernel) {
+      if (hostStatusText) hostStatusText.textContent = "未检测到内核";
+      if (hostStatusDot) {
+        hostStatusDot.className = "status-dot status-stopped";
+      }
+      if (hostVersionText) {
+        hostVersionText.textContent = "未安装";
+      }
+      if (btnRestartHost) {
+        btnRestartHost.disabled = true;
+        btnRestartHost.title = "未检测到pi内核，无法重启";
+      }
+      if (btnIgnoreUpdate) {
+        btnIgnoreUpdate.disabled = true;
+        btnIgnoreUpdate.title = "未检测到pi内核，无法设置";
+      }
+      if (kernelPackagesArea) {
+        kernelPackagesArea.classList.add("hidden");
+      }
+      return;
+    }
+
+    if (btnRestartHost) {
+      btnRestartHost.disabled = false;
+      btnRestartHost.title = "重启内核";
+    }
+    if (btnIgnoreUpdate) {
+      btnIgnoreUpdate.disabled = false;
+      btnIgnoreUpdate.title = "不再提醒更新";
+    }
+    if (kernelPackagesArea) {
+      kernelPackagesArea.classList.remove("hidden");
+    }
+
     const status = typeof statusPayload === "string" ? statusPayload : statusPayload?.status || "ready";
     if (hostStatusText) hostStatusText.textContent = status;
     if (hostStatusDot) {
@@ -93,8 +130,8 @@ export function initKernelPanel(ctx) {
     if (!info) return;
 
     if (info.has_update) {
-      // 若非用户主动点击检查，且用户已勾选“不再提醒更新”，则静默不弹窗
-      if (!isManual && configService.getIgnoreUpdateNotification()) {
+      // 若非用户主动点击检查，且用户已勾选“不再提醒更新”，且已有内核，则静默不弹窗
+      if (!isManual && piClient.hasKernel() && configService.getIgnoreUpdateNotification()) {
         if (updateNotice) updateNotice.classList.add("hidden");
         if (settingsBadge) settingsBadge.classList.remove("visible");
         return;
@@ -104,14 +141,19 @@ export function initKernelPanel(ctx) {
       if (updateNotice) updateNotice.classList.remove("hidden");
       if (updateNoticeActions) updateNoticeActions.classList.remove("hidden");
       if (updateMsg) {
-        updateMsg.textContent = `发现新版本 v${info.latest_version} (当前: v${info.current_version})！`;
+        if (!piClient.hasKernel()) {
+          updateMsg.textContent = `未检测到内核，可一键下载最新版本 v${info.latest_version}！`;
+        } else {
+          updateMsg.textContent = `发现新版本 v${info.latest_version} (当前: v${info.current_version})！`;
+        }
       }
       if (btnUpdateKernel) {
+        const actionLabel = !piClient.hasKernel() ? `一键下载并安装 v${info.latest_version}` : `一键更新到 v${info.latest_version}`;
         btnUpdateKernel.innerHTML = `
           <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M8 2v8M4 6l4 4 4-4M2 13h12" />
           </svg>
-          一键更新到 v${info.latest_version}
+          ${actionLabel}
         `;
       }
       if (settingsBadge) settingsBadge.classList.add("visible");
@@ -129,9 +171,13 @@ export function initKernelPanel(ctx) {
 
   piClient.addEventListener("status-change", (e) => {
     updateHostUI(e.detail);
-    if (e.detail?.status === "ready") {
+    if (e.detail?.status === "ready" && piClient.hasKernel()) {
       api.loadModelsAndState();
     }
+  });
+
+  piClient.addEventListener("kernel-status-change", () => {
+    updateHostUI(piClient.hostStatus);
   });
 
   if (btnRestartHost) {
@@ -347,9 +393,27 @@ export function initKernelPanel(ctx) {
       }
 
       if (btnUpdateKernel) btnUpdateKernel.disabled = false;
-      if (btnRestartHost) btnRestartHost.disabled = false;
+      if (btnRestartHost) {
+        btnRestartHost.disabled = false;
+        btnRestartHost.title = "重启内核";
+      }
+      if (btnIgnoreUpdate) {
+        btnIgnoreUpdate.disabled = false;
+        btnIgnoreUpdate.title = "不再提醒更新";
+      }
       if (btnCheckUpdate) btnCheckUpdate.disabled = false;
       if (btnCancelUpdate) btnCancelUpdate.disabled = false;
+
+      // 恢复内核存在状态与组件区域
+      piClient.setHasKernel(true);
+      if (kernelPackagesArea) {
+        kernelPackagesArea.classList.remove("hidden");
+      }
+      updateHostUI({ status: "ready", pi_version: p.target_version });
+      api.loadModelsAndState();
+      if (typeof api.loadInstalledPackages === "function") {
+        api.loadInstalledPackages();
+      }
 
       // 触发全任务完成通知
       notificationService.notifyIfAllCompleted({

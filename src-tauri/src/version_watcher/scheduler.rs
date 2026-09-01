@@ -54,19 +54,24 @@ impl VersionScheduler {
             tokio::time::sleep(INITIAL_DELAY).await;
 
             loop {
-                // 若用户已设置“不再提醒更新”，直接跳过启动自检与后台自动轮询（不发网络请求）
-                // 用户在设置页主动点击“检查更新”时，会自动重置此标记并恢复
-                if !crate::config_manager::is_update_notification_ignored() {
-                    let current_ver = supervisor
-                        .get_version()
-                        .await
-                        .unwrap_or_else(|| crate::version_watcher::checker::FALLBACK_PI_VERSION.to_string());
+                // 若未安装内核或用户未设置“不再提醒更新”，进行版本检查
+                // (无内核状态下，即使开启了忽略更新提醒，启动时依然进行版本检查并广播 pi:update，以便用户在进入程序后立即看到下载内核按钮)
+                let has_kernel = supervisor.has_kernel();
+                if !has_kernel || !crate::config_manager::is_update_notification_ignored() {
+                    let current_ver = if has_kernel {
+                        supervisor
+                            .get_version()
+                            .await
+                            .unwrap_or_else(|| crate::version_watcher::checker::FALLBACK_PI_VERSION.to_string())
+                    } else {
+                        "".to_string()
+                    };
                     let res = self.check_now(&current_ver).await;
                     if res.has_update {
                         log::info!(
                             "[VersionWatcher] New Pi version detected: {} (current: {})",
                             res.latest_version,
-                            res.current_version
+                            if has_kernel { &res.current_version } else { "none" }
                         );
                     }
                 } else {

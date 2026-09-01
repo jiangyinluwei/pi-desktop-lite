@@ -151,6 +151,11 @@ impl PiSupervisor {
         None
     }
 
+    /// 检查是否存在可用的 Pi 内核可执行文件
+    pub fn has_kernel(&self) -> bool {
+        Self::find_pi_binary(Some(&self.app_handle)).is_some()
+    }
+
     /// 获取当前 Host 状态
     pub async fn get_status(&self) -> HostStatus {
         self.status.read().await.clone()
@@ -175,6 +180,12 @@ impl PiSupervisor {
         let this = self.clone();
         Box::pin(async move {
             *this.is_stopping.write().await = false;
+
+            if !this.has_kernel() {
+                log::warn!("[Supervisor] No Pi kernel binary found. Running in kernel-less mode.");
+                this.update_status(HostStatus::Stopped).await;
+                return Ok(());
+            }
 
             let binary_path = Self::find_pi_binary(Some(&this.app_handle))
                 .ok_or_else(|| "Could not find pi executable in bundled resources, .mytools or PATH".to_string())?;

@@ -137,6 +137,7 @@ class PiClient extends EventTarget {
     super();
     this.hostStatus = "stopped";
     this.piVersion = "unknown";
+    this._hasKernel = false;
     this.isStreaming = false;
     this.activeTools = new Map();
     this.currentModel = null;
@@ -144,6 +145,30 @@ class PiClient extends EventTarget {
     this.unlistenCallbacks = [];
 
     this.initTauriListeners();
+  }
+
+  /**
+   * 查询底层是否存在可用的 Pi 内核
+   * @returns {boolean}
+   */
+  hasKernel() {
+    return this._hasKernel;
+  }
+
+  /**
+   * 手动设置内核状态并广播变更事件
+   * @param {boolean} val
+   */
+  setHasKernel(val) {
+    this._hasKernel = Boolean(val);
+    if (typeof document !== "undefined" && document.body) {
+      document.body.classList.toggle("kernel-missing", !this._hasKernel);
+      const tag = document.getElementById("flow-model-tag");
+      if (tag) tag.classList.toggle("kernel-missing", !this._hasKernel);
+    }
+    this.dispatchEvent(
+      new CustomEvent("kernel-status-change", { detail: { hasKernel: this._hasKernel } })
+    );
   }
 
   /**
@@ -187,12 +212,35 @@ class PiClient extends EventTarget {
     if (!window.__TAURI__?.event?.listen) return;
 
     try {
+      // 0. 初始化探测内核可用性
+      const hasKernel = await this.invoke("pi_has_kernel");
+      if (typeof hasKernel === "boolean") {
+        this._hasKernel = hasKernel;
+        if (typeof document !== "undefined" && document.body) {
+          document.body.classList.toggle("kernel-missing", !this._hasKernel);
+          const tag = document.getElementById("flow-model-tag");
+          if (tag) tag.classList.toggle("kernel-missing", !this._hasKernel);
+        }
+        this.dispatchEvent(
+          new CustomEvent("kernel-status-change", { detail: { hasKernel: this._hasKernel } })
+        );
+      }
+
       // 1. 监听宿主状态变更
-      const unlistenStatus = await window.__TAURI__.event.listen("pi:status", (event) => {
+      const unlistenStatus = await window.__TAURI__.event.listen("pi:status", async (event) => {
         const payload = event.payload;
         this.hostStatus = typeof payload === "string" ? payload : payload?.status || "unknown";
         if (payload?.pi_version) {
           this.piVersion = payload.pi_version;
+        }
+        const currentHasKernel = await this.invoke("pi_has_kernel");
+        if (typeof currentHasKernel === "boolean") {
+          this._hasKernel = currentHasKernel;
+          if (typeof document !== "undefined" && document.body) {
+            document.body.classList.toggle("kernel-missing", !this._hasKernel);
+            const tag = document.getElementById("flow-model-tag");
+            if (tag) tag.classList.toggle("kernel-missing", !this._hasKernel);
+          }
         }
         this.dispatchEvent(new CustomEvent("status-change", { detail: payload }));
       });

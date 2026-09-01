@@ -1,4 +1,5 @@
 import { configService } from "../services/config-service.js";
+import { piClient } from "../services/pi-client.js";
 
 /**
  * 主题、发送快捷键与输出 Tokens 规范吸附
@@ -99,12 +100,21 @@ export function initPreferences(ctx) {
   // ==========================================================================
   const updateSendShortcutUI = (shortcut) => {
     const isEnter = shortcut !== "ctrlEnter";
+    const hasKernel = piClient.hasKernel();
+
     if (hintKeyText) {
       hintKeyText.textContent = isEnter ? "Enter" : "Ctrl+Enter";
     }
     if (searchHint) {
-      searchHint.setAttribute("title", isEnter ? "发送 (Enter)" : "发送 (Ctrl+Enter)");
-      searchHint.setAttribute("aria-label", isEnter ? "发送 (Enter)" : "发送 (Ctrl+Enter)");
+      if (!hasKernel) {
+        searchHint.classList.add("disabled");
+        searchHint.setAttribute("title", "未检测到pi内核，无法发送指令");
+        searchHint.setAttribute("aria-label", "未检测到pi内核，无法发送指令");
+      } else {
+        searchHint.classList.remove("disabled");
+        searchHint.setAttribute("title", isEnter ? "发送 (Enter)" : "发送 (Ctrl+Enter)");
+        searchHint.setAttribute("aria-label", isEnter ? "发送 (Enter)" : "发送 (Ctrl+Enter)");
+      }
     }
 
     const shortcutButtons = document.querySelectorAll(".shortcut-option");
@@ -136,9 +146,18 @@ export function initPreferences(ctx) {
       updateSendShortcutUI(activeShortcut);
     });
 
+    piClient.addEventListener("status-change", () => {
+      updateSendShortcutUI(configService.getSendShortcut());
+    });
+
+    piClient.addEventListener("kernel-status-change", () => {
+      updateSendShortcutUI(configService.getSendShortcut());
+    });
+
     if (searchHint) {
       searchHint.addEventListener("click", (e) => {
         e.preventDefault();
+        if (!piClient.hasKernel()) return;
         api.submitCurrentPrompt();
       });
     }

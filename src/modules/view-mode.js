@@ -1,5 +1,6 @@
 import { VIEW_DETAILED, VIEW_FOCUS, VIEW_FLOW, VIEW_SETTINGS } from "../lib/view-constants.js";
 import { taskManager } from "../services/task-manager.js";
+import { piClient } from "../services/pi-client.js";
 
 /**
  * 四态界面状态机、设置页打开/关闭与 Tauri 唤醒路由
@@ -170,8 +171,21 @@ export function initViewMode(ctx) {
 
   if (flowModelTag) {
     flowModelTag.addEventListener("click", (e) => {
+      e.stopPropagation();
       e.preventDefault();
       openSettingsView();
+      if (!piClient.hasKernel() && typeof api.switchSettingsTab === "function") {
+        api.switchSettingsTab("tab-packages");
+      }
+    });
+
+    flowModelTag.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+    });
+
+    flowModelTag.addEventListener("mousedown", (e) => {
+      e.stopPropagation();
     });
   }
 

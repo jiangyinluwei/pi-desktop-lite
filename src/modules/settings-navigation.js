@@ -1,4 +1,5 @@
 import { ICONS } from "../lib/icons.js";
+import { piClient } from "../services/pi-client.js";
 
 /**
  * 设置页 Tab、内部步骤与折叠通道抽屉导航
@@ -21,36 +22,49 @@ export function initSettingsNavigation(ctx) {
   // ==========================================================================
   // 2. 独立全页面设置视图导航交互
   // ==========================================================================
-  const initSettingsTabs = () => {
+  const switchSettingsTab = (targetTab) => {
+    if (!targetTab) return;
     const tabButtons = document.querySelectorAll(".settings-tab-btn");
     const tabPanes = document.querySelectorAll(".tab-pane");
 
+    tabButtons.forEach((b) => {
+      if (b.getAttribute("data-tab") === targetTab) {
+        b.classList.add("active");
+      } else {
+        b.classList.remove("active");
+      }
+    });
+
+    tabPanes.forEach((pane) => {
+      if (pane.id === `pane-${targetTab.replace("tab-", "")}`) {
+        pane.classList.add("active");
+        if (targetTab === "tab-packages") {
+          if (piClient.hasKernel()) {
+            if (typeof api.loadInstalledPackages === "function") api.loadInstalledPackages();
+            if (typeof api.loadRecommendedPlugins === "function") api.loadRecommendedPlugins();
+            if (typeof api.loadCatalogPackages === "function" && !api.hasCatalogLoadedOnce()) {
+              api.loadCatalogPackages(1);
+            }
+          }
+        }
+        if (targetTab === "tab-workspaces") {
+          if (typeof api.loadWorkspaces === "function") api.loadWorkspaces();
+        }
+      } else {
+        pane.classList.remove("active");
+      }
+    });
+  };
+
+  api.switchSettingsTab = switchSettingsTab;
+
+  const initSettingsTabs = () => {
+    const tabButtons = document.querySelectorAll(".settings-tab-btn");
     tabButtons.forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.preventDefault();
         const targetTab = btn.getAttribute("data-tab");
-        if (!targetTab) return;
-
-        tabButtons.forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-
-        tabPanes.forEach((pane) => {
-          if (pane.id === `pane-${targetTab.replace("tab-", "")}`) {
-            pane.classList.add("active");
-            if (targetTab === "tab-packages") {
-              if (typeof api.loadInstalledPackages === "function") api.loadInstalledPackages();
-              if (typeof api.loadRecommendedPlugins === "function") api.loadRecommendedPlugins();
-              if (typeof api.loadCatalogPackages === "function" && !api.hasCatalogLoadedOnce()) {
-                api.loadCatalogPackages(1);
-              }
-            }
-            if (targetTab === "tab-workspaces") {
-              if (typeof api.loadWorkspaces === "function") api.loadWorkspaces();
-            }
-          } else {
-            pane.classList.remove("active");
-          }
-        });
+        switchSettingsTab(targetTab);
       });
     });
   };

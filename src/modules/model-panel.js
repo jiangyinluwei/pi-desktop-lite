@@ -17,6 +17,7 @@ export function initModelPanel(ctx) {
   const attachments = ctx.attachments;
 
   const flowModelName = el.flowModelName;
+  const flowModelTag = el.flowModelTag;
   const currentModelProvider = el.currentModelProvider;
   const currentModelName = el.currentModelName;
   const currentModelInfo = el.currentModelInfo;
@@ -40,6 +41,23 @@ export function initModelPanel(ctx) {
   // ==========================================================================
 
   const updateModelUI = (model, thinkingLevel = null) => {
+    if (!piClient.hasKernel()) {
+      if (flowModelName) flowModelName.textContent = "未检测到pi内核";
+      if (flowModelTag) flowModelTag.classList.add("kernel-missing");
+      if (typeof document !== "undefined" && document.body) {
+        document.body.classList.add("kernel-missing");
+      }
+      if (currentModelProvider) currentModelProvider.textContent = "未检测到内核";
+      if (currentModelName) currentModelName.textContent = "未安装";
+      if (currentModelInfo) currentModelInfo.textContent = "请前往「设置 ➔ 内核」面板一键下载安装";
+      return;
+    }
+
+    if (flowModelTag) flowModelTag.classList.remove("kernel-missing");
+    if (typeof document !== "undefined" && document.body) {
+      document.body.classList.remove("kernel-missing");
+    }
+
     if (!model) return;
     const provider = model.provider || "anthropic";
     const name = model.name || model.id || "Unknown Model";
@@ -202,6 +220,13 @@ export function initModelPanel(ctx) {
       if (autoReconnectSwitch) {
         autoReconnectSwitch.checked = configService.getAutoReconnectSwitch();
       }
+
+      if (!piClient.hasKernel()) {
+        if (flowModelName) flowModelName.textContent = "未检测到pi内核";
+        updateModelUI(null);
+        return;
+      }
+
       const [state, catalog] = await Promise.all([
         piClient.getState(),
         configService.getOfficialModelsCatalog(),
@@ -279,6 +304,15 @@ export function initModelPanel(ctx) {
     }
     updateModelUI(e.detail);
     renderWhitelistModels(e.detail);
+  });
+
+  piClient.addEventListener("kernel-status-change", (e) => {
+    if (e.detail?.hasKernel) {
+      loadModelsAndState();
+    } else {
+      if (flowModelName) flowModelName.textContent = "未检测到pi内核";
+      updateModelUI(null);
+    }
   });
 
   // ==========================================================================
