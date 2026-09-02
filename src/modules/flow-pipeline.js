@@ -411,10 +411,9 @@ export function initFlowPipeline(ctx) {
     }
   });
 
-  piClient.addEventListener("agent-start", () => {
-    if (!isForegroundStreamEvent()) return;
-    notificationService.registerTask("agent-prompt", { type: "agent" });
-  });
+  // 注：agent-start 不再向 notificationService 注册幻影任务 "agent-prompt"——
+  // TaskManager.createTask 已用真实 taskId 注册，幻影 ID 永不注销会导致 hasRunningTasks()
+  // 恒为 true，成功完成通知 (notifyAgentCompleted) 被永久静默拦截
 
   piClient.addEventListener("extension-ui", (e) => {
     const data = e?.detail || {};

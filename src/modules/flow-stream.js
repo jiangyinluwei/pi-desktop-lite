@@ -373,10 +373,10 @@ export function initFlowStream(ctx) {
     const errMsg = flow.currentErrorMessage;
 
     // 软件失焦时立即弹出报错终止通知 (带 Windows 默认提示音)
+    // 注：不再传幻影 taskId "agent-prompt"，真实任务的注销与报错通知由 taskManager 的 agent-error 监听器负责
     notificationService.notifyError({
       title: "pi-dl",
       message: `模型调用异常终止：${errMsg.length > 80 ? errMsg.slice(0, 77) + "..." : errMsg}`,
-      taskId: "agent-prompt",
     });
 
     const targetResponseEl = flow.activeTurnRefs?.responseContentEl || flowResponseContent;
