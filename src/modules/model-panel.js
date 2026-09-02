@@ -1,7 +1,6 @@
 import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { piClient } from "../services/pi-client.js";
-import { kernelInsurance } from "../services/kernel-insurance.js";
 import { configService } from "../services/config-service.js";
 import { enhanceSelect } from "../services/sketch-select.js";
 import { sketchAlert } from "../services/sketch-modal.js";
@@ -44,14 +43,9 @@ export function initModelPanel(ctx) {
   const updateModelUI = (model, thinkingLevel = null) => {
     if (!piClient.hasKernel()) {
       if (flowModelName) flowModelName.textContent = "未检测到pi内核";
-      if (flowModelTag) {
-        flowModelTag.classList.add("kernel-missing");
-        flowModelTag.classList.remove("kernel-crashed", "kernel-reconnecting");
-        flowModelTag.title = "未检测到pi内核，点击打开设置";
-      }
+      if (flowModelTag) flowModelTag.classList.add("kernel-missing");
       if (typeof document !== "undefined" && document.body) {
         document.body.classList.add("kernel-missing");
-        document.body.classList.remove("kernel-crashed", "kernel-reconnecting");
       }
       if (currentModelProvider) currentModelProvider.textContent = "未检测到内核";
       if (currentModelName) currentModelName.textContent = "未安装";
@@ -59,43 +53,9 @@ export function initModelPanel(ctx) {
       return;
     }
 
-    if (kernelInsurance.state === "failed") {
-      if (flowModelName) flowModelName.textContent = "内核崩溃 (重连失败)";
-      if (flowModelTag) {
-        flowModelTag.classList.add("kernel-crashed");
-        flowModelTag.classList.remove("kernel-missing", "kernel-reconnecting");
-        flowModelTag.title = "Pi 内核已崩溃，5次自动重连失败。点击进入设置面板排查或重新启动。";
-      }
-      if (typeof document !== "undefined" && document.body) {
-        document.body.classList.add("kernel-crashed");
-        document.body.classList.remove("kernel-missing", "kernel-reconnecting");
-      }
-      if (currentModelProvider) currentModelProvider.textContent = "内核已崩溃";
-      if (currentModelName) currentModelName.textContent = "重连失败";
-      if (currentModelInfo) currentModelInfo.textContent = "5次自动重连均失败，请在内核面板手动重启或重新下载安装";
-      return;
-    }
-
-    if (kernelInsurance.state === "reconnecting") {
-      if (flowModelName) flowModelName.textContent = `内核重连中 (${kernelInsurance.retryCount}/${kernelInsurance.maxRetries})...`;
-      if (flowModelTag) {
-        flowModelTag.classList.add("kernel-reconnecting");
-        flowModelTag.classList.remove("kernel-missing", "kernel-crashed");
-        flowModelTag.title = `Pi 内核正在自动重连 (${kernelInsurance.retryCount}/${kernelInsurance.maxRetries})...`;
-      }
-      if (typeof document !== "undefined" && document.body) {
-        document.body.classList.add("kernel-reconnecting");
-        document.body.classList.remove("kernel-missing", "kernel-crashed");
-      }
-      return;
-    }
-
-    if (flowModelTag) {
-      flowModelTag.classList.remove("kernel-missing", "kernel-crashed", "kernel-reconnecting");
-      flowModelTag.title = "点击打开模型与设置";
-    }
+    if (flowModelTag) flowModelTag.classList.remove("kernel-missing");
     if (typeof document !== "undefined" && document.body) {
-      document.body.classList.remove("kernel-missing", "kernel-crashed", "kernel-reconnecting");
+      document.body.classList.remove("kernel-missing");
     }
 
     if (!model) return;
@@ -352,19 +312,6 @@ export function initModelPanel(ctx) {
     } else {
       if (flowModelName) flowModelName.textContent = "未检测到pi内核";
       updateModelUI(null);
-    }
-  });
-
-  kernelInsurance.addEventListener("state-change", (e) => {
-    const detail = e.detail;
-    if (detail?.state === "reconnecting" || detail?.state === "failed") {
-      updateModelUI(null);
-    } else if (detail?.state === "idle" || detail?.state === "ready") {
-      if (piClient.hasKernel() && piClient.hostStatus === "ready") {
-        loadModelsAndState();
-      } else {
-        updateModelUI(piClient.currentModel);
-      }
     }
   });
 

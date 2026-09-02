@@ -244,17 +244,6 @@ pub fn find_pi_binary(app_handle: Option<&AppHandle>) -> Option<PathBuf> {
 
 ---
 
-### 9. 坑点九：Pi 内核崩溃未捕获与死循环重试导致雪崩 (Kernel Insurance & 5-Retry Auto-Reconnect)
-- **故障现象**：当外部环境导致内核异常崩溃（如内存耗尽、第三方依赖缺失或被杀软拦截）时，若无全局后台保护机制，界面将永久卡死在无响应态；或若采用死循环无限重启，将导致 CPU 占满与日志风暴。
-- **底层根因**：缺少前后台协同的内核保险 (Kernel Insurance) 状态机与有限重试熔断闭环。
-- **治理标准**：
-  1. **全局后台 Watchdog**：前端 `KernelInsuranceService` 实时监听 `status-change` 并结合 4 秒周期性心跳探测；
-  2. **5 次平滑重连流水线**：捕获 `crashed` 状态后自动触发 1/5 ➔ 2/5 ➔ 3/5 ➔ 4/5 ➔ 5/5 重连循环（带 1500ms 保护间隔与重试进度反馈）；
-  3. **自愈成功自动清零**：任一次重试拉起为 `ready` 状态即清零计数器并自动刷新模型列表；
-  4. **熔断与左上角警报**：5 次重连均失败后锁定熔断态，左上角触发 **红色抖动小闪电 + 提醒文本 (`内核崩溃 (重连失败)`)**，四态全界面可见，点击直达设置页内核面板支持手动一键排查。
-
----
-
 ## 🛠️ 三、交付与排查核对清单 (Checklist)
 
 在开发与交付包含内置内核的桌面端应用时，必须执行以下核对：
@@ -270,5 +259,4 @@ pub fn find_pi_binary(app_handle: Option<&AppHandle>) -> Option<PathBuf> {
 - [ ] 内核大文件下载是否配置了长超时（600s）、`Accept-Encoding: identity` 及多镜像节点容灾切换？
 - [ ] 内核更新流是否支持取消指令 (`pi_cancel_kernel_update`)，且取消时完全清理临时产物并不终止运行中的 supervisor？
 - [ ] “不再提醒更新”是否正确持久化至 `~/.pi-dl/config.json` 且在手动“检查更新”时自愈重置？
-- [ ] Pi 内核保险机制 (`KernelInsuranceService`) 是否已接入全局后台 Watchdog，并在 5 次重连失败后触发左上角红色抖动小闪电？
 

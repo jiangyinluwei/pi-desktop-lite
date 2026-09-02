@@ -17,6 +17,7 @@ use tokio::sync::oneshot;
 use crate::pi_runner::inner_skills::{InjectedContextInfo, InnerSkillInjector};
 
 const CRASH_WINDOW: Duration = Duration::from_secs(30);
+const MAX_RESTARTS_IN_WINDOW: usize = 2;
 
 #[derive(Clone)]
 pub struct PiSupervisor {
@@ -206,16 +207,7 @@ impl PiSupervisor {
 
             this.update_status(HostStatus::Starting).await;
 
-            let res = this.spawn_child(binary_path, version_str).await;
-            if let Err(ref err) = res {
-                log::error!("[Supervisor] Failed to spawn child process: {}", err);
-                this.update_status(HostStatus::Crashed {
-                    exit_code: None,
-                    error: err.clone(),
-                })
-                .await;
-            }
-            res
+            this.spawn_child(binary_path, version_str).await
         })
     }
 
@@ -359,7 +351,7 @@ impl PiSupervisor {
         Ok(())
     }
 
-    /// 独立监控子进程退出并向前端上报崩溃状态
+    /// 独立监控子进程退出与自愈循环
     async fn monitor_child_lifecycle(supervisor: PiSupervisor, mut child: tokio::process::Child) {
         let exit_status = child.wait().await;
         {
@@ -374,22 +366,42 @@ impl PiSupervisor {
         }
 
         let exit_code = exit_status.as_ref().ok().and_then(|s| s.code());
-        let err_msg = format!("Pi process exited unexpectedly (code: {:?})", exit_code);
-        log::warn!("[Supervisor] {}", err_msg);
+        log::warn!("[Supervisor] Pi child exited with code {:?}", exit_code);
 
-        // 记录崩溃历史并广播 Crashed 状态供内核保险 Watchdog 接管
+        // 滑动窗口崩溃计数
         let now = Instant::now();
         let mut history = supervisor.restart_history.lock().await;
         history.retain(|&t| now.duration_since(t) < CRASH_WINDOW);
         history.push(now);
+
+        if history.len() > MAX_RESTARTS_IN_WINDOW {
+            let err_msg = format!(
+                "Pi host crashed repeatedly ({} times in {}s). Auto-restart suspended.",
+                history.len(),
+                CRASH_WINDOW.as_secs()
+            );
+            drop(history);
+            log::error!("[Supervisor] {}", err_msg);
+            supervisor
+                .update_status(HostStatus::Crashed {
+                    exit_code,
+                    error: err_msg,
+                })
+                .await;
+            return;
+        }
         drop(history);
 
         supervisor
             .update_status(HostStatus::Crashed {
                 exit_code,
-                error: err_msg,
+                error: "Pi process exited unexpectedly. Restarting...".to_string(),
             })
             .await;
+
+        // 自动平滑自愈重启
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+        let _ = supervisor.start().await;
     }
 
     /// 向 Pi 发送通用 RPC 指令（无阻塞等待）

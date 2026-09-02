@@ -4,7 +4,6 @@
  */
 
 import { invokeTauri } from "./tauri-bridge.js";
-import { kernelInsurance } from "./kernel-insurance.js";
 
 /**
  * 递归解析并提炼复杂的错误信息（支持 JSON 字符串嵌套解析）
@@ -144,10 +143,8 @@ class PiClient extends EventTarget {
     this.currentModel = null;
     this.currentThinkingLevel = "medium";
     this.unlistenCallbacks = [];
-    this.insurance = kernelInsurance;
 
     this.initTauriListeners();
-    kernelInsurance.init(this);
   }
 
   /**

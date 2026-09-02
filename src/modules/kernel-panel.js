@@ -1,5 +1,4 @@
 import { piClient } from "../services/pi-client.js";
-import { kernelInsurance } from "../services/kernel-insurance.js";
 import { versionService } from "../services/version-service.js";
 import { configService } from "../services/config-service.js";
 import { ProgressStepper } from "../services/progress-stepper.js";
@@ -29,20 +28,18 @@ export function initKernelPanel(ctx) {
   const btnToggleChangelog = el.btnToggleChangelog;
   const btnIgnoreUpdate = el.btnIgnoreUpdate;
   const btnUpdateKernel = el.btnUpdateKernel;
-  const kernelPackagesArea = el.kernelPackagesArea;
+  const kernelUpdateProgressWrap = el.kernelUpdateProgressWrap;
+  const kernelProgressStage = el.kernelProgressStage;
+  const kernelProgressPercent = el.kernelProgressPercent;
+  const btnCancelUpdate = el.btnCancelUpdate;
+  const kernelProgressFill = el.kernelProgressFill;
+  const kernelProgressSubMsg = el.kernelProgressSubMsg;
   const kernelChangelogDrawer = el.kernelChangelogDrawer;
   const changelogVersionTag = el.changelogVersionTag;
   const btnCloseChangelog = el.btnCloseChangelog;
   const kernelChangelogContent = el.kernelChangelogContent;
   const autoReconnectSwitch = el.autoReconnectSwitch;
-  const kernelProgressContainer = el.kernelProgressContainer;
-  const kernelProgressPercent = el.kernelProgressPercent;
-  const kernelProgressFill = el.kernelProgressFill;
-  const kernelStatusBadge = el.kernelStatusBadge;
-  const kernelProgressPhase = el.kernelProgressPhase;
-  const kernelProgressTrack = el.kernelProgressTrack;
-  const kernelProgressStepText = el.kernelProgressStepText;
-  const btnCancelUpdateKernel = el.btnCancelUpdateKernel;
+  const kernelPackagesArea = el.kernelPackagesArea;
 
   // ==========================================================================
   // 6. 内核与版本控制逻辑 (包含一键更新、取消更新、不再提醒与 Changelog 抽屉)
@@ -111,22 +108,6 @@ export function initKernelPanel(ctx) {
     }
     if (kernelPackagesArea) {
       kernelPackagesArea.classList.remove("hidden");
-    }
-
-    if (kernelInsurance.state === "reconnecting") {
-      if (hostStatusText) hostStatusText.textContent = `重连中 (${kernelInsurance.retryCount}/${kernelInsurance.maxRetries})...`;
-      if (hostStatusDot) {
-        hostStatusDot.className = "status-dot status-starting";
-      }
-      return;
-    }
-
-    if (kernelInsurance.state === "failed") {
-      if (hostStatusText) hostStatusText.textContent = "崩溃 (重连失败)";
-      if (hostStatusDot) {
-        hostStatusDot.className = "status-dot status-crashed";
-      }
-      return;
     }
 
     const status = typeof statusPayload === "string" ? statusPayload : statusPayload?.status || "ready";
@@ -199,15 +180,10 @@ export function initKernelPanel(ctx) {
     updateHostUI(piClient.hostStatus);
   });
 
-  kernelInsurance.addEventListener("state-change", () => {
-    updateHostUI(piClient.hostStatus);
-  });
-
   if (btnRestartHost) {
     btnRestartHost.addEventListener("click", async () => {
       btnRestartHost.disabled = true;
       try {
-        kernelInsurance.reset();
         await piClient.restartHost();
       } catch (err) {
         console.error("Restart host failed:", err);
