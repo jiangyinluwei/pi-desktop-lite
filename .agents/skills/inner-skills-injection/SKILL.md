@@ -25,7 +25,7 @@ flowchart TD
         UserInput["用户提问"] --> ClientSend["piClient.sendPrompt"]
         EventSkill["Tauri 事件: pi:inner-skill-activated"] --> NoticeItem["「注入提示」框条目: Inner-Skill xxx (路由胶囊下方，动态累积)]
         NoticeCtx["Tauri 事件: pi:context_injected"] --> NoticeItem
-        NoticeItem --> NoticeBox["「注入提示」信息框 (路由目标项目胶囊下方；直角简洁风，默认收起仅显示注入数量，点击展开；kind+name 去重跨轮累积)]
+        NoticeItem --> NoticeBox["「注入提示」信息框 (路由目标项目胶囊下方；直角简洁风，默认收起显示「注入提示」与注入数量，点击展开；kind+name 去重跨轮累积)]
     end
 
     subgraph RustSupervisor ["🛡️ Rust 宿主监督器"]
@@ -89,9 +89,9 @@ description: 描述运行态技能在何种场景下被触发与主要约束。
    - 在 `get_skill_detail` 中增加匹配分支并补充单元测试。
 2. **前端模块 (`src/modules/flow-pipeline.js`)**：
    - 在 `getSkillDisplayName` 注册中文友好标签（注入提示条目展示用，inner_skill 条目自动拼装展示名）；
-   - 每段注入提醒：后端每次真实注入均广播一次 `pi:inner-skill-activated`，前端监听后调用 `addInjectionNoticeItem("inner_skill", skillName)` 在路由目标项目胶囊下方的「注入提示」信息框中追加条目（kind+name 去重，跨轮累积，默认收起仅显示注入数量，全新会话重置）；
+   - 每段注入提醒：后端每次真实注入均广播一次 `pi:inner-skill-activated`，前端监听后调用 `addInjectionNoticeItem("inner_skill", skillName)` 在路由目标项目胶囊下方的「注入提示」信息框中追加条目（kind+name 去重，跨轮累积，默认收起显示「注入提示」与注入数量，全新会话重置）；
    - 路由上下文注入上报：`inject_prompt`（`src-tauri/src/pi_runner/supervisor.rs`）在兑底 Inner-Skill 与 code-area 路由上下文（`build_code_area_routing_context_with_items`）注入后广播 `pi:context_injected`（payload 携带 `items: [{kind, name}]`，kind ∈ inner_skill / agents_md / readme_md / routed_skill / routing_context），前端监听 `context-injected` 逐条追加至「注入提示」框；
-   - 同步在 `src/styles/flow.css` 保留 `.flow-injection-notice` 信息框样式（直角矩形简洁风头部 + 可点击展开的条目清单，默认收起仅显示注入数量）；
+   - 同步在 `src/styles/flow.css` 保留 `.flow-injection-notice` 信息框样式（直角矩形简洁风头部 + 可点击展开的条目清单，默认收起显示「注入提示」与注入数量）；
 3. **构建验证**：
    - 运行 `npm run check` 确保前端 AST 与 Rust 编译均通过。
 

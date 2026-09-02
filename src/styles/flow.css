@@ -317,7 +317,7 @@
 
 /* 会话流「注入提示」信息框：位于路由目标项目胶囊下方，集中展示所有调用模型前注入的上下文条目
    （Inner-Skill 运行态技能 / 路由 AGENTS.md / README.md / 命中技能 / 路由信封），
-   随会话动态累积；直角矩形简洁风（非手绘），默认收起仅显示注入数量，点击头部展开清单 */
+   随会话动态累积；直角矩形简洁风（非手绘），默认收起显示「注入提示」与注入数量，点击头部展开清单 */
 .flow-injection-notice {
   align-self: stretch;
   box-sizing: border-box;
@@ -370,11 +370,7 @@
   opacity: 0.8;
 }
 
-/* 收起态：仅显示注入数量（隐藏标题与清单） */
-.flow-injection-notice.collapsed .injection-notice-title {
-  display: none;
-}
-
+/* 收起态：折叠隐藏清单列表（保留标题与数量） */
 .flow-injection-notice.collapsed .injection-notice-list {
   display: none;
 }

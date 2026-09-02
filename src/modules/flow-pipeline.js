@@ -52,7 +52,7 @@ export function initFlowPipeline(ctx) {
 
   const flowConversation = el.flowConversation;
 
-  /* ========== 「注入提示」信息框（路由目标项目胶囊下方，默认收起仅显示注入数量） ==========
+  /* ========== 「注入提示」信息框（路由目标项目胶囊下方，默认收起显示标题与注入数量） ==========
    * 展示所有在调用模型之前注入的上下文条目（Inner-Skill 运行态技能、
    * 路由工作区 AGENTS.md / README.md、命中技能与路由上下文信封等），
    * 随会话动态累积（跨轮保留，按 kind+name 去重），全新会话时重置。
@@ -110,7 +110,7 @@ export function initFlowPipeline(ctx) {
       } else {
         flowConversation.insertBefore(injectionNotice.el, flowConversation.firstChild);
       }
-      // 默认收起：点击头部在「仅显示注入数量」与完整清单间切换
+      // 默认收起：点击头部在收起态与完整清单间切换
       injectionNotice.el
         .querySelector(".injection-notice-header")
         .addEventListener("click", () => {

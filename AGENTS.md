@@ -85,7 +85,7 @@
     - **平滑切换与择时绑定**：允许先切换至 `code-area`，再在设置面板或主界面择时添加路由；处于 `code-area` 且未绑定路由时，输入框禁止输入（只读提示），点击输入框快速呼出路由绑定对话框；
     - **免污染铁律**：`code-area` 自身绝对不创建或修改业务文件，所有代码读写、补丁与命令执行严格作用于目标路由项目；
     - **存在性自动校验与失效清除**：切换至 `code-area` 或启动时，自动校验路由工作区与「最近使用项目」是否在本地磁盘真实存在；失效时自动清除选项并过滤失效历史；
-    - **对话流上下文注入**：发起 Prompt / FollowUp 时透明注入 `<code_area_routing_context>`（目标绝对路径、免污染铁律与 Hub 技能清单），自动读取并注入目标路由工作区的 `AGENTS.md` / `README.md`，若命中技能映射则注入完整指令块（`<routed_project_skills>`），并在 Flow 呈现路由目标胶囊；所有注入条目（Inner-Skill / AGENTS.md / README.md / 命中技能 / 路由信封）在 Flow 会话流「路由目标项目」胶囊下方的「注入提示」信息框中集中呈现（直角简洁风格，默认收起仅显示注入数量，点击展开完整清单；动态累积、去重）。
+    - **对话流上下文注入**：发起 Prompt / FollowUp 时透明注入 `<code_area_routing_context>`（目标绝对路径、免污染铁律与 Hub 技能清单），自动读取并注入目标路由工作区的 `AGENTS.md` / `README.md`，若命中技能映射则注入完整指令块（`<routed_project_skills>`），并在 Flow 呈现路由目标胶囊；所有注入条目（Inner-Skill / AGENTS.md / README.md / 命中技能 / 路由信封）在 Flow 会话流「路由目标项目」胶囊下方的「注入提示」信息框中集中呈现（直角简洁风格，默认收起显示「注入提示」与注入数量，点击展开完整清单；动态累积、去重）。
 
 > 📖 **完整功能矩阵与系统特性总览**：详见项目架构总览技能 [`.agents/skills/pi-desktop-overview/SKILL.md`](file:///.agents/skills/pi-desktop-overview/SKILL.md)。
 
@@ -130,7 +130,7 @@
   1. **RULES 索引映射**：`RULES.md` 为极简映射唯一源（<100 Tokens），无工具调用时零规则零消耗；
   2. **Tool Call Hook**：工具启动时触发 `hook_tool_call`，命中且当轮首次激活则按需注入；
   3. **动态 Steering 注入**：优先通过 `steer` 命令即时注入 `<runtime_inner_skill>`，失败则进出站队列；
-  4. **周期重置与前端反馈**：Turn 边界重置去重集合；Hook 命中时广播 `pi:inner-skill-activated`，在 Flow「路由目标项目」胶囊下方的「注入提示」信息框中动态累积呈现（默认收起仅显示注入数量，同时 `pi:context_injected` 事件上报路由上下文等全部注入条目）；
+  4. **周期重置与前端反馈**：Turn 边界重置去重集合；Hook 命中时广播 `pi:inner-skill-activated`，在 Flow「路由目标项目」胶囊下方的「注入提示」信息框中动态累积呈现（默认收起显示「注入提示」与注入数量，同时 `pi:context_injected` 事件上报路由上下文等全部注入条目）；
   5. **上下文脱敏净化**：加载历史或回溯搜索时自动剥离运行态注入信封，100% 还原用户原始输入。
 
 | Inner-Skill 名称 | 路径 | 触发工具 / 场景 | 核心约束 |

@@ -21,7 +21,7 @@ description: |
   │              └─ flow-message-group
   │                   ├─ flow-user-prompt-card       用户提问卡
   │                   ├─ flow-route-capsule          路由目标项目胶囊
-  │                   ├─ flow-injection-notice        「注入提示」信息框 (路由胶囊下方；直角简洁风，默认收起仅显示注入数量，点击展开全部注入条目清单)
+  │                   ├─ flow-injection-notice        「注入提示」信息框 (路由胶囊下方；直角简洁风，默认收起显示「注入提示」与注入数量，点击展开全部注入条目清单)
   │                   ├─ flow-failover-capsule       自动重连/切换进度胶囊
   │                   ├─ flow-steps-container        【时序步骤流容器】
   │                   │    ├─ flow-step-thinking     思维切片 (单行刷新，常态折叠，绝不自动展开)
