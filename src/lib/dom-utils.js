@@ -42,6 +42,10 @@ export const cleanUserPrompt = (text) => {
   clean = clean.replace(/<runtime_inner_skills>[\s\S]*?<\/runtime_inner_skills>/gi, "");
   clean = clean.replace(/<runtime_inner_skill[\s\S]*?>[\s\S]*?<\/runtime_inner_skill>/gi, "");
   clean = clean.replace(/<code_area_routing_context>[\s\S]*?<\/code_area_routing_context>/gi, "");
+  clean = clean.replace(/<routed_agents_md[\s\S]*?>[\s\S]*?<\/routed_agents_md>/gi, "");
+  clean = clean.replace(/<routed_readme_md[\s\S]*?>[\s\S]*?<\/routed_readme_md>/gi, "");
+  clean = clean.replace(/<routed_project_skills[\s\S]*?>[\s\S]*?<\/routed_project_skills>/gi, "");
+  clean = clean.replace(/<routed_skill[\s\S]*?>[\s\S]*?<\/routed_skill>/gi, "");
   clean = clean.replace(/<[a-zA-Z0-9_-]*(?:context|rules|skill)[a-zA-Z0-9_-]*>[\s\S]*?<\/[a-zA-Z0-9_-]*(?:context|rules|skill)[a-zA-Z0-9_-]*>/gi, "");
 
   // 2. 查找并截断附带本地文件路径尾注

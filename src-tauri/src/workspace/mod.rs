@@ -48,6 +48,25 @@ pub struct CodeAreaSkillInfo {
     pub path: String,
 }
 
+/// 命中映射的目标路由项目 Skill
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MatchedSkillInfo {
+    pub id: String,
+    pub name: String,
+    pub source: String,
+    pub content: String,
+}
+
+/// 目标路由项目规约与文档读取结果
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutedWorkspaceDocContext {
+    pub agents_md: Option<(String, String)>,
+    pub readme_md: Option<(String, String)>,
+    pub matched_skills: Vec<MatchedSkillInfo>,
+}
+
 /// 模板根目录候选（多层寻址，与 find_pi_binary 同源思路）
 fn template_roots(app_handle: Option<&AppHandle>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
@@ -589,4 +608,480 @@ pub fn native_select_folder(default_path: Option<String>) -> Result<Option<Strin
     let selected_str = result.map(|p| p.to_string_lossy().to_string().replace('\\', "/"));
     Ok(selected_str)
 }
+
+/// 安全读取文本文件内容（单文件最大限制 max_bytes，避免大文件内存溢出）
+fn read_file_safely(path: &Path, max_bytes: usize) -> Option<String> {
+    if !path.is_file() {
+        return None;
+    }
+    if let Ok(file) = fs::File::open(path) {
+        use std::io::Read;
+        let mut reader = file.take(max_bytes as u64);
+        let mut buf = Vec::new();
+        if reader.read_to_end(&mut buf).is_ok() {
+            return String::from_utf8(buf).ok();
+        }
+    }
+    None
+}
+
+/// 读取目标路由项目根路径或子目录下的 AGENTS.md / AGENT.md
+pub fn read_routed_project_agents_md(route_path: &Path) -> Option<(String, String)> {
+    let candidates = [
+        "AGENTS.md",
+        "AGENT.md",
+        "agents.md",
+        "agent.md",
+        "CLAUDE.md",
+        "AGENTS.MD",
+        "AGENT.MD",
+    ];
+    for name in &candidates {
+        let file_path = route_path.join(name);
+        if let Some(content) = read_file_safely(&file_path, 120_000) {
+            return Some((name.to_string(), content));
+        }
+    }
+
+    let sub_candidates = [
+        ".agents/AGENTS.md",
+        ".agents/AGENT.md",
+        ".pi/AGENTS.md",
+        ".pi/AGENT.md",
+    ];
+    for name in &sub_candidates {
+        let file_path = route_path.join(name);
+        if let Some(content) = read_file_safely(&file_path, 120_000) {
+            return Some((name.to_string(), content));
+        }
+    }
+
+    None
+}
+
+/// 读取目标路由项目根路径下的 README.md 文档
+pub fn read_routed_project_readme_md(route_path: &Path) -> Option<(String, String)> {
+    let candidates = [
+        "README.md",
+        "readme.md",
+        "README.MD",
+        "README_zh.md",
+        "README_en.md",
+        "README.txt",
+        "README",
+    ];
+    for name in &candidates {
+        let file_path = route_path.join(name);
+        if let Some(content) = read_file_safely(&file_path, 120_000) {
+            return Some((name.to_string(), content));
+        }
+    }
+
+    None
+}
+
+/// 智能解析并提取目标路由工作区 AGENTS.md / README.md 中命中映射的 Skill 规约内容
+pub fn resolve_matched_routed_skills(
+    route_path: &str,
+    hub_skills: &[CodeAreaSkillInfo],
+    skill_injector: &crate::pi_runner::inner_skills::InnerSkillInjector,
+    combined_docs_text: &str,
+) -> Vec<MatchedSkillInfo> {
+    if combined_docs_text.trim().is_empty() {
+        return Vec::new();
+    }
+
+    let mut matched = Vec::new();
+    let mut seen_ids = HashSet::new();
+    let root = Path::new(route_path);
+
+    // 1. 扫描目标项目本地 Skills（.agents/skills, skills, .pi/skills, .doc 等）
+    let mut local_skill_candidates = Vec::new();
+    let skill_search_dirs = [
+        root.join(".agents").join("skills"),
+        root.join("skills"),
+        root.join(".pi").join("skills"),
+        root.join(".doc"),
+    ];
+
+    for s_dir in &skill_search_dirs {
+        if s_dir.is_dir() {
+            if let Ok(entries) = fs::read_dir(s_dir) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_dir() {
+                        let skill_file = p.join("SKILL.md");
+                        if skill_file.is_file() {
+                            let id = p
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or_default()
+                                .to_string();
+                            if !id.is_empty() {
+                                let (name, _) = parse_skill_meta(&skill_file, &id);
+                                let rel_path = match p.strip_prefix(root) {
+                                    Ok(rel) => rel
+                                        .join("SKILL.md")
+                                        .to_string_lossy()
+                                        .to_string()
+                                        .replace('\\', "/"),
+                                    Err(_) => skill_file
+                                        .to_string_lossy()
+                                        .to_string()
+                                        .replace('\\', "/"),
+                                };
+                                local_skill_candidates.push((id, name, rel_path, skill_file));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. 正则/前缀提取 AGENTS.md / README.md 中的显式 Markdown 技能文件引用链接
+    // 支持形如 [.agents/skills/xxx/SKILL.md], (file:///.agents/skills/xxx/SKILL.md), (skills/xxx/SKILL.md), (.doc/xxx/SKILL.md)
+    let re_links = [
+        ".agents/skills/",
+        "skills/",
+        ".doc/",
+        ".pi/skills/",
+    ];
+    for prefix in &re_links {
+        let mut search_idx = 0;
+        while let Some(pos) = combined_docs_text[search_idx..].find(prefix) {
+            let actual_pos = search_idx + pos;
+            let after = &combined_docs_text[actual_pos..];
+            let path_snippet: String = after
+                .chars()
+                .take_while(|c| !c.is_whitespace() && *c != ')' && *c != ']' && *c != '"' && *c != '\'' && *c != '`')
+                .collect();
+            search_idx = actual_pos + prefix.len();
+
+            let trimmed_path = path_snippet.trim_matches(['/', '\\']);
+            if !trimmed_path.is_empty() {
+                let rel_candidate = if trimmed_path.ends_with("SKILL.md") || trimmed_path.ends_with("skill.md") {
+                    PathBuf::from(trimmed_path)
+                } else {
+                    PathBuf::from(trimmed_path).join("SKILL.md")
+                };
+                let full_cand = root.join(&rel_candidate);
+                if full_cand.is_file() {
+                    let parent = full_cand.parent().unwrap_or(&full_cand);
+                    let id = parent
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or_default()
+                        .to_string();
+                    if !id.is_empty() && seen_ids.insert(id.clone()) {
+                        if let Some(content) = read_file_safely(&full_cand, 60_000) {
+                            let (name, _) = parse_skill_meta(&full_cand, &id);
+                            matched.push(MatchedSkillInfo {
+                                id,
+                                name,
+                                source: rel_candidate.to_string_lossy().to_string().replace('\\', "/"),
+                                content,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. 匹配本地候选 Skills
+    for (id, name, rel_source, skill_file) in local_skill_candidates {
+        if seen_ids.contains(&id) {
+            continue;
+        }
+        if is_skill_referenced_in_text(&id, &name, combined_docs_text) {
+            if seen_ids.insert(id.clone()) {
+                if let Some(content) = read_file_safely(&skill_file, 60_000) {
+                    matched.push(MatchedSkillInfo {
+                        id,
+                        name,
+                        source: rel_source,
+                        content,
+                    });
+                }
+            }
+        }
+    }
+
+    // 4. 匹配 Hub 内置 Skills
+    for hub in hub_skills {
+        if seen_ids.contains(&hub.id) {
+            continue;
+        }
+        if is_skill_referenced_in_text(&hub.id, &hub.name, combined_docs_text) {
+            if seen_ids.insert(hub.id.clone()) {
+                let skill_p = Path::new(&hub.path).join("SKILL.md");
+                let content = read_file_safely(&skill_p, 60_000)
+                    .or_else(|| read_file_safely(Path::new(&hub.path), 60_000))
+                    .unwrap_or_default();
+                if !content.is_empty() {
+                    matched.push(MatchedSkillInfo {
+                        id: hub.id.clone(),
+                        name: hub.name.clone(),
+                        source: format!("hub:{}", hub.id),
+                        content,
+                    });
+                }
+            }
+        }
+    }
+
+    // 5. 匹配 Inner-Skills 运行态技能
+    for m in skill_injector.get_skill_mappings() {
+        let skill_id = &m.skill_name;
+        if seen_ids.contains(skill_id) {
+            continue;
+        }
+        if is_skill_referenced_in_text(skill_id, skill_id, combined_docs_text) {
+            if seen_ids.insert(skill_id.clone()) {
+                if let Some(detail) = skill_injector.get_skill_detail(skill_id) {
+                    matched.push(MatchedSkillInfo {
+                        id: skill_id.clone(),
+                        name: humanize_id(skill_id),
+                        source: format!("embedded:inner-skills/{}", skill_id),
+                        content: detail.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    matched
+}
+
+/// 检查 Skill 是否在文本中被映射或引用（支持反引号、粗体、中括号、表格行、路径或独立单词边界）
+fn is_skill_referenced_in_text(skill_id: &str, skill_name: &str, text: &str) -> bool {
+    let lower_text = text.to_lowercase();
+    let lower_id = skill_id.to_lowercase();
+    if lower_id.is_empty() {
+        return false;
+    }
+
+    let patterns = [
+        format!("`{}`", lower_id),
+        format!("**{}**", lower_id),
+        format!("*{}*", lower_id),
+        format!("[{}]", lower_id),
+        format!("\"{}\"", lower_id),
+        format!("'{}'", lower_id),
+        format!("| {} |", lower_id),
+        format!("skills/{}", lower_id),
+        format!(".agents/skills/{}", lower_id),
+        format!(".doc/{}", lower_id),
+        format!("/{}", lower_id),
+    ];
+    for p in &patterns {
+        if lower_text.contains(p) {
+            return true;
+        }
+    }
+
+    if lower_id.len() >= 3 && lower_text.contains(&lower_id) {
+        let mut start = 0;
+        while let Some(pos) = lower_text[start..].find(&lower_id) {
+            let actual = start + pos;
+            let before_ok = if actual == 0 {
+                true
+            } else {
+                let prev = lower_text.as_bytes()[actual - 1];
+                !prev.is_ascii_alphanumeric() && prev != b'_' && prev != b'-'
+            };
+            let end = actual + lower_id.len();
+            let after_ok = if end >= lower_text.len() {
+                true
+            } else {
+                let next = lower_text.as_bytes()[end];
+                !next.is_ascii_alphanumeric() && next != b'_' && next != b'-'
+            };
+            if before_ok && after_ok {
+                return true;
+            }
+            start = actual + lower_id.len();
+        }
+    }
+
+    let lower_name = skill_name.to_lowercase();
+    if lower_name != lower_id && lower_name.len() >= 4 {
+        if lower_text.contains(&format!("`{}`", lower_name))
+            || lower_text.contains(&format!("**{}**", lower_name))
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// 构建完整的 code-area 路由上下文信封，包含：
+/// 1. 核心调度与免污染铁律
+/// 2. code-area Hub 预置技能清单
+/// 3. 目标路由项目的 AGENTS.md / AGENT.md 规范与要求
+/// 4. 目标路由项目的 README.md 文档
+/// 5. 目标项目中命中映射的 Skill 完整规约
+pub fn build_code_area_routing_context(
+    route_path: &str,
+    hub_skills: &[CodeAreaSkillInfo],
+    skill_injector: &crate::pi_runner::inner_skills::InnerSkillInjector,
+) -> String {
+    let mut skills_summary = String::new();
+    if !hub_skills.is_empty() {
+        for s in hub_skills {
+            skills_summary.push_str(&format!("  - [{}] {}: {}\n", s.id, s.name, s.description));
+        }
+    } else {
+        skills_summary.push_str("  (暂无额外扩展技能，遵循通用编码与重构规范)\n");
+    }
+
+    let is_valid_route = !route_path.is_empty() && Path::new(route_path).is_dir();
+    let display_path = if is_valid_route {
+        route_path
+    } else {
+        "[未配置有效路由目标，请提醒用户绑定目标项目]"
+    };
+
+    let mut project_docs_section = String::new();
+    if is_valid_route {
+        let root = Path::new(route_path);
+        let agents_doc = read_routed_project_agents_md(root);
+        let readme_doc = read_routed_project_readme_md(root);
+
+        let mut combined_text = String::new();
+
+        if let Some((filename, content)) = agents_doc {
+            combined_text.push_str(&content);
+            combined_text.push('\n');
+            project_docs_section.push_str(&format!(
+                "\n[ROUTED PROJECT SPECIFICATIONS & RULES (AGENTS.MD)]:\n\
+                <routed_agents_md filename=\"{}\">\n\
+                {}\n\
+                </routed_agents_md>\n",
+                filename,
+                content.trim()
+            ));
+        } else {
+            project_docs_section.push_str(
+                "\n[ROUTED PROJECT SPECIFICATIONS & RULES (AGENTS.MD)]:\n\
+                (目标项目未检测到 AGENTS.md / AGENT.md 规范文件)\n"
+            );
+        }
+
+        if let Some((filename, content)) = readme_doc {
+            combined_text.push_str(&content);
+            combined_text.push('\n');
+            project_docs_section.push_str(&format!(
+                "\n[ROUTED PROJECT DOCUMENTATION (README.MD)]:\n\
+                <routed_readme_md filename=\"{}\">\n\
+                {}\n\
+                </routed_readme_md>\n",
+                filename,
+                content.trim()
+            ));
+        } else {
+            project_docs_section.push_str(
+                "\n[ROUTED PROJECT DOCUMENTATION (README.MD)]:\n\
+                (目标项目未检测到 README.md 文档)\n"
+            );
+        }
+
+        // 解析命中映射的 Skill
+        let matched_skills = resolve_matched_routed_skills(
+            route_path,
+            hub_skills,
+            skill_injector,
+            &combined_text,
+        );
+
+        if !matched_skills.is_empty() {
+            project_docs_section.push_str(&format!(
+                "\n[ROUTED PROJECT MATCHED SKILLS (MAPPED SKILLS INJECTION)]:\n\
+                <routed_project_skills count=\"{}\">\n",
+                matched_skills.len()
+            ));
+            for s in matched_skills {
+                project_docs_section.push_str(&format!(
+                    "<routed_skill id=\"{}\" name=\"{}\" source=\"{}\">\n\
+                    {}\n\
+                    </routed_skill>\n",
+                    s.id,
+                    s.name,
+                    s.source,
+                    s.content.trim()
+                ));
+            }
+            project_docs_section.push_str("</routed_project_skills>\n");
+        }
+    }
+
+    format!(
+        "\n\n<code_area_routing_context>\n\
+        [CODE-AREA ACTIVE: ROUTED WORKSPACE TARGET]\n\
+        Target Project Path: {}\n\
+        Hub CWD: ~/.pi-dl/workspaces/code-area\n\n\
+        CORE DISPATCH RULES:\n\
+        1. TARGET INTEGRITY: ALL file inspection, reading, code creation, edits, refactoring, tests, and patches MUST be performed inside the Target Project Path: '{}'.\n\
+        2. COMMAND EXECUTION: When executing shell/terminal commands (e.g. bash/powershell/git/npm/cargo), explicitly set working directory to '{}' or execute inside it.\n\
+        3. HUB PRESERVATION: The Hub CWD is the global skill registry. DO NOT create project files or temporary dumps in the Hub CWD.\n\
+        4. AVAILABLE BUILT-IN CODING SKILLS IN HUB:\n\
+        {}\
+        {}\
+        </code_area_routing_context>",
+        display_path,
+        if is_valid_route { route_path } else { "[未配置]" },
+        if is_valid_route { route_path } else { "./" },
+        skills_summary,
+        project_docs_section
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_skill_referenced_in_text() {
+        let text = "本项目规则：参考 `auto-compile-and-fix` 规范以及 [.agents/skills/sketch-drafting-ui/SKILL.md]";
+        assert!(is_skill_referenced_in_text("auto-compile-and-fix", "Auto Compile", text));
+        assert!(is_skill_referenced_in_text("sketch-drafting-ui", "Sketch UI", text));
+        assert!(!is_skill_referenced_in_text("unknown-skill", "Unknown", text));
+    }
+
+    #[test]
+    fn test_build_code_area_routing_context_unconfigured() {
+        let injector = crate::pi_runner::inner_skills::InnerSkillInjector::new();
+        let ctx = build_code_area_routing_context("", &[], &injector);
+        assert!(ctx.contains("<code_area_routing_context>"));
+        assert!(ctx.contains("[未配置有效路由目标，请提醒用户绑定目标项目]"));
+        assert!(ctx.contains("</code_area_routing_context>"));
+    }
+
+    #[test]
+    fn test_read_routed_project_docs_and_skills() {
+        // 使用当前仓库作为测试目标路径
+        let current_dir = std::env::current_dir().unwrap();
+        let repo_root = current_dir.parent().unwrap();
+        let repo_path = repo_root.to_string_lossy().to_string().replace('\\', "/");
+
+        let injector = crate::pi_runner::inner_skills::InnerSkillInjector::new();
+        let hub_skills = vec![CodeAreaSkillInfo {
+            id: "code-refactoring".to_string(),
+            name: "Code Refactoring".to_string(),
+            description: "Refactor code".to_string(),
+            path: "".to_string(),
+        }];
+
+        let ctx = build_code_area_routing_context(&repo_path, &hub_skills, &injector);
+        assert!(ctx.contains("<code_area_routing_context>"));
+        assert!(ctx.contains(&repo_path));
+        assert!(ctx.contains("<routed_agents_md"));
+        assert!(ctx.contains("<routed_readme_md"));
+        assert!(ctx.contains("<routed_project_skills"));
+        assert!(ctx.contains("</code_area_routing_context>"));
+    }
+}
+
 

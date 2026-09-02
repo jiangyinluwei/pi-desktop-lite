@@ -86,7 +86,7 @@
     - **输入框禁止输入门禁**：处于 `code-area` 且未绑定路由时，主界面输入框禁止输入（只读提示），点击输入框即可快速呼出路由绑定对话框；
     - **免污染铁律**：`code-area` 自身绝对不创建或修改项目业务文件，所有代码读写、补丁与命令执行严格作用于目标路由项目；
     - **存在性自动校验与失效清除**：每次切换到 `code-area` 或启动应用处于 `code-area` 时，后端自动校验当前路由工作区与「最近使用项目」历史记录是否在本地磁盘真实存在；若目标目录已被删除或失效，自动清除当前选项并过滤剔除失效历史记录，确保状态真实有效；
-    - **对话流上下文注入**：在发起 Prompt / FollowUp 时，透明注入 `<code_area_routing_context>`（目标绝对路径、免污染铁律与已装载技能清单），并在 Flow 界面呈现路由目标胶囊。
+    - **对话流上下文注入（目标规约与命中技能全量对齐）**：在发起 Prompt / FollowUp 时，透明注入 `<code_area_routing_context>`：不仅包含目标绝对路径、免污染铁律与 Hub 技能清单，更会自动读取并注入目标路由工作区的 `AGENTS.md`（或 `AGENT.md`）规约与 `README.md` 文档；若其中包含引用的 Skill 或映射关系（本地 `.agents/skills`、Hub 技能或运行态 Inner-Skills），自动定位并注入命中映射的 Skill 完整指令块（`<routed_project_skills>`），并在 Flow 界面呈现路由目标胶囊。
 
 > 📖 **完整功能矩阵与系统特性总览**：详见项目架构总览技能 [`.agents/skills/pi-desktop-overview/SKILL.md`](file:///.agents/skills/pi-desktop-overview/SKILL.md)。
 

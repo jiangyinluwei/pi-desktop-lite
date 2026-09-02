@@ -85,7 +85,7 @@ description: |
 - **应用全局配置持久化 (`~/.pi-dl/config.json`)**：界面主题色、默认思考推理深度（Thinking Level）、对话框发送快捷键逻辑（`sendShortcut`: `enter` 与 `ctrlEnter`）、默认选中模型及模型顺序、**自动重连切换开关（`autoReconnectSwitch`，默认开启）与模型自愈推荐参数块（`modelFailover`：重连上限 24 次 / 2-4-8s 退避 / 单候选重连预算 2 次 / 重连耗尽升级切换 / 永久错误自动切换）**等统一持久化至 `~/.pi-dl/config.json`；
 - **多预设工作区「模板 → 运行时副本」双轨模型与 `code-area` 路由调度中枢 (`Multi-Workspace Presets & code-area Hub`)**：
   - 随安装包内置多套工作区模板（`default-area` 默认区、`code-area` 全局编码技能调度中枢、`research-area` 深度调研区），打包进资源目录并与 `default-area` 同级；
-  - **`code-area` 路由调度中枢专享机制**：Pi 内核物理 CWD 驻留在 `code-area` 运行时目录（原生感知内置技能集），同时内设绑定「路由目标项目」绝对路径；基于 Rust `rfd` (IFileOpenDialog) 实现 Windows 原生 OpenFolder 文件夹选择器（右下角为标准的「选择文件夹」/「打开」，无网页上传提示）；支持先平滑切换再择时添加路由；未绑定时主界面输入框禁止输入（只读提示），点击输入框可直接弹出模态窗/对话框绑定路由；**存在性自动校验与失效清除**（每次切换或启动应用时，后端自动校验当前路由工作区与历史记录是否存在，不存在则自动清除）；对话流透明注入 `<code_area_routing_context>` 目标路径、免污染铁律与可用技能集清单；
+  - **`code-area` 路由调度中枢专享机制**：Pi 内核物理 CWD 驻留在 `code-area` 运行时目录（原生感知内置技能集），同时内设绑定「路由目标项目」绝对路径；基于 Rust `rfd` (IFileOpenDialog) 实现 Windows 原生 OpenFolder 文件夹选择器（右下角为标准的「选择文件夹」/「打开」，无网页上传提示）；支持先平滑切换再择时添加路由；未绑定时主界面输入框禁止输入（只读提示），点击输入框可直接弹出模态窗/对话框绑定路由；**存在性自动校验与失效清除**（每次切换或启动应用时，后端自动校验当前路由工作区与历史记录是否存在，不存在则自动清除）；对话流透明注入 `<code_area_routing_context>` 目标路径、免污染铁律、可用技能集清单、**目标项目的 `AGENTS.md`（或 `AGENT.md`）规约、`README.md` 文档以及命中映射的专业技能（`<routed_project_skills>`）**；
   - 在设置页「工作区」Tab 可查看当前工作区（名称 + ID 徽章 + 运行时绝对路径）、路由配置卡片与全部预设列表并一键切换；
   - 首次选中时整目录复制模板到 `~/.pi-dl/workspaces/<id>/`（已存在绝不覆盖，升级不影响用户副本），`default-area` 沿用旧路径零迁移零覆盖；
   - 底层 `PiSupervisor::resolve_workspace()` 解析优先级为 `PI_WORKSPACE` 环境变量 > 运行时覆盖 > 配置 `workspace.activeId` > 兜底 `default-area`，`SessionHost` 创建任务时锁定当前生效工作区 CWD；
