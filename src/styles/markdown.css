@@ -238,30 +238,62 @@
 }
 
 /* 深色主题语法高亮优化微调 */
-:root[data-theme="dark"] .tok-kw,
+:root[data-theme="dark"] .tok-kw {
+  color: #a78bfa;
+}
+:root[data-theme="dark"] .tok-fn {
+  color: #60a5fa;
+}
+:root[data-theme="dark"] .tok-str {
+  color: #34d399;
+}
+:root[data-theme="dark"] .tok-num {
+  color: #fbbf24;
+}
+:root[data-theme="dark"] .tok-builtin {
+  color: #38bdf8;
+}
+:root[data-theme="dark"] .tok-tag {
+  color: #fb7185;
+}
+:root[data-theme="dark"] .tok-attr {
+  color: #fb923c;
+}
+:root[data-theme="dark"] .tok-key {
+  color: #2dd4bf;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .tok-kw {
+  :root[data-theme="system"] .tok-kw,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .tok-kw {
     color: #a78bfa;
   }
-  :root:not([data-theme="light"]) .tok-fn {
+  :root[data-theme="system"] .tok-fn,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .tok-fn {
     color: #60a5fa;
   }
-  :root:not([data-theme="light"]) .tok-str {
+  :root[data-theme="system"] .tok-str,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .tok-str {
     color: #34d399;
   }
-  :root:not([data-theme="light"]) .tok-num {
+  :root[data-theme="system"] .tok-num,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .tok-num {
     color: #fbbf24;
   }
-  :root:not([data-theme="light"]) .tok-builtin {
+  :root[data-theme="system"] .tok-builtin,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .tok-builtin {
     color: #38bdf8;
   }
-  :root:not([data-theme="light"]) .tok-tag {
+  :root[data-theme="system"] .tok-tag,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .tok-tag {
     color: #fb7185;
   }
-  :root:not([data-theme="light"]) .tok-attr {
+  :root[data-theme="system"] .tok-attr,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .tok-attr {
     color: #fb923c;
   }
-  :root:not([data-theme="light"]) .tok-key {
+  :root[data-theme="system"] .tok-key,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .tok-key {
     color: #2dd4bf;
   }
 }

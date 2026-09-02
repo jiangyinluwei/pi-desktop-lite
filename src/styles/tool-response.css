@@ -261,14 +261,19 @@ body.kernel-missing .flow-model-tag .flow-model-icon,
 .error-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   color: #dc2626;
   font-weight: 600;
   font-size: 13px;
 }
 
+:root[data-theme="dark"] .error-header {
+  color: #ef4444;
+}
+
 @media (prefers-color-scheme: dark) {
-  .error-header {
+  :root[data-theme="system"] .error-header,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .error-header {
     color: #ef4444;
   }
 }
@@ -281,8 +286,13 @@ body.kernel-missing .flow-model-tag .flow-model-icon,
   flex-shrink: 0;
 }
 
+:root[data-theme="dark"] .error-icon {
+  color: #ef4444;
+}
+
 @media (prefers-color-scheme: dark) {
-  .error-icon {
+  :root[data-theme="system"] .error-icon,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .error-icon {
     color: #ef4444;
   }
 }
@@ -335,8 +345,13 @@ body.kernel-missing .flow-model-tag .flow-model-icon,
   color: #dc2626;
 }
 
+:root[data-theme="dark"] .error-btn.retry-btn {
+  color: #ef4444;
+}
+
 @media (prefers-color-scheme: dark) {
-  .error-btn.retry-btn {
+  :root[data-theme="system"] .error-btn.retry-btn,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .error-btn.retry-btn {
     color: #ef4444;
   }
 }

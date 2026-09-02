@@ -359,17 +359,34 @@
   color: #7c3aed;
 }
 
+:root[data-theme="dark"] .package-type-badge[data-type="extension"] {
+  color: #60a5fa;
+}
+:root[data-theme="dark"] .package-type-badge[data-type="skill"] {
+  color: #34d399;
+}
+:root[data-theme="dark"] .package-type-badge[data-type="theme"] {
+  color: #fbbf24;
+}
+:root[data-theme="dark"] .package-type-badge[data-type="prompt"] {
+  color: #a78bfa;
+}
+
 @media (prefers-color-scheme: dark) {
-  .package-type-badge[data-type="extension"] {
+  :root[data-theme="system"] .package-type-badge[data-type="extension"],
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .package-type-badge[data-type="extension"] {
     color: #60a5fa;
   }
-  .package-type-badge[data-type="skill"] {
+  :root[data-theme="system"] .package-type-badge[data-type="skill"],
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .package-type-badge[data-type="skill"] {
     color: #34d399;
   }
-  .package-type-badge[data-type="theme"] {
+  :root[data-theme="system"] .package-type-badge[data-type="theme"],
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .package-type-badge[data-type="theme"] {
     color: #fbbf24;
   }
-  .package-type-badge[data-type="prompt"] {
+  :root[data-theme="system"] .package-type-badge[data-type="prompt"],
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .package-type-badge[data-type="prompt"] {
     color: #a78bfa;
   }
 }

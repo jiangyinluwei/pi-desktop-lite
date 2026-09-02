@@ -87,21 +87,15 @@
   font-weight: 600;
   background: transparent;
   border-color: var(--sketch-border-subtle);
-  border-bottom-color: var(--bg-base, #faf8f5);
-}
-
-@media (prefers-color-scheme: dark) {
-  .inner-tab-btn.active {
-    border-bottom-color: var(--bg-base, #141312);
-  }
+  border-bottom-color: var(--bg-base);
 }
 
 :root[data-theme="dark"] .inner-tab-btn.active {
-  border-bottom-color: var(--bg-base, #141312);
+  border-bottom-color: var(--bg-base);
 }
 
 :root[data-theme="light"] .inner-tab-btn.active {
-  border-bottom-color: var(--bg-base, #faf8f5);
+  border-bottom-color: var(--bg-base);
 }
 
 .inner-tab-btn.active .step-badge {
@@ -308,8 +302,13 @@
   background-color: #62998b;
 }
 
+:root[data-theme="dark"] .status-dot.status-ready {
+  background-color: #67a16f;
+}
+
 @media (prefers-color-scheme: dark) {
-  .status-dot.status-ready {
+  :root[data-theme="system"] .status-dot.status-ready,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .status-dot.status-ready {
     background-color: #67a16f;
   }
 }
@@ -393,8 +392,13 @@
   flex-shrink: 0;
 }
 
+:root[data-theme="dark"] .update-icon {
+  color: #c9a05b;
+}
+
 @media (prefers-color-scheme: dark) {
-  .update-icon {
+  :root[data-theme="system"] .update-icon,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .update-icon {
     color: #c9a05b;
   }
 }

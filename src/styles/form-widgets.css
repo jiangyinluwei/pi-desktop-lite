@@ -159,8 +159,14 @@
   color: #d97706;
 }
 
+:root[data-theme="dark"] .sketch-autofill-item-badge.history {
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
 @media (prefers-color-scheme: dark) {
-  .sketch-autofill-item-badge.history {
+  :root[data-theme="system"] .sketch-autofill-item-badge.history,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .sketch-autofill-item-badge.history {
     color: #fbbf24;
     border-color: rgba(245, 158, 11, 0.4);
   }
@@ -522,11 +528,21 @@
   border-color: rgba(155, 55, 55, 0.3);
 }
 
+:root[data-theme="dark"] .flat-btn-danger {
+  color: #c25858;
+}
+:root[data-theme="dark"] .flat-btn-danger:hover {
+  color: #d16b6b;
+  border-color: rgba(194, 88, 88, 0.35);
+}
+
 @media (prefers-color-scheme: dark) {
-  .flat-btn-danger {
+  :root[data-theme="system"] .flat-btn-danger,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .flat-btn-danger {
     color: #c25858;
   }
-  .flat-btn-danger:hover {
+  :root[data-theme="system"] .flat-btn-danger:hover,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .flat-btn-danger:hover {
     color: #d16b6b;
     border-color: rgba(194, 88, 88, 0.35);
   }
@@ -550,8 +566,14 @@
   border-color: rgba(140, 109, 55, 0.35);
 }
 
+:root[data-theme="dark"] .flat-badge.flat-badge-reasoning {
+  color: #c9a05b;
+  border-color: rgba(201, 160, 91, 0.35);
+}
+
 @media (prefers-color-scheme: dark) {
-  .flat-badge.flat-badge-reasoning {
+  :root[data-theme="system"] .flat-badge.flat-badge-reasoning,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .flat-badge.flat-badge-reasoning {
     color: #c9a05b;
     border-color: rgba(201, 160, 91, 0.35);
   }

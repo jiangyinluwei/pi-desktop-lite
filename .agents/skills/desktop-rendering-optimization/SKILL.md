@@ -101,12 +101,21 @@ requestAnimationFrame(() => {
 
 ---
 
+### 7. 冷启动主题闪烁与首屏闪白/闪黑 (Theme FOUC Prevention)
+
+| 异常表现 | 核心根因 | 根治方案 |
+| :--- | :--- | :--- |
+| **系统深色+软件浅色冷启动闪黑后变浅** | 页面加载时未在 CSS 解析前设置 `data-theme`，系统 `@media (prefers-color-scheme: dark)` 率先匹配导致首屏暗色渲染，待异步 JS 读取配置后再切回浅色。 | ① 在 `index.html` 的 `<head>` 顶端（样式表前）插入同步内联 `<script>` 从 `localStorage` 读取并立即为 `<html>` 赋予 `data-theme` 属性；<br>② CSS 媒体查询中深色样式必须严格绑定 `:root[data-theme="system"]` 与 `:root:not([data-theme="light"]):not([data-theme="dark"])`，禁止无前缀覆盖；<br>③ 配置服务与设置 UI 在启动时同步读取初始化，杜绝等待后端 IPC 导致状态跳变。 |
+
+---
+
 ## 🛠️ 桌面端流畅度调优实操 Checklist
 
 - [ ] **1. 原生层配置**：`tauri.conf.json` 中配置 `"transparent": true`，消除窗口缩放底色冲突。
 - [ ] **2. 根画布声明**：`index.html` 顶部加入 `<meta name="color-scheme" content="light dark">`。
-- [ ] **3. 移除重绘杀手**：全站样式排查并彻底清除 `background-attachment: fixed`。
-- [ ] **4. 动画属性审计**：所有过渡动画必须且仅使用 `transform` 与 `opacity`。
-- [ ] **5. 图层隔离**：对独立动画区域使用 `contain: paint` 或 `contain: layout` 限制重绘边界。
-- [ ] **6. 视口尺寸调整抑制**：窗口拖拽/最大化瞬间避免触发全局 `transition: all`。
-- [ ] **7. 后端卸载重运算**：数据处理交由 Rust 后端执行，保持 Web 前端主线程 0 阻塞。
+- [ ] **3. 首屏防闪烁**：`<head>` 顶端插入同步内联主题注入脚本，彻底杜绝冷启动主题闪跳 (Theme FOUC)。
+- [ ] **4. 移除重绘杀手**：全站样式排查并彻底清除 `background-attachment: fixed`。
+- [ ] **5. 动画属性审计**：所有过渡动画必须且仅使用 `transform` 与 `opacity`。
+- [ ] **6. 图层隔离**：对独立动画区域使用 `contain: paint` 或 `contain: layout` 限制重绘边界。
+- [ ] **7. 视口尺寸调整抑制**：窗口拖拽/最大化瞬间避免触发全局 `transition: all`。
+- [ ] **8. 后端卸载重运算**：数据处理交由 Rust 后端执行，保持 Web 前端主线程 0 阻塞。

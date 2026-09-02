@@ -402,8 +402,12 @@
   opacity: 0.9;
   animation: failoverPulse 1.4s ease-in-out infinite;
 }
+:root[data-theme="dark"] .flow-failover-capsule .capsule-icon {
+  color: #fbbf24;
+}
 @media (prefers-color-scheme: dark) {
-  .flow-failover-capsule .capsule-icon {
+  :root[data-theme="system"] .flow-failover-capsule .capsule-icon,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .flow-failover-capsule .capsule-icon {
     color: #fbbf24;
   }
 }
@@ -418,8 +422,12 @@
   color: var(--sketch-green, #166534);
   animation: none;
 }
+:root[data-theme="dark"] .flow-failover-capsule.ok .capsule-icon {
+  color: #4ade80;
+}
 @media (prefers-color-scheme: dark) {
-  .flow-failover-capsule.ok .capsule-icon {
+  :root[data-theme="system"] .flow-failover-capsule.ok .capsule-icon,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .flow-failover-capsule.ok .capsule-icon {
     color: #4ade80;
   }
 }

@@ -163,11 +163,13 @@ export function initPreferences(ctx) {
     }
   };
 
-  // 异步预加载 ~/.pi-dl/config.json 并初始化主题与控件
+  // 1. 同步初始化主题控制与快捷键控制（立即高亮当前状态，消除异步等待造成的闪烁）
+  initThemeControl();
+  initSendShortcutControl();
+
+  // 2. 异步预加载 ~/.pi-dl/config.json 深度校验配置并注入重连预设
   (async () => {
     await configService.loadAppConfig();
-    initThemeControl();
-    initSendShortcutControl();
     // 启动时 best-effort 向 Pi 内核注入推荐重连配置 (仅当自动重连开启时，失败静默不阻断)
     if (configService.getAutoReconnectSwitch()) {
       configService.applyModelFailoverPreset().catch(() => {});

@@ -30,7 +30,7 @@ export const DEFAULT_FAILOVER_CONFIG = {
 class ConfigService extends EventTarget {
   constructor() {
     super();
-    this.currentTheme = "system";
+    this.currentTheme = localStorage.getItem(STORAGE_KEY_THEME) || "system";
     this.defaultThinkingLevel = "medium";
     this.sendShortcut = "enter"; // "enter" (Logic A) | "ctrlEnter" (Logic B)
     this.selectedModel = null;
@@ -60,8 +60,12 @@ class ConfigService extends EventTarget {
       const config = await this.invoke("pi_get_app_config");
       if (config && typeof config === "object") {
         if (config.theme && ["system", "light", "dark"].includes(config.theme)) {
-          this.currentTheme = config.theme;
-          localStorage.setItem(STORAGE_KEY_THEME, this.currentTheme);
+          if (config.theme !== this.currentTheme) {
+            this.applyTheme(config.theme, false);
+          } else {
+            this.currentTheme = config.theme;
+            localStorage.setItem(STORAGE_KEY_THEME, this.currentTheme);
+          }
         }
         if (config.defaultThinkingLevel) {
           this.defaultThinkingLevel = config.defaultThinkingLevel;
