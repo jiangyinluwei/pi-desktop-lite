@@ -314,6 +314,14 @@ export function initFlowPipeline(ctx) {
     if (flow.activeToolStep?.id === data.toolCallId) {
       flow.activeToolStep = null;
     }
+
+    // 沿用“伪思考框”机制：工具调用结束后立即重新触发 Thinking (0.0s)... 占位卡片，
+    // 覆盖工具结果回传后到下一轮模型响应首个事件（thinking-start / text-start）之间的空窗期；
+    // 若模型随后直接输出正文或本轮就此结束，由 text-start / finalizeStream 的伪框清理逻辑自动移除
+    if (piClient.isStreaming && typeof api.ensureActiveThinkingStep === "function") {
+      api.ensureActiveThinkingStep();
+      if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    }
   });
 
   piClient.addEventListener("retry-status", (e) => {

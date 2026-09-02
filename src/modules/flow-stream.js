@@ -624,6 +624,7 @@ export function initFlowStream(ctx) {
 
   api.resetStreamState = resetStreamState;
   api.finalizeStream = finalizeStream;
+  api.ensureActiveThinkingStep = ensureActiveThinkingStep;
   api.resetCurrentTurnForResend = resetCurrentTurnForResend;
   api.renderAbortNoticeHtml = renderAbortNoticeHtml;
   api.appendFlowAbortNotice = appendFlowAbortNotice;
