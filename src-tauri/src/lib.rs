@@ -377,7 +377,16 @@ fn pi_show_notification(_app: tauri::AppHandle, title: String, body: String) -> 
             Ok(())
         });
 
-        toast.show().map_err(|e| e.to_string())
+        if let Err(e) = toast.show() {
+            log::warn!("[Notification] tauri_winrt_notification failed: {}, falling back to tauri_plugin_notification", e);
+            use tauri_plugin_notification::NotificationExt;
+            let _ = _app.notification()
+                .builder()
+                .title(&title)
+                .body(&body)
+                .show();
+        }
+        Ok(())
     }
     #[cfg(not(windows))]
     {

@@ -165,6 +165,13 @@ export class TaskManager extends EventTarget {
     task.thinkingDurationText = "思考中...";
     task.startedAt = Date.now();
 
+    // 重新注册到系统通知服务
+    notificationService.registerTask(taskId, {
+      title: task.title,
+      query: query || task.query,
+      type: "agent",
+    });
+
     this.dispatchEvent(new CustomEvent("task-updated", { detail: task }));
     this.dispatchEvent(new CustomEvent("tasks-changed", { detail: { tasks: this.getAllTasks() } }));
     return newTurn;
@@ -649,13 +656,11 @@ export class TaskManager extends EventTarget {
           task.hasUnread = true;
         }
 
-        // 仅在任务处于后台挂起状态且软件失焦时触发系统通知
-        if (task.isSuspended) {
-          notificationService.notifyAgentCompleted({
-            taskId,
-            taskTitle: task.title,
-          });
-        }
+        // 触发会话流完成通知（由 notificationService 内部严格校验窗体失焦状态，失焦时弹出 Windows 原生通知，聚焦时保持静默）
+        notificationService.notifyAgentCompleted({
+          taskId,
+          taskTitle: currentTurn?.query || task.title,
+        });
         break;
 
       default:

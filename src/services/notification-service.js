@@ -221,12 +221,15 @@ export class NotificationService {
       if (this.hasRunningTasks()) return;
 
       const count = this._completedTasksHistory.length;
-      let body = "所有后台任务已全部处理完成。";
+      let body = "会话已完成全部回答与分析。";
       if (count === 1) {
-        const item = this._completedTasksHistory[0];
-        body = item.startsWith("[") ? `${item} 已完成全部回答与分析。` : `[${item}] 任务已完成全部回答与分析。`;
+        const raw = this._completedTasksHistory[0] || "";
+        const clean = raw.length > 40 ? raw.slice(0, 37) + "..." : raw;
+        if (clean) {
+          body = clean.startsWith("[") ? `${clean} 已完成全部回答与分析。` : `[${clean}] 已完成全部回答与分析。`;
+        }
       } else if (count >= 2) {
-        body = `全部后台任务（共 ${count} 个）已全部处理完成。`;
+        body = `全部任务（共 ${count} 个）已全部处理完成。`;
       }
 
       this._completedTasksHistory = [];
