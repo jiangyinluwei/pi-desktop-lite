@@ -303,7 +303,7 @@ export function initFlowUi(ctx) {
   } = {}) => {
     const cardEl = document.createElement("div");
     const statusClass = status === "error" || status === "failure" ? "error failed" : (status === "done" ? "done" : "running");
-    cardEl.className = `flow-step-card flow-step-tool tool-card ${statusClass} ${isOpen ? "open" : ""}`;
+    cardEl.className = `flow-step-card flow-step-tool tool-card ${statusClass} ${isOpen ? "open" : "collapsed"}`;
     if (id) cardEl.id = `tool-${id}`;
 
     const friendlyName = getFriendlyToolName(name);

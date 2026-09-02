@@ -266,7 +266,7 @@ export function initFlowPipeline(ctx) {
 
     const card = toolStep?.cardEl || document.createElement("div");
     if (!toolStep) {
-      card.className = "flow-step-card flow-step-tool tool-card running";
+      card.className = "flow-step-card flow-step-tool tool-card collapsed running";
       card.id = `tool-${toolCallId}`;
       const argsStr = data.args ? JSON.stringify(data.args, null, 2) : "";
       card.innerHTML = `

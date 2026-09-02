@@ -35,6 +35,21 @@ export function initSessionsPanel(ctx) {
   };
 
   // ==========================================================================
+  // 会话 ID 短格式兜底：存量桌面端会话曾以 task_<毫秒时间戳> 作为 session_id，
+  // 前 8 位恒为 "task_178" 导致列表撞脸；此处对 task_* 形式截取尾部随机段，
+  // 新会话（UUID）保持前 8 位展示。
+  // ==========================================================================
+  const formatSessionIdShort = (sessionId) => {
+    if (!sessionId) return "----";
+    if (sessionId.startsWith("task_")) {
+      const segments = sessionId.split("_").filter(Boolean);
+      const tail = segments.length > 1 ? segments[segments.length - 1] : "";
+      return tail ? `#${tail.substring(0, 8)}` : `#${sessionId.slice(-6)}`;
+    }
+    return `#${sessionId.substring(0, 8)}`;
+  };
+
+  // ==========================================================================
   // 内核会话轮次 → Flow 渲染数据适配
   // ==========================================================================
   const IMAGE_EXTS = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "ico"];
@@ -266,7 +281,7 @@ export function initSessionsPanel(ctx) {
       const hasFirstMessage = cleanFirst.length > 0;
       const displayTitle = hasFirstMessage
         ? (cleanFirst.length > 42 ? `${cleanFirst.slice(0, 42)}...` : cleanFirst)
-        : `会话 #${s.session_id.substring(0, 10)}`;
+        : `会话 ${formatSessionIdShort(s.session_id)}`;
       const fullTooltip = hasFirstMessage ? rawFirst : s.session_id;
 
       // 解析工作区末级文件夹名
@@ -309,7 +324,7 @@ export function initSessionsPanel(ctx) {
         <div class="session-item-footer">
           <div class="session-tags-group">
             ${workspaceTagHtml}
-            <span class="session-id-tag" title="完整会话 ID: ${escapeHtml(s.session_id)}">#${escapeHtml(s.session_id.substring(0, 8))}</span>
+            <span class="session-id-tag" title="完整会话 ID: ${escapeHtml(s.session_id)}">${escapeHtml(formatSessionIdShort(s.session_id))}</span>
           </div>
           <div class="session-hover-prompt" aria-hidden="true">
             <span class="prompt-text">进入 Flow</span>

@@ -65,14 +65,13 @@
   flex-shrink: 0;
 }
 
-/* 默认折叠（箭头朝左），展开后箭头朝下 */
-.tool-card.collapsed .tool-collapse-arrow,
-.tool-card:not(.open) .tool-collapse-arrow {
+/* 默认折叠（箭头朝左/">"），展开后箭头朝下；状态由 open / collapsed 类唯一驱动，
+   杜绝初始态两规则同特异性同时命中导致展开箭头覆盖折叠箭头 */
+.tool-card.collapsed .tool-collapse-arrow {
   transform: rotate(-90deg);
 }
 
-.tool-card.open .tool-collapse-arrow,
-.tool-card:not(.collapsed) .tool-collapse-arrow {
+.tool-card.open .tool-collapse-arrow {
   transform: rotate(0deg);
 }
 

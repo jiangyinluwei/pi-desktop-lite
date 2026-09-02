@@ -491,9 +491,11 @@ impl PiHostPool {
             ));
         }
 
+        // 会话 ID 与任务 ID 解耦：session_id 采用独立 UUID，避免桌面端会话在记录列表中因 task_ 前缀时间戳导致 ID 徽标同质化（如全部显示 task_178）
+        let session_id = uuid::Uuid::new_v4().to_string();
         let host = Arc::new(SessionHost::new(
             task_id.to_string(),
-            task_id.to_string(),
+            session_id,
             self.app_handle.clone(),
             self.job_object.clone(),
         ));
