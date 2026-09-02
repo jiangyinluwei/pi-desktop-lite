@@ -97,54 +97,51 @@
 ### 1. 项目开发级 Skills (`.agents/skills/`)
 > **作用对象**：协助本项目源码开发、迭代、重构与调试的 AI 编码助手。
 
-| Skill 名称 | 路径 | 核心作用与触发场景 |
-| :--- | :--- | :--- |
-| **`pi-desktop-overview`** | [`.agents/skills/pi-desktop-overview/SKILL.md`](file:///.agents/skills/pi-desktop-overview/SKILL.md) | 产品定位、四态界面体系、前端/后端核心特性与交互流水线总览。涉及"项目概述"、"核心特性"、"架构总览"、"四态界面"时调用。 |
-| **`auto-compile-and-fix`** | [`.agents/skills/auto-compile-and-fix/SKILL.md`](file:///.agents/skills/auto-compile-and-fix/SKILL.md) | 任务完成后自动编译验证与错误自愈闭环。 |
-| **`sketch-drafting-ui`** | [`.agents/skills/sketch-drafting-ui/SKILL.md`](file:///.agents/skills/sketch-drafting-ui/SKILL.md) | 手绘/工程绘图草图风格（Sketch & Drafting）、简约线条、纸质背景及自适应双模主题设计规范。 |
-| **`sketch-modal-pattern`** | [`.agents/skills/sketch-modal-pattern/SKILL.md`](file:///.agents/skills/sketch-modal-pattern/SKILL.md) | 手绘素描质感居中固定模态弹窗系统规范（毛玻璃遮罩、微抖动、右键/Esc优先拦截、焦点陷阱）。 |
-| **`craft-web`** | [`.agents/skills/craft-web/SKILL.md`](file:///.agents/skills/craft-web/SKILL.md) | Web 前端界面精细化打磨、去 AI 模板味、排版色彩动效与规范核查。 |
-| **`ai-export-to-production`** | [`.agents/skills/ai-export-to-production/SKILL.md`](file:///.agents/skills/ai-export-to-production/SKILL.md) | AI 原型平台（v0/bolt/lovable/AI Studio）导出代码的生产工程化重构与规范化。 |
-| **`api-integration`** | [`.agents/skills/api-integration/SKILL.md`](file:///.agents/skills/api-integration/SKILL.md) | 规范化接入后端接口，实现类型化模块封装与三态处理。 |
-| **`critical-path-debug-test`** | [`.agents/skills/critical-path-debug-test/SKILL.md`](file:///.agents/skills/critical-path-debug-test/SKILL.md) | 前端关键路径深度分析、状态/竞态/内存审计与标准测试报告输出。 |
-| **`react-mobile-responsive`** | [`.agents/skills/react-mobile-responsive/SKILL.md`](file:///.agents/skills/react-mobile-responsive/SKILL.md) | 前端与 React 项目全站移动端/响应式适配。 |
-| **`svg-asset-workflow`** | [`.agents/skills/svg-asset-workflow/SKILL.md`](file:///.agents/skills/svg-asset-workflow/SKILL.md) | SVG 矢量资产组织、`currentColor` 双模主题自适应与内联无障碍规范。 |
-| **`desktop-rendering-optimization`** | [`.agents/skills/desktop-rendering-optimization/SKILL.md`](file:///.agents/skills/desktop-rendering-optimization/SKILL.md) | Webview 渲染调优、缩放白闪/黑屏排查、动画掉帧与重绘风暴治理规范。 |
-| **`clean-code-refactoring`** | [`.agents/skills/clean-code-refactoring/SKILL.md`](file:///.agents/skills/clean-code-refactoring/SKILL.md) | 桌面端与 Web 前端混合项目逻辑去重、结构精简与架构轻量化重构。 |
-| **`inner-skills-injection`** | [`.agents/skills/inner-skills-injection/SKILL.md`](file:///.agents/skills/inner-skills-injection/SKILL.md) | 运行态内置约束（Inner-Skills / RULES.md）基于映射按需注入架构与流水线规范。 |
-| **`settings-view-pattern`** | [`.agents/skills/settings-view-pattern/SKILL.md`](file:///.agents/skills/settings-view-pattern/SKILL.md) | 设置全屏页面（第 4 态）架构、5 大 Tab 导航、MRU 模型排序、自动重连参数持久化与回退流水线规范。 |
-| **`desktop-kernel-lifecycle`** | [`.agents/skills/desktop-kernel-lifecycle/SKILL.md`](file:///.agents/skills/desktop-kernel-lifecycle/SKILL.md) | 桌面端内核进程管控、多环境寻址、Release 打包规范与 Windows 运行时排查治理。 |
-| **`flow-interaction-pattern`** | [`.agents/skills/flow-interaction-pattern/SKILL.md`](file:///.agents/skills/flow-interaction-pattern/SKILL.md) | Flow 流式交互规范：单行紧凑过程卡、时序步骤因果拼接、多轮导航与定位、模型自动重连自愈流水线 (`ModelFailoverEngine`)。 |
-| **`sketch-form-autofill-pattern`** | [`.agents/skills/sketch-form-autofill-pattern/SKILL.md`](file:///.agents/skills/sketch-form-autofill-pattern/SKILL.md) | 手绘草图表单与智能联想推荐浮窗 (`SketchAutoFill`) 标准用法与预设联动规范。 |
-| **`custom-workspace-pattern`** | [`.agents/skills/custom-workspace-pattern/SKILL.md`](file:///.agents/skills/custom-workspace-pattern/SKILL.md) | 私人定制工作区设计规范、目录拓扑、防泄密物理隔离与线下交付流水线。 |
-| **`code-hazards-remediation`** | [`.doc/code-hazards-remediation/SKILL.md`](file:///.doc/code-hazards-remediation/SKILL.md) | 全量代码健康度隐患矩阵（H1~H24）故障排查与核销自愈指南。 |
+| 领域分类 | Skill 名称 | 路径 | 核心能力与触发场景 |
+| :--- | :--- | :--- | :--- |
+| **架构与规范** | **`pi-desktop-overview`** | [`.agents/skills/pi-desktop-overview/SKILL.md`](file:///.agents/skills/pi-desktop-overview/SKILL.md) | 产品定位、四态体系、核心特性与交互流水线总览（触发：项目概述/架构总览/四态界面）。 |
+| | **`custom-workspace-pattern`** | [`.agents/skills/custom-workspace-pattern/SKILL.md`](file:///.agents/skills/custom-workspace-pattern/SKILL.md) | 私人定制工作区拓扑、防泄密物理隔离与交付规范（触发：定制工作区/企业交付/隔离）。 |
+| | **`inner-skills-injection`** | [`.agents/skills/inner-skills-injection/SKILL.md`](file:///.agents/skills/inner-skills-injection/SKILL.md) | 运行态内置约束（RULES.md）按需注入架构与流水线（触发：运行态技能/上下文注入/RULES）。 |
+| **手绘 UI 与交互** | **`sketch-drafting-ui`** | [`.agents/skills/sketch-drafting-ui/SKILL.md`](file:///.agents/skills/sketch-drafting-ui/SKILL.md) | Anthropic/Pi.dev 手绘草图美学、简约线条与纸质双模主题（触发：手绘风格/工程绘图风/草图UI）。 |
+| | **`sketch-modal-pattern`** | [`.agents/skills/sketch-modal-pattern/SKILL.md`](file:///.agents/skills/sketch-modal-pattern/SKILL.md) | 手绘素描居中模态弹窗（Pop & Shake、Step Back 优先拦截、焦点陷阱）（触发：模态窗/弹窗/alert替换）。 |
+| | **`sketch-form-autofill-pattern`** | [`.agents/skills/sketch-form-autofill-pattern/SKILL.md`](file:///.agents/skills/sketch-form-autofill-pattern/SKILL.md) | 手绘表单规范、消灭原生变色与 `SketchAutoFill` 智能联想（触发：新增表单/自定义填表/autofill）。 |
+| | **`svg-asset-workflow`** | [`.agents/skills/svg-asset-workflow/SKILL.md`](file:///.agents/skills/svg-asset-workflow/SKILL.md) | 手绘 SVG 图元规范、`currentColor` 主题自适应与内联管理（触发：SVG图标/替换图标/图标规范）。 |
+| | **`flow-interaction-pattern`** | [`.agents/skills/flow-interaction-pattern/SKILL.md`](file:///.agents/skills/flow-interaction-pattern/SKILL.md) | Flow 流式交互（单行紧凑过程卡、因果时序拼接、多轮定位、模型自动重连）（触发：flow交互/思维链/轮次定位）。 |
+| | **`settings-view-pattern`** | [`.agents/skills/settings-view-pattern/SKILL.md`](file:///.agents/skills/settings-view-pattern/SKILL.md) | 设置全屏独立视图（第4态）、5 大 Tab、MRU 模型排序与回退流（触发：设置界面/配置页面/settings）。 |
+| **工程与治理** | **`desktop-kernel-lifecycle`** | [`.agents/skills/desktop-kernel-lifecycle/SKILL.md`](file:///.agents/skills/desktop-kernel-lifecycle/SKILL.md) | Tauri 2 + Rust 内核生命周期管控、多环境寻址与 Release 打包避坑（触发：内核崩溃/进程重启/打包）。 |
+| | **`desktop-rendering-optimization`** | [`.agents/skills/desktop-rendering-optimization/SKILL.md`](file:///.agents/skills/desktop-rendering-optimization/SKILL.md) | Webview 渲染调优、缩放白闪/黑屏排查、动画掉帧与重绘治理（触发：动画卡顿/缩放闪白/掉帧/渲染优化）。 |
+| | **`auto-compile-and-fix`** | [`.agents/skills/auto-compile-and-fix/SKILL.md`](file:///.agents/skills/auto-compile-and-fix/SKILL.md) | 任务完成后自动极速编译与失败自愈闭环（触发：编译校验/自动修复/构建验证）。 |
+| | **`clean-code-refactoring`** | [`.agents/skills/clean-code-refactoring/SKILL.md`](file:///.agents/skills/clean-code-refactoring/SKILL.md) | 桌面端与 Web 混合架构逻辑去重、结构精简与样板消除（触发：代码精简/去冗余/重构优化）。 |
+| | **`iterative-modification-hygiene`** | [`.agents/skills/iterative-modification-hygiene/SKILL.md`](file:///.agents/skills/iterative-modification-hygiene/SKILL.md) | 连续迭代代码卫生、AST 语法静态校验与防幽灵残余（触发：多次修改代码/清理冗余/代码卫生）。 |
+| | **`code-hazards-remediation`** | [`.doc/code-hazards-remediation/SKILL.md`](file:///.doc/code-hazards-remediation/SKILL.md) | 全量代码健康度隐患矩阵（H1~H24）故障排查与自愈核销清零（触发：排查异常/代码隐患/健康度）。 |
+| **通用前端开发** | **`craft-web`** | [`.agents/skills/craft-web/SKILL.md`](file:///.agents/skills/craft-web/SKILL.md) | Web 前端精细化打磨、去 AI 模板味、现代排版动效与规范核查（触发：优化界面/AI味太重/前端打磨）。 |
+| | **`api-integration`** | [`.agents/skills/api-integration/SKILL.md`](file:///.agents/skills/api-integration/SKILL.md) | 规范化后端接口对接、类型化模块封装与加载/异常三态处理（触发：接接口/对接API/接口联调）。 |
+| | **`critical-path-debug-test`** | [`.agents/skills/critical-path-debug-test/SKILL.md`](file:///.agents/skills/critical-path-debug-test/SKILL.md) | 前端关键路径深度分析、状态/竞态/内存审计与测试报告（触发：关键路径测试/debug测试/系统测试）。 |
+| | **`react-mobile-responsive`** | [`.agents/skills/react-mobile-responsive/SKILL.md`](file:///.agents/skills/react-mobile-responsive/SKILL.md) | Web 与 React 全站移动端/响应式适配与触控优化（触发：移动端适配/响应式布局/手机端兼容）。 |
+| | **`ai-export-to-production`** | [`.agents/skills/ai-export-to-production/SKILL.md`](file:///.agents/skills/ai-export-to-production/SKILL.md) | AI 原型平台（v0/bolt/lovable/AI Studio）导出代码生产工程化改造（触发：原型转生产/代码改造/原型上线）。 |
 
 ---
 
 ### 2. 应用内置运行态约束级 Inner-Skills (`src-tauri/inner-skills/`)
-> **作用对象**：桌面应用运行时作为 Pi Agent 宿主代理，由 Rust 监督器在工具调用启动时进行智能 Hook 嗅探与按需动态强行注入。
+> **作用对象**：桌面端作为 Pi Agent 宿主时，由 Rust 监督器在底层工具调用时进行 Hook 嗅探并按需动态注入。
 
-- **核心原则：RULES 映射索引化，Skill 独立模块化，Tool Call Hook 按需精准注入**：
-  - `RULES.md` 作为**轻量映射事实来源**（极简纯英文，< 100 Tokens），定义工具到 Skill 的映射矩阵；常规对话零规则注入，零多余 Token 消耗；
-  - 具体领域规则独立封装于 `src-tauri/inner-skills/<skill-name>/SKILL.md`，命中后动态激活。
-- **Tool Call Pre-Processing Hook 与动态 Steering 注入体系**：
-  1. **Hook 命中与当轮去重**：底层 Agent 发送 `tool_execution_start` 时，Rust 监督器触发 `InnerSkillInjector::hook_tool_call(tool_name)`；若命中映射且当轮首次激活，触发注入；
-  2. **主通道（动态 Steering 即时注入）**：优先通过 `steer` 命令动态向内核注入专用 XML 约束块（`<runtime_inner_skill name="...">`），注入成功后出队；
-  3. **兜底通道（出站 Prompt 队列注入）**：若 steer 失败，激活项留存 `pending_skills` 队列，随下次出站 Prompt 一次性注入；
-  4. **生命周期清空**：`turn_start` / `agent_start` 边界清空当轮去重集合；新会话/重置时调用 `reset_session()` 彻底清空；
-  5. **前端即时反馈**：Hook 命中时广播 `pi:inner-skill-activated` 事件，Flow 思考卡片上方手绘胶囊动态显示已激活技能；
-  6. **上下文信封脱敏与会话净化**：解析会话、加载历史、搜索回溯或从设置页恢复进入 Flow 时，全域自动剥离运行态注入信封（`<runtime_context_rules>`、`<code_area_routing_context>` 等）与附件绝对路径尾注，确保展示 100% 还原用户原始输入。
+- **核心机制**：
+  1. **RULES 索引映射**：`RULES.md` 为极简映射唯一源（<100 Tokens），无工具调用时零规则零消耗；
+  2. **Tool Call Hook**：工具启动时触发 `hook_tool_call`，命中且当轮首次激活则按需注入；
+  3. **动态 Steering 注入**：优先通过 `steer` 命令即时注入 `<runtime_inner_skill>`，失败则进出站队列；
+  4. **周期重置与前端反馈**：Turn 边界重置去重集合；Hook 命中时广播 `pi:inner-skill-activated` 在 Flow 呈现手绘胶囊；
+  5. **上下文脱敏净化**：加载历史或回溯搜索时自动剥离运行态注入信封，100% 还原用户原始输入。
 
-| 文件 / Skill 名称 | 路径 | 运行态注入机制与作用 |
-| :--- | :--- | :--- |
-| **`RULES.md`** | [`src-tauri/inner-skills/RULES.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/RULES.md) | 纯英文运行态 Skill 映射矩阵与基线总纲（工具到 Skill 动态映射唯一事实来源）。 |
-| **`windows-bash-compatibility`** | [`src-tauri/inner-skills/windows-bash-compatibility/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/windows-bash-compatibility/SKILL.md) | 调度终端/Shell 工具（`bash`, `powershell`, `cmd`）时注入，约束统一正斜杠 `/`、强制 `-y`、禁用 Pager 翻页及 UTF-8 编码。 |
-| **`document-multimodal-inspection`** | [`src-tauri/inner-skills/document-multimodal-inspection/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/document-multimodal-inspection/SKILL.md) | 涉及目录分析或多格式文档/图像（`read_file`, `docparser`, `ocr`, `pi-ocr`）时注入，约束主动深度遍历与专用解析器提取。 |
-| **`multi-agent-orchestration`** | [`src-tauri/inner-skills/multi-agent-orchestration/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/multi-agent-orchestration/SKILL.md) | 调度多智能体或并发子任务（`subagent`, `pi-subagents`, `spawn_agent`）时注入，约束明确任务边界、非阻塞派发与超时控制。 |
-| **`web-search-silent-access`** | [`src-tauri/inner-skills/web-search-silent-access/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/web-search-silent-access/SKILL.md) | 涉及联网搜索或网页抓取（`web_search`, `pi-web-access`, `search_web`）时注入，约束静默执行、禁止前台弹窗与多源交叉求证。 |
-| **`persistent-memory-retrieval`** | [`src-tauri/inner-skills/persistent-memory-retrieval/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/persistent-memory-retrieval/SKILL.md) | 涉及跨会话长期记忆工具（`memory_retrieve`, `memory_store`, `pi-memory`）时注入，约束模糊指代查阅、增量写入与敏感隔离。 |
-| **`dynamic-workflows-orchestration`** | [`src-tauri/inner-skills/dynamic-workflows-orchestration/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/dynamic-workflows-orchestration/SKILL.md) | 涉及动态工作流或自动化编排（`dynamic_workflows`, `execute_workflow`）时注入，约束分阶段校验、单步自愈熔断与进度追踪。 |
-| **`active-context-pruning`** | [`src-tauri/inner-skills/active-context-pruning/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/active-context-pruning/SKILL.md) | 涉及长会话上下文修剪工具（`context_prune`, `prune_context`, `pai-acp`）时注入，约束渐进修剪冗余、保护核心意图与最新代码锚点。 |
+| Inner-Skill 名称 | 路径 | 触发工具 / 场景 | 核心约束 |
+| :--- | :--- | :--- | :--- |
+| **`RULES.md`** | [`src-tauri/inner-skills/RULES.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/RULES.md) | 工具映射总纲 | 纯英文工具到 Skill 动态映射矩阵与基线总纲。 |
+| **`windows-bash-compatibility`** | [`src-tauri/inner-skills/windows-bash-compatibility/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/windows-bash-compatibility/SKILL.md) | `bash`, `powershell`, `cmd` | 统一正斜杠 `/`、强制 `-y`、禁用 Pager、UTF-8 编码。 |
+| **`document-multimodal-inspection`** | [`src-tauri/inner-skills/document-multimodal-inspection/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/document-multimodal-inspection/SKILL.md) | `read_file`, `docparser`, `ocr`, `pi-ocr` | 主动深度遍历目录、专用解析器提取真实文本、批量汇总。 |
+| **`multi-agent-orchestration`** | [`src-tauri/inner-skills/multi-agent-orchestration/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/multi-agent-orchestration/SKILL.md) | `subagent`, `pi-subagents`, `spawn_agent` | 明确任务边界、非阻塞并发派发、超时控制与结果去重。 |
+| **`web-search-silent-access`** | [`src-tauri/inner-skills/web-search-silent-access/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/web-search-silent-access/SKILL.md) | `web_search`, `pi-web-access`, `search_web` | 静默后台执行、禁止弹窗、多源交叉求证与垃圾过滤。 |
+| **`persistent-memory-retrieval`** | [`src-tauri/inner-skills/persistent-memory-retrieval/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/persistent-memory-retrieval/SKILL.md) | `memory_retrieve`, `memory_store`, `pi-memory` | 模糊跨会话查阅、语义相关性匹配、增量安全存储与敏感隔离。 |
+| **`dynamic-workflows-orchestration`** | [`src-tauri/inner-skills/dynamic-workflows-orchestration/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/dynamic-workflows-orchestration/SKILL.md) | `dynamic_workflows`, `execute_workflow` | 分阶段前置校验、单步自愈熔断、执行进度与里程碑追踪。 |
+| **`active-context-pruning`** | [`src-tauri/inner-skills/active-context-pruning/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/active-context-pruning/SKILL.md) | `context_prune`, `prune_context`, `pai-acp` | 渐进修剪冗余工具载荷、保护核心意图与最新代码锚点。 |
 
 ---
 
