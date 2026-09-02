@@ -40,6 +40,46 @@ export function initKernelPanel(ctx) {
   const kernelChangelogContent = el.kernelChangelogContent;
   const autoReconnectSwitch = el.autoReconnectSwitch;
   const kernelPackagesArea = el.kernelPackagesArea;
+  const kernelAlert = el.kernelAlert;
+  const kernelAlertText = el.kernelAlertText;
+
+  // ==========================================================================
+  // 5.5 内核保险：自动重连失败左上角红色抖动小闪电提醒
+  // ==========================================================================
+  const showKernelReconnectAlert = () => {
+    if (kernelAlertText) {
+      kernelAlertText.textContent = "内核连接失败：已自动重连5次均未成功，点击手动重启";
+    }
+    if (kernelAlert) {
+      kernelAlert.classList.remove("hidden");
+    }
+  };
+
+  const hideKernelReconnectAlert = () => {
+    if (kernelAlert) {
+      kernelAlert.classList.add("hidden");
+    }
+  };
+
+  piClient.addEventListener("kernel-reconnect-failed", () => {
+    showKernelReconnectAlert();
+  });
+
+  if (kernelAlert) {
+    kernelAlert.addEventListener("click", async () => {
+      hideKernelReconnectAlert();
+      if (btnRestartHost) btnRestartHost.disabled = true;
+      try {
+        await piClient.restartHost();
+      } catch (err) {
+        console.error("Manual restart from kernel alert failed:", err);
+      } finally {
+        setTimeout(() => {
+          if (btnRestartHost && piClient.hasKernel()) btnRestartHost.disabled = false;
+        }, 1000);
+      }
+    });
+  }
 
   // ==========================================================================
   // 6. 内核与版本控制逻辑 (包含一键更新、取消更新、不再提醒与 Changelog 抽屉)
@@ -171,7 +211,12 @@ export function initKernelPanel(ctx) {
 
   piClient.addEventListener("status-change", (e) => {
     updateHostUI(e.detail);
-    if (e.detail?.status === "ready" && piClient.hasKernel()) {
+    const st = typeof e.detail === "string" ? e.detail : e.detail?.status;
+    // 内核恢复（ready/starting）或进入无内核待机（stopped）时自动隐藏重连失败提醒
+    if (st === "ready" || st === "starting" || st === "stopped") {
+      hideKernelReconnectAlert();
+    }
+    if (st === "ready" && piClient.hasKernel()) {
       api.loadModelsAndState();
     }
   });

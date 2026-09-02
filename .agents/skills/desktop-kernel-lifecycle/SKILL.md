@@ -178,7 +178,7 @@ pub fn find_pi_binary(app_handle: Option<&AppHandle>) -> Option<PathBuf> {
 ---
 
 ### 4. 坑点四：Windows 环境变量大小写敏感陷阱 (Case-Sensitivity Trap)
-- **故障现象**：修改子进程环境变量后，`npm run dev` 启动即秒崩，并在滑动窗口重试 2 次后熔断保持在 Crashed 状态。
+- **故障现象**：修改子进程环境变量后，`npm run dev` 启动即秒崩，内核保险自动重连（最多 5 次、每次间隔 2 秒）全部失败后保持 Crashed 终态，并在左上角触发红色抖动小闪电提醒。
 - **底层根因**：Windows 操作系统底层环境变量名默认为 `"Path"`，但 Rust `HashMap<String, String>` 大小写敏感。如果使用 `env_map.get("PATH")` 会拿到空字符串，随后重新写入 `"PATH"` 导致环境块中原有的 `C:\Windows\System32`（包含系统 DLL、Socket 通信和基础系统命令）丢失，Node 引擎初始化失败秒崩。
 - **治理标准**：
   - 改用 Rust 标准库 `std::env::var("PATH")`（Windows 下原生大小写不敏感）；
@@ -259,4 +259,5 @@ pub fn find_pi_binary(app_handle: Option<&AppHandle>) -> Option<PathBuf> {
 - [ ] 内核大文件下载是否配置了长超时（600s）、`Accept-Encoding: identity` 及多镜像节点容灾切换？
 - [ ] 内核更新流是否支持取消指令 (`pi_cancel_kernel_update`)，且取消时完全清理临时产物并不终止运行中的 supervisor？
 - [ ] “不再提醒更新”是否正确持久化至 `~/.pi-dl/config.json` 且在手动“检查更新”时自愈重置？
+- [ ] 内核保险自动重连是否最多尝试 5 次（间隔 2s）、每次重连前二次校验 `is_stopping`？5 次均失败是否广播 `pi:kernel-reconnect-failed` 并在左上角触发红色抖动小闪电提醒？内核恢复 Ready/Starting/Stopped 后提醒是否自动隐藏？
 

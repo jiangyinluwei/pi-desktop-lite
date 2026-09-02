@@ -36,6 +36,18 @@
       </div>
     </div>
 
+    <!-- 内核保险：自动重连失败红色抖动小闪电提醒（左上角，点击手动重启内核） -->
+    <button type="button" class="kernel-alert hidden" id="kernel-alert" data-tauri-no-drag aria-label="内核连接失败"
+      title="内核自动重连失败，点击手动重启内核">
+      <span class="kernel-alert-icon" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8.5 1.5 L3.5 9 L7.5 9 L6.5 14.5 L12.5 7 L8.5 7 Z" />
+        </svg>
+      </span>
+      <span class="kernel-alert-text" id="kernel-alert-text">内核连接失败</span>
+    </button>
+
     <!-- 顶部轻量模型快速切换标签 -->
     <button type="button" class="flow-model-tag kernel-missing" id="flow-model-tag" data-tauri-no-drag title="点击打开模型与设置">
       <span class="flow-model-icon" aria-hidden="true">

@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
@@ -16,8 +16,9 @@ use tokio::sync::oneshot;
 
 use crate::pi_runner::inner_skills::{InjectedContextInfo, InnerSkillInjector};
 
-const CRASH_WINDOW: Duration = Duration::from_secs(30);
-const MAX_RESTARTS_IN_WINDOW: usize = 2;
+// 内核保险：崩溃后自动重连的最大尝试次数与间隔（全局后台检测自愈）
+const RECONNECT_MAX_ATTEMPTS: usize = 5;
+const RECONNECT_DELAY: Duration = Duration::from_secs(2);
 
 #[derive(Clone)]
 pub struct PiSupervisor {
@@ -26,7 +27,6 @@ pub struct PiSupervisor {
     status: Arc<RwLock<HostStatus>>,
     stdin_tx: Arc<Mutex<Option<mpsc::Sender<String>>>>,
     pending_responses: Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>>,
-    restart_history: Arc<Mutex<Vec<Instant>>>,
     pi_version: Arc<RwLock<Option<String>>>,
     is_stopping: Arc<RwLock<bool>>,
     skill_injector: Arc<InnerSkillInjector>,
@@ -46,7 +46,6 @@ impl PiSupervisor {
             status: Arc::new(RwLock::new(HostStatus::Stopped)),
             stdin_tx: Arc::new(Mutex::new(None)),
             pending_responses: Arc::new(Mutex::new(HashMap::new())),
-            restart_history: Arc::new(Mutex::new(Vec::new())),
             pi_version: Arc::new(RwLock::new(None)),
             is_stopping: Arc::new(RwLock::new(false)),
             skill_injector: Arc::new(InnerSkillInjector::new()),
@@ -368,40 +367,73 @@ impl PiSupervisor {
         let exit_code = exit_status.as_ref().ok().and_then(|s| s.code());
         log::warn!("[Supervisor] Pi child exited with code {:?}", exit_code);
 
-        // 滑动窗口崩溃计数
-        let now = Instant::now();
-        let mut history = supervisor.restart_history.lock().await;
-        history.retain(|&t| now.duration_since(t) < CRASH_WINDOW);
-        history.push(now);
-
-        if history.len() > MAX_RESTARTS_IN_WINDOW {
-            let err_msg = format!(
-                "Pi host crashed repeatedly ({} times in {}s). Auto-restart suspended.",
-                history.len(),
-                CRASH_WINDOW.as_secs()
-            );
-            drop(history);
-            log::error!("[Supervisor] {}", err_msg);
+        // 内核保险：全局后台自动重连机制，最多尝试 RECONNECT_MAX_ATTEMPTS 次
+        for attempt in 1..=RECONNECT_MAX_ATTEMPTS {
             supervisor
                 .update_status(HostStatus::Crashed {
                     exit_code,
-                    error: err_msg,
+                    error: format!(
+                        "Pi process exited unexpectedly. Auto-reconnecting (attempt {}/{}).",
+                        attempt, RECONNECT_MAX_ATTEMPTS
+                    ),
                 })
                 .await;
-            return;
-        }
-        drop(history);
 
+            tokio::time::sleep(RECONNECT_DELAY).await;
+
+            // is_stopping 可能在等待期间被置位（用户主动停止/退出），此时终止重连
+            if *supervisor.is_stopping.read().await {
+                supervisor.update_status(HostStatus::Stopped).await;
+                return;
+            }
+
+            match supervisor.start().await {
+                Ok(()) => {
+                    // start() 在无内核场景下也会返回 Ok（Stopped 态），必须确认真正达到 Ready
+                    if matches!(supervisor.get_status().await, HostStatus::Ready { .. }) {
+                        log::info!(
+                            "[Supervisor] Auto-reconnect succeeded on attempt {}/{}.",
+                            attempt,
+                            RECONNECT_MAX_ATTEMPTS
+                        );
+                        return;
+                    }
+                    log::warn!(
+                        "[Supervisor] Auto-reconnect attempt {}/{} did not reach Ready state.",
+                        attempt,
+                        RECONNECT_MAX_ATTEMPTS
+                    );
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[Supervisor] Auto-reconnect attempt {}/{} failed: {}",
+                        attempt,
+                        RECONNECT_MAX_ATTEMPTS,
+                        e
+                    );
+                }
+            }
+        }
+
+        // 连续 5 次重连均失败：落入终态 Crashed，并向左上角广播红色抖动小闪电提醒事件
+        let err_msg = format!(
+            "Auto-reconnect failed after {} attempts. Manual restart required.",
+            RECONNECT_MAX_ATTEMPTS
+        );
+        log::error!("[Supervisor] {}", err_msg);
         supervisor
             .update_status(HostStatus::Crashed {
                 exit_code,
-                error: "Pi process exited unexpectedly. Restarting...".to_string(),
+                error: err_msg.clone(),
             })
             .await;
-
-        // 自动平滑自愈重启
-        tokio::time::sleep(Duration::from_millis(1000)).await;
-        let _ = supervisor.start().await;
+        let _ = supervisor.app_handle.emit(
+            "pi:kernel-reconnect-failed",
+            serde_json::json!({
+                "attempts": RECONNECT_MAX_ATTEMPTS,
+                "error": err_msg,
+            }),
+        );
     }
 
     /// 向 Pi 发送通用 RPC 指令（无阻塞等待）

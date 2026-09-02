@@ -259,6 +259,15 @@ class PiClient extends EventTarget {
       });
       this.unlistenCallbacks.push(unlistenInjected);
 
+      // 4. 监听内核保险自动重连失败事件（5 次重连均失败后触发，驱动左上角红色抖动小闪电提醒）
+      const unlistenReconnectFailed = await window.__TAURI__.event.listen(
+        "pi:kernel-reconnect-failed",
+        (event) => {
+          this.dispatchEvent(new CustomEvent("kernel-reconnect-failed", { detail: event.payload }));
+        }
+      );
+      this.unlistenCallbacks.push(unlistenReconnectFailed);
+
       // 初始化获取当前状态与模型
       const initialStatus = await this.invoke("pi_get_host_status");
       if (initialStatus) {

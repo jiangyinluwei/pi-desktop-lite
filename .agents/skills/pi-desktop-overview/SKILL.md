@@ -128,7 +128,7 @@ description: |
 
 ### 7. 🛡️ 纯 Rust (Tauri 2) 后端子系统
 
-- **`pi_runner` (进程监督与孤儿收割)**：Win32 Job Object 内核级级联收割，严格 `\n` (LF) 字节流分帧器，滑动窗口崩溃自愈（30s 内超 2 次熔断保护），多预设工作区运行时解析；
+- **`pi_runner` (进程监督与孤儿收割)**：Win32 Job Object 内核级级联收割，严格 `\n` (LF) 字节流分帧器，内核保险自动重连（全局后台检测 crashed，自动平滑重连最多 5 次、间隔 2s；5 次均失败广播 `pi:kernel-reconnect-failed` 并触发左上角红色抖动小闪电提醒），多预设工作区运行时解析；
 - **`inner_skills` (运行态约束动态注入引擎)**：基于 `RULES.md` 极简映射总纲（< 100 Tokens）在每轮 Prompt 下发时透明注入 `<runtime_context_rules>` 信封；动态解析工具到 7 大独立 Inner-Skills（`windows-bash-compatibility`、`document-multimodal-inspection`、`multi-agent-orchestration`、`web-search-silent-access`、`persistent-memory-retrieval`、`dynamic-workflows-orchestration`、`active-context-pruning`），在命中工具调用时触发 Flow 界面手绘草图胶囊即时显现；
 - **`package_manager` (官方组件市场与队列)**：连通 pi.dev/packages，15min TTL 缓存提取，全局单任务互斥锁与 FIFO 异步队列，ProgressStepper 平滑步进；
 - **`security` (数据脱敏中间件)**：全量上行下行数据经过正则脱敏过滤器（API Key、Token 与本地私有目录自动掩码）；

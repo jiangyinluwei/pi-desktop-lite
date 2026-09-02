@@ -68,6 +68,8 @@ window.addEventListener("DOMContentLoaded", () => {
     messagesExpandedWrap: document.getElementById("messages-expanded-wrap"),
     messagesExpandedGrid: document.getElementById("messages-expanded-grid"),
     miniTaskCapsule: document.getElementById("mini-task-capsule"),
+    kernelAlert: document.getElementById("kernel-alert"),
+    kernelAlertText: document.getElementById("kernel-alert-text"),
     capsuleTaskText: document.getElementById("capsule-task-text"),
     flowBtnAbort: document.getElementById("flow-btn-abort"),
     searchHint: document.getElementById("search-hint"),
