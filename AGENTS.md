@@ -40,7 +40,7 @@
    - 全域彻底禁用浏览器默认右键菜单（`contextmenu` 拦截）；
    - **四态界面层级流**：`半透明侧边栏 (最高优先级)` ➔ `设置全页面 (界面4: settings)` ➔ `Flow 交互版 (界面3: 运行态/暂停态转入后台挂起，已结束/中断态归档至历史记录)` ➔ `专注版 (界面2)` ➔ `详细版 (界面1)` ➔ 输入框失焦/清空；
    - **设置页 → Flow 定向回退特例 (`flowFromSettings`)**：从设置页会话记录 Tab「进入 Flow」时置 `view.flowFromSettings = true`；Flow 中右键/Esc 时若空闲/已结束 → 清标志、不挂起不归档，直接回设置页会话记录 Tab（`previousMode: VIEW_DETAILED` 钉住 `view.previous`，再右键照常回界面1）；若运行/暂停 → 清标志后走正常挂起通道；`setViewMode` 对任何离开 Flow 的路径兜底清标志；
-   - **Flow 挂起与终止双通道解耦**：右键/Esc 转入后台挂起（`isSuspended = true`，进入 `TaskManager`，绝不调用 abort） vs 显式「⏹ 终止」按钮彻底终止 Agent 生成并追加手动终止提示；
+   - **Flow 挂起与终止双通道解耦与终止防重连铁律**：右键/Esc 转入后台挂起（`isSuspended = true`，进入 `TaskManager`，绝不调用 abort） vs 显式「⏹ 终止」按钮彻底终止 Agent 生成并追加手动终止提示；**当手动点击终止时，全链路绝对禁止触发任何模型自动重连或模型切换**；
    - **输入框防抖**：在详细版下对着输入框点击右键时静默屏蔽，杜绝界面瞬切抖动；所有新模块均需接入 `window.__piRegisterStepBack`；
 4. **手绘 SVG 矢量图元规范（全域消除默认 Emoji）**：
    - 全项目禁止使用系统默认 Emoji 表情符号，所有功能图标与提示图标统一在 `src/assets/svg/` 归档并以内联手绘 SVG 形式呈现；

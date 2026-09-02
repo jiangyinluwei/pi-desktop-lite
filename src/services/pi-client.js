@@ -119,12 +119,65 @@ export function extractErrorCode(err) {
 }
 
 /**
- * 判定模型调用错误类别 ("TRANSIENT" | "PERMANENT")
+ * 判定错误或消息对象是否属于用户主动中止/中断/取消
+ * @param {any} err agent-error detail、RPC 消息或原始错误对象
+ * @returns {boolean}
+ */
+export function isAbortError(err) {
+  if (!err) return false;
+  if (err.cancelled === true || err.isAborted === true || err.aborted === true) return true;
+  const raw = err?.raw;
+  if (raw?.cancelled === true || raw?.isAborted === true || raw?.aborted === true || raw?.interrupted === true) return true;
+  if (raw?.stopReason === "abort" || raw?.stopReason === "interrupted" || raw?.stopReason === "cancelled" || raw?.stopReason === "canceled") return true;
+
+  const candidate =
+    raw?.errorMessage ||
+    raw?.error?.message ||
+    (raw?.error && typeof raw.error === "string" ? raw.error : "") ||
+    raw?.message ||
+    (typeof raw === "string" ? raw : "") ||
+    err?.message ||
+    (typeof err === "string" ? err : "") ||
+    "";
+  const str = String(candidate).toLowerCase();
+
+  // 匹配常见中断/手动终止关键字
+  const ABORT_PATTERNS = [
+    "abort",
+    "aborted",
+    "aborterror",
+    "interrupted",
+    "cancelled",
+    "canceled",
+    "user_abort",
+    "manual_abort",
+    "terminated",
+    "user cancelled",
+    "user aborted",
+    "request was aborted",
+    "the user aborted a request",
+    "session aborted",
+    "process terminated",
+    "请求已被中止",
+    "手动终止",
+    "已取消",
+    "用户终止",
+    "操作已取消",
+    "刚刚会话已手动终止",
+  ];
+
+  return ABORT_PATTERNS.some((kw) => str.includes(kw));
+}
+
+/**
+ * 判定模型调用错误类别 ("TRANSIENT" | "PERMANENT" | "ABORTED")
+ * 铁律：手动终止/中止一律返回 "ABORTED"，绝不归入瞬态重连或永久切换；
  * UNKNOWN 一律保守归永久 (进入切换兜底，切换也失败则输出错误信息)
  * @param {any} err agent-error detail 或原始错误对象
- * @returns {"TRANSIENT" | "PERMANENT"}
+ * @returns {"TRANSIENT" | "PERMANENT" | "ABORTED"}
  */
 export function classifyModelError(err) {
+  if (isAbortError(err)) return "ABORTED";
   const code = extractErrorCode(err);
   const s = String(code || "").toLowerCase();
   if (TRANSIENT_CODES.some((c) => s === c || s.includes(c))) return "TRANSIENT";
@@ -188,6 +241,7 @@ class PiClient extends EventTarget {
     if (!msgObj) return false;
     if (msgObj.stopReason === "error" || msgObj.errorMessage) {
       this.isStreaming = false;
+      const isAborted = isAbortError(msgObj);
       const errMsg = parseErrorMessage(msgObj.errorMessage || fallback);
       this.dispatchEvent(
         new CustomEvent("agent-error", {
@@ -197,6 +251,8 @@ class PiClient extends EventTarget {
             provider: msgObj.provider || this.currentModel?.provider,
             raw: msgObj,
             taskId: msgObj.task_id || msgObj.taskId,
+            isAborted,
+            cancelled: isAborted,
           },
         })
       );
@@ -293,6 +349,7 @@ class PiClient extends EventTarget {
     // 检查通用 RPC 失败响应
     if (data.type === "response" && data.success === false) {
       this.isStreaming = false;
+      const isAborted = isAbortError(data);
       const errMsg = parseErrorMessage(data.error || "指令执行失败");
       this.dispatchEvent(
         new CustomEvent("agent-error", {
@@ -300,6 +357,8 @@ class PiClient extends EventTarget {
             message: errMsg,
             raw: data,
             taskId: data.task_id || data.taskId,
+            isAborted,
+            cancelled: isAborted,
           },
         })
       );

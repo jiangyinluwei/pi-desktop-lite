@@ -1,7 +1,7 @@
 import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
-import { piClient } from "../services/pi-client.js";
+import { piClient, isAbortError } from "../services/pi-client.js";
 import { configService } from "../services/config-service.js";
 import { promptHistoryNavigator } from "../services/prompt-history.js";
 import { invokeTauri } from "../services/tauri-bridge.js";
@@ -407,9 +407,26 @@ export function initFlowPipeline(ctx) {
   };
 
   piClient.addEventListener("agent-error", (e) => {
+    // 手动终止 / 中断类错误：绝不渲染错误卡，绝对不能触发自动重连或切换
+    if (isAbortError(e.detail)) {
+      return;
+    }
+
+    const errTaskId = e.detail?.taskId || e.detail?.raw?.task_id || e.detail?.task_id;
+
+    // 检查所属 Task 是否已处于中止状态或在中止黑名单中
+    if (modelFailoverEngine.isTaskAborted(errTaskId)) {
+      return;
+    }
+    if (errTaskId) {
+      const task = taskManager.getTask(errTaskId);
+      if (task && (task.status === "aborted" || task.isAborted)) {
+        return;
+      }
+    }
+
     // 「终止并发送」进行中：旧轮报错视为已结算，不渲染错误卡、不进入自愈
     if (flow.interruptSendTaskId) {
-      const errTaskId = e.detail?.taskId || e.detail?.raw?.task_id || e.detail?.task_id;
       if (!errTaskId || errTaskId === flow.interruptSendTaskId) {
         return;
       }
@@ -634,6 +651,10 @@ export function initFlowPipeline(ctx) {
         model: modelName,
         provider: providerName,
       });
+    }
+
+    if (currentTask?.id) {
+      modelFailoverEngine.clearTaskAborted(currentTask.id);
     }
 
     if (flowBtnAbort) {

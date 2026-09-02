@@ -14,12 +14,14 @@
  * 在引擎处于活跃态时调用 resolveTurnSuccess() / handleModelError() 来结算每一轮重发尝试。
  */
 
-import { piClient, classifyModelError } from "./pi-client.js";
+import { piClient, classifyModelError, isAbortError } from "./pi-client.js";
 import { configService } from "./config-service.js";
 
 class ModelFailoverEngine extends EventTarget {
   constructor() {
     super();
+    this._abortedTaskIds = new Set();
+    this._lastAbortTimestamp = 0;
     this._resetState();
   }
 
@@ -38,6 +40,47 @@ class ModelFailoverEngine extends EventTarget {
     this._backoffTimer = null;
     this._reconnectCount = 0; // 累计重连次数 (用于摘要)
     this._switchedCandidates = 0; // 累计尝试过的候选模型数 (用于摘要)
+    if (!this._abortedTaskIds) {
+      this._abortedTaskIds = new Set();
+    }
+  }
+
+  /**
+   * 显式标记指定任务为手动中止状态 (绝不触发自愈)
+   * @param {string} taskId
+   */
+  markTaskAborted(taskId) {
+    if (taskId) {
+      if (!this._abortedTaskIds) this._abortedTaskIds = new Set();
+      this._abortedTaskIds.add(String(taskId));
+    }
+    this._lastAbortTimestamp = Date.now();
+  }
+
+  /**
+   * 清除指定任务的中止标记 (新轮次发送时调用)
+   * @param {string} taskId
+   */
+  clearTaskAborted(taskId) {
+    if (taskId && this._abortedTaskIds) {
+      this._abortedTaskIds.delete(String(taskId));
+    }
+  }
+
+  /**
+   * 判定指定任务是否已被手动中止
+   * @param {string | null} [taskId]
+   * @returns {boolean}
+   */
+  isTaskAborted(taskId = null) {
+    if (taskId && this._abortedTaskIds?.has(String(taskId))) {
+      return true;
+    }
+    // 若未指定 taskId 且刚刚（1.5秒内）发生过全局终止，处于保护窗口
+    if (!taskId && this._lastAbortTimestamp && Date.now() - this._lastAbortTimestamp < 1500) {
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -49,10 +92,17 @@ class ModelFailoverEngine extends EventTarget {
 
   /**
    * 是否可接管该错误：自动重连开启 且 错误含模型上下文 (provider + model)
-   * 不含模型上下文的 RPC / 扩展错误直接放行原逻辑。
+   * 铁律：手动终止/中止错误绝对不接管，绝不触发重连与切换！
    */
   canHandle(detail = {}) {
     if (!configService.getAutoReconnectSwitch()) return false;
+    // 铁律 1：明确为中断/手动终止类错误时绝对不接管
+    if (isAbortError(detail)) return false;
+
+    // 铁律 2：所属 Task 已被手动中止时绝对不接管
+    const tid = detail.taskId || detail.task_id || detail.raw?.task_id || detail.raw?.taskId || this.taskId;
+    if (this.isTaskAborted(tid)) return false;
+
     return Boolean(detail.provider && detail.model);
   }
 
@@ -62,6 +112,22 @@ class ModelFailoverEngine extends EventTarget {
    * · 热结算 (活跃)：该错误为当前在途尝试的结果 → 结算为失败并继续流水线。
    */
   handleModelError(detail, hooks = {}) {
+    // 铁律：若到达的错误属于手动中止，立即取消在途自愈并退出，严禁启动重连或切换
+    if (isAbortError(detail)) {
+      if (this.isActive()) {
+        this.cancel("user");
+      }
+      return;
+    }
+
+    const tid = detail?.taskId || detail?.task_id || detail?.raw?.task_id || detail?.raw?.taskId || this.taskId;
+    if (this.isTaskAborted(tid)) {
+      if (this.isActive()) {
+        this.cancel("abort");
+      }
+      return;
+    }
+
     // 热结算：当前有在途尝试，此错误即其结果
     if (this.isActive() && this._resolveAttempt) {
       this.lastError = detail;
@@ -73,8 +139,13 @@ class ModelFailoverEngine extends EventTarget {
     if (this.isActive()) return; // 已在流水线中但无在途尝试 (处于退避等待)，忽略杂散错误
 
     const kind = classifyModelError(detail);
+    if (kind === "ABORTED") {
+      // 中止类错误绝对不冷启动自愈
+      return;
+    }
+
     this.kind = kind;
-    this.taskId = detail.taskId || detail.task_id || null;
+    this.taskId = tid || null;
     this.originalModel = {
       provider: detail.provider || configService.getSelectedModel()?.provider,
       modelId: detail.model || configService.getSelectedModel()?.modelId,
@@ -112,6 +183,7 @@ class ModelFailoverEngine extends EventTarget {
     const max = cfg.maxReconnectAttempts;
 
     while (this.status === "reconnecting" && this.attempt < max) {
+      if (this.isTaskAborted(this.taskId)) return; // 响应手动终止门禁
       this.attempt++;
       this._reconnectCount = this.attempt;
       const delay = this._backoffDelay(this.attempt, cfg);
@@ -127,7 +199,7 @@ class ModelFailoverEngine extends EventTarget {
       });
 
       await this._sleep(delay);
-      if (this.status !== "reconnecting") return; // 已被取消/结算
+      if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId)) return; // 已被取消/结算/手动终止
 
       this._emit({
         status: "reconnecting",
@@ -139,15 +211,24 @@ class ModelFailoverEngine extends EventTarget {
       });
 
       const result = await this._sendAttempt();
-      if (this.status !== "reconnecting") return; // 已被取消
+      if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId) || result?.cancelled) return; // 已被取消/手动终止
 
       if (result.success) {
         this._succeed(false, null);
         return;
       }
 
+      if (isAbortError(result.error)) {
+        this.cancel("user");
+        return;
+      }
+
       this.lastError = result.error || this.lastError;
       const kind = classifyModelError(result.error || this.lastError);
+      if (kind === "ABORTED") {
+        this.cancel("user");
+        return;
+      }
       if (kind === "PERMANENT") {
         // 重连过程中转为永久错误 → 升级为切换 (若开启) 或直接放弃
         if (cfg.switchOnPermanentError) {
@@ -159,6 +240,8 @@ class ModelFailoverEngine extends EventTarget {
       }
       // 瞬态 → 继续下一轮退避重连
     }
+
+    if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId)) return;
 
     // 重连次数耗尽
     if (cfg.escalateToSwitchAfterReconnectExhausted) {
@@ -195,7 +278,7 @@ class ModelFailoverEngine extends EventTarget {
     }
 
     for (this.candidateIndex = 0; this.candidateIndex < this.candidates.length; this.candidateIndex++) {
-      if (this.status !== "switching") return; // 已被取消
+      if (this.status !== "switching" || this.isTaskAborted(this.taskId)) return; // 已被取消/手动终止
 
       const candidate = this.candidates[this.candidateIndex];
       this._switchedCandidates = this.candidateIndex + 1;
@@ -222,12 +305,13 @@ class ModelFailoverEngine extends EventTarget {
           };
         }
       } catch (e) {
+        if (this.status !== "switching" || this.isTaskAborted(this.taskId)) return;
         // setModel 失败 → 继续下一候选
         this.lastError = { message: e?.toString?.() || String(e), raw: e, provider: candidate.provider, model: candidate.id };
         continue;
       }
 
-      if (this.status !== "switching") return;
+      if (this.status !== "switching" || this.isTaskAborted(this.taskId)) return;
 
       // 重发相同输入
       this._emit({
@@ -240,21 +324,30 @@ class ModelFailoverEngine extends EventTarget {
       });
 
       const result = await this._sendAttempt();
-      if (this.status !== "switching") return;
+      if (this.status !== "switching" || this.isTaskAborted(this.taskId) || result?.cancelled) return;
 
       if (result.success) {
         this._succeed(true, candidate);
         return;
       }
 
+      if (isAbortError(result.error)) {
+        this.cancel("user");
+        return;
+      }
+
       this.lastError = result.error || this.lastError;
       const kind = classifyModelError(result.error || this.lastError);
+      if (kind === "ABORTED") {
+        this.cancel("user");
+        return;
+      }
 
       if (kind === "TRANSIENT") {
         // 候选模型瞬态错误 → 小额重连预算，避免单个抖动模型阻塞整条流水线
         const budget = cfg.perCandidateReconnectBudget;
         for (let r = 0; r < budget; r++) {
-          if (this.status !== "switching") return;
+          if (this.status !== "switching" || this.isTaskAborted(this.taskId)) return;
           const rDelay = this._backoffDelay(r + 1, cfg);
           this._emit({
             status: "reconnecting",
@@ -269,21 +362,32 @@ class ModelFailoverEngine extends EventTarget {
             modelName: candidate.name || candidate.id,
           });
           await this._sleep(rDelay);
-          if (this.status !== "switching") return;
+          if (this.status !== "switching" || this.isTaskAborted(this.taskId)) return;
 
           const r2 = await this._sendAttempt();
-          if (this.status !== "switching") return;
+          if (this.status !== "switching" || this.isTaskAborted(this.taskId) || r2?.cancelled) return;
           if (r2.success) {
             this._succeed(true, candidate);
             return;
           }
+          if (isAbortError(r2.error)) {
+            this.cancel("user");
+            return;
+          }
           this.lastError = r2.error || this.lastError;
-          if (classifyModelError(r2.error || this.lastError) === "PERMANENT") break; // 永久 → 下一候选
+          const rKind = classifyModelError(r2.error || this.lastError);
+          if (rKind === "ABORTED") {
+            this.cancel("user");
+            return;
+          }
+          if (rKind === "PERMANENT") break; // 永久 → 下一候选
         }
         // 预算耗尽 → 继续下一候选
       }
       // 永久错误 → 继续下一候选
     }
+
+    if (this.status !== "switching" || this.isTaskAborted(this.taskId)) return;
 
     // 全部候选单次遍历仍失败 → 恢复原模型并放弃
     await this._restoreOriginalModel();
@@ -363,6 +467,11 @@ class ModelFailoverEngine extends EventTarget {
    * 立即终止一切待执行的退避定时器与切换流水线 (用户点击「⏹ 终止」或应用退出时调用)
    */
   cancel(reason = "user") {
+    if (this.taskId) {
+      this.markTaskAborted(this.taskId);
+    }
+    this._lastAbortTimestamp = Date.now();
+
     if (!this.isActive() && this.status !== "succeeded" && this.status !== "gave_up") {
       this._resetState();
       return;

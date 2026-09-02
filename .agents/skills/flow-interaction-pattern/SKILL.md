@@ -713,8 +713,8 @@ window.addEventListener("pi:view-change", () => updateFlowTurnNav());
   - `agent-error` 监听器：引擎活跃 → `handleModelError`（热结算当前在途尝试为失败并继续流水线）；引擎未活跃但 `canHandle`（自动重连开启且含模型上下文）→ 冷启动自愈；否则 `renderErrorCard`；
   - `agent-end` 监听器：引擎活跃 → `resolveTurnSuccess()`（结算成功并交由引擎 `onSuccess` 收尾，绝不提前归档）；未活跃 → 既有正常收尾逻辑；
   - 退避等待期间到达的杂散 `agent-error` / `agent-end` 因无在途尝试被引擎安全忽略；
-- **不提前归档铁律**：自愈进行中全局 `agent-end` / `agent-error` 被引擎接管，`archiveCurrentFlowToHistory` 与 Task「error」状态、错误通知全部延后至终态（成功或 GIVE_UP），`task-manager.js` 的 `agent-error` 监听与 `handleTaskEvent` 错误分支均以 `modelFailoverEngine.isActive() || canHandle(detail)` 门控跳过；
-- **终止 / 挂起 / 多任务隔离**：「⏹ 终止」与侧边栏任务终止调用 `modelFailoverEngine.cancel()`（清除退避定时器 + 结算在途尝试 + 走既有手动终止提示）；右键后台挂起后引擎继续在后台运行，侧边栏挂起任务徽章显示「自动重连中 / 切换模型中」；引擎按 `taskId` 隔离多任务互不干扰（`MAX_CONCURRENT_TASKS = 3` 保护不变）；用户发起新显式提问时取消同任务在途自愈（后台任务不受影响）。
+- **手动终止绝对禁止触发重连铁律 (Manual Abort Never Triggers Failover)**：当用户手动点击「⏹ 终止」（Flow 底部终止按钮、侧边栏任务终止、或运行中提交拦截弹窗「终止并发送」）时，系统立即执行 `modelFailoverEngine.markTaskAborted(taskId)` 与 `modelFailoverEngine.cancel()`；同时 `isAbortError` 检测全链路拦截所有中止/中断类错误信号，`modelFailoverEngine.canHandle`、`handleModelError` 及 `_runReconnect` / `_runSwitch` 循环全程受 `isTaskAborted` 门控保护，无论底层内核异步回传何种中断响应或网络报错，**绝对不触发任何自动重连或模型切换**，彻底保障手动终止的确定性与最高优先级；
+- **终止 / 挂起 / 多任务隔离**：「⏹ 终止」与侧边栏任务终止调用 `modelFailoverEngine.cancel()`（清除退避定时器 + 结算在途尝试 + 标记任务中止 + 走既有手动终止提示）；右键后台挂起后引擎继续在后台运行，侧边栏挂起任务徽章显示「自动重连中 / 切换模型中」；引擎按 `taskId` 隔离多任务互不干扰（`MAX_CONCURRENT_TASKS = 3` 保护不变）；用户发起新显式提问时取消同任务在途自愈（后台任务不受影响）。
 
 ---
 

@@ -3,7 +3,7 @@
  * 负责多任务（Task）生命周期状态机、事件增量缓冲队列、前后台任务切换与增量重放 (Batch Delta Catch-up)
  */
 
-import { piClient, parseErrorMessage } from "./pi-client.js";
+import { piClient, parseErrorMessage, isAbortError } from "./pi-client.js";
 import { notificationService } from "./notification-service.js";
 import { modelFailoverEngine } from "./model-failover.js";
 
@@ -300,8 +300,17 @@ export class TaskManager extends EventTarget {
     if (!task) return;
 
     task.status = "aborted";
+    task.isAborted = true;
     task.completedAt = Date.now();
+    const lastTurn = task.turns && task.turns.length > 0 ? task.turns[task.turns.length - 1] : null;
+    if (lastTurn && !lastTurn.completedAt) {
+      lastTurn.status = "aborted";
+      lastTurn.isAborted = true;
+      lastTurn.completedAt = Date.now();
+    }
     notificationService.unregisterTask(taskId);
+    modelFailoverEngine.markTaskAborted(taskId);
+    modelFailoverEngine.cancel("abort");
 
     try {
       await piClient.abort(taskId);
@@ -360,14 +369,25 @@ export class TaskManager extends EventTarget {
 
     piClient.addEventListener("agent-error", (e) => {
       const detail = e.detail || {};
+      // 手动终止/中断错误：直接忽略，不发报错通知、不置为 error 状态
+      if (isAbortError(detail)) return;
+
+      const taskId = detail.task_id || detail.taskId || this.currentActiveTaskId;
+      if (modelFailoverEngine.isTaskAborted(taskId)) return;
+
+      if (taskId && this.tasks.has(taskId)) {
+        const t = this.tasks.get(taskId);
+        if (t.status === "aborted" || t.isAborted) return;
+      }
+
       // 自动重连切换进行中 或 将被引擎接管冷启动 (自动重连开启且含模型上下文)：
       // 错误一律由 ModelFailoverEngine 结算，绝不提前置 Task 为 error / 弹错误通知
       // (注：taskManager 监听器先于 main.js 注册，故冷启动时引擎尚未激活，需以 canHandle 预判接管)
       if (modelFailoverEngine.isActive() || modelFailoverEngine.canHandle(detail)) return;
-      const taskId = detail.task_id || detail.taskId || this.currentActiveTaskId;
       if (!taskId || !this.tasks.has(taskId)) {
         if (this.currentActiveTaskId && this.tasks.has(this.currentActiveTaskId)) {
           const currentTask = this.tasks.get(this.currentActiveTaskId);
+          if (currentTask.status === "aborted" || currentTask.isAborted) return;
           currentTask.status = "error";
           currentTask.completedAt = Date.now();
           currentTask.errorMessage = detail.message || "模型调用发生异常";

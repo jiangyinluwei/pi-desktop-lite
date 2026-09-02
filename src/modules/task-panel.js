@@ -281,9 +281,13 @@ export function initTaskPanel(ctx) {
   if (flowBtnAbort) {
     flowBtnAbort.addEventListener("click", async (e) => {
       e.stopPropagation();
-      // 立即终止引擎待执行的退避定时器与切换流水线
-      modelFailoverEngine.cancel("user");
       const current = taskManager.getCurrentActiveTask();
+      const currentTaskId = current ? current.id : null;
+      if (currentTaskId) {
+        modelFailoverEngine.markTaskAborted(currentTaskId);
+      }
+      // 立即终止引擎待执行的退避定时器与切换流水线 (绝对不触发重连)
+      modelFailoverEngine.cancel("user");
       if (current) {
         await taskManager.abortTask(current.id);
       } else {
