@@ -12,7 +12,8 @@ use config_manager::{
     pi_fetch_official_models, pi_get_app_config, pi_get_auth_config, pi_get_custom_models,
     pi_get_official_models_catalog, pi_get_settings_config, pi_save_app_config,
     pi_save_auth_config, pi_save_custom_models, pi_save_custom_provider,
-    pi_save_provider_api_key, pi_save_settings_config,
+    pi_save_provider_api_key, pi_save_settings_config, pi_sync_subagent_pinned_model,
+    sync_subagent_pinned_model_if_enabled,
 };
 use package_manager::{
     pi_apply_package_preset, pi_check_package_updates, pi_get_installed_packages,
@@ -514,7 +515,10 @@ async fn pi_set_model(
     model_id: String,
 ) -> Result<serde_json::Value, String> {
     host_pool.set_active_model(provider.clone(), model_id.clone()).await;
-    supervisor.set_model(&provider, &model_id).await
+    let res = supervisor.set_model(&provider, &model_id).await;
+    // 联动同步：若启用了 pi-subagents，自动将子代理配置钉住为当前所选模型
+    let _ = sync_subagent_pinned_model_if_enabled(&model_id);
+    res
 }
 
 #[tauri::command]
@@ -892,6 +896,7 @@ pub fn run() {
             pi_get_settings_config,
             pi_save_settings_config,
             pi_apply_model_failover_preset,
+            pi_sync_subagent_pinned_model,
             pi_get_app_config,
             pi_save_app_config,
             pi_get_official_models_catalog,

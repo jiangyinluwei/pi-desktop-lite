@@ -354,7 +354,32 @@ export default function (pi: ExtensionAPI) {
 
 ---
 
-### 4. 交互式组件管理 (`pi config`) 与项目信任机制
+### 4. 多智能体子代理 (pi-subagents) 模型自动钉住与防跃升机制
+
+当安装或启用了 `pi-subagents` 扩展组件时，桌面端会在以下场景**自动将当前主模型同步钉住**至 `~/.pi/agent/settings.json`：
+1. **初次启动加载**：加载恢复用户持久化模型时自动同步；
+2. **切换选择模型**：用户在主界面或设置面板选用任意模型时实时同步；
+3. **安装扩展组件**：在扩展管理面板中安装或更新 `pi-subagents` 成功后立即触发同步。
+
+```json
+{
+  "subagents": {
+    "defaultModel": "deepseek-v4-flash-vision-exp",
+    "agentOverrides": {
+      "oracle":    { "model": "deepseek-v4-flash-vision-exp" },
+      "worker":    { "model": "deepseek-v4-flash-vision-exp" },
+      "reviewer":  { "model": "deepseek-v4-flash-vision-exp" },
+      "researcher":{ "model": "deepseek-v4-flash-vision-exp" },
+      "planner":   { "model": "deepseek-v4-flash-vision-exp" }
+    }
+  }
+}
+```
+> 🛡️ **安全优势**：采用非破坏性读-合并-写回语义，完整保留其余已有配置；彻底杜绝子代理角色因 high-thinking 需求而自动升配到高价模型（如 `deepseek-v4-pro`）造成的意外 Token 消耗。
+
+---
+
+### 5. 交互式组件管理 (`pi config`) 与项目信任机制
 
 #### ① 交互式组件管理器 (`pi config`)
 在终端运行 `pi config` 启动手绘 TUI 面板：

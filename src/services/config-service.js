@@ -228,6 +228,24 @@ class ConfigService extends EventTarget {
     }
   }
 
+  /**
+   * 同步子代理钉住模型配置到 ~/.pi/agent/settings.json (若启用了 pi-subagents 扩展组件)
+   * @param {string} [modelId]
+   * @returns {Promise<boolean>}
+   */
+  async syncSubagentPinnedModel(modelId = null) {
+    const targetModel = modelId || this.getSelectedModel()?.modelId;
+    if (!targetModel) return false;
+    try {
+      return await this.invoke("pi_sync_subagent_pinned_model", {
+        modelId: targetModel,
+      });
+    } catch (e) {
+      console.warn("[ConfigService] Failed to sync subagents pinned model:", e);
+      return false;
+    }
+  }
+
   // ==========================================================================
   // 2. 软件主题色设置 (Theme Mode: system | light | dark)
   // ==========================================================================
@@ -831,6 +849,7 @@ class ConfigService extends EventTarget {
     );
     this.touchModelAsRecentlyUsed(provider, modelId);
     this.saveAppConfig();
+    this.syncSubagentPinnedModel(modelId);
   }
 
   // ==========================================================================

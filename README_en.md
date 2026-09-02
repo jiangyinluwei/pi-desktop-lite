@@ -351,7 +351,32 @@ Execute `/reload` in the prompt to hot-reload all extensions without restarting.
 
 ---
 
-### 4. Interactive Configuration (`pi config`) & Project Trust
+### 4. Multi-Agent Subagents (`pi-subagents`) Model Auto-Pinning
+
+When `pi-subagents` is installed or enabled, the desktop application automatically synchronizes and pins the current primary model to `~/.pi/agent/settings.json`:
+1. **Initial Startup**: Automatically synced upon loading/restoring user-selected model;
+2. **Model Switching**: Real-time synchronization whenever the user selects any model;
+3. **Package Installation**: Immediately synced when `pi-subagents` is installed or updated in the packages panel.
+
+```json
+{
+  "subagents": {
+    "defaultModel": "deepseek-v4-flash-vision-exp",
+    "agentOverrides": {
+      "oracle":    { "model": "deepseek-v4-flash-vision-exp" },
+      "worker":    { "model": "deepseek-v4-flash-vision-exp" },
+      "reviewer":  { "model": "deepseek-v4-flash-vision-exp" },
+      "researcher":{ "model": "deepseek-v4-flash-vision-exp" },
+      "planner":   { "model": "deepseek-v4-flash-vision-exp" }
+    }
+  }
+}
+```
+> 🛡️ **Safety Assurance**: Non-destructive read-merge-write semantics preserve all existing settings. Completely prevents subagents from unexpectedly escalating to expensive models (like `deepseek-v4-pro`) due to high-thinking role profiles.
+
+---
+
+### 5. Interactive Configuration (`pi config`) & Project Trust
 
 #### ① Interactive Manager (`pi config`)
 Run `pi config` in terminal to launch the TUI:

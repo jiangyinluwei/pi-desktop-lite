@@ -457,6 +457,94 @@ pub fn pi_apply_model_failover_preset(config: Value) -> Result<(), String> {
     Ok(())
 }
 
+/// 检查 settings.json 中是否安装或启用了 pi-subagents 扩展
+pub fn is_pi_subagents_enabled(settings: &Value) -> bool {
+    if let Some(packages) = settings.get("packages").and_then(|p| p.as_array()) {
+        for item in packages {
+            let pkg_str = if let Some(s) = item.as_str() {
+                s
+            } else if let Some(s) = item.get("source").and_then(|v| v.as_str()) {
+                s
+            } else {
+                ""
+            };
+            let lower = pkg_str.to_lowercase();
+            if lower == "pi-subagents"
+                || lower == "npm:pi-subagents"
+                || lower.starts_with("npm:pi-subagents@")
+                || lower.ends_with("/pi-subagents")
+                || lower.contains("pi-subagents")
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// 若启用了 pi-subagents 组件，则自动将子代理默认模型及常用角色（oracle, worker, reviewer, researcher, planner, scout 等）
+/// 钉住为当前主模型，写回 ~/.pi/agent/settings.json (保留所有其他配置)
+pub fn sync_subagent_pinned_model_if_enabled(model_id: &str) -> Result<bool, String> {
+    let clean_model = model_id.trim();
+    if clean_model.is_empty() {
+        return Ok(false);
+    }
+
+    let mut settings = pi_get_settings_config().unwrap_or_else(|_| json!({}));
+    if !settings.is_object() {
+        settings = json!({});
+    }
+
+    if !is_pi_subagents_enabled(&settings) {
+        log::debug!("[SubagentsSync] pi-subagents not enabled in settings.json, skip pinning.");
+        return Ok(false);
+    }
+
+    let roles = ["oracle", "worker", "reviewer", "researcher", "planner", "scout"];
+
+    if let Some(obj) = settings.as_object_mut() {
+        let mut subagents_obj = match obj.get("subagents").and_then(|v| v.as_object()).cloned() {
+            Some(map) => map,
+            None => serde_json::Map::new(),
+        };
+
+        // 1. 设置默认子代理模型
+        subagents_obj.insert("defaultModel".to_string(), json!(clean_model));
+
+        // 2. 钉住各主要角色的 overrides
+        let mut overrides_obj = match subagents_obj.get("agentOverrides").and_then(|v| v.as_object()).cloned() {
+            Some(map) => map,
+            None => serde_json::Map::new(),
+        };
+
+        for role in roles {
+            let mut role_map = match overrides_obj.get(role).and_then(|v| v.as_object()).cloned() {
+                Some(map) => map,
+                None => serde_json::Map::new(),
+            };
+            role_map.insert("model".to_string(), json!(clean_model));
+            overrides_obj.insert(role.to_string(), Value::Object(role_map));
+        }
+
+        subagents_obj.insert("agentOverrides".to_string(), Value::Object(overrides_obj));
+        obj.insert("subagents".to_string(), Value::Object(subagents_obj));
+    }
+
+    if let Err(e) = pi_save_settings_config(settings) {
+        log::warn!("[SubagentsSync] Failed to write pinned subagents model to settings.json: {}", e);
+        return Err(e);
+    }
+
+    log::info!("[SubagentsSync] Pinned pi-subagents model to `{}` in ~/.pi/agent/settings.json", clean_model);
+    Ok(true)
+}
+
+/// 前端/IPC 调用的子代理模型同步钉住指令
+#[tauri::command]
+pub fn pi_sync_subagent_pinned_model(model_id: String) -> Result<bool, String> {
+    sync_subagent_pinned_model_if_enabled(&model_id)
+}
+
 /// 官方通道与模型基础元数据目录
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1535,6 +1623,37 @@ fn build_builtin_official_catalog() -> Vec<OfficialProviderMeta> {
             ],
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_pi_subagents_enabled() {
+        let empty_settings = json!({});
+        assert!(!is_pi_subagents_enabled(&empty_settings));
+
+        let other_packages = json!({
+            "packages": ["npm:pi-vision", "pi-web-access"]
+        });
+        assert!(!is_pi_subagents_enabled(&other_packages));
+
+        let with_npm_subagents = json!({
+            "packages": ["npm:pi-subagents"]
+        });
+        assert!(is_pi_subagents_enabled(&with_npm_subagents));
+
+        let with_plain_subagents = json!({
+            "packages": ["pi-subagents"]
+        });
+        assert!(is_pi_subagents_enabled(&with_plain_subagents));
+
+        let with_obj_source = json!({
+            "packages": [{ "source": "npm:pi-subagents@0.2.0" }]
+        });
+        assert!(is_pi_subagents_enabled(&with_obj_source));
+    }
 }
 
 

@@ -47,6 +47,7 @@ graph TD
 
 ### 2. 模型配置 (`pane-current-models`)
 - **MRU 自动排序与首位锁定**：首位（`index 0`）始终固定为当前选中模型，锁定禁止删除；点击任一模型选用立即移至首位；新增模型插入至 `index 1`；
+- **子代理模型自动钉住 (`pi-subagents`)**：选用模型时若检测到已安装 `pi-subagents` 扩展，自动调用 `pi_sync_subagent_pinned_model` 将当前主模型锁定为子代理默认模型与各角色 overrides，防止高阶思维模型跃升；
 - **折叠式通道抽屉**：列表限高 240px，展开抽屉时模型列表进入 `.collapsed-single`（仅留选中项），表单聚焦时调用 `scrollElementIntoViewBottom` 智能对齐视口下缘；
 - **自动重连切换 Checkbox**：标题右侧集成手绘草图复选框，常态透明无边框（`1px transparent` 占位），`hover` 显边框。
 

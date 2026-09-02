@@ -280,6 +280,12 @@ export function initModelPanel(ctx) {
 
       updateModelUI(currentActiveModel, savedThinking || state?.thinkingLevel);
       renderWhitelistModels(currentActiveModel);
+
+      // 初次启动加载时：若启用了 pi-subagents 扩展，将当前主模型自动钉住写入 settings.json
+      const effectiveModelId = currentActiveModel?.id || savedModel?.modelId;
+      if (effectiveModelId) {
+        configService.syncSubagentPinnedModel(effectiveModelId);
+      }
     } catch (err) {
       console.warn("[Main] Failed to load models and state:", err);
     }

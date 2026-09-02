@@ -815,6 +815,9 @@ export function initPackagesPanel(ctx) {
         packageUpdatesMap.delete(packageName);
       }
       await loadInstalledPackages();
+      if ((action === "install" || action === "update") && packageName.toLowerCase().includes("pi-subagents")) {
+        await configService.syncSubagentPinnedModel();
+      }
     } catch (err) {
       console.error(`[PackageManager] Task ${action} error for ${packageName}:`, err);
       await sketchAlert(
