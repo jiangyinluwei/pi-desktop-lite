@@ -4,7 +4,7 @@
   <b>English</b> | <a href="README.md">简体中文</a>
 </p>
 
-A desktop research and reasoning application with minimalist hand-drawn sketch & architectural drafting aesthetics, fully adhering to the core pi engine, built on **Tauri 2 + Native Web Frontend (HTML / CSS / JS)**.
+A desktop research and reasoning application with minimalist hand-drawn sketch & architectural drafting aesthetics, fully adhering to the core Pi engine ecosystem, built on **Tauri 2 + Native Web Frontend (HTML / CSS / JS)**.
 
 <p align="center">
   <img src="src/assets/111.png" alt="pi-dl Main Interface" width="49%" />
@@ -25,19 +25,19 @@ A desktop research and reasoning application with minimalist hand-drawn sketch &
 ## ✨ Core Features
 
 - 🤖 **Four-State Core AI-Agent Interface System**:
-  - **State 1 (Initial View - Detailed `detailed`)**: Immersive titlebar, multi-line auto-resizing input box (up to 16 lines), arrow-key history traversal and draft staging, drag-and-drop file/code attachments with sketch summary capsules, MRU message drawer with adaptive ticker;
-  - **State 2 (Initial View - Focus `focus`)**: Pure distraction-free input mode retaining centered hand-drawn $\pi$ logo, adaptive input box, and Mini Task capsule;
-  - **State 3 (Flow Stream View `flow`)**: Single-line streaming thinking chains with live duration timer, single-line tool summary cards (friendly tool name + running/done/failure status), interleaved chronological step pipeline (`Thinking 1 ➔ Tool 1 ➔ Thinking 2 ➔ Tool 2...` always collapsed by default without auto-expansion), Typedown-quality Markdown rendering engine, sticky floating question tips with turn navigation, automatic failover self-healing engine (`ModelFailoverEngine`), and one-click export to local Markdown;
-  - **State 4 (Settings Full-Screen Page `settings`)**: Non-floating standalone full-page view integrating General preferences, Model configurations, Kernel & Package gallery, Session records, and Multi-preset workspaces.
+  - **State 1 (Detailed View `detailed`)**: Immersive titlebar, multi-line auto-resizing input box (up to 16 lines), arrow-key history traversal and draft staging, drag-and-drop file/folder attachments with sketch summary capsules, MRU message drawer with adaptive ticker;
+  - **State 2 (Focus View `focus`)**: Pure distraction-free input mode retaining centered hand-drawn $\pi$ logo, adaptive input box, and Mini Task capsule;
+  - **State 3 (Flow Stream View `flow`)**: Single-line streaming thinking chains with live duration timer, incremental Point output cards, concise tool invocation cards, interleaved chronological step pipeline (collapsed by default), **Typedown-quality Markdown rendering engine** (multi-level headings, fenced code blocks with syntax highlighting and one-click copy, GFM tables, task checklists, GitHub Callout alert boxes, streaming error self-healing), global external URL opening via default OS browser, sticky floating question tips with turn navigation, automatic failover self-healing engine (`ModelFailoverEngine`), and one-click export to local Markdown;
+  - **State 4 (Settings Full-Screen Page `settings`)**: Standalone full-page view integrating General preferences, Model configurations, Kernel & Package gallery, Session records, and Multi-preset workspaces.
 - ⚡ **Flow Background Tasks & Multi-Process Supervision**:
-  - **Dual-Channel Decoupling**: Right-click/Esc background suspension (`TaskManager`) vs. explicit cancellation (`Abort`);
+  - **Dual-Channel Decoupling & Manual Abort Guard**: Right-click/Esc background suspension (`TaskManager`) vs. explicit cancellation (`Abort`, manual abort strictly disables automatic model failover/reconnect);
   - **Mini Task Capsule & Frosted Glass Sidebar**: Top-right `[ ✏️ 1/3 Task ]` capsule, 320px translucent sketch sidebar (`backdrop-filter: blur(14px)` + Gaussian blur);
   - **`PiHostPool` Multi-Process Supervision**: Rust-native isolated child process supervision pool with single-instance polymorphic wake-up routing.
-- 📎 **Multi-Format File Drag-and-Drop & Multimodal Adaptation**: Supports direct drag-and-drop for images and documents, sketch micro-bordered summary capsules, absolute path structural injection, and multimodal extension suggestions.
-- 🧠 **Session History & Business Memory Layer**: Automatically snapshots full multi-turn dialogs per round; double-click in message drawer to instantly restore to Flow mode; settings page "Sessions" Tab supports full-text search and time filtering, "Enter Flow" historical pipeline restoration, and "Clear Interface Sessions" (safely clears UI layer without touching underlying `~/.pi` kernel files); back navigation flow preservation (`flowFromSettings` flag).
-- 🎨 **Sketch & Drafting UI/UX System**: 20+ custom hand-drawn SVG vector icons (`currentColor` light/dark adaptive), hidden minimalist scrollbars, micro-shake popover dropdowns (`SketchSelect`), smart autofill with recommendation engine (`SketchAutoFill`), and centered modal dialog system (`SketchModal`).
+- 📎 **Multi-Format File & Folder Drag-and-Drop Auto-Linking**: Supports direct drag-and-drop for files or whole project folders; folder drag-and-drop generates a single folder overview capsule (without exploding into individual child files); capsules wrap naturally inside the top of the input container, and absolute paths are structured and injected into prompts upon dispatch.
+- 🧠 **Session History & Business Memory Layer**: Automatically snapshots full multi-turn dialogs per round; double-click in message drawer to instantly restore to Flow mode; settings page "Sessions" Tab supports full-text search and time filtering, "Enter Flow" historical pipeline restoration (with directional Step Back to settings), and safe UI session clearing.
+- 🎨 **Sketch & Drafting UI/UX System**: Custom hand-drawn SVG vector icons (`currentColor` light/dark adaptive), hidden minimalist scrollbars, micro-shake popover dropdowns (`SketchSelect`), smart autofill with recommendation engine (`SketchAutoFill`), and centered modal dialog system (`SketchModal`).
 - 🔔 **Native Desktop Integration**: Out-of-focus Windows native Toast notifications with double-lock guard, single-instance mutex preventing duplicate launches, system tray persistence, and polymorphic wake-up.
-- 🛠️ **High-Performance Rust Core**: Win32 Job Object kernel-level orphan process harvesting, **kernel insurance auto-reconnect** (background crashed-state detection, up to 5 smooth reconnect attempts, red shaking lightning alert in the top-left corner after all 5 fail with click-to-restart), seamless hot-update engine (streaming download + `ProgressStepper`), official package marketplace with queue management, concurrent in-memory session index, and sensitive credential auto-redaction.
+- 🛠️ **High-Performance Rust Core**: Win32 Job Object kernel-level orphan process harvesting, kernel-less standby & interactive degradation, seamless hot-update engine, **kernel insurance auto-reconnect** (background crashed-state detection, up to 5 smooth reconnect attempts, red shaking lightning alert in top-left corner upon all failures with click-to-restart), official package marketplace, in-memory session index, and sensitive credential auto-redaction.
 
 > 📖 **Full Architecture & Development Specifications**: Refer to [`.agents/skills/pi-desktop-overview/SKILL.md`](file:///.agents/skills/pi-desktop-overview/SKILL.md).
 
@@ -45,7 +45,7 @@ A desktop research and reasoning application with minimalist hand-drawn sketch &
 
 ## 🔑 Part 1: Comprehensive Guide to Pi API & LLM Configuration
 
-Pi Agent supports **OAuth subscription logins**, **direct API keys**, **environment variables**, and **custom/local/reverse-proxy endpoints** (e.g., Ollama, vLLM, DeepSeek, SiliconFlow, OneAPI, Azure).
+Pi Agent supports **OAuth subscription logins**, **direct API keys**, **environment variables**, and **custom/local/reverse-proxy endpoints** (e.g., Ollama, DeepSeek, SiliconFlow, OneAPI, Azure).
 
 ### Credential Resolution Order
 ```text
@@ -54,7 +54,7 @@ CLI Argument (--api-key) ➔ auth.json Configuration ➔ System Environment Vari
 
 ---
 
-### Method 1: Interactive CLI Login (Recommended & Easiest)
+### Method 1: Interactive CLI Login (Recommended)
 
 Launch `pi` in terminal, execute `/login` and select your provider:
 
@@ -66,14 +66,14 @@ pi
 /login
 ```
 
-- **OAuth Subscription Login**: Supports ChatGPT Plus/Pro (Codex), Claude Pro/Max, GitHub Copilot, xAI (Grok), OpenRouter, and Radius. Tokens are securely stored and automatically refreshed.
+- **OAuth Subscription Login**: Supports ChatGPT Plus/Pro (Codex), Claude Pro/Max, GitHub Copilot, xAI (Grok), OpenRouter, and Radius with automatic token refresh;
 - **Interactive API Key Input**: Enter directly and press Enter. Pi will encrypt and store it in the global auth file.
 
 ---
 
 ### Method 2: Global Configuration File (`~/.pi/agent/auth.json`)
 
-Pi stores global credentials in `~/.pi/agent/auth.json` (on Windows: `C:\Users\<username>\.pi\agent\auth.json`). Recommended file permission: `0600` (read/write by owner only).
+Pi stores global credentials in `~/.pi/agent/auth.json` (on Windows: `C:\Users\<username>\.pi\agent\auth.json`), recommended permission `0600`:
 
 ```json
 {
@@ -89,10 +89,10 @@ Pi stores global credentials in `~/.pi/agent/auth.json` (on Windows: `C:\Users\<
 }
 ```
 
-#### Advanced Technique: Dynamic Key Resolution & Variable Interpolation
+#### Dynamic Key Resolution & Variable Interpolation
 The `key` field in `auth.json` supports dynamic evaluation:
 - **Environment Variable Interpolation**: `"key": "$MY_ANTHROPIC_KEY"` or `"${KEY_PREFIX}_KEY"`;
-- **Password Manager Command Execution**: `"key": "!op read 'op://vault/item/credential'"` or `"!security find-generic-password -ws 'anthropic'"`;
+- **Password Manager Command Execution**: `"key": "!op read 'op://vault/item/credential'"` ;
 - **Literal Escaping**: `"key": "$$literal_dollar"`.
 
 ---
@@ -123,7 +123,7 @@ Set the corresponding API keys in your terminal or OS environment variables:
 
 ### Method 4: Custom Providers / Local Models / Reverse Proxies (`~/.pi/agent/models.json`)
 
-To connect local models (Ollama / LM Studio / vLLM) or API aggregators (OneAPI / NewAPI / SiliconFlow), create or edit `~/.pi/agent/models.json`:
+To connect local models (Ollama / LM Studio / vLLM) or API aggregators (OneAPI / SiliconFlow), edit `~/.pi/agent/models.json`:
 
 #### 1. Local Ollama Example
 ```json
@@ -156,7 +156,7 @@ To connect local models (Ollama / LM Studio / vLLM) or API aggregators (OneAPI /
 }
 ```
 
-#### 2. OpenAI-Compatible Custom Proxy (e.g., SiliconFlow / DeepSeek Proxy)
+#### 2. Custom OpenAI Compatible Proxy / SiliconFlow
 ```json
 {
   "providers": {
@@ -183,13 +183,11 @@ To connect local models (Ollama / LM Studio / vLLM) or API aggregators (OneAPI /
 }
 ```
 
-> 💡 `models.json` supports hot reloading. Changes take effect immediately without restarting Pi.
+> 💡 `models.json` supports hot-reloading; changes take effect immediately without restarting.
 
 ---
 
-### Method 5: Global Default Model & Thinking Budgets (`~/.pi/agent/settings.json`)
-
-Configure startup defaults, default provider, and thinking token budgets in `~/.pi/agent/settings.json`:
+### Method 5: Global Defaults & Thinking Budgets (`~/.pi/agent/settings.json`)
 
 ```json
 {
@@ -205,71 +203,60 @@ Configure startup defaults, default provider, and thinking token budgets in `~/.
   "defaultProjectTrust": "always"
 }
 ```
-- **Thinking Level Options**: `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"`.
+- **Thinking Level options**: `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"`.
 
 ---
 
-## 🧩 Part 2: Comprehensive Guide to Pi Packages, Skills & Extensions
-
-Pi features an extensible ecosystem consisting of **Packages (all-in-one bundles)**, **Skills (task workflow libraries)**, and **Extensions (TypeScript plugins)**.
+## 🧩 Part 2: Pi Packages, Skills & Extensions Guide
 
 ---
 
 ### 1. Pi Package Manager (Pi Packages)
 
-Pi provides unified package management commands to download and link extensions, skills, prompt templates, and themes automatically.
-
-#### ① Download & Install Packages
+#### ① Installation
 ```bash
-# 1. Install public package from npm
+# 1. Install via npm
 pi install npm:@foo/bar@1.0.0
 pi install npm:pi-skills
 
-# 2. Install directly from GitHub / Git repository
+# 2. Install via Git / GitHub repository
 pi install git:github.com/user/my-pi-package@v1.0
 pi install https://github.com/badlogic/pi-skills
 
-# 3. Install from local development folder
+# 3. Install from local directory
 pi install ./my-local-package
-pi install C:/Users/name/my-tools/package
 
-# 4. Local workspace installation (persisted to .pi/settings.json)
+# 4. Project-local installation
 pi install -l npm:@org/repo-tools
 ```
 
-#### ② Common Package Management Commands
+#### ② Management Commands
 ```bash
-pi list                     # List all currently installed packages
-pi remove npm:@foo/bar      # Uninstall specific package
-pi update --all             # Update Pi itself and all installed packages
-pi update --extensions      # Update extensions and packages only
-pi update npm:@foo/bar      # Update a single specific package
+pi list                     # List installed packages
+pi remove npm:@foo/bar      # Uninstall package
+pi update --all             # Update Pi core and packages
+pi update --extensions      # Update extensions only
+pi update npm:@foo/bar      # Update specific package
 ```
 
-#### ③ Ephemeral Package Trial
+#### ③ Ephemeral Trial (Current Session Only)
 ```bash
-# Run with package loaded for current execution without installing
 pi -e npm:@foo/bar
 pi -e git:github.com/user/repo
 ```
 
 ---
 
-### 2. Skills (Compliant with Agent Skills Specification)
+### 2. Skills (Agent Skills Specification)
 
-Skills provide models with **on-demand specialized workflows, guidelines, and automation scripts** (conforming to the [Agent Skills Specification](https://agentskills.io/specification)).
+Skills provide **on-demand workflows and guidelines** following the [Agent Skills Specification](https://agentskills.io/specification).
 
-#### ① Skill Directory Discovery
-Pi scans for skills in the following paths upon startup:
-- **Global Skill Directories**:
-  - `~/.pi/agent/skills/`
-  - `~/.agents/skills/`
-- **Project Local Skill Directories**:
-  - `.pi/skills/` in the current project root
-  - `.agents/skills/` in the current project root and parent directories
+#### ① Directory Discovery
+- **Global**: `~/.pi/agent/skills/` or `~/.agents/skills/`
+- **Project-local**: `.pi/skills/` or `.agents/skills/`
 
-#### ② Sharing with Claude Code & OpenAI Codex Skills
-If you have existing Claude Code or Codex skills, link them in `~/.pi/agent/settings.json`:
+#### ② Sharing Claude Code & OpenAI Codex Skills
+Add to `~/.pi/agent/settings.json`:
 ```json
 {
   "skills": [
@@ -279,74 +266,72 @@ If you have existing Claude Code or Codex skills, link them in `~/.pi/agent/sett
 }
 ```
 
-#### ③ Standard Skill Structure (`SKILL.md`)
-Each skill is contained in its own folder with a mandatory `SKILL.md`:
+#### ③ Standard `SKILL.md` Structure
 ```text
 my-custom-skill/
-├── SKILL.md              # [Required] YAML Frontmatter metadata and instructions
-├── scripts/              # [Optional] Automation helper scripts (bash / js / py)
-└── references/           # [Optional] Detailed reference documents & templates
+├── SKILL.md              # [Required] YAML Frontmatter + Markdown guidance
+├── scripts/              # [Optional] Automation scripts
+└── references/           # [Optional] Reference docs & templates
 ```
 
-`SKILL.md` Example:
+Example `SKILL.md`:
 ````markdown
 ---
 name: my-custom-skill
-description: Specialized in data cleaning, format conversion, and report generation. Trigger when data analysis is requested.
+description: Specialized skill for data processing and reporting. Use when data analysis is requested.
 ---
 
 # My Custom Skill
 
-## Instructions
-Run the following script to begin data processing:
+## Usage
 ```bash
 node ./scripts/process.js --input data.csv
 ```
 ````
 
-#### ④ Triggering Skills
-- **Progressive Disclosure (Automatic)**: Pi includes skill `description` summaries in system prompts; the model reads `SKILL.md` via `read` tool upon task matching.
-- **Explicit Trigger**: Type `/skill:<skill-name>` (e.g., `/skill:brave-search`) in chat to invoke manually.
+#### ④ Invocation Methods
+- **Progressive Disclosure**: Pi includes skill descriptions in system prompts; LLM reads full `SKILL.md` via `read` tool on demand;
+- **Manual Execution**: Run `/skill:<skill-name>` (e.g. `/skill:brave-search`) in the chat input.
 
 ---
 
-### 3. Extensions & Custom Tools (TypeScript)
+### 3. Extensions
 
-Extensions are written in TypeScript, allowing you to register custom tools for LLMs, intercept tool executions (safety confirmations), listen to lifecycle events, or register custom slash commands.
+Extensions are TypeScript runtime plugins that register custom tools, security interceptors, and slash commands.
 
-#### ① Extension Locations & Discovery
-- **Global Extensions**: `~/.pi/agent/extensions/*.ts` or `~/.pi/agent/extensions/*/index.ts`
-- **Project Local Extensions**: `.pi/extensions/*.ts` or `.pi/extensions/*/index.ts`
+#### ① Directory Discovery
+- **Global**: `~/.pi/agent/extensions/*.ts` or `~/.pi/agent/extensions/*/index.ts`
+- **Project-local**: `.pi/extensions/*.ts` or `.pi/extensions/*/index.ts`
 
-#### ② Writing a Custom Extension
+#### ② Example Extension
 Create `~/.pi/agent/extensions/custom-tools.ts`:
 ```typescript
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 export default function (pi: ExtensionAPI) {
-  // 1. Register a custom tool for the LLM
+  // 1. Register a custom tool for LLM
   pi.registerTool({
     name: "fetch_weather",
     label: "Fetch Weather",
-    description: "Query real-time weather information by city name",
+    description: "Query real-time weather by city name",
     parameters: Type.Object({
-      city: Type.String({ description: "City name, e.g., Beijing" }),
+      city: Type.String({ description: "City name, e.g. Beijing" }),
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       return {
-        content: [{ type: "text", text: `${params.city} weather: Sunny, 22°C` }],
+        content: [{ type: "text", text: `${params.city} Weather: Sunny, 22°C` }],
         details: {},
       };
     },
   });
 
-  // 2. Register safety interception for high-risk commands
+  // 2. Register security interceptor
   pi.on("tool_call", async (event, ctx) => {
     if (event.toolName === "bash" && event.input.command?.includes("rm -rf")) {
-      const confirmed = await ctx.ui.confirm("High-Risk Command Intercepted", "Allow deletion execution?");
+      const confirmed = await ctx.ui.confirm("Dangerous Command", "Allow execution of delete command?");
       if (!confirmed) {
-        return { block: true, reason: "User rejected high-risk deletion command" };
+        return { block: true, reason: "User rejected dangerous delete operation" };
       }
     }
   });
@@ -355,158 +340,93 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("ping", {
     description: "Test extension connectivity",
     handler: async (args, ctx) => {
-      ctx.ui.notify("Pong! Extension is running normally", "info");
+      ctx.ui.notify("Pong! Extension is working", "info");
     },
   });
 }
 ```
 
-#### ③ Hot Reloading Extensions
-Type `/reload` in the Pi prompt to instantly hot-reload all extensions without restarting the application.
+#### ③ Hot Reload
+Execute `/reload` in the prompt to hot-reload all extensions without restarting.
 
 ---
 
-### 4. Interactive Component Manager (`pi config`) & Project Trust
+### 4. Interactive Configuration (`pi config`) & Project Trust
 
-#### ① Interactive TUI Manager (`pi config`)
-Run `pi config` in terminal to launch the sketch-styled TUI dashboard:
-- Press `Tab` to switch between **Global Settings** (`~/.pi/agent/settings.json`) and **Project Settings** (`.pi/settings.json`);
-- Use arrow keys and Enter to toggle Packages, Extensions, Skills, and Themes.
+#### ① Interactive Manager (`pi config`)
+Run `pi config` in terminal to launch the TUI:
+- Press `Tab` to switch between **Global** and **Project** configs;
+- Use Arrow keys and Enter to toggle Packages, Extensions, Skills, and Themes.
 
-#### ② Project Trust Policy
-To protect against executing unauthorized local code, Pi applies workspace security guards:
-- Prompts for confirmation upon first opening projects containing local `.pi` extensions;
-- Enter `/trust` to add current workspace to the trusted list (`~/.pi/agent/trust.json`);
-- For global auto-trust, configure `"defaultProjectTrust": "always"` in `~/.pi/agent/settings.json`.
+#### ② Project Trust
+- First launch with `.pi` extensions prompts for confirmation;
+- Enter `/trust` to add current workspace to `~/.pi/agent/trust.json`;
+- Set `"defaultProjectTrust": "always"` in `settings.json` for global trust.
 
 ---
 
-## 🚀 Quick Start & Development
+## 🚀 Quick Start & Desktop Development
 
-### 1. Install Dependencies
+### Common Commands
 ```bash
+# 1. Install dependencies
 npm install
-```
 
-### 2. Fast Static & Type Check (~1s, recommended for daily iterations)
-```bash
+# 2. Fast compilation check (~1s, recommended for daily iterations)
 npm run check
-```
 
-### 3. Launch Desktop App in Dev Mode
-```bash
+# 3. Start desktop dev mode
 npm run dev
-# or
-node scripts/tauri.js dev
-```
 
-### 4. Build Test (Generate binaries without installer packaging)
-```bash
+# 4. Build check (compile binaries without full packaging)
 npm run build:check
-```
 
-### 5. Production Release Build
-```bash
+# 5. Build release installer package
 npm run build
 ```
 
-### 6. Multi-Workspace Switching & code-area Route Hub (Settings → Workspaces)
-
-1. Click the bottom-left gear icon to open the full-screen **Settings** view;
-2. Select **"Workspaces"** on the left tab bar;
-3. The top "Active Workspace" card displays current workspace name, badge, and runtime absolute path;
-4. **`code-area` Routed Workspace & Dispatch Hub (Exclusive Feature)**:
-   - Powered by Rust `rfd` (IFileOpenDialog) for a native Windows OpenFolder dialog (standard "Select Folder" / "Open" buttons with zero web upload prompt), supporting directory browsing, manual absolute path input, and quick switching between recent project paths;
-   - **Existence Validation & Auto-Cleanup**: Verifies if the currently bound route path and recent project history exist on disk whenever switching to `code-area` or starting the app; automatically clears invalid selections and purges dead paths;
-   - Displays built-in coding skills list in `code-area/.agents/skills/` (extensible by developers);
-   - In runtime, `code-area` never modifies its own files, but dispatches built-in skills to read and modify the external routed project;
-5. The "Preset Workspaces" list displays all built-in templates (`default-area`, `code-area`, `research-area`), materialized paths, and an "In Use" indicator;
-6. Click **"Switch"** on any non-active workspace:
-   - Allows switching to `code-area` immediately and binding the route target whenever ready;
-   - If unbound, the main input box is disabled from typing (read-only hint) and clicking it prompts the route binding dialog;
-   - First selection copies template directory to `~/.pi-dl/workspaces/<id>/` (`default-area` retains `~/.pi-dl/default-area` with zero migration loss);
-   - Prompts sketch confirmation if tasks are running, clarifying "effective for subsequent new sessions";
-   - Restarts idle kernel host to re-anchor CWD automatically.
+### Multi-Workspace Switching & `code-area` Routing
+1. Click the gear icon on the bottom-left to enter Settings full-page, select **"Workspaces"**;
+2. **`code-area` Routing Hub Features**:
+   - Native Windows OpenFolder dialog via Rust `rfd` (IFileOpenDialog) supporting directory browsing, direct path input, and MRU project switching;
+   - Auto-validates target directory existence upon startup/switching and cleans up stale items;
+   - `code-area` hosts central Hub skills (`code-area/.agents/skills/`), dispatching commands to external routed target projects without polluting its own files;
+3. **Workspace Switching**: Click "Switch" in the presets list (materializes workspace template into `~/.pi-dl/workspaces/<id>/`, automatically restarting idle kernel to re-anchor CWD).
 
 ---
 
-## 📁 Project Structure
+## 📁 Project Directory Topology
 
 ```text
 pi-desktop-lite/
-├── .agents/skills/             # Project development skills & standards (auto-compile-and-fix, iterative-modification-hygiene, sketch-drafting-ui, clean-code-refactoring, etc.)
-├── .mytools/pi-body/           # Latest Pi Agent Release engine bundle (embedded as App Bundle Resources for out-of-the-box runtime)
-├── default-area/               # Pi default workspace directory (contains AGENTS.md self-description)
-├── workspaces/                 # Multi-preset workspace template source (code-area / research-area)
-│   ├── code-area/              #   Coding & Engineering Dispatch Hub template (workspace.json + AGENTS.md + README.md + .agents/skills/ built-in skills)
-│   └── research-area/          #   Deep Research template (workspace.json + AGENTS.md + README.md)
-├── scripts/                    # Automation & tooling scripts (tauri.js, check.js)
-├── src/                        # Frontend source files & web assets
-│   ├── assets/                 # Static assets (logo.svg, logo.ico, hand-drawn SVG icons, screenshots)
-│   ├── lib/                    # Shared core primitives & utilities
-│   │   ├── dom-utils.js        # HTML / CSS escaping helpers
-│   │   ├── icons.js            # currentColor hand-drawn SVG icon dictionary
-│   │   └── view-constants.js   # Four-state view constants (detailed / focus / flow / settings)
-│   ├── modules/                # Domain-driven UI business modules (orchestrated by main.js)
+├── .agents/skills/             # Development-level agent skill definitions (auto-compile-and-fix, sketch-drafting-ui, flow-interaction-pattern, etc.)
+├── .mytools/pi-body/           # Bundled Pi Agent Release engine for production distribution
+├── default-area/               # Default workspace template & runtime isolation sandbox
+├── workspaces/                 # Public preset workspace templates (code-area hub / research-area)
+├── custom-workspaces/          # [Private] Custom enterprise workspaces (.gitignore isolated, distributed offline)
+├── scripts/                    # Automation and build scripts (tauri.js, check.js)
+├── src/                        # Frontend source code and assets
+│   ├── assets/                 # Static assets (logo.svg, logo.ico, hand-drawn SVG icons)
+│   ├── lib/                    # Shared foundational utilities (dom-utils, icons, markdown-renderer, view-constants)
+│   ├── modules/                # Feature-scoped UI modules orchestrated by main.js
 │   │   ├── view-mode.js        # Four-state state machine & settings routing
-│   │   ├── preferences.js      # Themes, send shortcuts, token snapping
-│   │   ├── settings-navigation.js # Settings tabs, inner wizard steps, collapsible drawers
-│   │   ├── model-panel.js      # Model whitelist MRU & official provider configurations
-│   │   ├── custom-provider-panel.js # Two-step custom provider & model management
-│   │   ├── kernel-panel.js     # Kernel status, version checking & one-click updater
-│   │   ├── sessions-panel.js   # Session history listing, search/filter, Flow pipeline restore & UI purge
-│   │   ├── window-controls.js  # Titlebar window control buttons
-│   │   ├── flow-ui.js          # Flow rendering core: Markdown, turns DOM, sticky question tip, turn navigation
-│   │   ├── flow-stream.js      # Streaming state machine, error card rendering & auto-failover capsules
-│   │   ├── flow-pipeline.js    # Prompt dispatching, tool events, failover engine & send interception
-│   │   ├── task-panel.js       # Background task capsule, frosted sidebar, history restore & snapshot archiving
-│   │   ├── file-attachments.js # Drag-and-drop attachments, summary capsules & multimodal injection
-│   │   ├── search-input.js     # Search input interaction, history flipping, motto ticker & focus control
-│   │   ├── packages-panel.js   # Package market & install/update/uninstall queue
-│   │   ├── workspace-panel.js  # Multi-preset workspace management panel
-│   │   └── global-interactions.js # Global right-click/Esc step-back & window lifecycle guards
-│   ├── services/               # UI-decoupled frontend service layer
-│   │   ├── tauri-bridge.js     # Unified Tauri IPC bridge
-│   │   ├── config-service.js   # ~/.pi/agent config & model whitelist service
-│   │   ├── pi-client.js        # Streaming communication client for Rust backend supervisor
-│   │   ├── session-service.js  # Historical session management & switching service
-│   │   ├── workspace-service.js # Multi-preset workspace IPC service
-│   │   └── version-service.js  # Version detection & update notification service
-│   ├── styles/                 # Domain-driven modular sketch styles (styles.css acts as @import aggregator)
-│   │   ├── tokens.css          # Light / Dark theme tokens
-│   │   ├── base.css            # Base resets & minimal hidden scrollbar
-│   │   ├── layout.css          # Titlebar & four-state layout
-│   │   ├── flow.css            # Flow stream chat & reasoning/response cards
-│   │   ├── search.css          # Search input area & action buttons
-│   │   ├── message-drawer.css  # Historical message drawer
-│   │   ├── animations.css      # Keyframe animations
-│   │   ├── settings.css        # Settings standalone full-page view
-│   │   ├── form-widgets.css    # Sketch autofill & custom select dropdowns
-│   │   ├── custom-provider.css # Custom provider management styles
-│   │   ├── tool-response.css   # Tool cards, Markdown rendering & error cards
-│   │   ├── packages.css        # Kernel panel & package marketplace
-│   │   └── overlays.css        # Floating badges, task sidebar, toasts & modals
-│   ├── index.html              # Main HTML entry
-│   ├── styles.css              # Main stylesheet aggregator (@import to styles/ subfiles)
-│   └── main.js                 # Main frontend orchestrator
-├── src-tauri/                  # Tauri (Rust) high-performance backend core
-│   ├── Cargo.toml              # Dependencies: tokio, serde, dashmap, notify, reqwest, regex, windows-sys
-│   ├── tauri.conf.json         # Window configuration, transparency & security policies
-│   ├── inner-skills/           # [Core] Runtime constraints dynamically injected into Pi Agent (RULES.md, bash, multimodal/OCR, subagents, web search, memory, workflows, ACP)
-│   └── src/
-│       ├── lib.rs              # Tauri initialization, command registry, event bus & tray integration
-│       ├── main.rs             # Application entrypoint
-│       ├── config_manager.rs   # [Core] Configuration management & directory mapping
-│       ├── workspace/          # [Core] Multi-workspace template discovery, runtime materialization & config state
-│       ├── package_manager/    # [Core] Official package marketplace search, install/uninstall & update subsystem
-│       ├── pi_runner/          # [Core] Process supervision, Win32 Job Object orphan reaper, strict LF framer, Inner-Skills injector
-│       ├── security/           # [Core] Regex credential & path sanitization middleware
-│       ├── session/            # [Core] DashMap in-memory session index & notify incremental watcher
-│       └── version_watcher/    # [Core] Jitter version monitoring & dual-source update detector
-│
+│   │   ├── flow-ui.js          # Flow rendering: Markdown, turns DOM, floating tip, turn navigation
+│   │   ├── flow-stream.js      # Stream state machine, error cards, and auto-failover capsules
+│   │   ├── flow-pipeline.js    # Prompt dispatch, tool call events, self-healing pipeline
+│   │   ├── task-panel.js       # Background task capsule, sidebar, history restore
+│   │   ├── sessions-panel.js   # Session records, search/filter, enter Flow pipeline
+│   │   ├── workspace-panel.js  # Workspace management panel and routing binding
+│   │   └── global-interactions.js # Global Step Back & URL interceptor
+│   ├── services/               # Decoupled frontend services (tauri-bridge, config-service, pi-client, workspace-service)
+│   ├── styles/                 # Feature-scoped sketch styles (tokens, layout, flow, markdown, settings, form-widgets)
+│   ├── index.html              # Main HTML container
+│   ├── styles.css              # Aggregated style entry (@import to styles/ subfiles)
+│   └── main.js                 # Main orchestrator entry
+├── src-tauri/                  # High-performance Tauri (Rust) backend
+│   ├── inner-skills/           # Runtime dynamic inner-skills (RULES.md, bash compatibility, OCR inspection, multi-agent, web search, etc.)
+│   └── src/                    # Rust core source (lib.rs, main.rs, config_manager, workspace, pi_runner, security, session)
 ├── AGENTS.md                   # Project rules and agent guidelines
-├── README.md                   # Chinese documentation & configuration guide
-├── README_en.md                # English documentation & configuration guide
+├── README.md                   # Project overview & configuration guide (Chinese)
+├── README_en.md                # Project overview & configuration guide (English)
 └── package.json
-
 ```
