@@ -193,6 +193,8 @@ class PiClient extends EventTarget {
     this._hasKernel = false;
     this.isStreaming = false;
     this.activeTools = new Map();
+    // 最近一次 RPC 事件帧所属的任务 ID (task_id 分帧隔离)，供 UI 层过滤后台挂起任务的流式事件串轮
+    this.lastEventTaskId = null;
     this.currentModel = null;
     this.currentThinkingLevel = "medium";
     this.unlistenCallbacks = [];
@@ -352,6 +354,9 @@ class PiClient extends EventTarget {
   handleAgentEvent(data) {
     if (!data || !data.type) return;
 
+    // 记录该事件帧归属的 Task (同步派发窗口内可靠)，供前台流式渲染过滤后台任务事件
+    this.lastEventTaskId = data.task_id || data.taskId || null;
+
     // 广播原始事件
     this.dispatchEvent(new CustomEvent("raw-event", { detail: data }));
 
@@ -472,6 +477,11 @@ class PiClient extends EventTarget {
   handleMessageUpdate(data) {
     const evt = data.assistantMessageEvent;
     if (!evt) return;
+
+    // message_update 帧同样携带 task_id，保障增量事件归属可判定
+    if (data.task_id || data.taskId) {
+      this.lastEventTaskId = data.task_id || data.taskId;
+    }
 
     switch (evt.type) {
       case "thinking_start":

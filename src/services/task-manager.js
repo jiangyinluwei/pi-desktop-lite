@@ -211,6 +211,18 @@ export class TaskManager extends EventTarget {
   }
 
   /**
+   * 判定流式事件帧是否归属于当前前台活跃任务 (串轮过滤铁律)
+   * 后台挂起任务 (currentActiveTaskId 为 null 或不匹配) 的事件只入 Task 数据缓冲，
+   * 绝不允许触碰前台 Flow DOM 与流式状态，杜绝后台任务输出拼进历史会话轮次
+   * @param {string | null | undefined} taskId 事件帧携带的 task_id (缺失时视为前台主会话，向后兼容)
+   * @returns {boolean}
+   */
+  isForegroundStreamTask(taskId) {
+    if (!taskId) return true;
+    return taskId === this.currentActiveTaskId;
+  }
+
+  /**
    * 获取所有活跃中（思考、流式、工具执行、待确认）的任务
    * @returns {Array<TaskItem>}
    */

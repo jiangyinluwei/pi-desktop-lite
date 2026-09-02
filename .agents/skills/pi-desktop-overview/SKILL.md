@@ -56,6 +56,7 @@ description: |
 ## ⚡ 后台任务与多进程监管体系
 
 - **挂起与中止解耦**：Flow 模式下按 Esc / 右键转入后台挂起（`isSuspended = true`，进入 `TaskManager`，不调用 abort）；显式「⏹ 终止」按钮彻底中止 Agent 并追加手动终止提示；
+- **后台流式串轮过滤**：挂起任务的流式增量经 `isForegroundStreamTask` 前台门禁过滤，绝不串入前台 Flow DOM；历史讯息抽屉采用签名比对 + 节流渲染抗事件风暴；
 - **右上角 Mini 任务胶囊**：常态展示 `[ ✏️ 1/3 Task ]`，运行中微旋转呼吸动画；
 - **320px 毛玻璃侧边栏**：点击胶囊滑出侧边栏，主背景高斯模糊，支持多任务查看与管理；
 - **底层 `PiHostPool`**：最大并发限制（`MAX_CONCURRENT_TASKS = 3`），`task_id` 分帧隔离。

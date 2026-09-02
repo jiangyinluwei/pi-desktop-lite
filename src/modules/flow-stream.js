@@ -671,7 +671,14 @@ export function initFlowStream(ctx) {
   // 流式输出期间仅在“吸底跟随”开启时随输出定位到底部；
   // 用户向上滚动即终止跟随，滚回底部任意时刻重新触发跟随；
   // 另在输出全部结束的瞬间 (finalizeStream / appendFlowAbortNotice) 单次定位到底部
+  //
+  // 串轮过滤铁律：事件帧携 task_id 且非当前前台活跃任务 (后台挂起任务) 时，
+  // 增量内容只入 TaskManager 数据缓冲，绝不触碰前台 Flow DOM 与流式状态
+  const isForegroundStreamEvent = () =>
+    taskManager.isForegroundStreamTask(piClient.lastEventTaskId || null);
+
   piClient.addEventListener("thinking-start", () => {
+    if (!isForegroundStreamEvent()) return;
     flow.hasReceivedDelta = true;
     // 阶段性输出判定铁律：模型输出一段文字后再次进入 Thinking 状态，
     // 则前面那段文字属于「阶段性输出」——先封口为 Point 卡，再继续思维切片
@@ -681,6 +688,7 @@ export function initFlowStream(ctx) {
   });
 
   piClient.addEventListener("thinking-delta", (e) => {
+    if (!isForegroundStreamEvent()) return;
     flow.hasReceivedDelta = true;
     const delta = e.detail || "";
     flow.currentThinkingText += delta;
@@ -707,6 +715,7 @@ export function initFlowStream(ctx) {
   });
 
   piClient.addEventListener("thinking-end", () => {
+    if (!isForegroundStreamEvent()) return;
     if (flow.activeThinkingStep) {
       if (flow.activeThinkingStep.hasRealThinking || flow.activeThinkingStep.text?.trim()) {
         const elapsed = ((Date.now() - flow.activeThinkingStep.startTime) / 1000).toFixed(1);
@@ -729,6 +738,7 @@ export function initFlowStream(ctx) {
   });
 
   piClient.addEventListener("text-start", () => {
+    if (!isForegroundStreamEvent()) return;
     flow.hasReceivedDelta = true;
     // 新一段文本开始：若上一段阶段性输出尚未封口（无工具调用边界），先封口
     sealActivePhaseOutput();
@@ -756,6 +766,7 @@ export function initFlowStream(ctx) {
   });
 
   piClient.addEventListener("text-delta", (e) => {
+    if (!isForegroundStreamEvent()) return;
     flow.hasReceivedDelta = true;
     if (flow.activeThinkingStep) {
       if (flow.activeThinkingStep.hasRealThinking || flow.activeThinkingStep.text?.trim()) {

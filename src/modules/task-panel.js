@@ -312,9 +312,36 @@ export function initTaskPanel(ctx) {
     }
   });
 
+  // --------------------------------------------------------------------------
+  // 历史讯息抽屉渲染调度：签名比对 + 节流去重
+  // 后台任务流式事件风暴 (task-updated/tasks-changed 高频触发) 时，
+  // 若会话列表数据签名未变化，绝不重建卡片 DOM —— 根治悬浮频闪与双击选中失效
+  // --------------------------------------------------------------------------
+  let conversationRenderPending = false;
+  let lastConversationSignature = "";
+
+  const computeConversationSignature = () => {
+    const conversations = conversationHistoryService.getVisibleConversations() || [];
+    return conversations
+      .map((c) => `${c.id}:${c.title || c.query || ""}:${c.lastViewedAt || c.createdAt || ""}`)
+      .join("|");
+  };
+
+  const scheduleConversationMessagesRender = () => {
+    if (conversationRenderPending) return;
+    conversationRenderPending = true;
+    setTimeout(() => {
+      conversationRenderPending = false;
+      const signature = computeConversationSignature();
+      if (signature === lastConversationSignature) return; // 数据未变化，跳过重建
+      lastConversationSignature = signature;
+      renderConversationMessages();
+    }, 180);
+  };
+
   taskManager.addEventListener("tasks-changed", () => {
     updateMiniTaskCapsuleUI();
-    renderConversationMessages();
+    scheduleConversationMessagesRender();
     if (taskDetailsSidebar && taskDetailsSidebar.classList.contains("open")) {
       renderTaskSidebarList();
     }
@@ -322,7 +349,7 @@ export function initTaskPanel(ctx) {
 
   taskManager.addEventListener("task-updated", () => {
     updateMiniTaskCapsuleUI();
-    renderConversationMessages();
+    scheduleConversationMessagesRender();
     if (taskDetailsSidebar && taskDetailsSidebar.classList.contains("open")) {
       renderTaskSidebarList();
     }
@@ -610,6 +637,11 @@ export function initTaskPanel(ctx) {
     if (!sketchMessagesDrawer || !messagesPrimaryRow || !messagesExpandedGrid) return;
 
     const conversations = conversationHistoryService.getVisibleConversations() || [];
+
+    // 同步签名基准，确保外部直接调用 (数据变更/窗口缩放) 后调度器判断准确
+    lastConversationSignature = conversations
+      .map((c) => `${c.id}:${c.title || c.query || ""}:${c.lastViewedAt || c.createdAt || ""}`)
+      .join("|");
 
     if (conversations.length === 0) {
       sketchMessagesDrawer.classList.add("hidden");

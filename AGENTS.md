@@ -41,6 +41,7 @@
    - **四态界面层级流**：`半透明侧边栏 (最高优先级)` ➔ `设置全页面 (界面4: settings)` ➔ `Flow 交互版 (界面3: 运行/暂停态转入后台挂起，已结束/中断态归档至历史)` ➔ `专注版 (界面2)` ➔ `详细版 (界面1)` ➔ 输入框失焦/清空；
    - **设置页 → Flow 定向回退 (`flowFromSettings`)**：从设置页会话记录 Tab「进入 Flow」时置 `view.flowFromSettings = true`；Flow 中右键/Esc 时若空闲/已结束，直接回退至设置页会话记录 Tab（`previousMode: VIEW_DETAILED` 钉住 `view.previous`，再右键照常回界面1）；若运行/暂停，走正常挂起通道；
    - **挂起与终止双通道解耦与终止防重连铁律**：右键/Esc 转入后台挂起（`isSuspended = true`，进入 `TaskManager`，不调用 abort）；显式「⏹ 终止」按钮彻底终止 Agent 生成并追加手动终止提示。**手动点击终止时，全链路绝对禁止触发任何模型自动重连或模型切换**；
+   - **后台流式串轮过滤铁律**：挂起任务的流式事件经前台门禁 (`taskManager.isForegroundStreamTask` + `piClient.lastEventTaskId`) 在 Flow UI 层全量过滤，只入 Task 数据缓冲，绝不写入前台 Flow DOM/历史轮次；历史讯息抽屉 (`task-panel.js`) 采用签名比对 + 180ms 节流调度渲染，杜绝后台任务事件风暴导致的悬浮频闪与双击选中失效；
    - **输入框防抖**：详细版下对着输入框点击右键时静默屏蔽，杜绝界面瞬切抖动；新模块均需接入 `window.__piRegisterStepBack`；
 4. **手绘 SVG 矢量图元规范（消除系统 Emoji）**：
    - 禁止使用系统默认 Emoji，所有功能与提示图标统一在 `src/assets/svg/` 归档并以内联手绘 SVG 呈现；

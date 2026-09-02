@@ -179,8 +179,14 @@ export function initFlowPipeline(ctx) {
 
   loadInnerSkillMappings();
 
+  // 串轮过滤铁律：事件帧携 task_id 且非当前前台活跃任务 (后台挂起任务) 时，
+  // 绝不向前台 Flow 注入任何步骤卡/胶囊/错误卡，也不触发收尾归档
+  const isForegroundStreamEvent = () =>
+    taskManager.isForegroundStreamTask(piClient.lastEventTaskId || null);
+
   // Tool-call Hook 命中：后端动态注入 Inner-Skill 时同步更新胶囊（以实际注入为准）
   piClient.addEventListener("inner-skill-activated", (e) => {
+    if (!isForegroundStreamEvent()) return;
     const detail = e.detail;
     const skillName = detail?.skill
       || (detail?.toolName ? activeToolSkillMappings.get(detail.toolName.toString().toLowerCase().trim())?.skill : null);
@@ -197,6 +203,7 @@ export function initFlowPipeline(ctx) {
   });
 
   piClient.addEventListener("toolcall-delta-start", (e) => {
+    if (!isForegroundStreamEvent()) return;
     // 阶段性输出判定铁律：模型输出一段文字后进入工具调用状态（工具参数流式开始即视为进入），
     // 先封口该段文字为 Point 卡，再进入工具调用切片（tool-start 处的封口为幂等兜底）
     if (typeof api.sealActivePhaseOutput === "function") {
@@ -210,6 +217,7 @@ export function initFlowPipeline(ctx) {
   });
 
   piClient.addEventListener("tool-start", (e) => {
+    if (!isForegroundStreamEvent()) return;
     flow.hasReceivedDelta = true;
     const data = e.detail;
     const toolCallId = data.toolCallId;
@@ -309,10 +317,12 @@ export function initFlowPipeline(ctx) {
   });
 
   piClient.addEventListener("bash-update", () => {
+    if (!isForegroundStreamEvent()) return;
     showInnerSkillCapsuleForTool("bash");
   });
 
   piClient.addEventListener("tool-update", (e) => {
+    if (!isForegroundStreamEvent()) return;
     const data = e.detail;
     const card = flow.renderedToolCards.get(data.toolCallId);
     if (card) {
@@ -331,6 +341,7 @@ export function initFlowPipeline(ctx) {
   });
 
   piClient.addEventListener("tool-end", (e) => {
+    if (!isForegroundStreamEvent()) return;
     const data = e.detail;
     const card = flow.renderedToolCards.get(data.toolCallId);
     const isError = Boolean(data.isError);
@@ -391,6 +402,7 @@ export function initFlowPipeline(ctx) {
   });
 
   piClient.addEventListener("retry-status", (e) => {
+    if (!isForegroundStreamEvent()) return;
     const data = e.detail;
     // 引擎接管自愈时，内核内置 3 次快速重试降级为内部静默，不再覆盖耗时位展示
     if (modelFailoverEngine.isActive()) return;
@@ -400,6 +412,7 @@ export function initFlowPipeline(ctx) {
   });
 
   piClient.addEventListener("agent-start", () => {
+    if (!isForegroundStreamEvent()) return;
     notificationService.registerTask("agent-prompt", { type: "agent" });
   });
 
@@ -470,7 +483,12 @@ export function initFlowPipeline(ctx) {
       return;
     }
 
-    const errTaskId = e.detail?.taskId || e.detail?.raw?.task_id || e.detail?.task_id;
+    const errTaskId = e.detail?.taskId || e.detail?.raw?.task_id || e.detail?.task_id || piClient.lastEventTaskId;
+
+    // 后台挂起任务的报错：只由 TaskManager 结算数据与通知，绝不污染前台 Flow
+    if (!taskManager.isForegroundStreamTask(errTaskId)) {
+      return;
+    }
 
     // 检查所属 Task 是否已处于中止状态或在中止黑名单中
     if (modelFailoverEngine.isTaskAborted(errTaskId)) {
@@ -502,6 +520,10 @@ export function initFlowPipeline(ctx) {
   });
 
   piClient.addEventListener("agent-end", (e) => {
+    // 后台挂起任务的结束帧：不触发前台收尾与归档，仅由 TaskManager 结算数据
+    if (!taskManager.isForegroundStreamTask(e.detail?.task_id || e.detail?.taskId || piClient.lastEventTaskId)) {
+      return;
+    }
     // 引擎自愈进行中：结算当前重发尝试为成功，由引擎负责收尾，避免提前归档历史
     if (modelFailoverEngine.isActive()) {
       modelFailoverEngine.resolveTurnSuccess();
