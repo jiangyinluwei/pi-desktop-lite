@@ -41,11 +41,11 @@ description: |
 
 ## 📌 2. 步骤切片与流式流水线
 
-| 切片类型 | 展示规范 | 触发与封口时机 |
-|---|---|---|
-| **思维链切片 (`flow-step-thinking`)** | 单行预览流式文本，动态读秒 `思考中 (1.2s)...` ➔ 定格 `已思考 3.2 秒`；默认折叠。 | `thinking-start` 创建；`tool-start` 或 `text-start` 时封口。 |
-| **阶段性输出切片 (`flow-step-phase`)** | `Point` 标题 + 铅笔图标 + 读秒 + 折叠 Markdown；默认折叠。 | 首个 `text-delta` 创建；文本段之后再次进入 Thinking（`thinking-start`）或进入工具调用（`toolcall-delta-start` / `tool-start`）时封口；新轮 `text-start` 封口上一段；最终段保留在输出卡。 |
-| **工具调用切片 (`flow-step-tool`)** | 单行中文友好名称 + 参数预览 + 状态徽章 (`running` 琥珀黄 / `done` 翡翠绿 / `failure` 朱红)；默认折叠。 | `tool-start` 创建；`tool-end` 封口并更新状态。 |
+| 切片类型 | 视觉语义与展示规范 | 展开正文与交互细节 | 触发与封口时机 |
+|---|---|---|---|
+| **思维链切片 (`flow-step-thinking`)** | **石墨幽兰冷灰调**（`#f7f6fb` / `#1b1a21`），`Thinking` 手绘胶囊 + 星芒自旋呼吸，动态读秒 `(1.2s)...` ➔ 定格 `(3.2s)`，单行流式预览；默认折叠。 | 细致思考日志流（字号 12px，行高 1.68，石墨淡墨色 `--ink-muted`），柔和内边距与虚线分割。 | `thinking-start` 创建；`tool-start` 或 `text-start` 时封口。 |
+| **阶段性输出切片 (`flow-step-phase`)** | **温润羊皮纸金调**（`#fdfbf5` / `#201d17`），`Point` 手绘暖调胶囊 + 铅笔图标 + 读秒 `已输出 1.2s`；默认折叠。 | 阶段 Markdown 完整渲染（富文本、代码块、列表、引用），内嵌暖调微衬边。 | 首个 `text-delta` 创建；文本段之后再次进入 Thinking（`thinking-start`）或进入工具调用（`toolcall-delta-start` / `tool-start`）时封口；新轮 `text-start` 封口上一段；最终段保留在输出卡。 |
+| **工具调用切片 (`flow-step-tool`)** | **蓝图终端工程调**（`#f2f6fa` / `#141920`），按工具智能映射矢量图标（CLI/文件/搜索/OCR等）+ 中文友好名 + 参数预览 + 三态状态徽章 (`running` 琥珀黄 / `done` 翡翠绿 / `failure` 朱红)；默认折叠。 | 结构化拆分 `入参 · Parameters` 与 `执行结果 · Result`，仿终端代码块包装，右上角提供手绘一键复制与复制成功即时微反馈。 | `tool-start` 创建；`tool-end` 封口并更新状态。 |
 
 ---
 

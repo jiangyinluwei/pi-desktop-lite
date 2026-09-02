@@ -122,6 +122,7 @@ export function initFlowStream(ctx) {
         if (flow.activeThinkingStep.durationEl) {
           flow.activeThinkingStep.durationEl.textContent = flow.activeThinkingStep.durationText;
         }
+        flow.activeThinkingStep.cardEl?.classList.remove("running");
       } else {
         flow.activeThinkingStep.cardEl?.remove();
         if (Array.isArray(flow.currentSteps)) {
@@ -628,6 +629,7 @@ export function initFlowStream(ctx) {
     const elapsed = ((Date.now() - step.startTime) / 1000).toFixed(1);
     step.durationText = `已输出 ${elapsed}s`;
     step.text = sealedText;
+    step.cardEl?.classList.remove("running");
     if (step.durationEl) {
       step.durationEl.textContent = step.durationText;
     }
@@ -723,6 +725,7 @@ export function initFlowStream(ctx) {
         if (flow.activeThinkingStep.durationEl) {
           flow.activeThinkingStep.durationEl.textContent = flow.activeThinkingStep.durationText;
         }
+        flow.activeThinkingStep.cardEl?.classList.remove("running");
       } else {
         flow.activeThinkingStep.cardEl?.remove();
         if (Array.isArray(flow.currentSteps)) {
@@ -749,6 +752,7 @@ export function initFlowStream(ctx) {
         if (flow.activeThinkingStep.durationEl) {
           flow.activeThinkingStep.durationEl.textContent = flow.activeThinkingStep.durationText;
         }
+        flow.activeThinkingStep.cardEl?.classList.remove("running");
       } else {
         flow.activeThinkingStep.cardEl?.remove();
         if (Array.isArray(flow.currentSteps)) {
@@ -775,6 +779,7 @@ export function initFlowStream(ctx) {
         if (flow.activeThinkingStep.durationEl) {
           flow.activeThinkingStep.durationEl.textContent = flow.activeThinkingStep.durationText;
         }
+        flow.activeThinkingStep.cardEl?.classList.remove("running");
       } else {
         flow.activeThinkingStep.cardEl?.remove();
         if (Array.isArray(flow.currentSteps)) {

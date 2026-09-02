@@ -112,6 +112,10 @@ export function initFlowUi(ctx) {
     const raw = String(toolName || "").trim().toLowerCase();
     switch (raw) {
       case "bash":
+      case "powershell":
+      case "terminal":
+      case "cmd":
+      case "execute_command":
         return "BASH 调用";
       case "read_file":
       case "view_file":
@@ -135,9 +139,76 @@ export function initFlowUi(ctx) {
       case "docparser":
       case "ocr":
       case "deword":
+      case "pi-ocr":
+      case "pi-docparser":
         return "文档解析";
+      case "subagent":
+      case "pi-subagents":
+      case "spawn_agent":
+        return "子 Agent 派发";
+      case "memory_retrieve":
+      case "memory_store":
+      case "pi-memory":
+        return "记忆检索";
+      case "context_prune":
+      case "prune_context":
+      case "pai-acp":
+        return "上下文修剪";
+      case "dynamic_workflows":
+      case "execute_workflow":
+        return "动态工作流";
       default:
         return `工具调用 (${toolName || "tool"})`;
+    }
+  };
+
+  /**
+   * 工具手绘矢量图元智能映射
+   * @param {string} toolName
+   * @returns {string} SVG HTML
+   */
+  const getToolIcon = (toolName) => {
+    const raw = String(toolName || "").trim().toLowerCase();
+    switch (raw) {
+      case "bash":
+      case "powershell":
+      case "terminal":
+      case "cmd":
+      case "execute_command":
+        return ICONS.code;
+      case "read_file":
+      case "view_file":
+        return ICONS.document;
+      case "write_to_file":
+      case "edit_file":
+      case "replace_file_content":
+      case "multi_replace_file_content":
+        return ICONS.edit;
+      case "search_web":
+      case "web_search":
+      case "read_url_content":
+      case "grep_search":
+        return ICONS.search;
+      case "list_dir":
+        return ICONS.folder;
+      case "docparser":
+      case "ocr":
+      case "deword":
+      case "pi-ocr":
+      case "pi-docparser":
+        return ICONS.eye;
+      case "ask_question":
+        return ICONS.chat;
+      case "subagent":
+      case "pi-subagents":
+      case "spawn_agent":
+        return ICONS.bolt;
+      case "memory_retrieve":
+      case "memory_store":
+      case "pi-memory":
+        return ICONS.sparkle;
+      default:
+        return ICONS.tool;
     }
   };
 
@@ -148,25 +219,147 @@ export function initFlowUi(ctx) {
    * @returns {string}
    */
   const getToolShortSummary = (toolName, args = null) => {
-    if (!args || typeof args !== "object") return "";
-    if (args.command || args.CommandLine) {
-      const cmd = String(args.command || args.CommandLine || "").trim();
-      return cmd.length > 36 ? cmd.slice(0, 34) + "..." : cmd;
+    if (!args) return "";
+    let argObj = args;
+    if (typeof args === "string") {
+      try {
+        argObj = JSON.parse(args);
+      } catch {
+        const trimmed = args.trim();
+        return trimmed.length > 36 ? trimmed.slice(0, 34) + "..." : trimmed;
+      }
     }
-    if (args.path || args.TargetPath || args.TargetFile || args.AbsolutePath) {
-      const p = String(args.path || args.TargetPath || args.TargetFile || args.AbsolutePath || "").trim();
+    if (typeof argObj !== "object" || !argObj) return "";
+    if (argObj.command || argObj.CommandLine) {
+      const cmd = String(argObj.command || argObj.CommandLine || "").trim();
+      return cmd.length > 38 ? cmd.slice(0, 36) + "..." : cmd;
+    }
+    if (argObj.path || argObj.TargetPath || argObj.TargetFile || argObj.AbsolutePath) {
+      const p = String(argObj.path || argObj.TargetPath || argObj.TargetFile || argObj.AbsolutePath || "").trim();
       const basename = p.split(/[/\\]/).pop() || p;
       return basename;
     }
-    if (args.query || args.Query) {
-      const q = String(args.query || args.Query || "").trim();
-      return q.length > 24 ? q.slice(0, 22) + "..." : q;
+    if (argObj.query || argObj.Query) {
+      const q = String(argObj.query || argObj.Query || "").trim();
+      return q.length > 26 ? q.slice(0, 24) + "..." : q;
     }
     return "";
   };
 
   /**
-   * 创建思维切片卡片（单行流式刷新，常态折叠，任何时候不自动展开）
+   * 格式化入参代码块 HTML（带手绘复制按钮）
+   * @param {any} args
+   * @returns {string}
+   */
+  const formatToolArgumentsHtml = (args) => {
+    if (!args) return "";
+    let formatted = "";
+    if (typeof args === "string") {
+      try {
+        const parsed = JSON.parse(args);
+        formatted = JSON.stringify(parsed, null, 2);
+      } catch {
+        formatted = args;
+      }
+    } else {
+      formatted = JSON.stringify(args, null, 2);
+    }
+    if (!formatted.trim()) return "";
+    return `
+      <div class="tool-section tool-args-section">
+        <div class="tool-section-bar">
+          <span class="tool-section-title">入参 · Parameters</span>
+          <button type="button" class="tool-copy-btn" title="复制入参" data-copy-text="${escapeHtml(formatted)}">
+            ${ICONS.copy}
+            <span class="copy-tip">复制</span>
+          </button>
+        </div>
+        <div class="tool-code-container">
+          <pre class="tool-code-pre tool-args-pre"><code>${escapeHtml(formatted)}</code></pre>
+        </div>
+      </div>
+    `;
+  };
+
+  /**
+   * 格式化执行结果代码块 HTML（带手绘复制按钮）
+   * @param {any} result
+   * @returns {string}
+   */
+  const formatToolResultHtml = (result) => {
+    if (result === null || result === undefined || result === "") return "";
+    let formatted = "";
+    if (typeof result === "string") {
+      try {
+        const parsed = JSON.parse(result);
+        formatted = JSON.stringify(parsed, null, 2);
+      } catch {
+        formatted = result;
+      }
+    } else {
+      formatted = JSON.stringify(result, null, 2);
+    }
+    if (!formatted.trim()) return "";
+    return `
+      <div class="tool-section tool-result-section">
+        <div class="tool-section-bar">
+          <span class="tool-section-title">执行结果 · Result</span>
+          <button type="button" class="tool-copy-btn" title="复制结果" data-copy-text="${escapeHtml(formatted)}">
+            ${ICONS.copy}
+            <span class="copy-tip">复制</span>
+          </button>
+        </div>
+        <div class="tool-code-container">
+          <pre class="tool-code-pre tool-result-pre"><code>${escapeHtml(formatted)}</code></pre>
+        </div>
+      </div>
+    `;
+  };
+
+  /**
+   * 渲染工具卡片展开正文的结构化内容
+   * @param {any} args
+   * @param {any} result
+   * @param {string} [rawContent=""]
+   * @returns {string}
+   */
+  const renderToolBodyInnerHtml = (args, result, rawContent = "") => {
+    const argsHtml = formatToolArgumentsHtml(args);
+    const resultHtml = formatToolResultHtml(result);
+    if (argsHtml || resultHtml) {
+      return `
+        <div class="tool-body-structured">
+          ${argsHtml}
+          ${resultHtml}
+        </div>
+      `;
+    }
+    if (rawContent && rawContent.trim()) {
+      return `
+        <div class="tool-code-container">
+          <pre class="tool-code-pre"><code>${escapeHtml(rawContent)}</code></pre>
+        </div>
+      `;
+    }
+    return `<div class="tool-empty-tip">调用已就绪，等待执行回传…</div>`;
+  };
+
+  /**
+   * 刷新工具状态徽章
+   * @param {HTMLElement} badgeEl
+   * @param {string} status
+   */
+  const updateToolBadge = (badgeEl, status) => {
+    if (!badgeEl) return;
+    const isErr = status === "error" || status === "failure" || status === "failed";
+    const isDone = status === "done";
+    const badgeLabel = isErr ? "failed" : (isDone ? "done" : "running");
+    badgeEl.className = `tool-status-badge ${badgeLabel}`;
+    badgeEl.innerHTML = `<span class="badge-dot" aria-hidden="true"></span><span class="badge-text">${escapeHtml(badgeLabel)}</span>`;
+  };
+
+  /**
+   * 创建思维切片卡片（石墨幽兰冷灰质感，单行流式刷新，常态折叠，任何时候不自动展开）
    */
   const createThinkingStepCard = ({
     text = "",
@@ -174,23 +367,24 @@ export function initFlowUi(ctx) {
     isOpen = false, // 铁律：默认 false，任何时候不自动展开
   } = {}) => {
     const cardEl = document.createElement("div");
-    cardEl.className = `flow-step-card flow-step-thinking ${isOpen ? "open" : ""}`;
+    const isRunning = durationText.includes("...");
+    cardEl.className = `flow-step-card flow-step-thinking ${isRunning ? "running" : ""} ${isOpen ? "open" : "collapsed"}`;
 
     const previewText = text ? text.replace(/[\r\n\t]+/g, " ").trim() : "";
 
     cardEl.innerHTML = `
-      <div class="flow-step-header" role="button" tabindex="0" aria-expanded="${isOpen ? "true" : "false"}">
+      <div class="flow-step-header thinking-header" role="button" tabindex="0" aria-expanded="${isOpen ? "true" : "false"}">
         <div class="flow-step-header-left">
-          <span class="flow-step-icon" aria-hidden="true">${ICONS.sparkle}</span>
-          <span class="flow-step-title">Thinking</span>
-          <span class="flow-step-duration">${escapeHtml(durationText)}</span>
-          <span class="flow-step-preview">${escapeHtml(previewText)}</span>
+          <span class="flow-step-icon thinking-icon" aria-hidden="true">${ICONS.sparkle}</span>
+          <span class="flow-step-badge thinking-badge">Thinking</span>
+          <span class="flow-step-duration thinking-duration">${escapeHtml(durationText)}</span>
+          <span class="flow-step-preview thinking-preview">${escapeHtml(previewText)}</span>
         </div>
         <div class="flow-step-header-right">
           <span class="flow-step-arrow" aria-hidden="true">${ICONS.chevronDown}</span>
         </div>
       </div>
-      <div class="flow-step-body">
+      <div class="flow-step-body thinking-body">
         <div class="thinking-text-stream">${escapeHtml(text)}</div>
       </div>
     `;
@@ -205,12 +399,14 @@ export function initFlowUi(ctx) {
       headerEl.addEventListener("click", (e) => {
         e.stopPropagation();
         const open = cardEl.classList.toggle("open");
+        cardEl.classList.toggle("collapsed", !open);
         headerEl.setAttribute("aria-expanded", open ? "true" : "false");
       });
       headerEl.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           const open = cardEl.classList.toggle("open");
+          cardEl.classList.toggle("collapsed", !open);
           headerEl.setAttribute("aria-expanded", open ? "true" : "false");
         }
       });
@@ -227,8 +423,8 @@ export function initFlowUi(ctx) {
   };
 
   /**
-   * 创建阶段性输出切片卡片（Point 卡：标题 + 读秒 + 输出内容）
-   * 与 Thinking 卡同构：单行流式紧凑呈现，常态折叠，任何时候不自动展开。
+   * 创建阶段性输出切片卡片（Point 暖羊皮纸金质感：标题 + 读秒 + 输出内容）
+   * 单行流式紧凑呈现，常态折叠，任何时候不自动展开。
    * 流式期间内容在最终输出卡中可见，封口后整体折叠进本卡片正文。
    */
   const createPhaseStepCard = ({
@@ -238,24 +434,25 @@ export function initFlowUi(ctx) {
     renderAsMarkdown = true,
   } = {}) => {
     const cardEl = document.createElement("div");
-    cardEl.className = `flow-step-card flow-step-thinking flow-step-phase ${isOpen ? "open" : ""}`;
+    const isRunning = durationText.includes("...");
+    cardEl.className = `flow-step-card flow-step-phase ${isRunning ? "running" : ""} ${isOpen ? "open" : "collapsed"}`;
 
     const previewText = text ? text.replace(/[\r\n\t]+/g, " ").trim() : "";
 
     cardEl.innerHTML = `
-      <div class="flow-step-header" role="button" tabindex="0" aria-expanded="${isOpen ? "true" : "false"}">
+      <div class="flow-step-header phase-header" role="button" tabindex="0" aria-expanded="${isOpen ? "true" : "false"}">
         <div class="flow-step-header-left">
-          <span class="flow-step-icon" aria-hidden="true">${ICONS.edit}</span>
-          <span class="flow-step-title">Point</span>
-          <span class="flow-step-duration">${escapeHtml(durationText)}</span>
-          <span class="flow-step-preview">${escapeHtml(previewText)}</span>
+          <span class="flow-step-icon phase-icon" aria-hidden="true">${ICONS.edit}</span>
+          <span class="flow-step-badge phase-badge">Point</span>
+          <span class="flow-step-duration phase-duration">${escapeHtml(durationText)}</span>
+          <span class="flow-step-preview phase-preview">${escapeHtml(previewText)}</span>
         </div>
         <div class="flow-step-header-right">
           <span class="flow-step-arrow" aria-hidden="true">${ICONS.chevronDown}</span>
         </div>
       </div>
-      <div class="flow-step-body">
-        <div class="thinking-text-stream flow-phase-md">${renderAsMarkdown ? renderMarkdown(text) : escapeHtml(text)}</div>
+      <div class="flow-step-body phase-body">
+        <div class="flow-phase-md">${renderAsMarkdown ? renderMarkdown(text) : escapeHtml(text)}</div>
       </div>
     `;
 
@@ -263,18 +460,20 @@ export function initFlowUi(ctx) {
     const durationEl = cardEl.querySelector(".flow-step-duration");
     const previewEl = cardEl.querySelector(".flow-step-preview");
     const bodyEl = cardEl.querySelector(".flow-step-body");
-    const textStreamEl = cardEl.querySelector(".thinking-text-stream");
+    const textStreamEl = cardEl.querySelector(".flow-phase-md");
 
     if (headerEl) {
       headerEl.addEventListener("click", (e) => {
         e.stopPropagation();
         const open = cardEl.classList.toggle("open");
+        cardEl.classList.toggle("collapsed", !open);
         headerEl.setAttribute("aria-expanded", open ? "true" : "false");
       });
       headerEl.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           const open = cardEl.classList.toggle("open");
+          cardEl.classList.toggle("collapsed", !open);
           headerEl.setAttribute("aria-expanded", open ? "true" : "false");
         }
       });
@@ -291,7 +490,7 @@ export function initFlowUi(ctx) {
   };
 
   /**
-   * 创建工具调用切片卡片（单行简略展示，常态折叠，任何时候不自动展开）
+   * 创建工具调用切片卡片（蓝图工程质感，结构化入参与结果，常态折叠，任何时候不自动展开）
    */
   const createToolStepCard = ({
     id = "",
@@ -302,36 +501,36 @@ export function initFlowUi(ctx) {
     isOpen = false, // 铁律：默认 false，任何时候不自动展开
   } = {}) => {
     const cardEl = document.createElement("div");
-    const statusClass = status === "error" || status === "failure" ? "error failed" : (status === "done" ? "done" : "running");
+    const isErr = status === "error" || status === "failure" || status === "failed";
+    const isDone = status === "done";
+    const statusClass = isErr ? "error failed" : (isDone ? "done" : "running");
+    const badgeLabel = isErr ? "failed" : (isDone ? "done" : "running");
+
     cardEl.className = `flow-step-card flow-step-tool tool-card ${statusClass} ${isOpen ? "open" : "collapsed"}`;
     if (id) cardEl.id = `tool-${id}`;
 
     const friendlyName = getFriendlyToolName(name);
+    const toolIconSvg = getToolIcon(name);
     const summary = getToolShortSummary(name, args);
-
-    let bodyContent = "";
-    if (args) {
-      bodyContent += `[入参 / Arguments]\n${typeof args === "string" ? args : JSON.stringify(args, null, 2)}\n\n`;
-    }
-    if (result) {
-      bodyContent += `[结果 / Result]\n${typeof result === "string" ? result : JSON.stringify(result, null, 2)}`;
-    }
-
-    const badgeLabel = status === "error" || status === "failure" || status === "failed" ? "failure" : (status === "done" ? "done" : "running");
 
     cardEl.innerHTML = `
       <div class="flow-step-header tool-header" role="button" tabindex="0" aria-expanded="${isOpen ? "true" : "false"}">
         <div class="flow-step-header-left">
-          <span class="flow-step-icon tool-icon" aria-hidden="true">${ICONS.tool}</span>
+          <span class="flow-step-icon tool-icon" aria-hidden="true">${toolIconSvg}</span>
           <span class="flow-step-title tool-name">${escapeHtml(friendlyName)}</span>
-          ${summary ? `<span class="flow-step-preview">${escapeHtml(summary)}</span>` : ""}
+          ${summary ? `<span class="flow-step-preview tool-preview">${escapeHtml(summary)}</span>` : ""}
         </div>
         <div class="flow-step-header-right tool-header-right">
-          <span class="tool-status-badge ${badgeLabel}">${escapeHtml(badgeLabel)}</span>
+          <span class="tool-status-badge ${badgeLabel}">
+            <span class="badge-dot" aria-hidden="true"></span>
+            <span class="badge-text">${escapeHtml(badgeLabel)}</span>
+          </span>
           <span class="flow-step-arrow tool-collapse-arrow" aria-hidden="true">${ICONS.chevronDown}</span>
         </div>
       </div>
-      <div class="flow-step-body tool-body">${escapeHtml(bodyContent)}</div>
+      <div class="flow-step-body tool-body">
+        ${renderToolBodyInnerHtml(args, result)}
+      </div>
     `;
 
     const headerEl = cardEl.querySelector(".flow-step-header");
@@ -355,6 +554,32 @@ export function initFlowUi(ctx) {
         }
       });
     }
+
+    // 绑定一键复制入参/结果
+    cardEl.addEventListener("click", async (e) => {
+      const copyBtn = e.target.closest(".tool-copy-btn");
+      if (copyBtn) {
+        e.stopPropagation();
+        const textToCopy = copyBtn.dataset.copyText || "";
+        if (textToCopy && navigator.clipboard) {
+          try {
+            await navigator.clipboard.writeText(textToCopy);
+            const tip = copyBtn.querySelector(".copy-tip");
+            if (tip) {
+              const prev = tip.textContent;
+              tip.textContent = "已复制";
+              copyBtn.classList.add("copied");
+              setTimeout(() => {
+                tip.textContent = prev;
+                copyBtn.classList.remove("copied");
+              }, 1400);
+            }
+          } catch (err) {
+            console.warn("[FlowUi] Tool copy failed:", err);
+          }
+        }
+      }
+    });
 
     return {
       cardEl,
@@ -543,7 +768,7 @@ export function initFlowUi(ctx) {
       }
     }
 
-    // 重新绑定历史工具卡片的点击折叠
+    // 重新绑定历史工具卡片的点击折叠与一键复制
     stepsContainerEl.querySelectorAll(".tool-card, .flow-step-card").forEach((card) => {
       const header = card.querySelector(".flow-step-header") || card.querySelector(".tool-header");
       if (header && !header.dataset.bound) {
@@ -553,6 +778,32 @@ export function initFlowUi(ctx) {
           card.classList.toggle("collapsed", !open);
           header.setAttribute("aria-expanded", open ? "true" : "false");
         });
+      }
+    });
+
+    // 历史步骤卡片一键复制委托
+    stepsContainerEl.addEventListener("click", async (e) => {
+      const copyBtn = e.target.closest(".tool-copy-btn");
+      if (copyBtn) {
+        e.stopPropagation();
+        const textToCopy = copyBtn.dataset.copyText || "";
+        if (textToCopy && navigator.clipboard) {
+          try {
+            await navigator.clipboard.writeText(textToCopy);
+            const tip = copyBtn.querySelector(".copy-tip");
+            if (tip) {
+              const prev = tip.textContent;
+              tip.textContent = "已复制";
+              copyBtn.classList.add("copied");
+              setTimeout(() => {
+                tip.textContent = prev;
+                copyBtn.classList.remove("copied");
+              }, 1400);
+            }
+          } catch (err) {
+            console.warn("[FlowUi] Tool copy failed:", err);
+          }
+        }
       }
     });
 
@@ -1037,6 +1288,11 @@ export function initFlowUi(ctx) {
   api.renderMarkdown = renderMarkdown;
   api.getFriendlyToolName = getFriendlyToolName;
   api.getToolShortSummary = getToolShortSummary;
+  api.getToolIcon = getToolIcon;
+  api.formatToolArgumentsHtml = formatToolArgumentsHtml;
+  api.formatToolResultHtml = formatToolResultHtml;
+  api.renderToolBodyInnerHtml = renderToolBodyInnerHtml;
+  api.updateToolBadge = updateToolBadge;
   api.createThinkingStepCard = createThinkingStepCard;
   api.createToolStepCard = createToolStepCard;
   api.createPhaseStepCard = createPhaseStepCard;

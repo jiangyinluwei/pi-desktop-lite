@@ -26,6 +26,28 @@
   --titlebar-btn-active: rgba(28, 26, 23, 0.12);
   --titlebar-close-hover: #dc2626;
   --titlebar-close-text: #ffffff;
+
+  /* 步骤切片专属语义设计体系 (Thinking / Point / Tool) - 浅色纸质素描 */
+  --sketch-step-thinking-bg: #f7f6fb;
+  --sketch-step-thinking-border: rgba(168, 160, 190, 0.45);
+  --sketch-step-thinking-border-hover: rgba(125, 115, 160, 0.75);
+  --sketch-step-thinking-accent: #6d5f8a;
+  --sketch-step-thinking-badge-bg: rgba(109, 95, 138, 0.08);
+  --sketch-step-thinking-badge-border: rgba(109, 95, 138, 0.22);
+
+  --sketch-step-phase-bg: #fdfbf5;
+  --sketch-step-phase-border: rgba(217, 175, 110, 0.50);
+  --sketch-step-phase-border-hover: rgba(180, 130, 60, 0.78);
+  --sketch-step-phase-accent: #9a6723;
+  --sketch-step-phase-badge-bg: rgba(180, 120, 40, 0.09);
+  --sketch-step-phase-badge-border: rgba(180, 120, 40, 0.26);
+
+  --sketch-step-tool-bg: #f2f6fa;
+  --sketch-step-tool-border: rgba(140, 170, 200, 0.48);
+  --sketch-step-tool-border-hover: rgba(90, 130, 170, 0.78);
+  --sketch-step-tool-accent: #2563eb;
+  --sketch-step-tool-code-bg: #eaf0f7;
+  --sketch-step-tool-code-border: rgba(175, 195, 218, 0.60);
 }
 
 :root[data-theme="dark"] {
@@ -53,6 +75,28 @@
   --titlebar-btn-active: rgba(243, 239, 230, 0.15);
   --titlebar-close-hover: #ef4444;
   --titlebar-close-text: #ffffff;
+
+  /* 步骤切片专属语义设计体系 (Thinking / Point / Tool) - 深色炭黑素描 */
+  --sketch-step-thinking-bg: #1b1a21;
+  --sketch-step-thinking-border: rgba(95, 88, 120, 0.48);
+  --sketch-step-thinking-border-hover: rgba(150, 140, 188, 0.78);
+  --sketch-step-thinking-accent: #b8a8d6;
+  --sketch-step-thinking-badge-bg: rgba(184, 168, 214, 0.12);
+  --sketch-step-thinking-badge-border: rgba(184, 168, 214, 0.28);
+
+  --sketch-step-phase-bg: #201d17;
+  --sketch-step-phase-border: rgba(145, 110, 60, 0.50);
+  --sketch-step-phase-border-hover: rgba(220, 170, 95, 0.78);
+  --sketch-step-phase-accent: #f0b562;
+  --sketch-step-phase-badge-bg: rgba(240, 181, 98, 0.12);
+  --sketch-step-phase-badge-border: rgba(240, 181, 98, 0.30);
+
+  --sketch-step-tool-bg: #141920;
+  --sketch-step-tool-border: rgba(65, 85, 115, 0.50);
+  --sketch-step-tool-border-hover: rgba(115, 150, 190, 0.78);
+  --sketch-step-tool-accent: #60a5fa;
+  --sketch-step-tool-code-bg: #0e1218;
+  --sketch-step-tool-code-border: rgba(45, 60, 85, 0.65);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -81,6 +125,28 @@
     --titlebar-btn-active: rgba(243, 239, 230, 0.15);
     --titlebar-close-hover: #ef4444;
     --titlebar-close-text: #ffffff;
+
+    /* 步骤切片专属语义设计体系 (Thinking / Point / Tool) - 系统跟随深色 */
+    --sketch-step-thinking-bg: #1b1a21;
+    --sketch-step-thinking-border: rgba(95, 88, 120, 0.48);
+    --sketch-step-thinking-border-hover: rgba(150, 140, 188, 0.78);
+    --sketch-step-thinking-accent: #b8a8d6;
+    --sketch-step-thinking-badge-bg: rgba(184, 168, 214, 0.12);
+    --sketch-step-thinking-badge-border: rgba(184, 168, 214, 0.28);
+
+    --sketch-step-phase-bg: #201d17;
+    --sketch-step-phase-border: rgba(145, 110, 60, 0.50);
+    --sketch-step-phase-border-hover: rgba(220, 170, 95, 0.78);
+    --sketch-step-phase-accent: #f0b562;
+    --sketch-step-phase-badge-bg: rgba(240, 181, 98, 0.12);
+    --sketch-step-phase-badge-border: rgba(240, 181, 98, 0.30);
+
+    --sketch-step-tool-bg: #141920;
+    --sketch-step-tool-border: rgba(65, 85, 115, 0.50);
+    --sketch-step-tool-border-hover: rgba(115, 150, 190, 0.78);
+    --sketch-step-tool-accent: #60a5fa;
+    --sketch-step-tool-code-bg: #0e1218;
+    --sketch-step-tool-code-border: rgba(45, 60, 85, 0.65);
   }
 }
 

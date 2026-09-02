@@ -325,18 +325,22 @@ export function initFlowPipeline(ctx) {
     if (!isForegroundStreamEvent()) return;
     const data = e.detail;
     const card = flow.renderedToolCards.get(data.toolCallId);
-    if (card) {
-      const body = card.querySelector(".flow-step-body") || card.querySelector(".tool-body");
-      if (body && data.partialResult) {
-        const text = typeof data.partialResult === "string" ? data.partialResult : JSON.stringify(data.partialResult, null, 2);
-        body.textContent = text;
-      }
-    }
     const matchingStep = Array.isArray(flow.currentSteps)
       ? flow.currentSteps.find((s) => s.type === "tool" && s.id === data.toolCallId)
       : null;
     if (matchingStep) {
       matchingStep.result = data.partialResult;
+    }
+    if (card) {
+      const body = card.querySelector(".flow-step-body") || card.querySelector(".tool-body");
+      if (body) {
+        if (typeof api.renderToolBodyInnerHtml === "function") {
+          body.innerHTML = api.renderToolBodyInnerHtml(matchingStep?.args, data.partialResult);
+        } else if (data.partialResult) {
+          const text = typeof data.partialResult === "string" ? data.partialResult : JSON.stringify(data.partialResult, null, 2);
+          body.textContent = text;
+        }
+      }
     }
   });
 
@@ -347,35 +351,6 @@ export function initFlowPipeline(ctx) {
     const isError = Boolean(data.isError);
     const statusText = isError ? "failure" : "done";
 
-    if (card) {
-      card.classList.remove("running");
-      card.classList.remove("done", "error", "failed", "failure");
-      card.classList.add(isError ? "error" : "done");
-      if (isError) card.classList.add("failed");
-
-      const badge = card.querySelector(".tool-status-badge");
-      if (badge) {
-        badge.className = `tool-status-badge ${statusText}`;
-        badge.textContent = statusText;
-      }
-
-      const body = card.querySelector(".flow-step-body") || card.querySelector(".tool-body");
-      if (body) {
-        let fullContent = "";
-        const matchingStep = Array.isArray(flow.currentSteps)
-          ? flow.currentSteps.find((s) => s.type === "tool" && s.id === data.toolCallId)
-          : null;
-        if (matchingStep?.args) {
-          fullContent += `[入参 / Arguments]\n${typeof matchingStep.args === "string" ? matchingStep.args : JSON.stringify(matchingStep.args, null, 2)}\n\n`;
-        }
-        if (data.result) {
-          const resText = typeof data.result === "string" ? data.result : JSON.stringify(data.result, null, 2);
-          fullContent += `[结果 / Result]\n${resText}`;
-        }
-        body.textContent = fullContent || (typeof data.result === "string" ? data.result : JSON.stringify(data.result || {}, null, 2));
-      }
-    }
-
     const matchingStep = Array.isArray(flow.currentSteps)
       ? flow.currentSteps.find((s) => s.type === "tool" && s.id === data.toolCallId)
       : null;
@@ -383,6 +358,40 @@ export function initFlowPipeline(ctx) {
       matchingStep.status = statusText;
       matchingStep.result = data.result;
       matchingStep.is_error = isError;
+    }
+
+    if (card) {
+      card.classList.remove("running");
+      card.classList.remove("done", "error", "failed", "failure");
+      card.classList.add(isError ? "failed" : "done");
+      if (isError) card.classList.add("error");
+
+      const badge = card.querySelector(".tool-status-badge");
+      if (badge) {
+        if (typeof api.updateToolBadge === "function") {
+          api.updateToolBadge(badge, statusText);
+        } else {
+          badge.className = `tool-status-badge ${statusText}`;
+          badge.textContent = statusText;
+        }
+      }
+
+      const body = card.querySelector(".flow-step-body") || card.querySelector(".tool-body");
+      if (body) {
+        if (typeof api.renderToolBodyInnerHtml === "function") {
+          body.innerHTML = api.renderToolBodyInnerHtml(matchingStep?.args, data.result);
+        } else {
+          let fullContent = "";
+          if (matchingStep?.args) {
+            fullContent += `[入参 / Arguments]\n${typeof matchingStep.args === "string" ? matchingStep.args : JSON.stringify(matchingStep.args, null, 2)}\n\n`;
+          }
+          if (data.result) {
+            const resText = typeof data.result === "string" ? data.result : JSON.stringify(data.result, null, 2);
+            fullContent += `[结果 / Result]\n${resText}`;
+          }
+          body.textContent = fullContent || (typeof data.result === "string" ? data.result : JSON.stringify(data.result || {}, null, 2));
+        }
+      }
     }
 
     if (flow.activeToolStep?.id === data.toolCallId) {
