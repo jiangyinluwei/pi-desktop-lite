@@ -497,6 +497,8 @@ export class TaskManager extends EventTarget {
             if (currentTurn) {
               currentTurn.status = "streaming";
               currentTurn.responseText += evt.delta || "";
+              // 记录当前文本段起始时间（阶段性输出 Point 卡读秒用）
+              if (!currentTurn.textStartedAt) currentTurn.textStartedAt = Date.now();
             }
           }
         }
@@ -516,6 +518,19 @@ export class TaskManager extends EventTarget {
           currentTurn.status = "tool_exec";
           currentTurn.toolCalls.push({ ...newTool });
           if (!Array.isArray(currentTurn.steps)) currentTurn.steps = [];
+          // 阶段性输出封口：工具开始前，将已累积的中间段文本沉淀为 Point 步骤切片
+          if (currentTurn.responseText && currentTurn.responseText.trim()) {
+            const segElapsed = currentTurn.textStartedAt
+              ? ((Date.now() - currentTurn.textStartedAt) / 1000).toFixed(1)
+              : null;
+            currentTurn.steps.push({
+              type: "text",
+              text: currentTurn.responseText,
+              durationText: segElapsed ? `已输出 ${segElapsed}s` : "已输出",
+            });
+            currentTurn.responseText = "";
+          }
+          currentTurn.textStartedAt = null;
           currentTurn.steps.push({
             type: "tool",
             id: data.toolCallId,

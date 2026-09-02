@@ -1,7 +1,7 @@
 ---
 name: flow-interaction-pattern
 description: |
-  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-工具1-思维2-工具2...」真实因果链条一段一段拼接；③Flow 界面任意区域滚轮事件委托至最外层滚动容器；④多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑤多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑥模型自动重连切换自愈流水线 (ModelFailoverEngine)；⑦输出卡底部手绘风格的保存操作栏。当用户提出"flow界面交互"、"思维链流式展示"、"工具调用简略"、"单行思维"、"步骤切片"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"时使用此技能。
+  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/阶段性输出 Point 切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-Point1-工具1-Point2-工具2...」真实因果链条一段一段拼接；③Flow 界面任意区域滚轮事件委托至最外层滚动容器；④多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑤多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑥模型自动重连切换自愈流水线 (ModelFailoverEngine)；⑦输出卡底部手绘风格的保存操作栏。当用户提出"flow界面交互"、"思维链流式展示"、"阶段性输出"、"Point卡"、"工具调用简略"、"单行思维"、"步骤切片"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"时使用此技能。
 ---
 
 # Flow 界面交互逻辑规范 (Flow Interaction Pattern)
@@ -25,8 +25,9 @@ Flow 界面卡片层级如下（从上到下）：
   │                   ├─ flow-injection-capsule      Inner-Skill 注入胶囊（不可折叠）
   │                   ├─ flow-route-capsule          路由目标项目胶囊（不可折叠）
   │                   ├─ flow-failover-capsule       自动重连/切换进度胶囊（不可折叠）
-  │                   ├─ flow-steps-container        【时序步骤流容器】(思维1-工具1-思维2-工具2...)
+  │                   ├─ flow-steps-container        【时序步骤流容器】(思维1-Point1-工具1-Point2-工具2...)
   │                   │    ├─ flow-step-card.flow-step-thinking   思维切片（单行流式刷新，可折叠，绝不自动展开）
+  │                   │    ├─ flow-step-card.flow-step-phase     阶段性输出 Point 切片（Point+读秒+折叠内容，绝不自动展开）
   │                   │    └─ flow-step-card.flow-step-tool       工具切片（单行名称+状态，可折叠，绝不自动展开）
   │                   └─ flow-response-card          最终输出正文（永不折叠 Markdown 输出）
   ├─ flow-turn-nav        ← 右侧上下轮次定位导航（absolute，右移到 flow 内容外，多轮 >= 2 时显现）
@@ -35,7 +36,7 @@ Flow 界面卡片层级如下（从上到下）：
 
 **铁律**：
 1. `flow-response-card`（最终输出卡）**永远不折叠**；
-2. 所有过程框体（`flow-step-thinking` 思维切片与 `flow-step-tool` 工具切片）**常态保持单行紧凑折叠状态，在任何时候（启动、流式、结束）均绝不自动展开**，用户可随时手动点击 Header 展开查阅详情；
+2. 所有过程框体（`flow-step-thinking` 思维切片、`flow-step-phase` 阶段性输出 Point 切片与 `flow-step-tool` 工具切片）**常态保持单行紧凑折叠状态，在任何时候（启动、流式、结束）均绝不自动展开**，用户可随时手动点击 Header 展开查阅详情；
 3. 思维与工具按真实 ReAct 循环时序**一段一段交织拼接**（`思维1 ➔ 工具1 ➔ 思维2 ➔ 工具2 ➔ ...`）。
 
 ---
@@ -67,7 +68,20 @@ Flow 界面卡片层级如下（从上到下）：
 </div>
 ```
 
-### 1.2 工具调用切片（`flow-step-tool`）
+### 1.2 阶段性输出切片（`flow-step-phase` / Point 卡）
+
+- **背景**：模型在工具调用之间产出的多段"阶段性输出"（中间叙述、计划、小结等）不再堆叠在最终输出卡中，而是与 Thinking/工具切片同构排列为独立的 Point 步骤卡；最终输出卡永远只保留最后一段（真正的最终回答）。
+- **信息格式**：`Point` 标题（手绘铅笔图标 `ICONS.edit`）+ 动态读秒（流式期间 `输出中 (1.2s)...`，封口后定格 `已输出 3.2s`）+ 折叠的输出内容（封口后正文以 Markdown 渲染，`.flow-phase-md` 覆盖父级 `pre-wrap`）。
+- **流式期间行为**：首个 `text-delta` 创建 Point 卡（仅标题位+读秒，默认折叠）；实际内容仍在最终输出卡中实时流式可见（不折叠，保证阅读体验）；`flow.currentResponseText` 同步累积。
+- **封口时机 (`sealActivePhaseOutput`)**：
+  1. `tool-start`（进入工具调用边界，flow-pipeline.js 中在创建工具卡之前调用）；
+  2. 新一轮 `text-start`（上一段未结清时兜底封口，flow-stream.js 监听器顶部调用）；
+  封口动作：内容折叠进 Point 卡正文（Markdown 渲染）、读秒定格、清空 `flow.currentResponseText` 并重置最终输出卡为仅光标，承接下一段输出。
+- **最终段识别 (`finalizeStream`)**：若 `agent-end` 时仍存在未封口的 Point 卡，说明它是本轮最终输出段 → 移除 Point 卡与步骤快照条目，内容保留在最终输出卡中（永不折叠）。
+- **历史还原**：步骤快照 `{ type: "text", text, durationText }`；`createFlowTurnGroupElement` 的 steps 渲染分支必须在 thinking 回退分支（`step.text` 误判）之前优先判定 `step.type === "text"`。
+- **数据侧镜像 (task-manager.js)**：`tool_execution_start` 时将已累积的 `currentTurn.responseText` 封口为 `{ type: "text" }` 步骤并重置 `responseText`（配 `textStartedAt` 读秒），保持任务数据与 UI 步骤流一致。
+
+### 1.3 工具调用切片（`flow-step-tool`）
 
 - **单行友好提醒**：自动映射友好工具名（如 `BASH 调用`、`Web 查询`、`读取文件`、`写入文件` 等），展示简短摘要（如命令或文件路径）；
 - **状态徽章**：右侧显现 `running`（琥珀黄）、`done`（翡翠绿）、`failure`（朱红）；
@@ -99,12 +113,13 @@ Flow 界面卡片层级如下（从上到下）：
 | 触发事件 | 步骤切片动作 |
 |---|---|
 | `thinking-start` / `thinking-delta` | 若当前无活跃思维切片，创建新思维切片（默认折叠）；实时单行刷新预览文本与秒表 |
-| `tool-start` (如 bash) | 封口上一段思维切片；创建新工具切片（单行 running，默认折叠） |
+| `tool-start` (如 bash) | 封口上一段思维切片与阶段性输出 Point 切片；创建新工具切片（单行 running，默认折叠） |
 | `tool-update` | 更新当前工具切片的执行结果文本 |
 | `tool-end` | 更新当前工具切片状态为 `done` 或 `failure`；封口工具切片 |
 | 工具结束后再次 `thinking-start` | 自动开启下一个思维切片（思维#2，默认折叠） |
-| `text-start` / `text-delta` | 封口所有前序切片，展开并在下方流式输出最终回答卡片 |
-| `agent-end` | 结算定格所有步骤切片，沉淀多轮步骤快照至历史记录 |
+| `text-start` | 封口所有前序切片（含未结清的阶段性输出 Point 卡）；收起所有已完成工具卡片 |
+| `text-delta` | 首增量创建 Point 卡（标题+读秒）；内容在最终输出卡实时流式渲染；预览单行刷新 |
+| `agent-end` | 未封口 Point 卡 = 最终输出段 → 移除 Point 卡保留最终输出；结算定格所有步骤切片，沉淀多轮步骤快照至历史记录 |
 
 ## 📌 3. Flow 界面全区域滚轮委托
 

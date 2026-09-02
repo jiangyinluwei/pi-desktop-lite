@@ -571,6 +571,15 @@
   animation: sketchFadeIn 0.2s ease-out;
 }
 
+/* 阶段性输出切片 (Point 卡) 正文：渲染 Markdown，覆盖父级 pre-wrap */
+.flow-step-body .flow-phase-md {
+  white-space: normal;
+  font-size: 12.5px;
+}
+.flow-step-body .flow-phase-md .md-p:last-child {
+  margin-bottom: 0;
+}
+
 /* AI Agent 思考过程卡片（向后兼容旧容器） */
 .agent-thinking-card {
   background: var(--sketch-box-bg);

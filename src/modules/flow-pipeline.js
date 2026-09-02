@@ -200,6 +200,12 @@ export function initFlowPipeline(ctx) {
       flow.thinkingTimerInterval = null;
     }
 
+    // 工具开始前，封口当前活跃的阶段性输出切片 (Point 卡)：
+    // 将已累积的中间段文本折叠进步骤流，保持「思维1-Point1-工具1-Point2...」时序因果链
+    if (typeof api.sealActivePhaseOutput === "function") {
+      api.sealActivePhaseOutput();
+    }
+
     // 当底层 Agent 触发调用映射工具（如 bash）时，即时显现运行态技能注入胶囊
     showInnerSkillCapsuleForTool(toolName);
 

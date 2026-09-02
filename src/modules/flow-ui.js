@@ -227,6 +227,70 @@ export function initFlowUi(ctx) {
   };
 
   /**
+   * 创建阶段性输出切片卡片（Point 卡：标题 + 读秒 + 输出内容）
+   * 与 Thinking 卡同构：单行流式紧凑呈现，常态折叠，任何时候不自动展开。
+   * 流式期间内容在最终输出卡中可见，封口后整体折叠进本卡片正文。
+   */
+  const createPhaseStepCard = ({
+    text = "",
+    durationText = "输出中 (0.0s)...",
+    isOpen = false, // 铁律：默认 false，任何时候不自动展开
+    renderAsMarkdown = true,
+  } = {}) => {
+    const cardEl = document.createElement("div");
+    cardEl.className = `flow-step-card flow-step-thinking flow-step-phase ${isOpen ? "open" : ""}`;
+
+    const previewText = text ? text.replace(/[\r\n\t]+/g, " ").trim() : "";
+
+    cardEl.innerHTML = `
+      <div class="flow-step-header" role="button" tabindex="0" aria-expanded="${isOpen ? "true" : "false"}">
+        <div class="flow-step-header-left">
+          <span class="flow-step-icon" aria-hidden="true">${ICONS.edit}</span>
+          <span class="flow-step-title">Point</span>
+          <span class="flow-step-duration">${escapeHtml(durationText)}</span>
+          <span class="flow-step-preview">${escapeHtml(previewText)}</span>
+        </div>
+        <div class="flow-step-header-right">
+          <span class="flow-step-arrow" aria-hidden="true">${ICONS.chevronDown}</span>
+        </div>
+      </div>
+      <div class="flow-step-body">
+        <div class="thinking-text-stream flow-phase-md">${renderAsMarkdown ? renderMarkdown(text) : escapeHtml(text)}</div>
+      </div>
+    `;
+
+    const headerEl = cardEl.querySelector(".flow-step-header");
+    const durationEl = cardEl.querySelector(".flow-step-duration");
+    const previewEl = cardEl.querySelector(".flow-step-preview");
+    const bodyEl = cardEl.querySelector(".flow-step-body");
+    const textStreamEl = cardEl.querySelector(".thinking-text-stream");
+
+    if (headerEl) {
+      headerEl.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const open = cardEl.classList.toggle("open");
+        headerEl.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+      headerEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          const open = cardEl.classList.toggle("open");
+          headerEl.setAttribute("aria-expanded", open ? "true" : "false");
+        }
+      });
+    }
+
+    return {
+      cardEl,
+      headerEl,
+      durationEl,
+      previewEl,
+      bodyEl,
+      textStreamEl,
+    };
+  };
+
+  /**
    * 创建工具调用切片卡片（单行简略展示，常态折叠，任何时候不自动展开）
    */
   const createToolStepCard = ({
@@ -420,7 +484,16 @@ export function initFlowUi(ctx) {
     // 若传入结构化 steps 数组，按序渲染切片
     if (Array.isArray(steps) && steps.length > 0) {
       steps.forEach((step) => {
-        if (step.type === "thinking" || step.text) {
+        if (step.type === "text") {
+          // 阶段性输出切片 (Point)：必须在 thinking 回退分支之前判断，
+          // 否则携带 text 字段的历史步骤会被误渲染为 Thinking 卡
+          const pStep = createPhaseStepCard({
+            text: step.text || "",
+            durationText: step.durationText || "已输出",
+            isOpen: false,
+          });
+          stepsContainerEl.appendChild(pStep.cardEl);
+        } else if (step.type === "thinking" || step.text) {
           const tStep = createThinkingStepCard({
             text: step.text || "",
             durationText: step.durationText || "已完成思考",
@@ -966,6 +1039,7 @@ export function initFlowUi(ctx) {
   api.getToolShortSummary = getToolShortSummary;
   api.createThinkingStepCard = createThinkingStepCard;
   api.createToolStepCard = createToolStepCard;
+  api.createPhaseStepCard = createPhaseStepCard;
   api.collapseToolCard = collapseToolCard;
   api.expandToolCard = expandToolCard;
   api.collapseAllDoneToolCards = collapseAllDoneToolCards;

@@ -40,6 +40,11 @@ export function initFlowStream(ctx) {
     flow.currentSteps = [];
     flow.activeThinkingStep = null;
     flow.activeToolStep = null;
+    flow.activeTextStep = null;
+    if (flow.textTimerInterval) {
+      clearInterval(flow.textTimerInterval);
+      flow.textTimerInterval = null;
+    }
 
     if (!isFollowUpTurn) {
       // 全新会话 -> 清空 flowConversation 容器
@@ -96,6 +101,20 @@ export function initFlowStream(ctx) {
 
   const finalizeStream = () => {
     piClient.isStreaming = false;
+    // 若存在未封口的活跃阶段性输出切片，说明它是本轮最终输出段：
+    // 移除 Point 卡（内容保留在最终输出卡中），不沉淀为步骤快照
+    if (flow.activeTextStep) {
+      const lastStep = flow.activeTextStep;
+      flow.activeTextStep = null;
+      lastStep.cardEl?.remove();
+      if (Array.isArray(flow.currentSteps)) {
+        flow.currentSteps = flow.currentSteps.filter((s) => s !== lastStep);
+      }
+    }
+    if (flow.textTimerInterval) {
+      clearInterval(flow.textTimerInterval);
+      flow.textTimerInterval = null;
+    }
     if (flow.activeThinkingStep) {
       if (flow.activeThinkingStep.hasRealThinking || flow.activeThinkingStep.text?.trim()) {
         const elapsed = ((Date.now() - flow.activeThinkingStep.startTime) / 1000).toFixed(1);
@@ -159,6 +178,11 @@ export function initFlowStream(ctx) {
     flow.currentSteps = [];
     flow.activeThinkingStep = null;
     flow.activeToolStep = null;
+    flow.activeTextStep = null;
+    if (flow.textTimerInterval) {
+      clearInterval(flow.textTimerInterval);
+      flow.textTimerInterval = null;
+    }
 
     // 移除上一轮临时错误卡片 (避免重复堆叠)
     if (flow.activeTurnRefs?.responseContentEl) {
@@ -260,6 +284,14 @@ export function initFlowStream(ctx) {
     ) {
       clearInterval(flow.thinkingTimerInterval);
       flow.thinkingTimerInterval = null;
+    }
+    if (
+      (payload.status === "reconnecting" || payload.status === "switching") &&
+      payload.phase === "waiting" &&
+      flow.textTimerInterval
+    ) {
+      clearInterval(flow.textTimerInterval);
+      flow.textTimerInterval = null;
     }
     updateFailoverCapsule(payload);
     // 侧边栏挂起任务状态徽章 (自动重连中/切换模型中) 实时刷新
@@ -520,6 +552,97 @@ export function initFlowStream(ctx) {
   };
 
   /**
+   * 辅助函数：确保当前存在活跃的阶段性输出切片 (Point 卡)
+   * 阶段性输出流式期间内容在最终输出卡中实时可见（不折叠），
+   * Point 卡仅在步骤流中承载「Point + 读秒」标题位，封口时内容整体折叠进卡片正文。
+   */
+  const ensureActiveTextStep = () => {
+    if (flow.activeTextStep) return flow.activeTextStep;
+
+    const pStep = api.createPhaseStepCard({
+      text: "",
+      durationText: "输出中 (0.0s)...",
+      isOpen: false, // 铁律：任何时候都不自动展开
+    });
+
+    if (flow.activeTurnRefs?.stepsContainerEl) {
+      flow.activeTurnRefs.stepsContainerEl.appendChild(pStep.cardEl);
+    }
+
+    const stepItem = {
+      type: "text",
+      id: `phase_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      text: "",
+      durationText: "输出中 (0.0s)...",
+      startTime: Date.now(),
+      cardEl: pStep.cardEl,
+      headerEl: pStep.headerEl,
+      durationEl: pStep.durationEl,
+      previewEl: pStep.previewEl,
+      bodyEl: pStep.bodyEl,
+      textStreamEl: pStep.textStreamEl,
+    };
+
+    flow.activeTextStep = stepItem;
+    if (!Array.isArray(flow.currentSteps)) {
+      flow.currentSteps = [];
+    }
+    flow.currentSteps.push(stepItem);
+
+    if (!flow.textTimerInterval) {
+      flow.textTimerInterval = setInterval(() => {
+        if (flow.activeTextStep?.durationEl) {
+          const elapsed = ((Date.now() - flow.activeTextStep.startTime) / 1000).toFixed(1);
+          flow.activeTextStep.durationEl.textContent = `输出中 (${elapsed}s)...`;
+        }
+      }, 100);
+    }
+
+    return stepItem;
+  };
+
+  /**
+   * 封口当前活跃的阶段性输出切片：把已累积的中间段文本从最终输出卡
+   * 折叠进 Point 卡正文，定格读秒，并重置最终输出卡以承接下一段输出。
+   * 触发时机：tool-start（进入工具调用）或新一轮 text-start（上一段未结清）。
+   */
+  const sealActivePhaseOutput = () => {
+    if (!flow.activeTextStep) return;
+    const step = flow.activeTextStep;
+    flow.activeTextStep = null;
+    if (flow.textTimerInterval) {
+      clearInterval(flow.textTimerInterval);
+      flow.textTimerInterval = null;
+    }
+
+    const sealedText = (step.text || "").trim();
+    if (!sealedText) {
+      // 空段（无实际输出内容）：直接移除空 Point 卡，不沉淀
+      step.cardEl?.remove();
+      if (Array.isArray(flow.currentSteps)) {
+        flow.currentSteps = flow.currentSteps.filter((s) => s !== step);
+      }
+      return;
+    }
+
+    const elapsed = ((Date.now() - step.startTime) / 1000).toFixed(1);
+    step.durationText = `已输出 ${elapsed}s`;
+    step.text = sealedText;
+    if (step.durationEl) {
+      step.durationEl.textContent = step.durationText;
+    }
+    if (step.textStreamEl) {
+      step.textStreamEl.innerHTML = api.renderMarkdown(sealedText);
+    }
+
+    // 重置最终输出卡：仅保留光标，承接下一段（最终）输出
+    flow.currentResponseText = "";
+    if (flow.activeTurnRefs?.responseContentEl) {
+      flow.activeTurnRefs.responseContentEl.innerHTML = `<span class="streaming-cursor"></span>`;
+    }
+  };
+
+  /**
    * 吸底跟随滚动：仅当用户当前位于底部附近（跟随模式开启）时才随输出定位到底部；
    * 用户向上滚动后 flow.followBottom 被置 false，流式输出不再拽动视口；
    * 任意时刻用户重新滚回最底部，scroll 监听自动重新开启跟随。
@@ -604,6 +727,8 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("text-start", () => {
     flow.hasReceivedDelta = true;
+    // 新一段文本开始：若上一段阶段性输出尚未封口（无工具调用边界），先封口
+    sealActivePhaseOutput();
     if (flow.activeThinkingStep) {
       if (flow.activeThinkingStep.hasRealThinking || flow.activeThinkingStep.text?.trim()) {
         const elapsed = ((Date.now() - flow.activeThinkingStep.startTime) / 1000).toFixed(1);
@@ -649,6 +774,11 @@ export function initFlowStream(ctx) {
       flow.thinkingTimerInterval = null;
     }
     flow.currentResponseText += e.detail || "";
+    // 阶段性输出切片：首增量时创建 Point 卡（标题 + 读秒），内容仍在最终输出卡流式可见
+    const textStep = ensureActiveTextStep();
+    if (textStep.previewEl) {
+      textStep.previewEl.textContent = flow.currentResponseText.replace(/[\r\n\t]+/g, " ").trim();
+    }
     if (flow.activeTurnRefs?.responseContentEl) {
       flow.activeTurnRefs.responseContentEl.innerHTML =
         api.renderMarkdown(flow.currentResponseText) + `<span class="streaming-cursor"></span>`;
@@ -659,6 +789,8 @@ export function initFlowStream(ctx) {
   api.resetStreamState = resetStreamState;
   api.finalizeStream = finalizeStream;
   api.ensureActiveThinkingStep = ensureActiveThinkingStep;
+  api.ensureActiveTextStep = ensureActiveTextStep;
+  api.sealActivePhaseOutput = sealActivePhaseOutput;
   api.resetCurrentTurnForResend = resetCurrentTurnForResend;
   api.renderAbortNoticeHtml = renderAbortNoticeHtml;
   api.appendFlowAbortNotice = appendFlowAbortNotice;
