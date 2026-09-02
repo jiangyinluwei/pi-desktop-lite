@@ -39,8 +39,10 @@ export const cleanUserPrompt = (text) => {
 
   // 1. 剥离所有已知与通用的注入信封（如 <runtime_context_rules>...</runtime_context_rules>、<code_area_routing_context>...</code_area_routing_context>）
   clean = clean.replace(/<runtime_context_rules>[\s\S]*?<\/runtime_context_rules>/gi, "");
+  clean = clean.replace(/<runtime_inner_skills>[\s\S]*?<\/runtime_inner_skills>/gi, "");
+  clean = clean.replace(/<runtime_inner_skill[\s\S]*?>[\s\S]*?<\/runtime_inner_skill>/gi, "");
   clean = clean.replace(/<code_area_routing_context>[\s\S]*?<\/code_area_routing_context>/gi, "");
-  clean = clean.replace(/<[a-zA-Z0-9_-]*(?:context|rules)[a-zA-Z0-9_-]*>[\s\S]*?<\/[a-zA-Z0-9_-]*(?:context|rules)[a-zA-Z0-9_-]*>/gi, "");
+  clean = clean.replace(/<[a-zA-Z0-9_-]*(?:context|rules|skill)[a-zA-Z0-9_-]*>[\s\S]*?<\/[a-zA-Z0-9_-]*(?:context|rules|skill)[a-zA-Z0-9_-]*>/gi, "");
 
   // 2. 查找并截断附带本地文件路径尾注
   const attachmentMarkers = [

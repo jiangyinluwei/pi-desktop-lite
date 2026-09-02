@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::Mutex;
 
 /// 编译期内嵌默认规则清单（保障打包发布与离线环境下的可用性）
 const EMBEDDED_RULES_MD: &str = include_str!("../../inner-skills/RULES.md");
@@ -24,15 +24,28 @@ pub struct SkillMapping {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InjectedContextInfo {
     pub injected: bool,
-    pub turn: usize,
+}
+
+/// Tool call pre-processing hook 命中结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolSkillActivation {
+    pub tool_name: String,
+    pub skill: String,
 }
 
 /// 运行态 Inner-Skills 上下文注入管理器
+///
+/// 注入策略：不再将完整 RULES.md 静态前置到 Prompt（system prompt 路径），
+/// 而是由 Tool call pre-processing hook 在工具调用启动时按需动态注入
+/// 对应 Inner-Skill 的 SKILL.md 内容。
 #[derive(Debug)]
 pub struct InnerSkillInjector {
-    turn_count: AtomicUsize,
     mappings: Vec<SkillMapping>,
     tool_to_skill_map: HashMap<String, String>,
+    /// hook 命中后待随下一次出站 Prompt 注入的 Skill 队列（按激活顺序去重，兑底通道）
+    pending_skills: Mutex<VecDeque<String>>,
+    /// 当前轮次已动态注入过的 Skill（避免同轮重复注入）
+    active_turn_skills: Mutex<HashSet<String>>,
 }
 
 impl InnerSkillInjector {
@@ -46,9 +59,10 @@ impl InnerSkillInjector {
         }
 
         Self {
-            turn_count: AtomicUsize::new(0),
             mappings,
             tool_to_skill_map,
+            pending_skills: Mutex::new(VecDeque::new()),
+            active_turn_skills: Mutex::new(HashSet::new()),
         }
     }
 
@@ -206,14 +220,10 @@ impl InnerSkillInjector {
         self.mappings.clone()
     }
 
-    /// 重置会话轮次计数器（新会话、切换会话时调用）
+    /// 重置会话动态注入状态（新会话、切换会话时调用）
     pub fn reset_session(&self) {
-        self.turn_count.store(0, Ordering::SeqCst);
-    }
-
-    /// 获取当前会话轮次
-    pub fn get_turn_count(&self) -> usize {
-        self.turn_count.load(Ordering::SeqCst)
+        self.pending_skills.lock().unwrap().clear();
+        self.active_turn_skills.lock().unwrap().clear();
     }
 
     /// 获取 RULES.md 完整规则清单内容
@@ -221,25 +231,83 @@ impl InnerSkillInjector {
         EMBEDDED_RULES_MD
     }
 
-    /// 对用户 Prompt / FollowUp 消息进行运行态 RULES.md 上下文持续强行注入
-    /// 直接注入 RULES.md 原文，作为工具到 Skill 调用的唯一事实规则来源
+    /// Tool call pre-processing hook：工具调用启动前由宿主调用。
+    /// 命中 RULES.md 映射时返回对应的 Inner-Skill 激活信息。
+    pub fn hook_tool_call(&self, tool_name: &str) -> Option<ToolSkillActivation> {
+        let skill = self.resolve_skill_for_tool(tool_name)?;
+        // 确保对应 SKILL.md 内容可用
+        self.get_skill_detail(&skill)?;
+        Some(ToolSkillActivation {
+            tool_name: tool_name.trim().to_string(),
+            skill,
+        })
+    }
+
+    /// 标记 Skill 已激活：当轮去重 + 兑底入队（供下一次出站 Prompt 注入）。
+    /// 返回 true 表示本轮首次激活（需要执行动态注入）。
+    pub fn mark_skill_activated(&self, skill: &str) -> bool {
+        {
+            let mut turn = self.active_turn_skills.lock().unwrap();
+            if !turn.insert(skill.to_string()) {
+                return false;
+            }
+        }
+        let mut queue = self.pending_skills.lock().unwrap();
+        if !queue.iter().any(|s| s == skill) {
+            queue.push_back(skill.to_string());
+        }
+        true
+    }
+
+    /// 将 Skill 从兑底注入队列中移除（动态 steer 注入成功后调用，避免重复注入）
+    pub fn dequeue_skill(&self, skill: &str) {
+        self.pending_skills.lock().unwrap().retain(|s| s != skill);
+    }
+
+    /// 构建单个 Skill 的动态注入文本块
+    pub fn build_skill_injection_text(&self, skill: &str) -> Option<String> {
+        let detail = self.get_skill_detail(skill)?;
+        Some(format!(
+            "<runtime_inner_skill name=\"{}\">\n{}\n</runtime_inner_skill>",
+            skill,
+            detail.trim()
+        ))
+    }
+
+    /// 轮次边界回调：清空当轮激活去重集合（turn_start / agent_start 时调用）
+    pub fn begin_turn(&self) {
+        self.active_turn_skills.lock().unwrap().clear();
+    }
+
+    /// 出站 Prompt 注入：仅注入 tool-call hook 命中的待注入 Skill 内容，
+    /// 不再注入完整 RULES.md；无待注入内容时保持消息原样。
     pub fn process_prompt_with_info(&self, message: &str) -> (String, InjectedContextInfo) {
-        let turn = self.turn_count.fetch_add(1, Ordering::SeqCst);
-
-        let processed = format!(
-            "<runtime_context_rules>\n\
-            {}\n\
-            </runtime_context_rules>\n\n{}",
-            self.get_rules_content().trim(),
-            message
-        );
-
-        let info = InjectedContextInfo {
-            injected: true,
-            turn,
+        let drained: Vec<String> = {
+            let mut queue = self.pending_skills.lock().unwrap();
+            queue.drain(..).collect()
         };
 
-        (processed, info)
+        if drained.is_empty() {
+            return (message.to_string(), InjectedContextInfo { injected: false });
+        }
+
+        let mut block = String::from(
+            "<runtime_inner_skills>\n\
+             以下 Inner-Skill 约束由 tool call pre-processing hook 按实际工具调用动态激活，\
+             本轮及后续相关工具调用必须严格遵守：\n\n",
+        );
+        for skill in &drained {
+            if let Some(text) = self.build_skill_injection_text(skill) {
+                block.push_str(&text);
+                block.push('\n');
+            }
+        }
+        block.push_str("</runtime_inner_skills>\n\n");
+
+        (
+            format!("{}{}", block, message),
+            InjectedContextInfo { injected: true },
+        )
     }
 
     /// 兼容方法：返回注入后的提示词字符串
@@ -370,11 +438,47 @@ mod tests {
         assert!(injector.get_skill_detail("dynamic-workflows-orchestration").is_some());
         assert!(injector.get_skill_detail("active-context-pruning").is_some());
 
-        // 测试 Prompt 持续注入 RULES.md 原文
+        // 未命中映射的工具不应触发 tool-call hook
+        assert!(injector.hook_tool_call("unknown_fake_tool_xyz").is_none());
+
+        // 无待注入内容时 Prompt 保持原样，不再注入完整 RULES.md
+        let (clean, clean_info) = injector.process_prompt_with_info("hello");
+        assert!(!clean_info.injected);
+        assert_eq!(clean, "hello");
+        assert!(!clean.contains("<runtime_context_rules>"));
+        assert!(!clean.contains("Tool-to-Skill Mapping Matrix"));
+
+        // tool-call hook 命中 bash → 当轮首次激活，兑底入队后随下一次 Prompt 注入对应 SKILL.md
+        let activation = injector.hook_tool_call("bash").expect("bash should hit hook");
+        assert_eq!(activation.skill, "windows-bash-compatibility");
+        assert!(injector.mark_skill_activated(&activation.skill));
+
         let (processed, info) = injector.process_prompt_with_info("hello");
         assert!(info.injected);
-        assert!(processed.contains("<runtime_context_rules>"));
-        assert!(processed.contains("Tool-to-Skill Mapping Matrix"));
+        assert!(processed.contains("<runtime_inner_skills>"));
+        assert!(processed.contains("<runtime_inner_skill name=\"windows-bash-compatibility\">"));
         assert!(processed.ends_with("hello"));
+        // 注入后队列清空，重复发送不再注入（兑底通道一次性消费）
+        let (again, again_info) = injector.process_prompt_with_info("world");
+        assert!(!again_info.injected);
+        assert_eq!(again, "world");
+
+        // 同轮重复激活被去重；跨轮（begin_turn）后可重新激活
+        assert!(!injector.mark_skill_activated("windows-bash-compatibility"));
+        injector.begin_turn();
+        assert!(injector.mark_skill_activated("windows-bash-compatibility"));
+
+        // steer 动态注入成功后可通过 dequeue 移除兑底队列，避免重复注入
+        injector.mark_skill_activated("windows-bash-compatibility");
+        injector.dequeue_skill("windows-bash-compatibility");
+        let (after_dequeue, after_info) = injector.process_prompt_with_info("next");
+        assert!(!after_info.injected);
+        assert_eq!(after_dequeue, "next");
+
+        // 动态注入文本块可独立构建
+        let text = injector
+            .build_skill_injection_text("windows-bash-compatibility")
+            .expect("skill text should build");
+        assert!(text.contains("<runtime_inner_skill name=\"windows-bash-compatibility\">"));
     }
 }

@@ -121,33 +121,49 @@ export function initFlowPipeline(ctx) {
     }
   };
 
+  /** 按 Skill 名直接激活胶囊（后端 tool-call hook 动态注入事件使用） */
+  const showInnerSkillCapsuleForSkill = (skillName) => {
+    if (!skillName || !flow.activeTurnRefs?.injectionCapsuleEl || !flow.activeTurnRefs?.injectionTextEl) return;
+    if (!flow.activeTurnRefs.activatedSkills) {
+      flow.activeTurnRefs.activatedSkills = new Set();
+    }
+    const wasEmpty = flow.activeTurnRefs.activatedSkills.size === 0;
+    const alreadyHas = flow.activeTurnRefs.activatedSkills.has(skillName);
+
+    if (!alreadyHas) {
+      flow.activeTurnRefs.activatedSkills.add(skillName);
+      flow.activeTurnRefs.injectionTextEl.textContent = formatActivatedSkillsText(flow.activeTurnRefs.activatedSkills);
+    }
+
+    if (wasEmpty || !alreadyHas) {
+      flow.activeTurnRefs.injectionCapsuleEl.classList.remove("hidden");
+      // 仅吸底跟随开启时随内容定位到底部，向上滚离后不打断浏览
+      if (flowScrollArea && flow.followBottom !== false) {
+        flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+      }
+    }
+  };
+
   const showInnerSkillCapsuleForTool = (rawToolName) => {
     if (!rawToolName || !flow.activeTurnRefs?.injectionCapsuleEl || !flow.activeTurnRefs?.injectionTextEl) return;
     const nameLower = rawToolName.toString().toLowerCase().trim();
     const mapped = activeToolSkillMappings.get(nameLower);
     if (mapped && mapped.skill) {
-      if (!flow.activeTurnRefs.activatedSkills) {
-        flow.activeTurnRefs.activatedSkills = new Set();
-      }
-      const wasEmpty = flow.activeTurnRefs.activatedSkills.size === 0;
-      const alreadyHas = flow.activeTurnRefs.activatedSkills.has(mapped.skill);
-
-      if (!alreadyHas) {
-        flow.activeTurnRefs.activatedSkills.add(mapped.skill);
-        flow.activeTurnRefs.injectionTextEl.textContent = formatActivatedSkillsText(flow.activeTurnRefs.activatedSkills);
-      }
-
-      if (wasEmpty || !alreadyHas) {
-        flow.activeTurnRefs.injectionCapsuleEl.classList.remove("hidden");
-        // 仅吸底跟随开启时随内容定位到底部，向上滚离后不打断浏览
-        if (flowScrollArea && flow.followBottom !== false) {
-          flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
-        }
-      }
+      showInnerSkillCapsuleForSkill(mapped.skill);
     }
   };
 
   loadInnerSkillMappings();
+
+  // Tool-call Hook 命中：后端动态注入 Inner-Skill 时同步更新胶囊（以实际注入为准）
+  piClient.addEventListener("inner-skill-activated", (e) => {
+    const detail = e.detail;
+    if (detail?.skill) {
+      showInnerSkillCapsuleForSkill(detail.skill);
+    } else if (detail?.toolName) {
+      showInnerSkillCapsuleForTool(detail.toolName);
+    }
+  });
 
   piClient.addEventListener("toolcall-delta-start", (e) => {
     api.autoCollapseThinkingOnNextPhase();

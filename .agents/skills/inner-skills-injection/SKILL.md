@@ -39,33 +39,32 @@ Pi Desktop Lite 不仅是 UI 渲染器，更扮演着 Pi Agent 的**可视化代
 flowchart TD
     subgraph Frontend ["🖥️ Webview 前端 (UI & Events)"]
         UserInput["用户提问 / 快捷标签输入"] --> ClientSend["piClient.sendPrompt(query)"]
-        ToolEvent["工具调用事件 (toolcall-delta-start / tool-start)"] --> TriggerCapsule{"被调用工具是否命中 RULES.md 映射表?<br/>(bash, powershell, read_file, ocr, deword...)"}
-        TriggerCapsule -- 命中 bash/powershell --> CapsuleBash["💡 显现草图胶囊: ⚡ 已激活运行态技能: windows-bash-compatibility"]
-        TriggerCapsule -- 命中 ocr/deword/read_file --> CapsuleDoc["💡 显现草图胶囊: ⚡ 已激活运行态技能: document-multimodal-inspection"]
-        TriggerCapsule -- 未命中映射 / 普通问答 --> HideCapsule["胶囊保持隐藏 (无视觉打扰)"]
+        EventSkill["Tauri 事件: pi:inner-skill-activated"] --> UpdateCapsule["showInnerSkillCapsuleForSkill(skill)"]
+        UpdateCapsule --> CapsuleDisplay["💡 显现草图胶囊: ⚡ 已激活运行态技能: xxx"]
     end
 
     subgraph RustSupervisor ["🛡️ Pi 宿主监督器 (PiSupervisor & InnerSkillInjector)"]
         ClientSend --> CmdPrompt["#[tauri::command] pi_send_prompt"]
-        CmdPrompt --> Injector["InnerSkillInjector::process_prompt_with_info"]
+        CmdPrompt --> InjectorPrompt["InnerSkillInjector::process_prompt_with_info<br/>(无待注入项时 0 Token 纯净直通；有兑底项则注入)"]
+        InjectorPrompt --> FinalPrompt["组装标准 JSON RPC Payload"]
         
-        subgraph Pipeline ["持续基线规则注入 (Continuous Baseline Injection)"]
-            InjectRules["注入 RULES.md 极简映射总纲 (< 100 tokens)"]
-            InjectRules --> Envelope["封入隔离信封 &lt;runtime_context_rules&gt;"]
-        end
-
-        Injector --> Pipeline
-        Envelope --> FinalPrompt["组装标准 JSON RPC Payload"]
+        ToolHookStart["监听 tool_execution_start 事件"] --> HookCheck{"命中 RULES.md 映射表?<br/>(bash, powershell, read_file, ocr, deword...)"}
+        HookCheck -- 命中 & 当轮首次激活 --> DoSteer["动态下发 steer 注入指令<br/>&lt;runtime_inner_skill name=...&gt;"]
+        DoSteer --> EmitEvent["广播 pi:inner-skill-activated 事件"]
+        EmitEvent --> EventSkill
+        DoSteer -- 成功 --> Dequeue["从兑底队列出队"]
+        DoSteer -- 失败 --> QueuePrompt["保留在 pending_skills 队列<br/>作为下一次 Prompt 兑底注入"]
     end
     
     subgraph PiProcess ["🤖 底层 Pi Agent (RPC 子进程)"]
         FinalPrompt -->|stdin 管道 \\n 帧| PiEngine["pi --mode rpc"]
         PiEngine --> ModelThink["模型思考推演 & 规划工具调用"]
         
-        ModelThink -- 常规问答/普通对话 (如 hello) --> CleanOutput["自然流畅文本输出 (零工具调用，胶囊不显现)"]
+        ModelThink -- 常规问答/普通对话 (如 hello) --> CleanOutput["自然流畅文本输出 (零静态规则注入，零多余 Token 损耗)"]
         ModelThink -- 决定调用工具 (如 bash 或 ocr) --> DispatchTool["下发 tool_execution_start"]
-        DispatchTool --> ToolEvent
-        DispatchTool --> ToolStrict["严格遵守映射命中的 Inner-Skill 铁律执行"]
+        DispatchTool --> ToolHookStart
+        DoSteer -.->|steer 指令即时约束| ModelThink
+        ModelThink --> ToolStrict["严格遵守 Hook 命中的 Inner-Skill 铁律执行工具"]
     end
 ```
 
@@ -96,54 +95,43 @@ src-tauri/inner-skills/
 
 ---
 
-## 4. 两阶段动态映射与触发体系 (Two-Phase Architecture)
+## 4. Tool Call Pre-Processing Hook 与动态 Steering 注入体系
 
-### 4.1 阶段一：背景持续注入规则映射 (`RULES.md` Silent Baseline)
-- **执行时机**：每轮用户发送 Prompt 或 FollowUp 时由 Rust 后端透明包装；
-- **注入内容**：精炼纯英文 `<runtime_context_rules>`（`RULES.md` 原文，< 100 Tokens），包含工具到各个 Inner-Skill 的映射矩阵与轻量基线；
-- **静默原则**：此阶段**不触发任何前端 UI 胶囊文本**，确保在用户仅打招呼（如 `hello`）或常规咨询时，界面保持纯粹纸质留白。
+### 4.1 核心机制：零静态无差别注入 + 工具调用即时 Hook
+- **常规对话零污染**：出站 Prompt 默认不再无差别打包 RULES.md 或任何 Skill 详情。用户常规问答、打招呼（如 `hello`）时，提示词保持 100% 原始纯净，零额外 Token 损耗；
+- **Tool-Call Hook 即时嗅探**：后端 `PiSupervisor` 在接收到底层 `tool_execution_start` 事件时，调用 `InnerSkillInjector::hook_tool_call(tool_name)` 匹配 `RULES.md` 映射矩阵；
+- **动态 Steering 主通道**：当轮首次命中（`mark_skill_activated`）后，后端自动构建 `<runtime_inner_skill name="...">` XML 块并通过 `steer` 指令动态下发给 Pi 引擎，在后续执行中即刻强行生效约束；
+- **Prompt 队列兑底通道**：若 `steer` 遇到异常，激活项暂存于 `pending_skills` 队列，随下一次用户出站提问以 `<runtime_inner_skills>` 块统一注入；
+- **轮次与会话去重管理**：
+  - 同一轮次内已激活的技能不再重复下发 `steer`；
+  - 遇到 `turn_start` / `agent_start` 事件时触发 `begin_turn()` 重置当轮去重集合，支持跨轮再次按需激活；
+  - 会话新建或重置时调用 `reset_session()` 清空队列与去重集。
 
-### 4.2 阶段二：即时工具拦截与技能激活呈现 (Just-In-Time Skill Feedback)
-- **触发时机**：当且仅当底层 Pi Agent **决策并即将/正在调用映射工具时**；
-- **事件捕获**：前端捕获 `toolcall-delta-start`、`tool-start` 与 `bash-update` 事件；
-- **前端胶囊显现**：在 AI 思考卡片上方平滑淡入草图胶囊，展示当前命中的运行态技能名称；若单轮内触发多个不同运行态技能，在文本后以中文逗号连续追加（如 `已激活运行态技能：XXX1，XXX2，XXX3 ......`）；
-- **生命周期自愈**：每次提交新提问（`resetStreamState`）时胶囊自动归零隐去，直到下一次有实际工具调用触发。
+### 4.2 前端实时反馈与无假阳性呈现
+- **事件驱动胶囊**：后端广播 `pi:inner-skill-activated` 事件，前端 `piClient` 监听并调用 `showInnerSkillCapsuleForSkill` 动态显现手绘胶囊；
+- **消除假阳性**：初始加载与新提问发起时，胶囊默认隐藏且无任何硬编码预设文案，彻底杜绝未命中时的误导；
+- **多技能优雅拼接**：单轮触发多个不同 Skill 时，自动以中文逗号连续追加（`已激活运行态技能：XXX1，XXX2`）。
 
-### 4.3 信封式隔离结构 (`<runtime_context_rules>`)
-为彻底杜绝模型把上下文规则误当作“对话主题”而在回答中喋喋不休，所有注入内容必须严格使用 XML 标签信封包裹并附加作用域声明：
+### 4.3 动态注入信封结构示例
 
+动态 `steer` 注入结构（`<runtime_inner_skill>`）：
 ```text
-<runtime_context_rules>
-# Runtime Inner-Skills Mapping & Directive Rules
+[pi-desktop-lite Inner-Skill Hook] 工具 `bash` 触发运行态技能 `windows-bash-compatibility`，以下约束即时生效，调用该类工具时必须严格遵守：
+<runtime_inner_skill name="windows-bash-compatibility">
+# Windows Bash & Shell Compatibility Directives
+...
+</runtime_inner_skill>
+```
 
-> Context Injection Rules for Host Agent Runtime.
-> Applies ONLY when invoking tools. For standard conversational questions, greetings, or non-tool queries, respond directly and concisely without extra reasoning or tool execution planning. Do NOT alter normal response tone.
+兑底出站 Prompt 注入结构（`<runtime_inner_skills>`）：
+```text
+<runtime_inner_skills>
+以下 Inner-Skill 约束由 tool call pre-processing hook 按实际工具调用动态激活，本轮及后续相关工具调用必须严格遵守：
 
-## 1. Tool-to-Skill Mapping Matrix
-
-| Invoked Tool / Intent | Target Inner-Skill | Enforcement Level |
-| :--- | :--- | :--- |
-| `bash`, `terminal`, `powershell`, `cmd`, `execute_command` | `windows-bash-compatibility` | **Mandatory** |
-| `read_file`, `docparser`, `ocr`, `deword`, `pi-ocr`, `pi-docparser`, `extract_text`, `image_ocr` | `document-multimodal-inspection` | **Mandatory** |
-| `subagent`, `pi-subagents`, `spawn_agent`, `parallel_tasks`, `delegate_task`, `subtask_spawn` | `multi-agent-orchestration` | **Mandatory** |
-| `web_search`, `pi-web-access`, `search_web`, `fetch_web_page`, `web_access`, `browse_page` | `web-search-silent-access` | **Mandatory** |
-| `memory_retrieve`, `memory_store`, `pi-memory`, `recall_memory`, `search_memory` | `persistent-memory-retrieval` | **Mandatory** |
-| `dynamic_workflows`, `execute_workflow`, `pipeline_step`, `run_workflow` | `dynamic-workflows-orchestration` | **Mandatory** |
-| `context_prune`, `prune_context`, `pai-acp`, `compress_context` | `active-context-pruning` | **Mandatory** |
-
----
-
-## 2. Mandatory Core Directives (Baseline)
-
-When invoking tools or planning actions:
-1. Terminal & CLI Execution (`windows-bash-compatibility`): Always use forward slashes '/'; quote paths; append auto-confirm (-y); disable pagers; NO_COLOR=1; forbid spontaneous file creation.
-2. Folder & Multi-Format Documents (`document-multimodal-inspection`): Proactively traverse directories; never cat raw binary; automatically invoke specialized parsers or OCR (pi-ocr, deword, pi-docparser); batch synthesize findings.
-3. Multi-Agent Scheduling (`multi-agent-orchestration`): Clear subtask boundaries; non-blocking parallel dispatch; timeout containment; synthesize findings.
-4. Silent Web Access (`web-search-silent-access`): Silent background execution; multi-source cross-verification; extract authentic citations and dates.
-5. Persistent Memory (`persistent-memory-retrieval`): Proactively retrieve historical context; match semantic relevance; safe incremental storage; exclude secrets.
-6. Dynamic Workflows (`dynamic-workflows-orchestration`): Stage-wise prerequisite validation; graceful fault tolerance; transparent milestone progress.
-7. Active Context Pruning (`active-context-pruning`): Progressively prune raw tool payloads; protect core goals and latest code snippets.
-</runtime_context_rules>
+<runtime_inner_skill name="windows-bash-compatibility">
+...
+</runtime_inner_skill>
+</runtime_inner_skills>
 
 用户原始提问内容
 ```
@@ -199,6 +187,6 @@ description: 简明扼要描述该运行态技能在何种场景下被触发与�
 3. **Token 纯英文极简铁律**：
    - `RULES.md` 必须 100% 保持纯英文书写，严格将 Token 开销压制在最精炼级别，最大化节约每轮上下文预算。
 4. **信封隔离与语气防护**：
-   - 注入必须使用 `<runtime_context_rules>` 标签包裹，明确声明规则仅限工具调用阶段生效，并明确声明常规问答无需工具推演直接简明回复，防止模型在对话回答中生硬复述规则或过度思考。
+   - 注入必须使用 `<runtime_inner_skill>` / `<runtime_inner_skills>` 标签包裹，明确声明规则仅限工具调用阶段生效，并明确声明常规问答无需工具推演直接简明回复，防止模型在对话回答中生硬复述规则或过度思考。
 5. **代码、文档与 Skill 三位一体同步**：
    - 每次新增或变更 Inner-Skill 时，必须同步对齐 `AGENTS.md`、`README.md` 与本技能文件，严禁文档滞后。

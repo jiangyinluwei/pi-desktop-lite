@@ -311,11 +311,22 @@ impl PiSupervisor {
         let (event_tx, mut event_rx) = mpsc::channel::<Value>(256);
         let app_handle_for_events = self.app_handle.clone();
         let pending_responses_clone = self.pending_responses.clone();
+        let supervisor_for_events = self.clone();
 
         tokio::spawn(async move {
             while let Some(event_val) = event_rx.recv().await {
+                let event_type = event_val.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+                // Tool call pre-processing hook：工具调用启动时按映射动态注入 Inner-Skill
+                if event_type == "tool_execution_start" {
+                    Self::handle_tool_call_hook(&supervisor_for_events, &event_val).await;
+                } else if event_type == "turn_start" || event_type == "agent_start" {
+                    // 轮次边界：重置当轮激活去重集合，使技能可跨轮重新注入
+                    supervisor_for_events.skill_injector.begin_turn();
+                }
+
                 // 如果是 response 响应帧且携带 id，尝试唤醒对应的 oneshot 等待者
-                if event_val.get("type").and_then(|v| v.as_str()) == Some("response") {
+                if event_type == "response" {
                     if let Some(id) = event_val.get("id").and_then(|v| v.as_str()) {
                         let mut guard = pending_responses_clone.lock().await;
                         if let Some(tx) = guard.remove(id) {
@@ -633,9 +644,10 @@ impl PiSupervisor {
         self.start().await
     }
 
-    /// 对输入提示词进行运行态 Inner-Skills 与 code-area 路由上下文强行注入处理
+    /// 对输入提示词进行 code-area 路由上下文与动态激活 Inner-Skill 注入处理
+    /// （不再静态注入完整 RULES.md；Inner-Skill 改由 tool-call hook 按需动态注入）
     pub fn inject_prompt(&self, message: &str) -> (String, InjectedContextInfo) {
-        let (rules_injected, info) = self.skill_injector.process_prompt_with_info(message);
+        let (skill_injected, info) = self.skill_injector.process_prompt_with_info(message);
 
         // 检查当前是否处于 code-area 预设工作区
         let active_ws = crate::workspace::read_active_workspace_id();
@@ -670,13 +682,77 @@ impl PiSupervisor {
                 skills_summary
             );
 
-            return (format!("{}{}", rules_injected, routing_context), info);
+            return (format!("{}{}", skill_injected, routing_context), info);
         }
 
-        (rules_injected, info)
+        (skill_injected, info)
     }
 
-    /// 重置 Inner-Skills 会话轮次计数器
+    /// Tool call pre-processing hook：
+    /// 监听 tool_execution_start 事件，命中 RULES.md 映射时动态注入对应 Inner-Skill。
+    /// 优先通过 steer 在当前轮次下一个 LLM 调用前注入；失败时兑底随下一次 Prompt 注入。
+    async fn handle_tool_call_hook(this: &PiSupervisor, event_val: &Value) {
+        let tool_name = event_val
+            .get("toolName")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if tool_name.trim().is_empty() {
+            return;
+        }
+
+        let Some(activation) = this.skill_injector.hook_tool_call(tool_name) else {
+            return;
+        };
+
+        // 当轮去重：同一 Skill 在同一轮次内只注入一次
+        if !this.skill_injector.mark_skill_activated(&activation.skill) {
+            return;
+        }
+
+        // 通知前端更新「已激活运行态技能」胶囊
+        let _ = this.app_handle.emit(
+            "pi:inner-skill-activated",
+            serde_json::json!({
+                "toolName": activation.tool_name,
+                "skill": activation.skill,
+            }),
+        );
+
+        let Some(injection_text) = this
+            .skill_injector
+            .build_skill_injection_text(&activation.skill)
+        else {
+            return;
+        };
+
+        let steer_message = format!(
+            "[pi-desktop-lite Inner-Skill Hook] 工具 `{}` 触发运行态技能 `{}`，以下约束即时生效，调用该类工具时必须严格遵守：\n{}",
+            activation.tool_name, activation.skill, injection_text
+        );
+
+        match this
+            .send_command(serde_json::json!({
+                "type": "steer",
+                "message": steer_message,
+            }))
+            .await
+        {
+            Ok(_) => {
+                // steer 动态注入成功，移除兑底队列避免重复注入
+                this.skill_injector.dequeue_skill(&activation.skill);
+            }
+            Err(err) => {
+                log::warn!(
+                    "[Supervisor] Inner-Skill steer injection failed for tool `{}` (skill `{}`), fallback to next prompt queue: {}",
+                    activation.tool_name,
+                    activation.skill,
+                    err
+                );
+            }
+        }
+    }
+
+    /// 重置 Inner-Skills 动态注入状态（待注入队列与当轮激活去重集合）
     pub fn reset_skill_turns(&self) {
         self.skill_injector.reset_session();
     }

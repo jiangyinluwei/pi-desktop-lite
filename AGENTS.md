@@ -122,28 +122,30 @@
 | **`code-hazards-remediation`** | [`.doc/code-hazards-remediation/SKILL.md`](file:///.doc/code-hazards-remediation/SKILL.md) | 针对项目全量代码健康度检查中定位的已知隐患矩阵（H1~H24）进行故障排查与自愈。当系统出现异常、挂死、数据丢失或性能瓶颈时，参照此隐患列表快速定位根因；一旦命中了某条隐患并完成修复，即从列表中剔除核销，直至所有已知隐患清零。 |
 
 ### 2. 应用内置运行态约束级 Inner-Skills (`src-tauri/inner-skills/`)
-> **作用对象**：桌面应用被用户运行（Runtime）时，作为 Pi Agent 的可视化宿主/代理，由 Rust 后端监督器（`PiSupervisor` & `InnerSkillInjector`）在每次下发 Prompt/FollowUp 时进行智能嗅探与动态强行注入。
+> **作用对象**：桌面应用被用户运行（Runtime）时，作为 Pi Agent 的可视化宿主/代理，由 Rust 后端监督器（`PiSupervisor` & `InnerSkillInjector`）在工具调用启动时进行智能 Hook 嗅探与按需动态强行注入。
 
-- **核心开发原则：RULES 映射索引化，Skill 独立模块化，按需匹配精准注入**：
-  - 严禁在 `RULES.md` 中编写长篇具体的领域规则，杜绝无差别全量注入导致的 Token 爆炸与模型对话过拟合；
-  - `RULES.md` 作为**轻量级映射事实来源（Single Source of Truth Mapping Table）**，采用极简纯英文（< 100 Tokens）定义映射矩阵与通用基线；
-  - 所有具体领域规则一律在 `src-tauri/inner-skills/<skill-name>/SKILL.md` 中独立封装，通过映射矩阵命中后动态激活与呈现反馈；
-- **两阶段动态映射与即时触发体系**：
-  1. **阶段一：背景持续静默注入 (`RULES.md` Silent Baseline)**：每轮提问透明封入精炼纯英文 `<runtime_context_rules>`（`RULES.md` 原文），静默无扰，常规问答不显现 UI 胶囊；
-  2. **阶段二：动态映射解析与即时激活呈现 (Just-In-Time Skill Feedback)**：Rust 引擎动态解析 `RULES.md` 矩阵生成映射表；当且仅当底层 Agent 触发调用命中映射的工具（如 `bash` 命中 `windows-bash-compatibility`、`ocr`/`deword` 命中 `document-multimodal-inspection`）时，即时在思考卡片上方呈现手绘草图胶囊；多技能触发时在文本后以中文逗号连续追加（如：`已激活运行态技能：XXX1，XXX2，XXX3 ......`）；未在 `RULES.md` 映射的工具绝不误触；
-  3. **`<runtime_context_rules>` 信封隔离**：明确声明约束仅在触发工具调用时生效，保障正常对话生成的自然性；
-  4. **提示词上下文信封脱敏与会话还原净化规范 (Prompt Context Stripping & Session Sanitization)**：会话文件解析（`parse_session_turns` / `parse_session_file` / `extract_user_prompts_from_session`）、历史记录加载、搜索回溯以及从设置页/讯息抽屉恢复进入 Flow 时，全域自动剥离运行态注入信封（`<runtime_context_rules>`、`<code_area_routing_context>` 等）与附带文件绝对路径尾注，保障所有历史会话还原与「用户输入」区域 100% 仅展现用户原始真实提问。
+- **核心开发原则：RULES 映射索引化，Skill 独立模块化，Tool Call Hook 按需精准动态注入**：
+  - 严禁在 `RULES.md` 中编写长篇具体的领域规则，杜绝每轮静态无差别全量注入导致的 Token 浪费与模型对话过拟合；
+  - `RULES.md` 作为**轻量级映射事实来源（Single Source of Truth Mapping Table）**，采用极简纯英文（< 100 Tokens）定义工具到 Skill 的映射矩阵与通用基线；
+  - 常规自然语言对话/非工具调用提问保持 100% 纯净（零静态规则注入，零多余 Token 消耗）；所有具体领域规则一律在 `src-tauri/inner-skills/<skill-name>/SKILL.md` 中独立封装，通过映射矩阵命中后动态激活与呈现反馈；
+- **Tool Call Pre-Processing Hook 与动态 Steering 注入体系**：
+  1. **Tool Call Hook 命中与当轮去重**：当底层 Agent 发送 `tool_execution_start` 事件时，Rust 后端监督器捕获并触发 `InnerSkillInjector::hook_tool_call(tool_name)`；若命中 `RULES.md` 映射矩阵且当轮首次激活（`mark_skill_activated`），触发动态注入；
+  2. **主通道：动态 Steering 即时注入**：优先通过 `steer` 命令动态向内核注入专用 XML 约束块（`<runtime_inner_skill name="...">`），并在注入成功后从兑底队列出队（`dequeue_skill`），使约束在后续模型生成中即刻生效；
+  3. **兑底通道：出站 Prompt 队列注入**：若 steer 通信失败，激活项留存 `pending_skills` 队列，随下一次出站 Prompt 包装为 `<runtime_inner_skills>` 块一次性注入；
+  4. **轮次与会话边界生命周期**：在 `turn_start` / `agent_start` 轮次边界调用 `begin_turn()` 清空当轮去重集合，支持技能跨轮按需再次激活；新会话/重置时调用 `reset_session()` 彻底清空；
+  5. **前端即时反馈与无假阳性呈现**：后端在 hook 命中时广播 `pi:inner-skill-activated` Tauri 事件，前端 `piClient` 监听并驱动 Flow 思考卡片上方手绘胶囊动态显现；多技能触发时以中文逗号连续追加（如 `已激活运行态技能：XXX1，XXX2`）；初始状态下胶囊默认隐匿且不再预设硬编码兑底文案，杜绝假阳性误导；
+  6. **全域上下文信封脱敏与会话还原净化规范 (Prompt Context Stripping & Session Sanitization)**：会话文件解析（`parse_session_turns` / `parse_session_file` / `extract_user_prompts_from_session`）、历史记录加载、搜索回溯以及从设置页/讯息抽屉恢复进入 Flow 时，全域自动剥离运行态注入信封（`<runtime_context_rules>`、`<runtime_inner_skills>`、`<runtime_inner_skill>`、`<code_area_routing_context>` 等）与附带文件绝对路径尾注，保障所有历史会话还原与「用户输入」区域 100% 仅展现用户原始真实提问。
 
 | 文件 / Skill 名称 | 路径 | 运行态注入机制与作用 |
 | :--- | :--- | :--- |
-| **`RULES.md`** | [`src-tauri/inner-skills/RULES.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/RULES.md) | 纯英文运行态 Skill 映射矩阵与基线铁律总纲（低 Token 消耗，作为工具到 Skill 映射的唯一事实来源）。 |
-| **`windows-bash-compatibility`** | [`src-tauri/inner-skills/windows-bash-compatibility/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/windows-bash-compatibility/SKILL.md) | 在 Windows 环境下调用终端/Shell 工具（`bash`, `powershell`, `cmd` 等）时强行注入，约束统一采用正斜杠 `/`、强制非交互 `-y`、禁用 Pager 翻页防卡死、语法跨平台替换及 UTF-8 编码声明。 |
-| **`document-multimodal-inspection`** | [`src-tauri/inner-skills/document-multimodal-inspection/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/document-multimodal-inspection/SKILL.md) | 在涉及目录分析或读取多格式文档/图像（`read_file`, `docparser`, `ocr`, `deword`, `pi-ocr` 等）时强行注入，约束主动目录深度遍历、严禁仅凭文件名猜测、严禁普通文本工具裸读二进制，并强制自动调度专用文档解析与 OCR 组件提取内容。 |
-| **`multi-agent-orchestration`** | [`src-tauri/inner-skills/multi-agent-orchestration/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/multi-agent-orchestration/SKILL.md) | 在调度多智能体（Subagents）或并发子任务工具（`subagent`, `pi-subagents`, `spawn_agent`, `parallel_tasks` 等）时强行注入，约束明确子任务边界、非阻塞并发派发、统一超时控制与结果汇聚清洗。 |
-| **`web-search-silent-access`** | [`src-tauri/inner-skills/web-search-silent-access/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/web-search-silent-access/SKILL.md) | 在涉及联网搜索或抓取网页工具（`web_search`, `pi-web-access`, `search_web`, `fetch_web_page` 等）时强行注入，约束全后台静默执行、严禁前台弹窗夺焦、多源交叉求证与引用溯源。 |
-| **`persistent-memory-retrieval`** | [`src-tauri/inner-skills/persistent-memory-retrieval/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/persistent-memory-retrieval/SKILL.md) | 在涉及跨会话长期记忆或偏好工具（`memory_retrieve`, `memory_store`, `pi-memory` 等）时强行注入，约束模糊指代主动查阅、精确语义关联、安全增量写入与敏感数据隔离。 |
-| **`dynamic-workflows-orchestration`** | [`src-tauri/inner-skills/dynamic-workflows-orchestration/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/dynamic-workflows-orchestration/SKILL.md) | 在涉及动态工作流或自动化编排工具（`dynamic_workflows`, `execute_workflow`, `pipeline_step` 等）时强行注入，约束分阶段状态校验、单步故障自愈熔断与透明化进度追踪。 |
-| **`active-context-pruning`** | [`src-tauri/inner-skills/active-context-pruning/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/active-context-pruning/SKILL.md) | 在涉及长会话上下文修剪工具（`context_prune`, `prune_context`, `pai-acp` 等）时强行注入，约束渐进式修剪工具冗余、保护核心意图与最新代码锚点。 |
+| **`RULES.md`** | [`src-tauri/inner-skills/RULES.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/RULES.md) | 纯英文运行态 Skill 映射矩阵与基线铁律总纲（低 Token 消耗，作为工具到 Skill 动态映射的唯一事实来源）。 |
+| **`windows-bash-compatibility`** | [`src-tauri/inner-skills/windows-bash-compatibility/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/windows-bash-compatibility/SKILL.md) | 在 Windows 环境下调用终端/Shell 工具（`bash`, `powershell`, `cmd` 等）触发 Hook 命中时动态注入，约束统一采用正斜杠 `/`、强制非交互 `-y`、禁用 Pager 翻页防卡死、语法跨平台替换及 UTF-8 编码声明。 |
+| **`document-multimodal-inspection`** | [`src-tauri/inner-skills/document-multimodal-inspection/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/document-multimodal-inspection/SKILL.md) | 在涉及目录分析或读取多格式文档/图像（`read_file`, `docparser`, `ocr`, `deword`, `pi-ocr` 等）触发 Hook 命中时动态注入，约束主动目录深度遍历、严禁仅凭文件名猜测、严禁普通文本工具裸读二进制，并强制自动调度专用文档解析与 OCR 组件提取内容。 |
+| **`multi-agent-orchestration`** | [`src-tauri/inner-skills/multi-agent-orchestration/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/multi-agent-orchestration/SKILL.md) | 在调度多智能体（Subagents）或并发子任务工具（`subagent`, `pi-subagents`, `spawn_agent`, `parallel_tasks` 等）触发 Hook 命中时动态注入，约束明确子任务边界、非阻塞并发派发、统一超时控制与结果汇聚清洗。 |
+| **`web-search-silent-access`** | [`src-tauri/inner-skills/web-search-silent-access/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/web-search-silent-access/SKILL.md) | 在涉及联网搜索或抓取网页工具（`web_search`, `pi-web-access`, `search_web`, `fetch_web_page` 等）触发 Hook 命中时动态注入，约束全后台静默执行、严禁前台弹窗夺焦、多源交叉求证与引用溯源。 |
+| **`persistent-memory-retrieval`** | [`src-tauri/inner-skills/persistent-memory-retrieval/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/persistent-memory-retrieval/SKILL.md) | 在涉及跨会话长期记忆或偏好工具（`memory_retrieve`, `memory_store`, `pi-memory` 等）触发 Hook 命中时动态注入，约束模糊指代主动查阅、精确语义关联、安全增量写入与敏感数据隔离。 |
+| **`dynamic-workflows-orchestration`** | [`src-tauri/inner-skills/dynamic-workflows-orchestration/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/dynamic-workflows-orchestration/SKILL.md) | 在涉及动态工作流或自动化编排工具（`dynamic_workflows`, `execute_workflow`, `pipeline_step` 等）触发 Hook 命中时动态注入，约束分阶段状态校验、单步故障自愈熔断与透明化进度追踪。 |
+| **`active-context-pruning`** | [`src-tauri/inner-skills/active-context-pruning/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/active-context-pruning/SKILL.md) | 在涉及长会话上下文修剪工具（`context_prune`, `prune_context`, `pai-acp` 等）触发 Hook 命中时动态注入，约束渐进式修剪工具冗余、保护核心意图与最新代码锚点。 |
 
 ---
 

@@ -190,6 +190,8 @@ pub fn strip_injected_contexts(text: &str) -> String {
     // 1. 已知确定的注入信封标签对列表
     let known_tags = [
         ("runtime_context_rules", "runtime_context_rules"),
+        ("runtime_inner_skills", "runtime_inner_skills"),
+        ("runtime_inner_skill", "runtime_inner_skill"),
         ("code_area_routing_context", "code_area_routing_context"),
         ("workspace_context", "workspace_context"),
         ("runtime_rules", "runtime_rules"),

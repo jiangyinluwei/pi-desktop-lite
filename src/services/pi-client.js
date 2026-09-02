@@ -309,11 +309,20 @@ class PiClient extends EventTarget {
       });
       this.unlistenCallbacks.push(unlistenEvent);
 
-      // 3. 监听运行态上下文/Inner-Skill 强行注入事件
+      // 3. 监听运行态上下文/Inner-Skill 动态注入事件（tool call pre-processing hook 命中）
       const unlistenInjected = await window.__TAURI__.event.listen("pi:context_injected", (event) => {
         this.dispatchEvent(new CustomEvent("context-injected", { detail: event.payload }));
       });
       this.unlistenCallbacks.push(unlistenInjected);
+
+      // 3a. 监听 Tool-call Hook 命中的 Inner-Skill 动态激活事件
+      const unlistenSkillActivated = await window.__TAURI__.event.listen(
+        "pi:inner-skill-activated",
+        (event) => {
+          this.dispatchEvent(new CustomEvent("inner-skill-activated", { detail: event.payload }));
+        }
+      );
+      this.unlistenCallbacks.push(unlistenSkillActivated);
 
       // 4. 监听内核保险自动重连失败事件（5 次重连均失败后触发，驱动左上角红色抖动小闪电提醒）
       const unlistenReconnectFailed = await window.__TAURI__.event.listen(

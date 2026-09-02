@@ -366,14 +366,15 @@ export function initFlowUi(ctx) {
     `;
     groupEl.appendChild(userPromptCard);
 
-    // 2. 运行态上下文/Inner-Skill 注入胶囊
+    // 2. 运行态 Inner-Skill 动态注入胶囊：仅在 tool-call hook 实际激活技能后显示，
+    // 不再预设兑底文案（避免未注入时误导用户）
     const activatedSkillsSet = new Set(Array.isArray(injectedSkills) ? injectedSkills : []);
     const hasInjectedSkills = activatedSkillsSet.size > 0;
     const initialSkillText = hasInjectedSkills
       ? (typeof api.formatActivatedSkillsText === "function"
           ? api.formatActivatedSkillsText(activatedSkillsSet)
           : `已激活运行态技能：${Array.from(activatedSkillsSet).join("，")}`)
-      : "已激活运行态技能：windows-bash-compatibility";
+      : "";
 
     const injectionCapsuleEl = document.createElement("div");
     injectionCapsuleEl.className = `flow-injection-capsule ${hasInjectedSkills ? "" : "hidden"}`;
