@@ -8,6 +8,8 @@
  * 4. 提供业务级标准记忆接口，预留挂载 Pi 官方/社区 Memory 扩展 (如 pi-memory / NPM 插件) 的通道。
  */
 
+import { cleanUserPrompt } from "../lib/dom-utils.js";
+
 const STORAGE_KEY_HISTORY = "pi_conversation_history";
 const STORAGE_KEY_HIDDEN = "pi_hidden_conversation_ids";
 const MAX_STORED_CONVERSATIONS = 60;
@@ -38,10 +40,22 @@ class ConversationHistoryService extends EventTarget {
       if (storedHistory) {
         const list = JSON.parse(storedHistory);
         if (Array.isArray(list)) {
-          this.conversations = list.map((item) => ({
-            ...item,
-            lastViewedAt: item.lastViewedAt || item.createdAt || Date.now(),
-          }));
+          this.conversations = list.map((item) => {
+            const cleanedQuery = cleanUserPrompt(item.query);
+            const cleanedTurns = Array.isArray(item.turns)
+              ? item.turns.map((t) => ({
+                  ...t,
+                  query: cleanUserPrompt(t.query),
+                }))
+              : item.turns;
+            return {
+              ...item,
+              query: cleanedQuery || item.query,
+              title: item.title && !item.title.includes("<") ? item.title : this.generateSummaryTitle(cleanedQuery || item.title),
+              turns: cleanedTurns,
+              lastViewedAt: item.lastViewedAt || item.createdAt || Date.now(),
+            };
+          });
         }
       }
     } catch (err) {
@@ -98,8 +112,16 @@ class ConversationHistoryService extends EventTarget {
    */
   recordConversation(data) {
     if (!data) return null;
-    const trimmedQuery = (data.query || data.turns?.[0]?.query || "").trim();
+    const rawQuery = data.query || data.turns?.[0]?.query || "";
+    const trimmedQuery = cleanUserPrompt(rawQuery).trim() || rawQuery.trim();
     if (!trimmedQuery && (!Array.isArray(data.turns) || data.turns.length === 0)) return null;
+
+    const cleanedTurns = Array.isArray(data.turns)
+      ? data.turns.map((t) => ({
+          ...t,
+          query: cleanUserPrompt(t.query),
+        }))
+      : undefined;
 
     const now = Date.now();
 
@@ -138,8 +160,8 @@ class ConversationHistoryService extends EventTarget {
       if (data.taskId) {
         conv.taskId = data.taskId;
       }
-      if (Array.isArray(data.turns) && data.turns.length > 0) {
-        conv.turns = data.turns;
+      if (Array.isArray(cleanedTurns) && cleanedTurns.length > 0) {
+        conv.turns = cleanedTurns;
       }
       if (typeof data.isAborted === "boolean") {
         conv.isAborted = data.isAborted;
@@ -159,7 +181,7 @@ class ConversationHistoryService extends EventTarget {
         modelId: data.modelId || "",
         sessionPath: data.sessionPath || "",
         isAborted: Boolean(data.isAborted),
-        turns: Array.isArray(data.turns) && data.turns.length > 0 ? data.turns : undefined,
+        turns: cleanedTurns,
         createdAt: now,
         lastViewedAt: now,
       };
@@ -253,8 +275,9 @@ class ConversationHistoryService extends EventTarget {
    */
   generateSummaryTitle(query) {
     if (!query) return "新对话";
+    const cleaned = cleanUserPrompt(query);
     // 移除多余换行与空格
-    const clean = query.replace(/[\r\n\t]+/g, " ").trim();
+    const clean = (cleaned || query).replace(/[\r\n\t]+/g, " ").trim();
     if (clean.length <= 22) return clean;
     return `${clean.substring(0, 20)}...`;
   }

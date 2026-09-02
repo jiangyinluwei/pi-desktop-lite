@@ -1,4 +1,4 @@
-import { escapeHtml } from "../lib/dom-utils.js";
+import { escapeHtml, cleanUserPrompt } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
 import { invokeTauri } from "../services/tauri-bridge.js";
@@ -130,9 +130,11 @@ export function initFlowUi(ctx) {
     const groupEl = document.createElement("div");
     groupEl.className = "flow-message-group";
 
-    // 1. 用户问题卡片
+    // 1. 用户问题卡片（净化剥离注入信封与绝对路径尾注，始终展示真实用户输入）
     const userPromptCard = document.createElement("div");
     userPromptCard.className = "flow-user-prompt-card";
+
+    const cleanQuery = cleanUserPrompt(query);
 
     let attachmentsHtml = "";
     if (Array.isArray(attachments) && attachments.length > 0) {
@@ -157,7 +159,7 @@ export function initFlowUi(ctx) {
       </div>
       <div class="prompt-main-wrap">
         ${attachmentsHtml}
-        <p class="prompt-content">${escapeHtml(query || (attachments.length > 0 ? `[附带 ${attachments.length} 个文件/图片]` : ""))}</p>
+        <p class="prompt-content">${escapeHtml(cleanQuery || (attachments.length > 0 ? `[附带 ${attachments.length} 个文件/图片]` : ""))}</p>
       </div>
     `;
     groupEl.appendChild(userPromptCard);

@@ -83,13 +83,13 @@ pub fn parse_session_file(path: &Path) -> Result<SessionMetadata, String> {
                     if let Some(msg_obj) = val.get("message") {
                         let role = msg_obj.get("role").and_then(|v| v.as_str()).unwrap_or("");
                         if role == "user" {
-                            // 剥离运行态注入信封后判定是否为真实用户提问（摘要同样使用净化后文本）
+                            // 剥离运行态注入信封与附件后判定是否为真实用户提问（摘要同样使用净化后文本）
                             let raw = extract_message_text(msg_obj.get("content"));
-                            let stripped = strip_runtime_context_rules(&raw);
-                            if !stripped.trim().is_empty() {
+                            let clean = clean_user_prompt(&raw);
+                            if !clean.is_empty() {
                                 pending_query = true;
                                 if first_message.is_none() {
-                                    first_message = Some(stripped.chars().take(100).collect());
+                                    first_message = Some(clean.chars().take(100).collect());
                                 }
                             }
                         } else if role == "assistant" && pending_query {
@@ -159,8 +159,12 @@ pub fn parse_session_entries(path: &Path) -> Result<Vec<SessionEntrySummary>, St
 
             let mut text_preview = None;
             if let Some(msg_obj) = val.get("message") {
-                if let Some(content) = msg_obj.get("content").and_then(|v| v.as_str()) {
-                    text_preview = Some(content.chars().take(80).collect());
+                let raw = extract_message_text(msg_obj.get("content"));
+                let clean = clean_user_prompt(&raw);
+                if !clean.is_empty() {
+                    text_preview = Some(clean.chars().take(80).collect());
+                } else if !raw.trim().is_empty() {
+                    text_preview = Some(raw.trim().chars().take(80).collect());
                 }
             }
 
@@ -179,40 +183,206 @@ pub fn parse_session_entries(path: &Path) -> Result<Vec<SessionEntrySummary>, St
     Ok(entries)
 }
 
-fn clean_user_prompt(text: &str) -> String {
-    let mut raw = text;
-    if let Some(pos) = raw.find("\n\n[附带本地文件绝对路径]:") {
-        raw = &raw[..pos];
-    }
-    raw.trim().to_string()
-}
+/// 剥离宿主运行态注入的所有上下文信封（如 <runtime_context_rules>, <code_area_routing_context> 等），还原真实用户提问
+pub fn strip_injected_contexts(text: &str) -> String {
+    let mut result = text.to_string();
 
-/// 剥离宿主运行态注入的 <runtime_context_rules> 信封，还原真实用户提问
-fn strip_runtime_context_rules(text: &str) -> String {
-    const OPEN: &str = "<runtime_context_rules>";
-    const CLOSE: &str = "</runtime_context_rules>";
-    if let Some(start) = text.find(OPEN) {
-        if let Some(end) = text.find(CLOSE) {
-            let after = end + CLOSE.len();
-            let mut result = String::from(&text[..start]);
-            result.push_str(text[after..].trim_start());
-            return result.trim().to_string();
+    // 1. 已知确定的注入信封标签对列表
+    let known_tags = [
+        ("runtime_context_rules", "runtime_context_rules"),
+        ("code_area_routing_context", "code_area_routing_context"),
+        ("workspace_context", "workspace_context"),
+        ("runtime_rules", "runtime_rules"),
+        ("inner_skills_context", "inner_skills_context"),
+        ("inner_skill_rules", "inner_skill_rules"),
+        ("prompt_context", "prompt_context"),
+    ];
+
+    for (open_name, close_name) in known_tags {
+        let open_tag = format!("<{}>", open_name);
+        let close_tag = format!("</{}>", close_name);
+        while let Some(start) = result.find(&open_tag) {
+            if let Some(rel_end) = result[start..].find(&close_tag) {
+                let end = start + rel_end + close_tag.len();
+                let mut new_res = String::from(&result[..start]);
+                new_res.push_str(&result[end..]);
+                result = new_res;
+            } else {
+                result.truncate(start);
+                break;
+            }
         }
     }
-    text.to_string()
+
+    // 2. 通用 XML-like context/rules 标签对清洗（防御未来新增的注入标签）
+    loop {
+        let mut found = false;
+        if let Some(open_idx) = result.find('<') {
+            if let Some(close_idx) = result[open_idx..].find('>') {
+                let tag_content = &result[open_idx + 1..open_idx + close_idx];
+                let tag_name = tag_content.trim();
+                if (tag_name.ends_with("_context")
+                    || tag_name.ends_with("_rules")
+                    || tag_name.contains("context")
+                    || tag_name.contains("rules"))
+                    && !tag_name.starts_with('/')
+                    && !tag_name.is_empty()
+                    && tag_name
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+                {
+                    let end_tag = format!("</{}>", tag_name);
+                    if let Some(rel_close) = result[open_idx..].find(&end_tag) {
+                        let end_pos = open_idx + rel_close + end_tag.len();
+                        let mut new_res = String::from(&result[..open_idx]);
+                        new_res.push_str(&result[end_pos..]);
+                        result = new_res;
+                        found = true;
+                    }
+                }
+            }
+        }
+        if !found {
+            break;
+        }
+    }
+
+    result.trim().to_string()
 }
 
-/// 从用户提问尾注中提取附带本地文件路径列表
-fn split_user_prompt_attachments(text: &str) -> (String, Vec<String>) {
-    const ATTACHMENT_MARKER: &str = "[附带本地文件绝对路径]:";
-    let attachments: Vec<String> = match text.find(ATTACHMENT_MARKER) {
-        Some(pos) => text[pos + ATTACHMENT_MARKER.len()..]
-            .lines()
-            .map(|l| l.trim().trim_end_matches(',').to_string())
-            .filter(|l| !l.is_empty())
-            .collect(),
+/// 兼容旧命名别名
+#[inline]
+pub fn strip_runtime_context_rules(text: &str) -> String {
+    strip_injected_contexts(text)
+}
+
+const ATTACHMENT_MARKERS: &[&str] = &[
+    "[附带本地文件/目录绝对路径]:",
+    "[附带本地文件绝对路径]:",
+    "[附带本地目录绝对路径]:",
+    "[附带本地文件路径]:",
+    "[附带本地目录路径]:",
+    "[附带文件绝对路径]:",
+    "[附带文件路径]:",
+];
+
+/// 清洗用户提问文本：剥离注入信封、附件清单以及引导提示语
+pub fn clean_user_prompt(text: &str) -> String {
+    let text_no_contexts = strip_injected_contexts(text);
+    let mut raw = text_no_contexts.as_str();
+    let mut earliest_pos = None;
+
+    for marker in ATTACHMENT_MARKERS {
+        if let Some(pos) = raw.find(marker) {
+            match earliest_pos {
+                Some(p) if pos < p => earliest_pos = Some(pos),
+                None => earliest_pos = Some(pos),
+                _ => {}
+            }
+        }
+    }
+
+    if let Some(pos) = earliest_pos {
+        raw = &raw[..pos];
+    }
+
+    let mut cleaned = raw.trim().to_string();
+
+    // 剔除末尾可能残留的目录引导语
+    if let Some(pos) = cleaned.find("（提示：附带项目中包含本地目录") {
+        cleaned.truncate(pos);
+        cleaned = cleaned.trim().to_string();
+    }
+    if let Some(pos) = cleaned.find("(提示：附带项目中包含本地目录") {
+        cleaned.truncate(pos);
+        cleaned = cleaned.trim().to_string();
+    }
+
+    // 针对纯附件对话时的系统默认占位前缀，还原为空字符串以触发前端 "[附带 N 个文件/图片]" 展示
+    if cleaned == "请查阅并分析以下本地文件/目录："
+        || cleaned == "请查阅并分析以下本地文件/目录:"
+        || cleaned == "请查阅并分析以下本地文件："
+        || cleaned == "请查阅并分析以下本地文件:"
+        || cleaned == "请查阅并分析以下本地目录："
+        || cleaned == "请查阅并分析以下本地目录:"
+    {
+        cleaned.clear();
+    }
+
+    cleaned
+}
+
+/// 从用户提问尾注中提取附带本地文件/目录路径列表
+pub fn split_user_prompt_attachments(text: &str) -> (String, Vec<String>) {
+    let text_no_contexts = strip_injected_contexts(text);
+    let mut earliest_pos = None;
+    let mut marker_len = 0;
+
+    for marker in ATTACHMENT_MARKERS {
+        if let Some(pos) = text_no_contexts.find(marker) {
+            match earliest_pos {
+                Some(p) if pos < p => {
+                    earliest_pos = Some(pos);
+                    marker_len = marker.len();
+                }
+                None => {
+                    earliest_pos = Some(pos);
+                    marker_len = marker.len();
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let attachments: Vec<String> = match earliest_pos {
+        Some(pos) => {
+            let after_marker = &text_no_contexts[pos + marker_len..];
+            let mut paths = Vec::new();
+            for line in after_marker.lines() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                if trimmed.starts_with("（提示：")
+                    || trimmed.starts_with("(提示：")
+                    || trimmed.starts_with('<')
+                    || (trimmed.starts_with('[') && !trimmed.starts_with("- [") && !trimmed.starts_with("* ["))
+                {
+                    continue;
+                }
+                let mut path_str = trimmed;
+                if path_str.starts_with('-') || path_str.starts_with('*') {
+                    path_str = path_str[1..].trim();
+                }
+                if let Some(idx) = path_str.find("]:") {
+                    path_str = path_str[idx + 2..].trim();
+                } else if let Some(idx) = path_str.find("]: ") {
+                    path_str = path_str[idx + 3..].trim();
+                } else if let Some(idx) = path_str.find(':') {
+                    let prefix = &path_str[..idx];
+                    if prefix.contains("文件")
+                        || prefix.contains("目录")
+                        || prefix.eq_ignore_ascii_case("folder")
+                        || prefix.eq_ignore_ascii_case("file")
+                    {
+                        path_str = path_str[idx + 1..].trim();
+                    }
+                }
+                let clean_path = path_str
+                    .trim()
+                    .trim_matches(',')
+                    .trim_matches('"')
+                    .trim_matches('\'')
+                    .trim();
+                if !clean_path.is_empty() {
+                    paths.push(clean_path.to_string());
+                }
+            }
+            paths
+        }
         None => Vec::new(),
     };
+
     let query = clean_user_prompt(text);
     (query, attachments)
 }
@@ -267,22 +437,10 @@ pub fn extract_user_prompts_from_session(path: &Path) -> Vec<String> {
                 if let Some(msg_obj) = val.get("message") {
                     let role = msg_obj.get("role").and_then(|v| v.as_str()).unwrap_or("");
                     if role == "user" {
-                        if let Some(content) = msg_obj.get("content") {
-                            if let Some(text) = content.as_str() {
-                                let clean = clean_user_prompt(text);
-                                if !clean.is_empty() {
-                                    prompts.push(clean);
-                                }
-                            } else if let Some(arr) = content.as_array() {
-                                for item in arr {
-                                    if let Some(t) = item.get("text").and_then(|v| v.as_str()) {
-                                        let clean = clean_user_prompt(t);
-                                        if !clean.is_empty() {
-                                            prompts.push(clean);
-                                        }
-                                    }
-                                }
-                            }
+                        let raw = extract_message_text(msg_obj.get("content"));
+                        let clean = clean_user_prompt(&raw);
+                        if !clean.is_empty() {
+                            prompts.push(clean);
                         }
                     }
                 }
@@ -357,8 +515,7 @@ pub fn parse_session_turns(path: &Path) -> Result<Vec<SessionTurnDetail>, String
         match role {
             "user" => {
                 let raw = extract_message_text(msg_obj.get("content"));
-                let stripped = strip_runtime_context_rules(&raw);
-                let (query, attachments) = split_user_prompt_attachments(&stripped);
+                let (query, attachments) = split_user_prompt_attachments(&raw);
                 turns.push(SessionTurnDetail {
                     query,
                     attachments,
@@ -469,4 +626,38 @@ pub fn parse_session_turns(path: &Path) -> Result<Vec<SessionTurnDetail>, String
     }
 
     Ok(turns)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_strip_injected_contexts() {
+        let raw = "<runtime_context_rules>\nSome rules...\n</runtime_context_rules>\n\nHello World\n\n<code_area_routing_context>\nTarget: /path\n</code_area_routing_context>";
+        let stripped = strip_injected_contexts(raw);
+        assert_eq!(stripped, "Hello World");
+    }
+
+    #[test]
+    fn test_clean_user_prompt_with_attachments_and_guidance() {
+        let raw = "<runtime_context_rules>\nRULES\n</runtime_context_rules>\n\n分析这个项目结构\n\n[附带本地文件/目录绝对路径]:\n- [目录/Folder]: C:/Users/test/project\n\n（提示：附带项目中包含本地目录，请主动遍历检索其中的文件；若发现包含 .docx、.doc、.pdf、.pptx、.xlsx 或图像等格式，请自动调用专门的 OCR 或文档解析组件读取真实内容并深入分析）\n\n<code_area_routing_context>\nTarget: C:/Users/test/project\n</code_area_routing_context>";
+        let clean = clean_user_prompt(raw);
+        assert_eq!(clean, "分析这个项目结构");
+
+        let (query, attachments) = split_user_prompt_attachments(raw);
+        assert_eq!(query, "分析这个项目结构");
+        assert_eq!(attachments, vec!["C:/Users/test/project"]);
+    }
+
+    #[test]
+    fn test_clean_user_prompt_attachments_only() {
+        let raw = "请查阅并分析以下本地文件/目录：\n\n[附带本地文件/目录绝对路径]:\n- [文件/code]: C:/test.rs";
+        let clean = clean_user_prompt(raw);
+        assert_eq!(clean, "");
+
+        let (query, attachments) = split_user_prompt_attachments(raw);
+        assert_eq!(query, "");
+        assert_eq!(attachments, vec!["C:/test.rs"]);
+    }
 }

@@ -839,10 +839,29 @@ window.addEventListener("pi:view-change", () => updateFlowTurnNav());
 
 ---
 
+## 📌 10. 历史会话还原与提示词上下文信封净化规范 (Session History Restoration & Prompt Context Stripping)
+
+### 10.1 问题背景与根本诱因
+当应用在运行时向 Pi 内核发送 Prompt 时，Rust 后端会根据当前环境透明注入上下文信封（如 `<runtime_context_rules>`、`<code_area_routing_context>` 等），同时包含附带文件/目录的绝对路径尾注（`[附带本地文件/目录绝对路径]:`）。这些信息会真实保存在底层 Pi 会话文件（`~/.pi/agent/sessions/*.jsonl`）中。
+若在从设置页「会话记录」Tab 或主界面讯息抽屉恢复进入 Flow 界面时未进行深度脱敏净化，这些注入信封与绝对路径就会暴露在用户提问卡片与顶部悬浮提示中。
+
+### 10.2 纯净还原流水线
+1. **Rust 后端原生净化 (`src-tauri/src/session/parser.rs`)**：
+   - `strip_injected_contexts(text)`：递归与循环剥离所有 XML-like 上下文信封（`<runtime_context_rules>`, `<code_area_routing_context>`, `<workspace_context>` 等）；
+   - `clean_user_prompt(text)`：剥离注入信封 + 截断 `[附带本地文件/目录绝对路径]:` 等附件尾注 + 移除目录引导提示语 + 将纯附件占位前缀还原为空字符串；
+   - `split_user_prompt_attachments(text)`：精确提取附件物理路径列表，过滤引导提示行与标签行；
+   - `extract_user_prompts_from_session` 与 `parse_session_file` 均统一采用 `clean_user_prompt`。
+2. **Web 前端纵深防御 (`src/lib/dom-utils.js` & 各 UI 模块)**：
+   - `cleanUserPrompt(text)` 工具函数：在 `createFlowTurnGroupElement`、`mapSessionTurns`、`recordConversation`、`PromptHistoryNavigator` 以及 `restoreConversationToFlow` / `restoreTaskToFlow` 中进行纵深净化；
+   - 彻底保证：无论是从本地存储恢复、从内核原生会话文件解析、还是在上下翻阅历史提示词栈时，用户输入卡片均 100% 仅展现用户原始真实提问，绝无注入标签残留。
+
+---
+
 ## 📎 关联文件索引
 
 | 文件 | 关键内容 |
 |---|---|
+| [`src/lib/dom-utils.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/lib/dom-utils.js) | `escapeHtml`、`cleanUserPrompt`（提示词注入信封与附件尾注纵深净化器） |
 | [`src/lib/markdown-renderer.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/lib/markdown-renderer.js) | `renderMarkdown` 流式 Markdown 预览渲染引擎、轻量分词高亮器、`initMarkdownInteractions` 代码块一键复制事件委托 |
 | [`src/styles/markdown.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles/markdown.css) | Typedown 质感 Markdown 预览样式表（标题、代码块、语法分词、表格、任务清单、警示框、超链接） |
 | [`src/services/tauri-bridge.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/tauri-bridge.js) | `invokeTauri` 与 `openExternalUrl`（调用后端 `pi_open_url` 或 `plugin:opener|open_url` 打开系统默认浏览器） |
@@ -850,12 +869,16 @@ window.addEventListener("pi:view-change", () => updateFlowTurnNav());
 | [`src/services/task-manager.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/task-manager.js) | `TaskManager` 多任务状态机、`turns` 轮次数组、多轮开启 `startNewTurn`、任务挂起与中止 |
 | [`src/services/model-failover.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/model-failover.js) | `ModelFailoverEngine` 自动重连切换引擎 |
 | [`src/services/pi-client.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/pi-client.js) | `extractErrorCode` / `classifyModelError` 错误分类、`agent-error` / `agent-end` / `retry-status` 事件流 |
-| [`src/services/conversation-history.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/conversation-history.js) | `ConversationHistoryService` 多轮快照沉淀与 MRU 恢复 |
+| [`src/services/conversation-history.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/conversation-history.js) | `ConversationHistoryService` 多轮快照沉淀与 MRU 恢复、提问净化与简短标题生成 |
+| [`src/services/prompt-history.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/services/prompt-history.js) | `PromptHistoryNavigator` 输入框历史回溯栈与原生会话提问同步 |
+| [`src-tauri/src/session/parser.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/session/parser.rs) | `strip_injected_contexts`、`clean_user_prompt`、`split_user_prompt_attachments`、`parse_session_turns` 原生会话解析与净化 |
 | [`src-tauri/src/pi_runner/host_pool.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/pi_runner/host_pool.rs) | `PiHostPool` 多进程监管池、独立子进程隔离与 `task_id` 分帧注入 |
 | [`src/main.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/main.js) | 前端编排入口：收集 DOM 引用、构建 `ctx` 并按依赖顺序初始化各模块 |
-| [`src/modules/flow-ui.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/modules/flow-ui.js) | `createFlowTurnGroupElement`、`updateFlowTurnNav`、`renderMarkdown` 接入与复制事件初始化 |
+| [`src/modules/flow-ui.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/modules/flow-ui.js) | `createFlowTurnGroupElement`、`updateFlowTurnNav`、`renderMarkdown` 接入与提问卡净化 |
+| [`src/modules/sessions-panel.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/modules/sessions-panel.js) | 会话记录面板列表渲染、`enterKernelSessionFlow` 会话恢复与进入 Flow 管线 |
+| [`src/modules/task-panel.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/modules/task-panel.js) | `renderTurnsIntoFlow`、`restoreConversationToFlow`、`restoreTaskToFlow` 轮次渲染与恢复 |
 | [`src/modules/flow-stream.js`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/modules/flow-stream.js) | 流式输出 `text-delta` 事件实时渲染 Markdown 与光标更新 |
 | [`src/styles.css`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src/styles.css) | 样式聚合入口（包含 `@import url("./styles/markdown.css");`） |
-| [`src-tauri/src/lib.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/lib.rs) | `pi_open_url` 指令（`tauri_plugin_opener`）、`pi_show_notification` 等 |
+| [`src-tauri/src/lib.rs`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/src/lib.rs) | `pi_get_session_detail`、`pi_get_prompt_history`、`pi_open_url` 指令等 |
 
 

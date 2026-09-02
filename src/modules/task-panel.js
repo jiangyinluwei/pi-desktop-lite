@@ -1,4 +1,4 @@
-import { escapeHtml } from "../lib/dom-utils.js";
+import { escapeHtml, cleanUserPrompt } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
 import { piClient } from "../services/pi-client.js";
@@ -434,10 +434,10 @@ export function initTaskPanel(ctx) {
     }
 
     const turns = Array.isArray(task.turns) && task.turns.length > 0
-      ? task.turns
+      ? task.turns.map((t) => ({ ...t, query: cleanUserPrompt(t.query || "") }))
       : [
           {
-            query: task.query || task.title || "",
+            query: cleanUserPrompt(task.query || task.title || ""),
             attachments: task.attachments || [],
             thinkingText: task.thinkingText || "",
             thinkingDurationText: task.thinkingDurationText || "已完成思考",
@@ -467,10 +467,10 @@ export function initTaskPanel(ctx) {
     const taskIdToUse = conv.taskId || conv.id;
     let task = taskManager.getTask(taskIdToUse);
     const turns = Array.isArray(conv.turns) && conv.turns.length > 0
-      ? conv.turns
+      ? conv.turns.map((t) => ({ ...t, query: cleanUserPrompt(t.query || "") }))
       : [
           {
-            query: conv.query || conv.title || "",
+            query: cleanUserPrompt(conv.query || conv.title || ""),
             attachments: [],
             thinkingText: conv.thinkingText || "",
             thinkingDurationText: conv.thinkingDuration || "已完成思考",
@@ -485,7 +485,7 @@ export function initTaskPanel(ctx) {
       task = taskManager.createTask({
         id: taskIdToUse,
         conversationId: conv.id,
-        query: conv.query || conv.title || "",
+        query: cleanUserPrompt(conv.query || conv.title || ""),
         model: conv.modelId || piClient.currentModel?.id || "default",
         isSuspended: false,
       });

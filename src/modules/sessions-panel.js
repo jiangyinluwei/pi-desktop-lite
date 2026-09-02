@@ -1,4 +1,4 @@
-import { escapeHtml } from "../lib/dom-utils.js";
+import { escapeHtml, cleanUserPrompt } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { sessionService } from "../services/session-service.js";
 import { conversationHistoryService } from "../services/conversation-history.js";
@@ -84,7 +84,7 @@ export function initSessionsPanel(ctx) {
 
   const mapSessionTurns = (detail) => {
     return (Array.isArray(detail) ? detail : []).map((t) => ({
-      query: t.query || "",
+      query: cleanUserPrompt(t.query || ""),
       attachments: (t.attachments || []).map(toAttachmentChip),
       thinkingText: t.thinking_text || "",
       thinkingDurationText: "已完成思考",
@@ -132,7 +132,7 @@ export function initSessionsPanel(ctx) {
         await sketchAlert("未能解析该会话的完整轮次，将仅展示首条提问。");
         turns = [
           {
-            query: s.first_message || s.session_id || "(空会话)",
+            query: cleanUserPrompt(s.first_message || s.session_id || "(空会话)"),
             attachments: [],
             thinkingText: "",
             thinkingDurationText: "已完成思考",
@@ -144,7 +144,7 @@ export function initSessionsPanel(ctx) {
         ];
       }
 
-      const firstQuery = turns[0].query || s.first_message || s.session_id;
+      const firstQuery = cleanUserPrompt(turns[0].query || s.first_message || s.session_id);
       const lastTurn = turns[turns.length - 1];
 
       // 沉淀至界面1 讯息卡片：kernel_ 前缀隔离，recordConversation 自带 MRU 刷新与反隐藏
@@ -261,7 +261,7 @@ export function initSessionsPanel(ctx) {
           })
         : "";
 
-      const rawFirst = (s.first_message || "").trim();
+      const rawFirst = cleanUserPrompt(s.first_message || "").trim();
       const cleanFirst = rawFirst.replace(/\r?\n+/g, " ");
       const hasFirstMessage = cleanFirst.length > 0;
       const displayTitle = hasFirstMessage

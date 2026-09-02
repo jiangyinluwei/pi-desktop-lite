@@ -9,6 +9,7 @@
  */
 
 import { invokeTauri } from "./tauri-bridge.js";
+import { cleanUserPrompt } from "../lib/dom-utils.js";
 
 const STORAGE_KEY_PROMPTS = "pi_prompt_history_stack";
 const MAX_HISTORY_ENTRIES = 100;
@@ -37,7 +38,9 @@ export class PromptHistoryNavigator extends EventTarget {
       if (stored) {
         const arr = JSON.parse(stored);
         if (Array.isArray(arr)) {
-          this.history = arr.filter((item) => typeof item === "string" && item.trim().length > 0);
+          this.history = arr
+            .map((item) => (typeof item === "string" ? cleanUserPrompt(item).trim() : ""))
+            .filter((item) => item.length > 0);
         }
       }
     } catch (err) {
@@ -68,7 +71,10 @@ export class PromptHistoryNavigator extends EventTarget {
     try {
       const nativePrompts = await invokeTauri("pi_get_prompt_history");
       if (Array.isArray(nativePrompts) && nativePrompts.length > 0) {
-        const merged = Array.from(new Set([...this.history, ...nativePrompts]));
+        const cleanedNative = nativePrompts
+          .map((item) => (typeof item === "string" ? cleanUserPrompt(item).trim() : ""))
+          .filter((item) => item.length > 0);
+        const merged = Array.from(new Set([...this.history, ...cleanedNative]));
         this.history = merged.slice(-MAX_HISTORY_ENTRIES);
         this.saveToStorage();
         this.resetIndex();
@@ -84,7 +90,7 @@ export class PromptHistoryNavigator extends EventTarget {
    */
   push(text) {
     if (!text || typeof text !== "string") return;
-    const clean = text.trim();
+    const clean = cleanUserPrompt(text).trim();
     if (!clean) return;
 
     // 连续相同内容不重复添加

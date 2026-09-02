@@ -130,7 +130,8 @@
 - **两阶段动态映射与即时触发体系**：
   1. **阶段一：背景持续静默注入 (`RULES.md` Silent Baseline)**：每轮提问透明封入精炼纯英文 `<runtime_context_rules>`（`RULES.md` 原文），静默无扰，常规问答不显现 UI 胶囊；
   2. **阶段二：动态映射解析与即时激活呈现 (Just-In-Time Skill Feedback)**：Rust 引擎动态解析 `RULES.md` 矩阵生成映射表；当且仅当底层 Agent 触发调用命中映射的工具（如 `bash` 命中 `windows-bash-compatibility`、`ocr`/`deword` 命中 `document-multimodal-inspection`）时，即时在思考卡片上方呈现手绘草图胶囊；多技能触发时在文本后以中文逗号连续追加（如：`已激活运行态技能：XXX1，XXX2，XXX3 ......`）；未在 `RULES.md` 映射的工具绝不误触；
-  3. **`<runtime_context_rules>` 信封隔离**：明确声明约束仅在触发工具调用时生效，保障正常对话生成的自然性。
+  3. **`<runtime_context_rules>` 信封隔离**：明确声明约束仅在触发工具调用时生效，保障正常对话生成的自然性；
+  4. **提示词上下文信封脱敏与会话还原净化规范 (Prompt Context Stripping & Session Sanitization)**：会话文件解析（`parse_session_turns` / `parse_session_file` / `extract_user_prompts_from_session`）、历史记录加载、搜索回溯以及从设置页/讯息抽屉恢复进入 Flow 时，全域自动剥离运行态注入信封（`<runtime_context_rules>`、`<code_area_routing_context>` 等）与附带文件绝对路径尾注，保障所有历史会话还原与「用户输入」区域 100% 仅展现用户原始真实提问。
 
 | 文件 / Skill 名称 | 路径 | 运行态注入机制与作用 |
 | :--- | :--- | :--- |

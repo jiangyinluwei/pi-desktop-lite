@@ -51,7 +51,7 @@ description: |
   - 作为与详细版/专注版/Flow版平级的独立全屏视图，整合「常规」、「模型配置」（集成当前模型列表与折叠式官方/自定义通道配置）、「内核」、「会话记录」、「工作区」5 大 Tab 导航；
   - 右上角操作指引（“**提示：在任意位置点击鼠标右键或按 Esc 即可快速回退**”）进入后 3 秒自动平滑渐隐；
   - 主界面统一配色与非嵌套线框设计（低饱和度功能色、细边框 `var(--sketch-border-subtle)`、透明底色）；
-  - **会话记录 Tab (`pane-sessions`)**：基于 `pi_list_sessions` 全量内核会话元数据的前端内存过滤——硬过滤仅保留 `has_complete_turn` 会话（至少一轮「真实用户提问 → 完整回答」）+ 关键字搜索（防抖 200ms，命中 `first_message`/`session_id`/`cwd`）与 SketchSelect 时间档位筛选（全部/24h/7d/30d，按 `modified_at`），计数显示过滤后数量（如 `66/208`）；每个会话条目提供「进入 Flow」按钮，走统一 `enterKernelSessionFlow` 管线（Rust `pi_get_session_detail` 完整解析轮次 → `recordConversation` 以 `kernel_` 前缀沉淀界面1 讯息卡片 → 绑定 TaskManager → 共享渲染器 `renderTurnsIntoFlow` 还原 Flow 多轮 → 切内核会话）；「清空界面会话」按钮经 sketchConfirm 二次确认后仅清 UI 展示层（`conversationHistoryService.clearAllConversations()`），绝不删除 `~/.pi` 内核会话 JSONL 文件；程序不提供任何直接删除内核会话的能力。
+  - **会话记录 Tab (`pane-sessions`)**：基于 `pi_list_sessions` 全量内核会话元数据的前端内存过滤——硬过滤仅保留 `has_complete_turn` 会话（至少一轮「真实用户提问 → 完整回答」）+ 关键字搜索（防抖 200ms，命中 `first_message`/`session_id`/`cwd`）与 SketchSelect 时间档位筛选（全部/24h/7d/30d，按 `modified_at`），计数显示过滤后数量（如 `66/208`）；每个会话条目提供「进入 Flow」按钮，走统一 `enterKernelSessionFlow` 管线（Rust `pi_get_session_detail` 原生深度剥离 `<runtime_context_rules>` 与 `<code_area_routing_context>` 等注入信封及附件绝对路径尾注，完整解析纯净轮次 → `recordConversation` 以 `kernel_` 前缀沉淀界面1 讯息卡片 → 绑定 TaskManager → 共享渲染器 `renderTurnsIntoFlow` 还原 Flow 多轮 → 切内核会话）；「清空界面会话」按钮经 sketchConfirm 二次确认后仅清 UI 展示层（`conversationHistoryService.clearAllConversations()`），绝不删除 `~/.pi` 内核会话 JSONL 文件；程序不提供任何直接删除内核会话的能力。
 
 ---
 
