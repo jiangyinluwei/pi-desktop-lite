@@ -88,7 +88,11 @@
     - 对话流上下文注入：发起 Prompt / FollowUp 时透明注入 `<code_area_routing_context>`（目标绝对路径、免污染铁律与 Hub 技能清单），自动读取并注入目标路由工作区的 `AGENTS.md` / `README.md`，若命中技能映射则注入完整指令块（`<routed_project_skills>`），并在 Flow 呈现路由目标胶囊；所有注入条目（Inner-Skill / AGENTS.md / README.md / 命中技能 / 路由信封）在 Flow 会话流「路由目标项目」胶囊下方的「注入提示」信息框中集中呈现（直角简洁风格，默认收起显示「注入提示」与注入数量，点击展开完整清单；动态累积、去重）；
 14. **子代理模型自动钉住与防跃升机制 (Subagents Model Pinning & Escalation Prevention)**：
     - 当启用 `pi-subagents` 扩展组件时，在软件初次启动加载、用户切换模型、或安装/更新组件时，自动将当前主模型同步写入 `~/.pi/agent/settings.json` 的 `subagents.defaultModel` 与各常用角色（`oracle`, `worker`, `reviewer`, `researcher`, `planner`, `scout` 等）的 `agentOverrides`；
-    - 采用非破坏性读-合并-写回语义，完整保留其余已有配置；未启用 `pi-subagents` 时绝不产生冗余字段污染，彻底杜绝子代理角色因 high-thinking 能力画像擅自升配调用更昂贵模型（如 `deepseek-v4-pro`）造成的额外 Token 消耗。
+    - 采用非破坏性读-合并-写回语义，完整保留其余已有配置；未启用 `pi-subagents` 时绝不产生冗余字段污染，彻底杜绝子代理角色因 high-thinking 能力画像擅自升配调用更昂贵模型（如 `deepseek-v4-pro`）造成的额外 Token 消耗；
+15. **Node.js 运行环境预设检测与安装拦截引导规范 (Node.js Environment Preflight & Degradation)**：
+    - **底层依赖与自适应探测**：Pi 扩展组件安装/更新与内核生态依赖 Node.js/npm 运行环境。Rust 后端通过 `pi_check_node_environment` 具备 Windows 全域 PATH 与多默认安装路径自适应极速探测能力（`node -v` / `npm -v`），无控制台黑框且带超时与非破坏性借用保护；
+    - **友好拦截与一键直达**：用户在扩展组件市场安装单个组件、一键安装推荐插件、更新组件或更新/下载内核时，前端自动执行 Node.js 环境预检。未检测到环境时优雅拦截并弹出手绘风格 `SketchModal` 提示框，支持一键通过外部浏览器（`pi_open_url` / `tauri_plugin_opener`）唤起 Node.js 官方下载页面（`https://nodejs.org/`），杜绝生硬崩溃与晦涩错误；
+    - **无感缓存与动态重试**：已成功检测到环境时无感缓存，未安装时每次操作自动重新探测，允许用户安装好 Node.js 后无需重启即刻继续。
 
 > 📖 **完整功能矩阵与系统特性总览**：详见项目架构总览技能 [`.agents/skills/pi-desktop-overview/SKILL.md`](file:///.agents/skills/pi-desktop-overview/SKILL.md)。
 

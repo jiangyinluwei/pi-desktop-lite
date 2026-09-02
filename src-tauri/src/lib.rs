@@ -16,9 +16,9 @@ use config_manager::{
     sync_subagent_pinned_model_if_enabled,
 };
 use package_manager::{
-    pi_apply_package_preset, pi_check_package_updates, pi_get_installed_packages,
-    pi_get_recommended_plugins, pi_install_package, pi_search_packages, pi_uninstall_package,
-    pi_update_package,
+    pi_apply_package_preset, pi_check_node_environment, pi_check_package_updates,
+    pi_get_installed_packages, pi_get_recommended_plugins, pi_install_package,
+    pi_search_packages, pi_uninstall_package, pi_update_package,
 };
 use pi_runner::{FollowUpRequest, HostStatus, PiHostPool, PiSupervisor, PromptRequest, SteerRequest};
 use session::{
@@ -903,6 +903,7 @@ pub fn run() {
             pi_fetch_official_models,
             pi_fetch_custom_provider_models,
             pi_get_recommended_plugins,
+            pi_check_node_environment,
             pi_search_packages,
             pi_get_installed_packages,
             pi_install_package,

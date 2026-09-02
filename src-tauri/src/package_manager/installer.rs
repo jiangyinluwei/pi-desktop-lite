@@ -1,4 +1,4 @@
-use super::models::{InstalledPackage, PackageProgressPayload, PackageUpdateInfo};
+use super::models::{InstalledPackage, NodeEnvironmentInfo, PackageProgressPayload, PackageUpdateInfo};
 use crate::config_manager::get_pi_agent_dir;
 use crate::pi_runner::supervisor::PiSupervisor;
 use crate::version_watcher::checker::is_newer;
@@ -149,6 +149,115 @@ pub fn get_installed_packages() -> Result<Vec<InstalledPackage>, String> {
     Ok(installed_list)
 }
 
+/// 检测系统中的 Node.js 与 npm 运行环境
+pub async fn check_node_environment() -> NodeEnvironmentInfo {
+    let mut node_version = None;
+    let mut node_found = false;
+
+    // 1. 尝试直接从 PATH 执行 node --version
+    let mut cmd = tokio::process::Command::new("node");
+    cmd.arg("--version");
+    #[cfg(windows)]
+    {
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    if let Ok(output_res) = tokio::time::timeout(Duration::from_secs(3), cmd.output()).await {
+        if let Ok(out) = output_res {
+            if out.status.success() {
+                let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !v.is_empty() {
+                    node_version = Some(v);
+                    node_found = true;
+                }
+            }
+        }
+    }
+
+    // 若 PATH 中未直接找到，尝试探测 Windows 常见默认安装路径
+    if !node_found {
+        let mut candidates = Vec::new();
+        if let Ok(pf) = std::env::var("ProgramFiles") {
+            candidates.push(PathBuf::from(pf).join("nodejs").join("node.exe"));
+        }
+        if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
+            candidates.push(PathBuf::from(pf86).join("nodejs").join("node.exe"));
+        }
+        if let Ok(local_app) = std::env::var("LOCALAPPDATA") {
+            candidates.push(PathBuf::from(&local_app).join("Programs").join("node").join("node.exe"));
+            candidates.push(PathBuf::from(&local_app).join("Programs").join("nodejs").join("node.exe"));
+        }
+        if let Ok(app_data) = std::env::var("APPDATA") {
+            candidates.push(PathBuf::from(app_data).join("nvm").join("current").join("node.exe"));
+        }
+
+        for candidate in candidates {
+            if candidate.exists() {
+                let mut fallback_cmd = tokio::process::Command::new(&candidate);
+                fallback_cmd.arg("--version");
+                #[cfg(windows)]
+                {
+                    fallback_cmd.creation_flags(0x08000000);
+                }
+                if let Ok(output_res) = tokio::time::timeout(Duration::from_secs(3), fallback_cmd.output()).await {
+                    if let Ok(out) = output_res {
+                        if out.status.success() {
+                            let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                            if !v.is_empty() {
+                                node_version = Some(v);
+                                node_found = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. 若找到 Node.js，探测 npm 版本
+    let mut npm_version = None;
+    if node_found {
+        let mut npm_cmd = if cfg!(windows) {
+            tokio::process::Command::new("npm.cmd")
+        } else {
+            tokio::process::Command::new("npm")
+        };
+        npm_cmd.arg("--version");
+        #[cfg(windows)]
+        {
+            npm_cmd.creation_flags(0x08000000);
+        }
+
+        if let Ok(output_res) = tokio::time::timeout(Duration::from_secs(3), npm_cmd.output()).await {
+            if let Ok(out) = output_res {
+                if out.status.success() {
+                    let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !v.is_empty() {
+                        npm_version = Some(v);
+                    }
+                }
+            }
+        }
+    }
+
+    if node_found {
+        NodeEnvironmentInfo {
+            installed: true,
+            node_version,
+            npm_version,
+            error: None,
+        }
+    } else {
+        NodeEnvironmentInfo {
+            installed: false,
+            node_version: None,
+            npm_version: None,
+            error: Some("未检测到 Node.js 运行环境，请先安装 Node.js".to_string()),
+        }
+    }
+}
+
 /// 执行 pi.exe install <pkg> -a 安装组件并实时派发进度事件
 pub async fn install_package(
     app_handle: &tauri::AppHandle,
@@ -161,6 +270,22 @@ pub async fn install_package(
 
     // 异步排队获取全局互斥锁（严格按队列顺序执行，杜绝并发冲突）
     let _lock = PACKAGE_OPERATION_MUTEX.lock().await;
+
+    // 前置环境防御校验：确认 Node.js 环境就绪
+    let node_env = check_node_environment().await;
+    if !node_env.installed {
+        let err_msg = "未检测到 Node.js 运行环境，请先安装 Node.js (https://nodejs.org/)".to_string();
+        let _ = app_handle.emit(
+            "package-progress",
+            PackageProgressPayload {
+                package_name: pkg_name.clone(),
+                stage: "error".to_string(),
+                percent: 100,
+                message: err_msg.clone(),
+            },
+        );
+        return Err(err_msg);
+    }
 
     let pi_bin = PiSupervisor::find_pi_binary(Some(app_handle)).unwrap_or_else(|| PathBuf::from("pi"));
 
@@ -506,6 +631,22 @@ pub async fn update_package(
 
     // 异步排队获取全局互斥锁（严格按队列顺序执行，杜绝并发冲突）
     let _lock = PACKAGE_OPERATION_MUTEX.lock().await;
+
+    // 前置环境防御校验：确认 Node.js 环境就绪
+    let node_env = check_node_environment().await;
+    if !node_env.installed {
+        let err_msg = "未检测到 Node.js 运行环境，请先安装 Node.js (https://nodejs.org/)".to_string();
+        let _ = app_handle.emit(
+            "package-progress",
+            PackageProgressPayload {
+                package_name: pkg_name.clone(),
+                stage: "error".to_string(),
+                percent: 100,
+                message: err_msg.clone(),
+            },
+        );
+        return Err(err_msg);
+    }
 
     let pi_bin = PiSupervisor::find_pi_binary(Some(app_handle)).unwrap_or_else(|| PathBuf::from("pi"));
     let update_spec = format!("npm:{}", pkg_name);

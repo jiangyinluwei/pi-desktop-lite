@@ -72,4 +72,15 @@ pub struct RecommendedPlugin {
     pub source: Option<String>,
 }
 
+/// Node.js 与 npm 运行环境检测结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeEnvironmentInfo {
+    pub installed: bool,
+    pub node_version: Option<String>,
+    pub npm_version: Option<String>,
+    pub error: Option<String>,
+}
+
+
 

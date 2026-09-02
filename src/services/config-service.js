@@ -39,6 +39,7 @@ class ConfigService extends EventTarget {
     this.autoReconnectSwitch = true;
     this.modelFailover = { ...DEFAULT_FAILOVER_CONFIG };
     this.mediaQueryDark = window.matchMedia("(prefers-color-scheme: dark)");
+    this.cachedNodeEnv = null;
   }
 
   /**
@@ -931,6 +932,32 @@ class ConfigService extends EventTarget {
    */
   async getRecommendedPlugins() {
     return this.invoke("pi_get_recommended_plugins");
+  }
+
+  /**
+   * 检测系统 Node.js 与 npm 运行环境
+   * @param {boolean} [forceRefresh=false] 是否强制刷新探测（忽略缓存）
+   * @returns {Promise<{installed: boolean, nodeVersion: string|null, npmVersion: string|null, error: string|null}>}
+   */
+  async checkNodeEnvironment(forceRefresh = false) {
+    if (!forceRefresh && this.cachedNodeEnv && this.cachedNodeEnv.installed) {
+      return this.cachedNodeEnv;
+    }
+    try {
+      const res = await this.invoke("pi_check_node_environment");
+      if (res && typeof res === "object") {
+        this.cachedNodeEnv = res;
+        return res;
+      }
+    } catch (e) {
+      console.warn("[ConfigService] Failed to check node environment:", e);
+    }
+    return {
+      installed: false,
+      nodeVersion: null,
+      npmVersion: null,
+      error: "未检测到 Node.js 运行环境",
+    };
   }
 }
 

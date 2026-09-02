@@ -1,9 +1,10 @@
 import { piClient } from "../services/pi-client.js";
 import { versionService } from "../services/version-service.js";
 import { configService } from "../services/config-service.js";
+import { openExternalUrl } from "../services/tauri-bridge.js";
 import { ProgressStepper } from "../services/progress-stepper.js";
 import { notificationService } from "../services/notification-service.js";
-import { sketchAlert } from "../services/sketch-modal.js";
+import { sketchAlert, sketchConfirm } from "../services/sketch-modal.js";
 
 /**
  * 内核状态、版本检查与一键更新流水线
@@ -352,6 +353,28 @@ export function initKernelPanel(ctx) {
       if (!targetVer) {
         await sketchAlert("未找到可用更新版本", { type: "info", title: "检查更新" });
         return;
+      }
+
+      // 检查 Node.js 运行环境预设（安装/更新内核依赖 Node.js 运行环境）
+      try {
+        const env = await configService.checkNodeEnvironment();
+        if (!env || !env.installed) {
+          const confirmed = await sketchConfirm(
+            "安装与运行 Pi 内核及扩展生态需要系统中已安装 Node.js 环境（推荐 LTS 版本，如 v18 或更高）。\n\n当前系统尚未检测到 Node.js，是否前往官网下载安装？",
+            {
+              title: "未检测到 Node.js 运行环境",
+              confirmText: "前往下载 Node.js",
+              cancelText: "稍后安装",
+              type: "warning",
+            }
+          );
+          if (confirmed) {
+            await openExternalUrl("https://nodejs.org/");
+          }
+          return;
+        }
+      } catch (err) {
+        console.warn("[KernelPanel] Node environment check error:", err);
       }
 
       // 注册内核更新任务

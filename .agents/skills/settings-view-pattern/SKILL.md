@@ -53,6 +53,7 @@ graph TD
 
 ### 3. 内核与扩展管理 (`pane-packages`)
 - **内核监控与热更新**：顶部展示内核状态（Ready/Starting/Stopped/Crashed），支持一键重启与流式下载热更新；
+- **Node.js 运行环境预设检测与安装拦截**：在初次安装扩展组件、一键安装推荐插件、更新组件或更新/下载内核时，前端自动调用 `configService.checkNodeEnvironment()` 预检 Node.js/npm 环境。若缺失环境，通过 `SketchModal` 友好拦截并提供一键跳转官网（`https://nodejs.org/`）安装直达通道，环境就绪后无感放行并缓存；
 - **包市场与预设**：连通 `pi.dev/packages`（15min TTL 缓存），支持一键安装推荐插件（`recommended-plugins.json`）与推荐配置应用（`presets.json`）；
 - **ProgressStepper**：平滑步进引擎驱动阶段百分比与斜纹动效。
 

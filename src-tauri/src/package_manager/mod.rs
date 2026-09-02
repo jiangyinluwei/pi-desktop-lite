@@ -5,15 +5,22 @@ pub mod presets;
 
 pub use catalog::search_catalog;
 pub use installer::{
-    check_package_updates, get_installed_packages, install_package, uninstall_package, update_package,
+    check_node_environment, check_package_updates, get_installed_packages, install_package,
+    uninstall_package, update_package,
 };
 pub use models::{
-    InstalledPackage, PackageInfo, PackageSearchResult, PackageUpdateInfo, RecommendedPlugin,
+    InstalledPackage, NodeEnvironmentInfo, PackageInfo, PackageSearchResult, PackageUpdateInfo,
+    RecommendedPlugin,
 };
 pub use presets::{
     apply_preset_for_package, find_preset_for_package, get_recommended_plugins, is_preset_applied,
     PackagePreset,
 };
+
+#[tauri::command]
+pub async fn pi_check_node_environment() -> Result<NodeEnvironmentInfo, String> {
+    Ok(check_node_environment().await)
+}
 
 #[tauri::command]
 pub fn pi_get_recommended_plugins() -> Result<Vec<RecommendedPlugin>, String> {

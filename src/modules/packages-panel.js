@@ -1,6 +1,7 @@
 import { escapeHtml, escapeCss } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { configService } from "../services/config-service.js";
+import { openExternalUrl } from "../services/tauri-bridge.js";
 import { enhanceSelect } from "../services/sketch-select.js";
 import { ProgressStepper } from "../services/progress-stepper.js";
 import { notificationService } from "../services/notification-service.js";
@@ -880,8 +881,36 @@ export function initPackagesPanel(ctx) {
     }
   };
 
+  // 检查 Node.js 运行环境预设（若未安装则友好拦截并引导前往官网下载）
+  const ensureNodeEnvironment = async () => {
+    try {
+      const env = await configService.checkNodeEnvironment();
+      if (!env || !env.installed) {
+        const confirmed = await sketchConfirm(
+          "安装与管理 Pi 扩展组件需要系统中已安装 Node.js 环境（推荐 LTS 版本，如 v18 或更高）。\n\n当前系统尚未检测到 Node.js，是否前往官网下载安装？",
+          {
+            title: "未检测到 Node.js 运行环境",
+            confirmText: "前往下载 Node.js",
+            cancelText: "稍后安装",
+            type: "warning",
+          }
+        );
+        if (confirmed) {
+          await openExternalUrl("https://nodejs.org/");
+        }
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.warn("[PackageManager] Node environment check encountered error:", err);
+      return true;
+    }
+  };
+
   // 安装组件
-  const handleInstallPackage = (packageName) => {
+  const handleInstallPackage = async (packageName) => {
+    const hasNode = await ensureNodeEnvironment();
+    if (!hasNode) return;
     enqueuePackageTask(packageName, "install");
   };
 
@@ -898,7 +927,9 @@ export function initPackagesPanel(ctx) {
   };
 
   // 更新单个组件
-  const handleUpdatePackage = (packageName) => {
+  const handleUpdatePackage = async (packageName) => {
+    const hasNode = await ensureNodeEnvironment();
+    if (!hasNode) return;
     enqueuePackageTask(packageName, "update");
   };
 
@@ -941,7 +972,7 @@ export function initPackagesPanel(ctx) {
   };
 
   // 一键队列安装推荐扩展插件
-  const handleInstallRecommendedPackages = () => {
+  const handleInstallRecommendedPackages = async () => {
     if (!recommendedPlugins || recommendedPlugins.length === 0) return;
 
     // 过滤出尚未安装且未在排队/运行中的推荐插件
@@ -954,6 +985,9 @@ export function initPackagesPanel(ctx) {
       return;
     }
 
+    const hasNode = await ensureNodeEnvironment();
+    if (!hasNode) return;
+
     // 依次加入 FIFO 安装任务队列
     toInstall.forEach((p) => {
       enqueuePackageTask(p.name, "install");
@@ -961,13 +995,16 @@ export function initPackagesPanel(ctx) {
   };
 
   // 一键更新所有有可用更新的组件
-  const handleUpdateAllPackages = () => {
+  const handleUpdateAllPackages = async () => {
     const updatablePkgs = installedPackages.filter((pkg) => {
       const updateInfo = packageUpdatesMap.get(pkg.name);
       return updateInfo && updateInfo.hasUpdate && !isPackageBusy(pkg.name);
     });
 
     if (updatablePkgs.length === 0) return;
+
+    const hasNode = await ensureNodeEnvironment();
+    if (!hasNode) return;
 
     updatablePkgs.forEach((pkg) => {
       enqueuePackageTask(pkg.name, "update");
