@@ -159,6 +159,20 @@ if (flowScrollArea) {
 
 注意：`.response-content`（最终输出）**不设独立滚动限制**，随外层 `flow-scroll-area` 自然撑高，无需特殊处理。
 
+### 3.4 流式滚动定位策略 (Streaming Scroll Policy · 吸底跟随模式)
+
+主会话区采用**吸底跟随 (Sticky Bottom Follow)** 模式，状态存于共享流式状态 `flow.followBottom`：
+
+- **跟随开启判定**：`flowScrollArea` 的 `scroll` 监听（passive）实时计算 `scrollHeight - scrollTop - clientHeight`，**距底 ≤ 32px**（`FLOW_BOTTOM_FOLLOW_TOLERANCE_PX`）视为“在底部”→ 置 `flow.followBottom = true`；
+- **跟随终止**：用户**向上滚动**离开底部 → `flow.followBottom = false`，此后流式事件（thinking/text delta、工具切片卡、伪思考框重建、重连切换胶囊）**不再拽动视口**，滚轮可自由浏览上方内容；
+- **跟随重新触发**：任意时刻用户重新滚回最底部 → 自动重新开启跟随，后续输出继续吸底定位；
+- **单次强制滚动点（不依赖跟随开关）**：
+  1. **新轮次创建时**（用户提交消息，`startStream`）：重置 `followBottom = true` 并单次定位到底部；
+  2. **输出全部结束的瞬间**（`finalizeStream`，正常完成与异常错误路径共用）：单次定位到底部并恢复跟随；
+  3. **手动终止提示追加后**（`appendFlowAbortNotice`）：单次定位到底部。
+
+实现要点：流式事件统一走 `followScrollToBottom()`（`flow.followBottom !== false` 时才 `scrollTop = scrollHeight`）；工具流水线侧用 `flow.followBottom !== false` 内联判断（默认视为开启，`!== false` 兼容未初始化状态）。例外：`thinking-body` 内部滚动（`step.bodyEl.scrollTop = ...`）仅作用于思考框自身视口，不干预外层滚动，可保留。
+
 ---
 
 ## 📌 3.5 多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)

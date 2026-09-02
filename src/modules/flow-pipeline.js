@@ -139,7 +139,10 @@ export function initFlowPipeline(ctx) {
 
       if (wasEmpty || !alreadyHas) {
         flow.activeTurnRefs.injectionCapsuleEl.classList.remove("hidden");
-        if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+        // 仅吸底跟随开启时随内容定位到底部，向上滚离后不打断浏览
+        if (flowScrollArea && flow.followBottom !== false) {
+          flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+        }
       }
     }
   };
@@ -241,8 +244,10 @@ export function initFlowPipeline(ctx) {
       flow.currentSteps = [];
     }
     flow.currentSteps.push(stepItem);
-
-    if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    // 仅吸底跟随开启时随内容定位到底部，向上滚离后不打断浏览
+    if (flowScrollArea && flow.followBottom !== false) {
+      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    }
   });
 
   piClient.addEventListener("bash-update", () => {
@@ -320,7 +325,10 @@ export function initFlowPipeline(ctx) {
     // 若模型随后直接输出正文或本轮就此结束，由 text-start / finalizeStream 的伪框清理逻辑自动移除
     if (piClient.isStreaming && typeof api.ensureActiveThinkingStep === "function") {
       api.ensureActiveThinkingStep();
-      if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+      // 仅吸底跟随开启时随内容定位到底部，向上滚离后不打断浏览
+      if (flowScrollArea && flow.followBottom !== false) {
+        flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+      }
     }
   });
 

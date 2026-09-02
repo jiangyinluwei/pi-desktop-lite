@@ -84,6 +84,7 @@ export function initFlowStream(ctx) {
     ensureActiveThinkingStep();
 
     if (flowScrollArea) {
+      flow.followBottom = true; // 新轮次默认重新开启吸底跟随
       flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
     }
 
@@ -136,6 +137,11 @@ export function initFlowStream(ctx) {
         responseText: flow.currentResponseText,
         thinkingText: flow.currentThinkingText,
       });
+    }
+    // 输出全部结束的瞬间：单次定位到会话底部并恢复吸底跟随
+    if (flowScrollArea) {
+      flow.followBottom = true;
+      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
     }
   };
 
@@ -240,7 +246,7 @@ export function initFlowStream(ctx) {
       }
       capsule.classList.remove("hidden");
     }
-    if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    // 注：重连/切换胶囊更新不再强制滚动到底部，避免输出期间打断用户滚轮浏览
   };
 
   // 自动重连切换引擎进度事件 → 更新 Flow 进度胶囊
@@ -513,11 +519,39 @@ export function initFlowStream(ctx) {
     return stepItem;
   };
 
+  /**
+   * 吸底跟随滚动：仅当用户当前位于底部附近（跟随模式开启）时才随输出定位到底部；
+   * 用户向上滚动后 flow.followBottom 被置 false，流式输出不再拽动视口；
+   * 任意时刻用户重新滚回最底部，scroll 监听自动重新开启跟随。
+   */
+  const followScrollToBottom = () => {
+    if (flowScrollArea && flow.followBottom !== false) {
+      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    }
+  };
+
+  // 监听滚动位置：距底 ≤ 32px 视为“在底部”→ 开启跟随；向上滚离 → 终止跟随
+  const FLOW_BOTTOM_FOLLOW_TOLERANCE_PX = 32;
+  if (flowScrollArea) {
+    flowScrollArea.addEventListener(
+      "scroll",
+      () => {
+        const distanceToBottom =
+          flowScrollArea.scrollHeight - flowScrollArea.scrollTop - flowScrollArea.clientHeight;
+        flow.followBottom = distanceToBottom <= FLOW_BOTTOM_FOLLOW_TOLERANCE_PX;
+      },
+      { passive: true }
+    );
+  }
+
   // 绑定 PiClient 流式事件
+  // 流式输出期间仅在“吸底跟随”开启时随输出定位到底部；
+  // 用户向上滚动即终止跟随，滚回底部任意时刻重新触发跟随；
+  // 另在输出全部结束的瞬间 (finalizeStream / appendFlowAbortNotice) 单次定位到底部
   piClient.addEventListener("thinking-start", () => {
     flow.hasReceivedDelta = true;
     ensureActiveThinkingStep();
-    if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    followScrollToBottom();
   });
 
   piClient.addEventListener("thinking-delta", (e) => {
@@ -543,7 +577,7 @@ export function initFlowStream(ctx) {
     if (step.bodyEl) {
       step.bodyEl.scrollTop = step.bodyEl.scrollHeight;
     }
-    if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    followScrollToBottom();
   });
 
   piClient.addEventListener("thinking-end", () => {
@@ -619,7 +653,7 @@ export function initFlowStream(ctx) {
       flow.activeTurnRefs.responseContentEl.innerHTML =
         api.renderMarkdown(flow.currentResponseText) + `<span class="streaming-cursor"></span>`;
     }
-    if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    followScrollToBottom();
   });
 
   api.resetStreamState = resetStreamState;
