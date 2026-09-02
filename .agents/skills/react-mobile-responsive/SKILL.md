@@ -3,98 +3,67 @@ name: react-mobile-responsive
 description: 将前端与 React 项目样式进行移动端/响应式全站适配。包含技术栈分析、断点方案规划、表格/弹窗/日期选择器适配、触控优化（touch-action）、安全区域适配与兼容性测试完整流程。当用户提到"移动端适配"、"响应式布局"、"手机端兼容"、"mobile responsive"、"移动端样式"时使用。
 ---
 
-# Web / React 移动端响应式适配规范
+# Web / React 移动端与响应式全站适配规范
 
-## 概述
-
-本技能提供规范化的工作流，将前端与 React 项目的前端样式适配移动端，确保仅调整样式与展示层而不破坏既有业务逻辑。
-
-## 核心阶段
-
-```
-适配任务进度:
-- [ ] 阶段 1: 技术栈分析与样式现状摸排
-- [ ] 阶段 2: 响应式适配方案规划
-- [ ] 阶段 3: 方案安全性与边界校验
-- [ ] 阶段 4: 执行样式与交互适配
-- [ ] 阶段 5: 多端兼容性与构建测试
-- [ ] 阶段 6: 交付报告与真机 Checklist
-```
+规范在前端与 React 项目中进行移动端与响应式适配，保证仅变更展示层样式而不破坏业务逻辑。
 
 ---
 
-## 阶段 1: 技术栈分析
+## 🧭 响应式适配流水线
 
-分析项目现有技术栈与样式体系：
-- **CSS 方案**：Tailwind CSS / CSS Modules / Styled-components / Less / Sass / 原生 CSS；
-- **UI 组件库**：Ant Design / Element Plus / Shadcn UI / MUI 等；
-- **现有视口配置**：`index.html` 是否含 `<meta name="viewport" content="width=device-width, initial-scale=1.0">`。
+```text
+阶段 1: 技术栈摸排 ➔ 阶段 2: 方案规划 ➔ 阶段 3: 执行适配 ➔ 阶段 4: 多端验证
+```
 
----
+### 1. 技术栈摸排与视口声明
 
-## 阶段 2: 适配方案规划
+确认 `index.html` 具备标准视口声明：
+```html
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+```
 
-### 2.1 响应式断点策略
-- **Tailwind CSS**: `sm: 640px`, `md: 768px`, `lg: 1024px`；
-- **CSS 媒体查询**: 定义标准断点 `@media (max-width: 768px)` 与 `@media (max-width: 1024px)`。
+### 2. 断点策略与核心布局适配
 
-### 2.2 核心布局与导航适配
-- **主布局**: 宽屏多列侧边栏布局在移动端折叠为顶部栏 + 汉堡按钮 + Drawer 抽屉导航；
-- **卡片与栅格**: 多列等宽网格转换为单列自适应流式排列。
+| 屏幕类别 | 断点阈值 | 布局表现 |
+|---|---|---|
+| **移动端 (Mobile)** | `< 768px` (`sm/md`) | 宽屏多列侧边栏折叠为顶部栏 + Drawer 抽屉导航；网格转为单列流式 |
+| **平板/桌面 (Tablet/Desktop)** | `≥ 768px` / `≥ 1024px` | 保持多列网格与常驻导航栏 |
 
-### 2.3 表格专项处理（Ant Design Table 等）
-- **移除垂直固定高度**：移动端去掉 `scroll.y`，允许页面自然滚动；
-- **解除列冻结**：移动端取消 `fixed: 'left'` / `fixed: 'right'` 冻结列，避免遮挡内容；
-- **横向自适应滚动**：设置 `scroll={{ x: 'max-content' }}` 或收窄 `scroll.x`。
+### 3. 组件专项适配策略
 
-### 2.4 日期选择器（DatePicker / RangePicker）专项策略
-- PC 端复合日历面板在小屏易溢出；移动端建议使用原生 `<input type="date">` 触发系统日期滚轮选择，或使用移动端专用的 Drawer 浮层。
+- **数据表格（AntD Table 等）**：
+  - 移除固定垂直高度 `scroll.y`，允许移动端自然滚动；
+  - 移除 `fixed: 'left'` / `fixed: 'right'` 冻结列，防止在窄屏遮挡内容；
+  - 开启横向自适应滚动 `scroll={{ x: 'max-content' }}`。
+- **日期选择器**：小屏优先选用原生 `<input type="date">` 或移动端专用的 Drawer 浮层。
+- **弹窗与抽屉 (Modal / Drawer)**：移动端设置宽度 `width="95vw"` 或 `max-width: 95vw`，关闭按钮触摸热区 ≥ 44px。
 
-### 2.5 触控与双击防缩放
+### 4. 触控与安全区域优化
+
 ```css
-/* 全局禁止双击放大延迟，保留单指滑动与捏合缩放 */
+/* 全局禁止双击放大延迟，保留单指滑动与缩放 */
 html {
   touch-action: manipulation;
 }
 
-/* 安全区域适配 */
+/* 安全区域适配 (iOS Notch & Bottom Bar) */
 :root {
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+.mobile-bottom-bar {
+  padding-bottom: calc(12px + var(--safe-area-bottom));
+}
 ```
 
-### 2.6 弹窗与抽屉（Modal / Drawer）
-- 弹窗宽度在移动端设置为 `width="95vw"` 或 `max-width: 95vw`；
-- 确保关闭按钮可见且触摸热区 ≥ 44px。
-
 ---
 
-## 阶段 3: 方案安全性校验
+## 📋 移动端真机验证 Checklist
 
-- 确认所有修改仅局限于 CSS、className、响应式 Hook（如 `useMediaQuery` / `useIsMobile`）及展示层组件，不变更业务数据流和接口逻辑；
-- 检查触摸热区、文字可读性（正文最小 14px）、无横向非预期溢出。
-
----
-
-## 阶段 4: 执行适配改造
-
-1. **逐文件改造**：优先改造全局骨架与导航，再推进各业务页面；
-2. **样式隔离**：避免对全局类使用高权重 `!important` 覆盖，防止影响组件内部内联样式；
-3. **响应式 Hook 统一**：如有复用 Hook（如 `useIsMobile`），收敛至 `src/hooks/useIsMobile.ts`。
-
----
-
-## 阶段 5: 兼容性与构建测试
-
-```bash
-# 类型校验与构建打包
-npm run build
-```
-
-### 移动端真机验证 Checklist
 - [ ] 顶部导航与抽屉菜单展开/收起流畅；
 - [ ] 表格横向滑动顺畅且无固定列遮挡；
 - [ ] 模态弹窗与下拉面板不超出屏幕边界；
-- [ ] 双击按钮或文字无非预期放大；
-- [ ] iOS Safari 与 Android Chrome 虚拟键盘弹出时布局无错乱。
+- [ ] 按钮触摸热区 ≥ 44px，双击无非预期缩放；
+- [ ] 虚拟键盘弹出时界面布局与固定底栏无错乱；
+- [ ] `npm run build` 类型校验与构建均通过。

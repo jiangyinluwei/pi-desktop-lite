@@ -3,165 +3,80 @@ name: inner-skills-injection
 description: 指导 Pi Desktop Lite 桌面端作为 Pi Agent 宿主代理时，运行态内置约束（Inner-Skills / RULES.md）的“基于映射按需注入 (Mapping-Driven Injection)”核心开发原则、拓扑架构、三步标准 SOP、生命周期流水线与前端反馈规范。当涉及"运行态技能"、"上下文注入"、"inner-skill"、"RULES.md"、"映射注入"、"新增inner-skill"、"bash兼容注入"、"文档OCR注入"时使用。
 ---
 
-# 基于映射的运行态 Inner-Skills 上下文注入体系规范 (Mapping-Driven Inner-Skill Injection Architecture)
+# 运行态 Inner-Skills 基于映射按需注入体系规范
 
-本规范定义了桌面应用（作为 **Pi Coding Agent** 的可视化宿主与监管代理）在运行时如何对底层 Agent 进行**基于映射按需注入、低 Token 损耗、高注意力保持且杜绝过拟合**的运行态上下文强行注入机制。
-
----
-
-## 📌 核心开发原则：RULES 映射索引化，Skill 独立模块化，按需匹配精准注入
-
-> ⚠️ **开发铁律（严格禁止直接在 RULES.md 堆砌具体规则）**：
-> 1. **严禁在 `RULES.md` 中编写长篇具体的领域规则**：若把所有具体规则（终端语法、文档解析、网络安全等）直接塞在 `RULES.md` 中，会导致**每一轮对话无论是否调用工具都会全量注入**，引发严重的 Token 成本爆炸与大模型对话过拟合（Overfitting）；
-> 2. **`RULES.md` 仅作为轻量级映射总纲 (Single Source of Truth Mapping Table)**：体积严格控制在 `< 100` Tokens，仅维护 Markdown 映射表格与极简的通用基线指令；
-> 3. **所有具体规则必须独立封装为 Inner-Skill 模块**：每个特定领域的规则独立存放于 `src-tauri/inner-skills/<skill-name>/SKILL.md`；
-> 4. **从规则矩阵命中之后再激活与注入**：由 Rust 引擎与前端监听器根据 `RULES.md` 的映射矩阵进行动态嗅探，**当且仅当底层 Agent 触发调用命中映射项的工具或意图时**，才精准激活对应 Skill 并呈现前端交互胶囊。
+规范桌面端（作为 Pi Agent 宿主与监管代理）对底层 Agent 实施**基于映射按需注入、低 Token 损耗、高注意力保持且杜绝过拟合**的运行态约束机制。
 
 ---
 
-## 1. 为什么要通过映射注入？(Motivation & Background)
+## 📌 核心开发铁律
 
-### ① 宿主角色定位：从“被动壳”到“主动监督与增强”
-Pi Desktop Lite 不仅是 UI 渲染器，更扮演着 Pi Agent 的**可视化代理宿主（Host Proxy & Supervisor）**。桌面端拥有操作系统的真实感知（OS 平台、文件系统、进程生命周期），具备在消息下发链路中为模型动态赋能的能力。
-
-### ② 传统全量静态注入的两难困境 (The Dilemma)
-| 方案 | 致命缺陷 | 导致后果 |
-| :--- | :--- | :--- |
-| **仅首轮单次注入** | **注意力随多轮对话迅速衰减 (Attention Drift)** | 到第 3~5 轮长对话时，模型遗忘约束，重新犯错 |
-| **每轮全量塞入所有 SKILL 详情 (1000+ Tokens)** | **Token 成本剧增 + 对话严重过拟合 (Overfitting)** | 哪怕用户只是打招呼或问普通概念，模型回答也充满警告和多余推演，语气生硬 |
-| **✅ RULES 映射总纲 + 按需命中激活 (本项目方案)** | **每轮基线 < 100 Tokens，命中工具才激活对应 Skill 约束** | **Token 消耗极低、常规对话纯粹留白、工具调用精准约束零脱缰** |
+1. **`RULES.md` 仅为极简映射总纲**：体积严格控制在 `< 100` Tokens，纯英文书写，作为映射关系的唯一事实来源（Single Source of Truth），严禁堆砌具体长篇规则；
+2. **具体规则独立封装**：每个特定领域规则独立存放于 `src-tauri/inner-skills/<skill-name>/SKILL.md`；
+3. **按需命中精准激活**：日常问答（如 `hello`）保持 100% 原始提问零注入零消耗；当且仅当底层 Agent 触发调用命中映射项的工具时，才动态激活对应 Skill。
 
 ---
 
-## 2. 系统全链路拓扑结构 (System Topology & Dataflow)
+## 🧭 系统全链路拓扑
 
 ```mermaid
 flowchart TD
-    subgraph Frontend ["🖥️ Webview 前端 (UI & Events)"]
-        UserInput["用户提问 / 快捷标签输入"] --> ClientSend["piClient.sendPrompt(query)"]
-        EventSkill["Tauri 事件: pi:inner-skill-activated"] --> UpdateCapsule["showInnerSkillCapsuleForSkill(skill)"]
-        UpdateCapsule --> CapsuleDisplay["💡 显现草图胶囊: ⚡ 已激活运行态技能: xxx"]
+    subgraph Frontend ["🖥️ Webview 前端"]
+        UserInput["用户提问"] --> ClientSend["piClient.sendPrompt"]
+        EventSkill["Tauri 事件: pi:inner-skill-activated"] --> ShowCapsule["显现手绘胶囊: ⚡ 已激活运行态技能: xxx"]
     end
 
-    subgraph RustSupervisor ["🛡️ Pi 宿主监督器 (PiSupervisor & InnerSkillInjector)"]
-        ClientSend --> CmdPrompt["#[tauri::command] pi_send_prompt"]
-        CmdPrompt --> InjectorPrompt["InnerSkillInjector::process_prompt_with_info<br/>(无待注入项时 0 Token 纯净直通；有兑底项则注入)"]
-        InjectorPrompt --> FinalPrompt["组装标准 JSON RPC Payload"]
-        
-        ToolHookStart["监听 tool_execution_start 事件"] --> HookCheck{"命中 RULES.md 映射表?<br/>(bash, powershell, read_file, ocr, deword...)"}
-        HookCheck -- 命中 & 当轮首次激活 --> DoSteer["动态下发 steer 注入指令<br/>&lt;runtime_inner_skill name=...&gt;"]
-        DoSteer --> EmitEvent["广播 pi:inner-skill-activated 事件"]
+    subgraph RustSupervisor ["🛡️ Rust 宿主监督器"]
+        ClientSend --> CmdPrompt["pi_send_prompt (无待注入项则 0 Token 直通)"]
+        ToolHook["底层 tool_execution_start 事件"] --> HookCheck{"命中 RULES.md 映射表?"}
+        HookCheck -- 命中 & 当轮首次 --> DoSteer["动态下发 steer 注入指令<br/>&lt;runtime_inner_skill name=...&gt;"]
+        DoSteer --> EmitEvent["广播 pi:inner-skill-activated"]
         EmitEvent --> EventSkill
-        DoSteer -- 成功 --> Dequeue["从兑底队列出队"]
-        DoSteer -- 失败 --> QueuePrompt["保留在 pending_skills 队列<br/>作为下一次 Prompt 兑底注入"]
+        DoSteer -- 异常兜底 --> QueuePrompt["暂存 pending_skills 随下次 Prompt 注入"]
     end
-    
-    subgraph PiProcess ["🤖 底层 Pi Agent (RPC 子进程)"]
-        FinalPrompt -->|stdin 管道 \\n 帧| PiEngine["pi --mode rpc"]
-        PiEngine --> ModelThink["模型思考推演 & 规划工具调用"]
-        
-        ModelThink -- 常规问答/普通对话 (如 hello) --> CleanOutput["自然流畅文本输出 (零静态规则注入，零多余 Token 损耗)"]
-        ModelThink -- 决定调用工具 (如 bash 或 ocr) --> DispatchTool["下发 tool_execution_start"]
-        DispatchTool --> ToolHookStart
-        DoSteer -.->|steer 指令即时约束| ModelThink
-        ModelThink --> ToolStrict["严格遵守 Hook 命中的 Inner-Skill 铁律执行工具"]
+
+    subgraph PiProcess ["🤖 底层 Pi Agent"]
+        DoSteer -.->|即时约束| PiEngine["工具执行严格受控"]
     end
 ```
 
 ---
 
-## 3. 运行态 Inner-Skills 目录拓扑
-
-所有运行态内置约束统一归档于 `src-tauri/inner-skills/`：
+## 🗂️ 运行态 Inner-Skills 目录拓扑
 
 ```text
 src-tauri/inner-skills/
-├── RULES.md                                  # 运行态映射总纲 (Single Source of Truth, < 100 Tokens)
-├── windows-bash-compatibility/               # 独立 Skill 1: Windows 命令行与终端兼容规范
-│   └── SKILL.md
-├── document-multimodal-inspection/           # 独立 Skill 2: 多格式文档与目录深度遍历/OCR解析规范
-│   └── SKILL.md
-├── multi-agent-orchestration/                # 独立 Skill 3: 多智能体并行与子任务协作调度规范
-│   └── SKILL.md
-├── web-search-silent-access/                 # 独立 Skill 4: 静默后台联网搜索与自动网页摘要规范
-│   └── SKILL.md
-├── persistent-memory-retrieval/              # 独立 Skill 5: 持久化记忆与跨会话上下文检索规范
-│   └── SKILL.md
-├── dynamic-workflows-orchestration/          # 独立 Skill 6: 动态工作流与自动化流水线编排规范
-│   └── SKILL.md
-└── active-context-pruning/                   # 独立 Skill 7: 主动上下文修剪与长会话压缩规范
-    └── SKILL.md
+├── RULES.md                                  # 映射总纲 (唯一事实来源, < 100 Tokens)
+├── windows-bash-compatibility/               # 独立 Skill 1: Windows 命令行与终端兼容
+├── document-multimodal-inspection/           # 独立 Skill 2: 多格式文档深度遍历与 OCR 解析
+├── multi-agent-orchestration/                # 独立 Skill 3: 多智能体并行与子任务协作
+├── web-search-silent-access/                 # 独立 Skill 4: 静默后台联网搜索与自动摘要
+├── persistent-memory-retrieval/              # 独立 Skill 5: 持久化记忆与跨会话检索
+├── dynamic-workflows-orchestration/          # 独立 Skill 6: 动态工作流与流水线编排
+└── active-context-pruning/                   # 独立 Skill 7: 主动上下文修剪与长会话压缩
 ```
 
 ---
 
-## 4. Tool Call Pre-Processing Hook 与动态 Steering 注入体系
+## 🛠️ 新增 Inner-Skill 三步标准流水线 (SOP)
 
-### 4.1 核心机制：零静态无差别注入 + 工具调用即时 Hook
-- **常规对话零污染**：出站 Prompt 默认不再无差别打包 RULES.md 或任何 Skill 详情。用户常规问答、打招呼（如 `hello`）时，提示词保持 100% 原始纯净，零额外 Token 损耗；
-- **Tool-Call Hook 即时嗅探**：后端 `PiSupervisor` 在接收到底层 `tool_execution_start` 事件时，调用 `InnerSkillInjector::hook_tool_call(tool_name)` 匹配 `RULES.md` 映射矩阵；
-- **动态 Steering 主通道**：当轮首次命中（`mark_skill_activated`）后，后端自动构建 `<runtime_inner_skill name="...">` XML 块并通过 `steer` 指令动态下发给 Pi 引擎，在后续执行中即刻强行生效约束；
-- **Prompt 队列兑底通道**：若 `steer` 遇到异常，激活项暂存于 `pending_skills` 队列，随下一次用户出站提问以 `<runtime_inner_skills>` 块统一注入；
-- **轮次与会话去重管理**：
-  - 同一轮次内已激活的技能不再重复下发 `steer`；
-  - 遇到 `turn_start` / `agent_start` 事件时触发 `begin_turn()` 重置当轮去重集合，支持跨轮再次按需激活；
-  - 会话新建或重置时调用 `reset_session()` 清空队列与去重集。
-
-### 4.2 前端实时反馈与无假阳性呈现
-- **事件驱动胶囊**：后端广播 `pi:inner-skill-activated` 事件，前端 `piClient` 监听并调用 `showInnerSkillCapsuleForSkill` 动态显现手绘胶囊；
-- **消除假阳性**：初始加载与新提问发起时，胶囊默认隐藏且无任何硬编码预设文案，彻底杜绝未命中时的误导；
-- **多技能优雅拼接**：单轮触发多个不同 Skill 时，自动以中文逗号连续追加（`已激活运行态技能：XXX1，XXX2`）。
-
-### 4.3 动态注入信封结构示例
-
-动态 `steer` 注入结构（`<runtime_inner_skill>`）：
-```text
-[pi-desktop-lite Inner-Skill Hook] 工具 `bash` 触发运行态技能 `windows-bash-compatibility`，以下约束即时生效，调用该类工具时必须严格遵守：
-<runtime_inner_skill name="windows-bash-compatibility">
-# Windows Bash & Shell Compatibility Directives
-...
-</runtime_inner_skill>
-```
-
-兑底出站 Prompt 注入结构（`<runtime_inner_skills>`）：
-```text
-<runtime_inner_skills>
-以下 Inner-Skill 约束由 tool call pre-processing hook 按实际工具调用动态激活，本轮及后续相关工具调用必须严格遵守：
-
-<runtime_inner_skill name="windows-bash-compatibility">
-...
-</runtime_inner_skill>
-</runtime_inner_skills>
-
-用户原始提问内容
-```
-
----
-
-## 5. 🛠️ 新增 Inner-Skill 三步标准开发流水线 (Standard SOP)
-
-当项目中需要针对新场景（如数据库操作、网络请求安全、代码审查等）新增运行态约束时，**必须严格按照以下三步执行，严禁直接把大段逻辑塞进 RULES.md**：
-
-### Step 1: 建立独立的 Inner-Skill 模块目录与 `SKILL.md`
-在 `src-tauri/inner-skills/<skill-name>/` 下创建 `SKILL.md`，使用标准结构编写详细执行铁律：
+### Step 1: 建立独立模块目录与 `SKILL.md`
+在 `src-tauri/inner-skills/<skill-name>/` 下创建 `SKILL.md`：
 ```markdown
 ---
 name: your-new-skill-name
-description: 简明扼要描述该运行态技能在何种场景下被触发与主要约束。
+description: 描述运行态技能在何种场景下被触发与主要约束。
 ---
 
 # 技能标题 (Inner Skill)
+> ⚠️ 运行态约束：本 Skill 在 Agent 触发相应工具时由桌面端动态激活生效。
 
-> ⚠️ 运行态约束说明：本 Skill 由桌面应用端在 Agent 触发相应工具时动态激活生效。
-
-## 1. 核心铁律一
-...
-## 2. 核心铁律二
+## 1. 核心铁律
 ...
 ```
 
-### Step 2: 在 `RULES.md` 的映射矩阵中注册
-在 [`src-tauri/inner-skills/RULES.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/RULES.md) 的 Markdown 表格中新增一行映射，并在基线部分补充一句话精炼指引：
+### Step 2: 在 `RULES.md` 注册映射关系
+在 [`src-tauri/inner-skills/RULES.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/RULES.md) 的映射表格中追加：
 ```markdown
 | `your_tool_1`, `your_tool_2`, `intent_keyword` | `your-new-skill-name` | **Mandatory** |
 ```
@@ -169,24 +84,17 @@ description: 简明扼要描述该运行态技能在何种场景下被触发与�
 ### Step 3: 后端内嵌与前端胶囊标签挂载
 1. **Rust 后端 (`src-tauri/src/pi_runner/inner_skills.rs`)**：
    - 增加 `const EMBEDDED_YOUR_SKILL_MD: &str = include_str!("../../inner-skills/your-new-skill-name/SKILL.md");`；
-   - 在 `get_skill_detail` 中添加该 Skill 的分支匹配；
-   - 补充 `#[cfg(test)]` 单元测试断言。
+   - 在 `get_skill_detail` 中增加匹配分支并补充单元测试。
 2. **前端模块 (`src/modules/flow-pipeline.js`)**：
-   - 在 `getSkillDisplayName` 中增加该 Skill 对应的中文友好标签（如 `your-new-skill-name (某某规范)`），多技能触发时由 `formatActivatedSkillsText` 统一以中文逗号拼装展示（`已激活运行态技能：XXX1，XXX2，XXX3 ......`）。
-3. **闭环验证**：
-   - 运行 `npm run check` 确保前端 AST 检查与 Rust 编译零错误（Exit Code 0）。
+   - 在 `getSkillDisplayName` 注册中文友好标签（多技能自动中文逗号拼装展示）。
+3. **构建验证**：
+   - 运行 `npm run check` 确保前端 AST 与 Rust 编译均通过。
 
 ---
 
-## 6. 核心开发要点与避坑准则 (Key Precautions)
+## ⚠️ 核心避坑准则
 
-1. **`RULES.md` 为唯一事实来源 (Single Source of Truth)**：
-   - 严禁在代码中写死某个工具的硬编码映射；工具到 Skill 的关联关系必须严格在 `src-tauri/inner-skills/RULES.md` 中维护，由引擎动态解析生效。
-2. **命中映射才激活 (Trigger on Mapping Match Only)**：
-   - 并非所有工具调用都显示胶囊，必须是被调用的工具在 `RULES.md` 矩阵中存在目标 Skill 时，才展示对应 Skill 激活提示。未映射工具（如普通辅助工具）绝不误触。
-3. **Token 纯英文极简铁律**：
-   - `RULES.md` 必须 100% 保持纯英文书写，严格将 Token 开销压制在最精炼级别，最大化节约每轮上下文预算。
-4. **信封隔离与语气防护**：
-   - 注入必须使用 `<runtime_inner_skill>` / `<runtime_inner_skills>` 标签包裹，明确声明规则仅限工具调用阶段生效，并明确声明常规问答无需工具推演直接简明回复，防止模型在对话回答中生硬复述规则或过度思考。
-5. **代码、文档与 Skill 三位一体同步**：
-   - 每次新增或变更 Inner-Skill 时，必须同步对齐 `AGENTS.md`、`README.md` 与本技能文件，严禁文档滞后。
+1. **唯一来源**：严禁在代码中写死工具映射，一律由 `RULES.md` 解析驱动；
+2. **消灭假阳性**：未命中的工具绝不误触胶囊；
+3. **英文精简**：`RULES.md` 必须保持纯英文且极简，压低基础 Token 开销；
+4. **信封包裹**：注入必须使用 `<runtime_inner_skill>` 标签，声明仅对工具阶段生效，防止日常回答生硬复述规则。
