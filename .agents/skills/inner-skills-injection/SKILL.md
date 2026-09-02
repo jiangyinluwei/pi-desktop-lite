@@ -23,14 +23,15 @@ description: 指导 Pi Desktop Lite 桌面端作为 Pi Agent 宿主代理时，�
 flowchart TD
     subgraph Frontend ["🖥️ Webview 前端"]
         UserInput["用户提问"] --> ClientSend["piClient.sendPrompt"]
-        EventSkill["Tauri 事件: pi:inner-skill-activated"] --> ShowCapsule["显现手绘胶囊: ⚡ 已激活运行态技能: xxx"]
+        EventSkill["Tauri 事件: pi:inner-skill-activated"] --> InlineCapsule["逐段内联胶囊: 已激活运行态技能: xxx (插入步骤流，先于工具卡)"]
+        InlineCapsule --> TopCapsule["顶部聚合胶囊同步维护 (兜底汇总)"]
     end
 
     subgraph RustSupervisor ["🛡️ Rust 宿主监督器"]
         ClientSend --> CmdPrompt["pi_send_prompt (无待注入项则 0 Token 直通)"]
         ToolHook["底层 tool_execution_start 事件"] --> HookCheck{"命中 RULES.md 映射表?"}
         HookCheck -- 命中 & 当轮首次 --> DoSteer["动态下发 steer 注入指令<br/>&lt;runtime_inner_skill name=...&gt;"]
-        DoSteer --> EmitEvent["广播 pi:inner-skill-activated"]
+        DoSteer --> EmitEvent["每次真实注入后广播 pi:inner-skill-activated<br/>(steer 即时注入或兑底入队均上报)"]
         EmitEvent --> EventSkill
         DoSteer -- 异常兜底 --> QueuePrompt["暂存 pending_skills 随下次 Prompt 注入"]
     end
@@ -86,7 +87,9 @@ description: 描述运行态技能在何种场景下被触发与主要约束。
    - 增加 `const EMBEDDED_YOUR_SKILL_MD: &str = include_str!("../../inner-skills/your-new-skill-name/SKILL.md");`；
    - 在 `get_skill_detail` 中增加匹配分支并补充单元测试。
 2. **前端模块 (`src/modules/flow-pipeline.js`)**：
-   - 在 `getSkillDisplayName` 注册中文友好标签（多技能自动中文逗号拼装展示）。
+   - 在 `getSkillDisplayName` 注册中文友好标签（多技能自动中文逗号拼装展示）；
+   - 每段注入提醒：后端每次真实注入均广播一次 `pi:inner-skill-activated`，前端监听后调用 `insertInlineSkillCapsule(skillName)` 在当前轮步骤流内逐次追加内联胶囊（`.flow-injection-capsule-inline`，事件先于 tool-start 到达，胶囊自然落在触发工具卡上方），同时维护顶部聚合胶囊作兜底汇总；
+   - 同步在 `src/styles/flow.css` 保留 `.flow-injection-capsule-inline` 变体样式（步内间距 + 强调标签）。
 3. **构建验证**：
    - 运行 `npm run check` 确保前端 AST 与 Rust 编译均通过。
 

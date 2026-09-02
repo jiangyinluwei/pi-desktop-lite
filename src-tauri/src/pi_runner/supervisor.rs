@@ -688,15 +688,6 @@ impl PiSupervisor {
             return;
         }
 
-        // 通知前端更新「已激活运行态技能」胶囊
-        let _ = this.app_handle.emit(
-            "pi:inner-skill-activated",
-            serde_json::json!({
-                "toolName": activation.tool_name,
-                "skill": activation.skill,
-            }),
-        );
-
         let Some(injection_text) = this
             .skill_injector
             .build_skill_injection_text(&activation.skill)
@@ -707,6 +698,16 @@ impl PiSupervisor {
         let steer_message = format!(
             "[pi-desktop-lite Inner-Skill Hook] 工具 `{}` 触发运行态技能 `{}`，以下约束即时生效，调用该类工具时必须严格遵守：\n{}",
             activation.tool_name, activation.skill, injection_text
+        );
+
+        // 通知前端更新「已激活运行态技能」胶囊（以实际注入为准：steer 即时注入或兑底入队后随下一次 Prompt 注入）
+        let _ = this.app_handle.emit(
+            "pi:inner-skill-activated",
+            serde_json::json!({
+                "toolName": activation.tool_name,
+                "skill": activation.skill,
+                "mode": "steer",
+            }),
         );
 
         match this

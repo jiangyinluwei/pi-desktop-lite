@@ -153,11 +153,42 @@ export function initFlowPipeline(ctx) {
     }
   };
 
+  /**
+   * 每段注入的内联提醒胶囊：后端每次真实注入（steer 即时或兑底入队）均广播一次事件，
+   * 前端逐次在当前轮步骤流内追加一段手绘提醒胶囊，事件先于 tool-start 到达，
+   * 胶囊自然落在触发该注入的工具卡上方，形成「注入 ➔ 工具」的因果时序。
+   */
+  const insertInlineSkillCapsule = (skillName) => {
+    const stepsContainer = flow.activeTurnRefs?.stepsContainerEl;
+    if (!stepsContainer || !skillName) return;
+    const label = getSkillDisplayName(skillName) || skillName;
+    const inlineCapsule = document.createElement("div");
+    inlineCapsule.className = "flow-injection-capsule flow-injection-capsule-inline";
+    inlineCapsule.setAttribute("role", "status");
+    inlineCapsule.setAttribute("aria-live", "polite");
+    inlineCapsule.innerHTML = `
+      <span class="capsule-icon" aria-hidden="true">${ICONS.sparkle}</span>
+      <span class="capsule-text">已激活运行态技能：<strong>${escapeHtml(label)}</strong></span>
+    `;
+    stepsContainer.appendChild(inlineCapsule);
+    // 仅吸底跟随开启时随内容定位到底部，向上滚离后不打断浏览
+    if (flowScrollArea && flow.followBottom !== false) {
+      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    }
+  };
+
   loadInnerSkillMappings();
 
   // Tool-call Hook 命中：后端动态注入 Inner-Skill 时同步更新胶囊（以实际注入为准）
   piClient.addEventListener("inner-skill-activated", (e) => {
     const detail = e.detail;
+    const skillName = detail?.skill
+      || (detail?.toolName ? activeToolSkillMappings.get(detail.toolName.toString().toLowerCase().trim())?.skill : null);
+    if (skillName) {
+      // 每段注入逐次呈现内联提醒胶囊
+      insertInlineSkillCapsule(skillName);
+    }
+    // 顶部聚合胶囊同步维护（多技能中文标签拼装，作兜底汇总展示）
     if (detail?.skill) {
       showInnerSkillCapsuleForSkill(detail.skill);
     } else if (detail?.toolName) {

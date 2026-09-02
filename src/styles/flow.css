@@ -352,6 +352,17 @@
   display: none !important;
 }
 
+/* 每段注入的内联提醒胶囊：随会话流逐次插入步骤流容器内，
+   与工具卡形成「注入 ➔ 工具」因果时序，复用聚合胶囊视觉并微调步内间距 */
+.flow-injection-capsule-inline {
+  margin: 2px 0 8px 2px;
+}
+
+.flow-injection-capsule-inline .capsule-text strong {
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
 .flow-injection-capsule .capsule-icon {
   display: inline-flex;
   align-items: center;
