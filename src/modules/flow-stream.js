@@ -790,6 +790,9 @@ export function initFlowStream(ctx) {
     flow.currentResponseText += e.detail || "";
     // 阶段性输出切片：首增量时创建 Point 卡（标题 + 读秒），内容仍在最终输出卡流式可见
     const textStep = ensureActiveTextStep();
+    // 关键：同步累积 Point 步骤文本 —— 否则 sealActivePhaseOutput 读到的 step.text 恒为空，
+    // 封口时会被误判为「空段」直接移除，导致 Point 卡永不保留（阶段性输出显示逻辑失效的根因）
+    textStep.text += e.detail || "";
     if (textStep.previewEl) {
       textStep.previewEl.textContent = flow.currentResponseText.replace(/[\r\n\t]+/g, " ").trim();
     }
