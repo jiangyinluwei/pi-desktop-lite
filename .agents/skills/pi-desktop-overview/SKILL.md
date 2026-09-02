@@ -36,7 +36,7 @@ description: |
 - **界面 3：Flow 流式交互版 (`flow`)**
   - 回车触发真实 Pi RPC 下发与流式通信，手绘 Logo 优雅移至左上角；
   - 提问卡片展示手绘附件微徽章，下方在成功命中时展示运行态技能注入胶囊；
-  - 主体区展示手绘思考过程卡片（最新一轮默认展开、限高滚动、随输出或新框出现触发自动收起、支持手动折叠与耗时记录）、工具调用卡片（可折叠日志）与 **Typedown 质感 Markdown 预览流式回答**；
+  - 主体区展示手绘时序步骤流容器（`flow-steps-container`，将思维切片与工具调用切片按「思维1-工具1-思维2-工具2...」一段一段交织拼接，单行流式刷新且常态紧凑折叠绝不自动展开，支持手动展开折叠）、工具调用切片（友好中文工具名 + running/done/failure 状态徽章）与 **Typedown 质感 Markdown 预览流式回答**；
   - **Typedown 质感 Markdown 预览渲染引擎 (`Markdown Preview & Code Copy`)**：参考 Windows 平台开源 Markdown 编辑器 Typedown 与 Typora 风格，融合手绘绘图纸与黑板双模主题，支持多级标题排版、围栏代码块（手绘语言徽标 + 一键复制代码 + 1.8s 复制成功微反馈 + 内置 JS/TS/Python/Rust/Bash/JSON/HTML/CSS/SQL 等分词语法高亮）、GFM 规范表格（对齐与横向滚动）、任务清单（Checkbox）、GitHub Callout 警示框（Note/Tip/Important/Warning/Caution）、流式未闭合标记自动容错自愈；
   - **全域 HTTP/HTTPS 超链接外部浏览器跳转 (`External Link Opening`)**：Markdown 显式链接与独立 URL 自动识别为超链接并附带手绘外部跳转微图标；全域链接点击通过 `global-interactions` 拦截与 Rust 后端 `pi_open_url`（`tauri_plugin_opener`）唤起操作系统默认外部浏览器打开，严禁在 Webview 内部跳转；
   - **模型输出结果一键保存为 Markdown (`Save Output to Desktop as Markdown`)**：在模型“正确”输出且生成完成（`agent-end` 或历史恢复且无报错）后，在回答卡片底部呈现手绘素描质感的「保存」按钮（手绘 `ICONS.save` 矢量图标）；点击一键将提问、思考折叠链与 Markdown 回答内容组装并调用 Rust 后端指令（`pi_save_markdown_to_desktop`）保存至用户桌面（自动按提问前缀与时间戳命名，如 `提问内容_20260831_131500.md`），附带打勾微动效与轻量保存成功反馈；流式进行中与报错中断时严格隐藏；

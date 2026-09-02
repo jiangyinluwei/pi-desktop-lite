@@ -354,6 +354,7 @@ export function initTaskPanel(ctx) {
         thinkingDurationText: turn.thinkingDurationText || turn.thinkingDuration || "已完成思考",
         responseText: turn.responseText || "",
         toolCalls: turn.toolCalls || [],
+        steps: turn.steps || [],
         injectedSkills: turn.injectedSkills || [],
         isOpenThinking: isOpen,
         isAborted: turn.isAborted || turn.responseText?.includes("刚刚会话已手动终止"),
@@ -443,6 +444,7 @@ export function initTaskPanel(ctx) {
             thinkingDurationText: task.thinkingDurationText || "已完成思考",
             responseText: task.responseText || "",
             toolCalls: task.toolCalls || [],
+            steps: task.steps || [],
             isAborted: task.status === "aborted",
             errorMessage: task.errorMessage || (task.status === "error" ? "模型调用发生异常终止" : null),
           },
@@ -476,6 +478,7 @@ export function initTaskPanel(ctx) {
             thinkingDurationText: conv.thinkingDuration || "已完成思考",
             responseText: conv.responseText || "",
             toolCalls: conv.toolCalls || [],
+            steps: conv.steps || [],
             isAborted: conv.isAborted,
             status: "completed",
           },
@@ -522,6 +525,20 @@ export function initTaskPanel(ctx) {
       });
     });
 
+    const stepsSnapshot = (Array.isArray(flow.currentSteps) && flow.currentSteps.length > 0)
+      ? flow.currentSteps.map((s) => ({
+          type: s.type,
+          id: s.id,
+          text: s.text,
+          durationText: s.durationText,
+          name: s.name,
+          args: s.args,
+          status: s.status,
+          result: s.result,
+          is_error: s.is_error,
+        }))
+      : [];
+
     if (currentActive && Array.isArray(currentActive.turns) && currentActive.turns.length > 0) {
       const turnsToSave = currentActive.turns.map((turn, index) => {
         const isLastTurn = index === currentActive.turns.length - 1;
@@ -531,6 +548,7 @@ export function initTaskPanel(ctx) {
             thinkingText: flow.currentThinkingText || turn.thinkingText || "",
             responseText: responseTextToSave || turn.responseText || "",
             toolCalls: toolCallsSnapshot.length > 0 ? toolCallsSnapshot : (turn.toolCalls || []),
+            steps: stepsSnapshot.length > 0 ? stepsSnapshot : (turn.steps || []),
             injectedSkills: Array.from(flow.activeTurnRefs?.activatedSkills || turn.injectedSkills || []),
             thinkingDurationText: flow.activeTurnRefs?.thinkingDurationEl ? flow.activeTurnRefs.thinkingDurationEl.textContent : (turn.thinkingDurationText || "已完成思考"),
             isAborted: isAborted || turn.isAborted,
@@ -551,6 +569,7 @@ export function initTaskPanel(ctx) {
         query: firstTurn?.query || flow.lastUserQuery,
         title: firstTurn?.query ? conversationHistoryService.generateSummaryTitle(firstTurn.query) : undefined,
         turns: turnsToSave,
+        steps: stepsSnapshot.length > 0 ? stepsSnapshot : (lastTurn?.steps || []),
         thinkingText: lastTurn?.thinkingText || flow.currentThinkingText || "",
         responseText: lastTurn?.responseText || responseTextToSave || "",
         toolCalls: lastTurn?.toolCalls || toolCallsSnapshot,

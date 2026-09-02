@@ -65,9 +65,15 @@
   flex-shrink: 0;
 }
 
-/* 默认展开（箭头朝下），折叠后旋转朝上 */
-.tool-card.collapsed .tool-collapse-arrow {
+/* 默认折叠（箭头朝左），展开后箭头朝下 */
+.tool-card.collapsed .tool-collapse-arrow,
+.tool-card:not(.open) .tool-collapse-arrow {
   transform: rotate(-90deg);
+}
+
+.tool-card.open .tool-collapse-arrow,
+.tool-card:not(.collapsed) .tool-collapse-arrow {
+  transform: rotate(0deg);
 }
 
 .tool-status-badge {
@@ -77,19 +83,27 @@
   border-radius: 3px;
   border: 1px solid var(--sketch-border-subtle);
   color: var(--ink-muted);
+  text-transform: lowercase;
 }
 
-.tool-card.running .tool-status-badge {
+.tool-card.running .tool-status-badge,
+.tool-status-badge.running {
   border-color: #f59e0b;
   color: #f59e0b;
 }
 
-.tool-card.done .tool-status-badge {
+.tool-card.done .tool-status-badge,
+.tool-status-badge.done {
   border-color: #10b981;
   color: #10b981;
 }
 
-.tool-card.error .tool-status-badge {
+.tool-card.error .tool-status-badge,
+.tool-card.failed .tool-status-badge,
+.tool-card.failure .tool-status-badge,
+.tool-status-badge.error,
+.tool-status-badge.failed,
+.tool-status-badge.failure {
   border-color: #ef4444;
   color: #ef4444;
 }

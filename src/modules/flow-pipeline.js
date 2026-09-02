@@ -156,64 +156,92 @@ export function initFlowPipeline(ctx) {
 
   piClient.addEventListener("tool-start", (e) => {
     flow.hasReceivedDelta = true;
-    api.autoCollapseThinkingOnNextPhase();
     const data = e.detail;
     const toolCallId = data.toolCallId;
     const toolName = data.toolName || "tool";
 
-    // 新工具卡片出现时，自动收起所有已完成的旧工具卡片
-    api.collapseAllDoneToolCards();
+    // 工具开始时，结算或清理当前活跃的思维切片
+    if (flow.activeThinkingStep) {
+      if (flow.activeThinkingStep.hasRealThinking || flow.activeThinkingStep.text?.trim()) {
+        const elapsed = ((Date.now() - flow.activeThinkingStep.startTime) / 1000).toFixed(1);
+        flow.activeThinkingStep.durationText = `(${elapsed}s)`;
+        if (flow.activeThinkingStep.durationEl) {
+          flow.activeThinkingStep.durationEl.textContent = flow.activeThinkingStep.durationText;
+        }
+      } else {
+        flow.activeThinkingStep.cardEl?.remove();
+        if (Array.isArray(flow.currentSteps)) {
+          flow.currentSteps = flow.currentSteps.filter((s) => s !== flow.activeThinkingStep);
+        }
+      }
+      flow.activeThinkingStep = null;
+    }
+    if (flow.thinkingTimerInterval) {
+      clearInterval(flow.thinkingTimerInterval);
+      flow.thinkingTimerInterval = null;
+    }
 
     // 当底层 Agent 触发调用映射工具（如 bash）时，即时显现运行态技能注入胶囊
     showInnerSkillCapsuleForTool(toolName);
 
-    const card = document.createElement("div");
-    card.className = "tool-card running";
-    card.id = `tool-${toolCallId}`;
+    // 创建单行极简工具卡片（默认折叠，任何时候不自动展开）
+    const toolStep = typeof api.createToolStepCard === "function"
+      ? api.createToolStepCard({
+          id: toolCallId,
+          name: toolName,
+          args: data.args,
+          status: "running",
+          isOpen: false,
+        })
+      : null;
 
-    const argsStr = data.args ? JSON.stringify(data.args, null, 2) : "";
-
-    card.innerHTML = `
-      <div class="tool-header" role="button" tabindex="0" aria-expanded="true">
-        <div class="tool-title-group">
-          <span class="tool-icon" aria-hidden="true">${ICONS.tool}</span>
-          <span class="tool-name">${escapeHtml(toolName)}</span>
+    const card = toolStep?.cardEl || document.createElement("div");
+    if (!toolStep) {
+      card.className = "flow-step-card flow-step-tool tool-card running";
+      card.id = `tool-${toolCallId}`;
+      const argsStr = data.args ? JSON.stringify(data.args, null, 2) : "";
+      card.innerHTML = `
+        <div class="flow-step-header tool-header" role="button" tabindex="0" aria-expanded="false">
+          <div class="flow-step-header-left">
+            <span class="flow-step-icon tool-icon" aria-hidden="true">${ICONS.tool}</span>
+            <span class="flow-step-title tool-name">${escapeHtml(api.getFriendlyToolName ? api.getFriendlyToolName(toolName) : toolName)}</span>
+          </div>
+          <div class="flow-step-header-right tool-header-right">
+            <span class="tool-status-badge running">running</span>
+            <span class="flow-step-arrow tool-collapse-arrow" aria-hidden="true">${ICONS.chevronDown}</span>
+          </div>
         </div>
-        <div class="tool-header-right">
-          <span class="tool-status-badge">running</span>
-          <span class="tool-collapse-arrow" aria-hidden="true">
-            <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-              <polyline points="4 6 8 10 12 6" />
-            </svg>
-          </span>
-        </div>
-      </div>
-      <div class="tool-body">${escapeHtml(argsStr)}</div>
-    `;
-
-    // 点击 header 切换折叠/展开
-    const header = card.querySelector(".tool-header");
-    if (header) {
-      const toggle = () => {
-        if (card.classList.contains("collapsed")) {
-          api.expandToolCard(card);
-        } else {
-          api.collapseToolCard(card);
-        }
-      };
-      header.addEventListener("click", toggle);
-      header.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter" || ev.key === " ") {
-          ev.preventDefault();
-          toggle();
-        }
-      });
+        <div class="flow-step-body tool-body">${escapeHtml(argsStr)}</div>
+      `;
     }
 
-    if (flow.activeTurnRefs?.toolCallsContainerEl) {
+    if (flow.activeTurnRefs?.stepsContainerEl) {
+      flow.activeTurnRefs.stepsContainerEl.appendChild(card);
+    } else if (flow.activeTurnRefs?.toolCallsContainerEl) {
       flow.activeTurnRefs.toolCallsContainerEl.appendChild(card);
     }
+
     flow.renderedToolCards.set(toolCallId, card);
+
+    const stepItem = {
+      type: "tool",
+      id: toolCallId,
+      name: toolName,
+      args: data.args,
+      status: "running",
+      result: null,
+      cardEl: card,
+      badgeEl: toolStep?.badgeEl || card.querySelector(".tool-status-badge"),
+      previewEl: toolStep?.previewEl || card.querySelector(".flow-step-preview"),
+      bodyEl: toolStep?.bodyEl || card.querySelector(".flow-step-body") || card.querySelector(".tool-body"),
+    };
+
+    flow.activeToolStep = stepItem;
+    if (!Array.isArray(flow.currentSteps)) {
+      flow.currentSteps = [];
+    }
+    flow.currentSteps.push(stepItem);
+
     if (flowScrollArea) flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
   });
 
@@ -225,29 +253,66 @@ export function initFlowPipeline(ctx) {
     const data = e.detail;
     const card = flow.renderedToolCards.get(data.toolCallId);
     if (card) {
-      const body = card.querySelector(".tool-body");
+      const body = card.querySelector(".flow-step-body") || card.querySelector(".tool-body");
       if (body && data.partialResult) {
         const text = typeof data.partialResult === "string" ? data.partialResult : JSON.stringify(data.partialResult, null, 2);
         body.textContent = text;
       }
+    }
+    const matchingStep = Array.isArray(flow.currentSteps)
+      ? flow.currentSteps.find((s) => s.type === "tool" && s.id === data.toolCallId)
+      : null;
+    if (matchingStep) {
+      matchingStep.result = data.partialResult;
     }
   });
 
   piClient.addEventListener("tool-end", (e) => {
     const data = e.detail;
     const card = flow.renderedToolCards.get(data.toolCallId);
+    const isError = Boolean(data.isError);
+    const statusText = isError ? "failure" : "done";
+
     if (card) {
       card.classList.remove("running");
-      card.classList.add(data.isError ? "error" : "done");
+      card.classList.remove("done", "error", "failed", "failure");
+      card.classList.add(isError ? "error" : "done");
+      if (isError) card.classList.add("failed");
+
       const badge = card.querySelector(".tool-status-badge");
       if (badge) {
-        badge.textContent = data.isError ? "failed" : "done";
+        badge.className = `tool-status-badge ${statusText}`;
+        badge.textContent = statusText;
       }
-      const body = card.querySelector(".tool-body");
-      if (body && data.result) {
-        const resText = typeof data.result === "string" ? data.result : JSON.stringify(data.result, null, 2);
-        body.textContent = resText;
+
+      const body = card.querySelector(".flow-step-body") || card.querySelector(".tool-body");
+      if (body) {
+        let fullContent = "";
+        const matchingStep = Array.isArray(flow.currentSteps)
+          ? flow.currentSteps.find((s) => s.type === "tool" && s.id === data.toolCallId)
+          : null;
+        if (matchingStep?.args) {
+          fullContent += `[入参 / Arguments]\n${typeof matchingStep.args === "string" ? matchingStep.args : JSON.stringify(matchingStep.args, null, 2)}\n\n`;
+        }
+        if (data.result) {
+          const resText = typeof data.result === "string" ? data.result : JSON.stringify(data.result, null, 2);
+          fullContent += `[结果 / Result]\n${resText}`;
+        }
+        body.textContent = fullContent || (typeof data.result === "string" ? data.result : JSON.stringify(data.result || {}, null, 2));
       }
+    }
+
+    const matchingStep = Array.isArray(flow.currentSteps)
+      ? flow.currentSteps.find((s) => s.type === "tool" && s.id === data.toolCallId)
+      : null;
+    if (matchingStep) {
+      matchingStep.status = statusText;
+      matchingStep.result = data.result;
+      matchingStep.is_error = isError;
+    }
+
+    if (flow.activeToolStep?.id === data.toolCallId) {
+      flow.activeToolStep = null;
     }
   });
 

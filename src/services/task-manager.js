@@ -97,6 +97,7 @@ export class TaskManager extends EventTarget {
           thinkingText: "",
           responseText: "",
           toolCalls: [],
+          steps: [],
           injectedSkills: [],
           thinkingDurationText: "思考中...",
           status: "thinking",
@@ -146,6 +147,7 @@ export class TaskManager extends EventTarget {
       thinkingText: "",
       responseText: "",
       toolCalls: [],
+      steps: [],
       injectedSkills: [],
       thinkingDurationText: "思考中...",
       status: "thinking",
@@ -436,12 +438,31 @@ export class TaskManager extends EventTarget {
             if (currentTurn) {
               currentTurn.status = "thinking";
               currentTurn.thinkingText += evt.delta || "";
+              if (!Array.isArray(currentTurn.steps)) currentTurn.steps = [];
+              const lastStep = currentTurn.steps.length > 0 ? currentTurn.steps[currentTurn.steps.length - 1] : null;
+              if (lastStep && lastStep.type === "thinking") {
+                lastStep.text = (lastStep.text || "") + (evt.delta || "");
+              } else {
+                currentTurn.steps.push({
+                  type: "thinking",
+                  text: evt.delta || "",
+                  durationText: "思考中...",
+                  startTime: Date.now(),
+                });
+              }
             }
           } else if (evt.type === "thinking_end") {
             const elapsed = ((Date.now() - (currentTurn?.startedAt || task.startedAt)) / 1000).toFixed(1);
             task.thinkingDurationText = `已思考 ${elapsed} 秒`;
             if (currentTurn) {
               currentTurn.thinkingDurationText = `已思考 ${elapsed} 秒`;
+              if (Array.isArray(currentTurn.steps) && currentTurn.steps.length > 0) {
+                const lastStep = currentTurn.steps[currentTurn.steps.length - 1];
+                if (lastStep && lastStep.type === "thinking") {
+                  const stepElapsed = lastStep.startTime ? ((Date.now() - lastStep.startTime) / 1000).toFixed(1) : elapsed;
+                  lastStep.durationText = `已思考 ${stepElapsed} 秒`;
+                }
+              }
             }
           } else if (evt.type === "text_start" || evt.type === "text_delta") {
             task.status = "streaming";
@@ -454,7 +475,7 @@ export class TaskManager extends EventTarget {
         }
         break;
 
-      case "tool_execution_start":
+      case "tool_execution_start": {
         task.status = "tool_exec";
         task.activeToolName = data.toolName || "tool";
         const newTool = {
@@ -467,24 +488,43 @@ export class TaskManager extends EventTarget {
         if (currentTurn) {
           currentTurn.status = "tool_exec";
           currentTurn.toolCalls.push({ ...newTool });
+          if (!Array.isArray(currentTurn.steps)) currentTurn.steps = [];
+          currentTurn.steps.push({
+            type: "tool",
+            id: data.toolCallId,
+            name: data.toolName || "tool",
+            args: data.args || {},
+            status: "running",
+            result: null,
+          });
         }
         break;
+      }
 
-      case "tool_execution_end":
+      case "tool_execution_end": {
         task.status = "streaming";
         task.activeToolName = null;
         const targetTool = task.toolCalls.find((t) => t.id === data.toolCallId);
         if (targetTool) {
-          targetTool.status = "done";
+          targetTool.status = data.isError ? "failure" : "done";
         }
         if (currentTurn) {
           currentTurn.status = "streaming";
           const turnTool = currentTurn.toolCalls.find((t) => t.id === data.toolCallId);
           if (turnTool) {
-            turnTool.status = "done";
+            turnTool.status = data.isError ? "failure" : "done";
+          }
+          if (Array.isArray(currentTurn.steps)) {
+            const stepTool = currentTurn.steps.find((s) => s.type === "tool" && s.id === data.toolCallId);
+            if (stepTool) {
+              stepTool.status = data.isError ? "failure" : "done";
+              stepTool.result = data.result;
+              stepTool.is_error = Boolean(data.isError);
+            }
           }
         }
         break;
+      }
 
       case "extension_ui_request": {
         const method = String(data.method || "").toLowerCase();

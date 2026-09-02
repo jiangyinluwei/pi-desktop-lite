@@ -442,13 +442,142 @@
   }
 }
 
-/* AI Agent 思考过程卡片（横平竖直边框） */
+/* ==========================================================================
+   Flow 时序步骤流容器 (Interleaved Steps Container: Thinking & Tool Pipeline)
+   ========================================================================== */
+.flow-steps-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 10px 0;
+}
+
+/* 统一单行步骤切片卡片 (常态折叠，单行紧凑手绘线框，任何时候不自动展开) */
+.flow-step-card {
+  background: var(--sketch-box-bg);
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 6px;
+  box-shadow: var(--sketch-shadow);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  overflow: hidden;
+}
+
+.flow-step-card:hover {
+  border-color: var(--sketch-border);
+}
+
+.flow-step-card.flow-step-tool {
+  background: var(--sketch-tag-bg);
+}
+
+.flow-step-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  min-height: 32px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.flow-step-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.flow-step-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+}
+
+.flow-step-icon svg {
+  display: block;
+}
+
+.flow-step-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.flow-step-duration {
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.flow-step-preview {
+  font-size: 11.5px;
+  font-family: var(--font-mono, monospace);
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.flow-step-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.flow-step-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--ink-muted);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+/* 默认折叠（箭头旋转朝左），展开后箭头朝下 */
+.flow-step-card:not(.open) .flow-step-arrow {
+  transform: rotate(-90deg);
+}
+
+.flow-step-card.open .flow-step-arrow {
+  transform: rotate(0deg);
+}
+
+.flow-step-body {
+  display: none;
+  padding: 8px 12px 10px 12px;
+  border-top: 1px dashed var(--sketch-border-subtle);
+  background-color: var(--sketch-box-bg);
+  max-height: 240px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.flow-step-card.open .flow-step-body {
+  display: block;
+  animation: sketchFadeIn 0.2s ease-out;
+}
+
+/* AI Agent 思考过程卡片（向后兼容旧容器） */
 .agent-thinking-card {
   background: var(--sketch-box-bg);
   border: 1px solid var(--sketch-border-subtle);
-  border-radius: 8px;
+  border-radius: 6px;
   box-shadow: var(--sketch-shadow);
-  padding: 10px 14px;
+  padding: 6px 12px;
   transition: border-color 0.2s ease;
 }
 
@@ -464,12 +593,15 @@
   user-select: none;
   border-radius: 4px;
   outline: none;
+  min-height: 26px;
 }
 
 .thinking-status-indicator {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  flex: 1;
 }
 
 .thinking-dot {
@@ -478,20 +610,25 @@
   border-radius: 50%;
   background-color: var(--ink-muted);
   animation: pulseDot 1.8s ease-in-out infinite;
+  flex-shrink: 0;
 }
 
 .thinking-title {
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--ink-primary);
   letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .thinking-duration {
-  font-size: 11.5px;
+  font-size: 11px;
   font-family: ui-monospace, monospace;
   color: var(--ink-muted);
   margin-left: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .thinking-arrow-icon {
@@ -499,14 +636,19 @@
   display: flex;
   align-items: center;
   transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.agent-thinking-card:not(.open) .thinking-arrow-icon {
+  transform: rotate(-90deg);
 }
 
 .agent-thinking-card.open .thinking-arrow-icon {
-  transform: rotate(180deg);
+  transform: rotate(0deg);
 }
 
 .thinking-body {
-  margin-top: 10px;
+  margin-top: 8px;
   padding-top: 8px;
   border-top: 1px dashed var(--sketch-border-subtle);
   display: none;

@@ -454,7 +454,7 @@ pub fn extract_user_prompts_from_session(path: &Path) -> Vec<String> {
 // 会话完整轮次解析（供 Flow 界面历史还原使用）
 // ==========================================================================
 
-/// 单次工具调用详情（结构化，由前端渲染为手绘工具卡片）
+/// 工具调用详情：用于会话历史还原工具卡片
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionToolCallDetail {
     pub id: String,
@@ -462,6 +462,22 @@ pub struct SessionToolCallDetail {
     pub arguments_text: String,
     pub result_text: Option<String>,
     pub is_error: bool,
+}
+
+/// 会话流步骤详情（交织思维链与工具调用时序切片）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SessionStepDetail {
+    Thinking {
+        text: String,
+    },
+    Tool {
+        id: String,
+        name: String,
+        arguments_text: String,
+        result_text: Option<String>,
+        is_error: bool,
+    },
 }
 
 /// 单轮对话详情：一次用户提问 + 后续 assistant 思考 / 工具调用 / 最终回答
@@ -472,6 +488,8 @@ pub struct SessionTurnDetail {
     pub thinking_text: String,
     pub response_text: String,
     pub tool_calls: Vec<SessionToolCallDetail>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<SessionStepDetail>,
     pub timestamp: Option<String>,
     pub is_aborted: bool,
 }
@@ -522,6 +540,7 @@ pub fn parse_session_turns(path: &Path) -> Result<Vec<SessionTurnDetail>, String
                     thinking_text: String::new(),
                     response_text: String::new(),
                     tool_calls: Vec::new(),
+                    steps: Vec::new(),
                     timestamp,
                     is_aborted: false,
                 });
@@ -535,6 +554,7 @@ pub fn parse_session_turns(path: &Path) -> Result<Vec<SessionTurnDetail>, String
                         thinking_text: String::new(),
                         response_text: String::new(),
                         tool_calls: Vec::new(),
+                        steps: Vec::new(),
                         timestamp,
                         is_aborted: false,
                     });
@@ -548,6 +568,9 @@ pub fn parse_session_turns(path: &Path) -> Result<Vec<SessionTurnDetail>, String
                             Some("thinking") => {
                                 if let Some(t) = block.get("thinking").and_then(|v| v.as_str()) {
                                     thinkings.push(t.to_string());
+                                    turn.steps.push(SessionStepDetail::Thinking {
+                                        text: t.to_string(),
+                                    });
                                 }
                             }
                             Some("toolCall") => {
@@ -568,6 +591,13 @@ pub fn parse_session_turns(path: &Path) -> Result<Vec<SessionTurnDetail>, String
                                     })
                                     .unwrap_or_default();
                                 turn.tool_calls.push(SessionToolCallDetail {
+                                    id: id.clone(),
+                                    name: name.clone(),
+                                    arguments_text: arguments_text.clone(),
+                                    result_text: None,
+                                    is_error: false,
+                                });
+                                turn.steps.push(SessionStepDetail::Tool {
                                     id,
                                     name,
                                     arguments_text,
@@ -606,19 +636,30 @@ pub fn parse_session_turns(path: &Path) -> Result<Vec<SessionTurnDetail>, String
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 let turn = turns.last_mut().expect("turns is non-empty");
+                let mut result = extract_message_text(msg_obj.get("content"));
+                // 截断超长工具结果，避免前端卡片与序列化体积过大
+                const MAX_RESULT_CHARS: usize = 4000;
+                if result.chars().count() > MAX_RESULT_CHARS {
+                    result = result.chars().take(MAX_RESULT_CHARS).collect::<String>()
+                        + "\n...(结果过长已截断)";
+                }
+                let is_error = msg_obj
+                    .get("isError")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
                 if let Some(tc) = turn.tool_calls.iter_mut().rev().find(|tc| tc.id == tool_call_id) {
-                    let mut result = extract_message_text(msg_obj.get("content"));
-                    // 截断超长工具结果，避免前端卡片与序列化体积过大
-                    const MAX_RESULT_CHARS: usize = 4000;
-                    if result.chars().count() > MAX_RESULT_CHARS {
-                        result = result.chars().take(MAX_RESULT_CHARS).collect::<String>()
-                            + "\n...(结果过长已截断)";
+                    tc.result_text = Some(result.clone());
+                    tc.is_error = is_error;
+                }
+                if let Some(step) = turn.steps.iter_mut().rev().find(|s| match s {
+                    SessionStepDetail::Tool { id, .. } => id == tool_call_id,
+                    _ => false,
+                }) {
+                    if let SessionStepDetail::Tool { result_text, is_error: step_err, .. } = step {
+                        *result_text = Some(result);
+                        *step_err = is_error;
                     }
-                    tc.result_text = Some(result);
-                    tc.is_error = msg_obj
-                        .get("isError")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
                 }
             }
             _ => {}

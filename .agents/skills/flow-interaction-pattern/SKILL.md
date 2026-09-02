@@ -1,12 +1,12 @@
 ---
 name: flow-interaction-pattern
 description: |
-  指导 Flow 流式交互界面（界面3）的五大核心交互逻辑实现规范：①过程框体（思考卡片/工具调用卡片）可手动折叠展开；②"当前最下方框体展开、出现下一框时自动收起"的级联自动收起流水线；③Flow 界面任意区域滚轮事件委托至最外层滚动容器；④多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑤多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑥输出卡底部手绘风格的保存操作栏。当用户提出"flow界面交互"、"思考卡片折叠"、"工具调用卡折叠"、"自动收起"、"滚轮滚动"、"flow滚动条"、"卡片收起"、"悬浮提问提示"、"顶部悬浮tips"、"当前提问提示"、"上下按钮"、"轮次定位"、"多段对话优化"、"保存输出"、"导出回答"时使用此技能。
+  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-工具1-思维2-工具2...」真实因果链条一段一段拼接；③Flow 界面任意区域滚轮事件委托至最外层滚动容器；④多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑤多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑥模型自动重连切换自愈流水线 (ModelFailoverEngine)；⑦输出卡底部手绘风格的保存操作栏。当用户提出"flow界面交互"、"思维链流式展示"、"工具调用简略"、"单行思维"、"步骤切片"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"时使用此技能。
 ---
 
 # Flow 界面交互逻辑规范 (Flow Interaction Pattern)
 
-本 Skill 归档了 Flow 流式交互界面（`界面3 / data-view="flow"`）的五大核心交互机制的**实现规范、已验证代码模式与关键陷阱**。
+本 Skill 归档了 Flow 流式交互界面（`界面3 / data-view="flow"`）的核心交互机制的**实现规范、已验证代码模式与关键陷阱**。
 
 ---
 
@@ -23,201 +23,88 @@ Flow 界面卡片层级如下（从上到下）：
   │              └─ flow-message-group
   │                   ├─ flow-user-prompt-card       用户提问（不可折叠）
   │                   ├─ flow-injection-capsule      Inner-Skill 注入胶囊（不可折叠）
-  │                   ├─ agent-thinking-card         思考过程（可折叠）
-  │                   ├─ tool-calls-container
-  │                   │    └─ tool-card × N          工具调用卡（可折叠）
-  │                   └─ agent-response-card         最终输出（永不折叠）
+  │                   ├─ flow-route-capsule          路由目标项目胶囊（不可折叠）
+  │                   ├─ flow-failover-capsule       自动重连/切换进度胶囊（不可折叠）
+  │                   ├─ flow-steps-container        【时序步骤流容器】(思维1-工具1-思维2-工具2...)
+  │                   │    ├─ flow-step-card.flow-step-thinking   思维切片（单行流式刷新，可折叠，绝不自动展开）
+  │                   │    └─ flow-step-card.flow-step-tool       工具切片（单行名称+状态，可折叠，绝不自动展开）
+  │                   └─ flow-response-card          最终输出正文（永不折叠 Markdown 输出）
   ├─ flow-turn-nav        ← 右侧上下轮次定位导航（absolute，右移到 flow 内容外，多轮 >= 2 时显现）
   └─ search-section       ← 底部输入区
 ```
 
-**铁律**：`agent-response-card`（最终输出卡）**永远不折叠**，仅过程类框体可折叠。
+**铁律**：
+1. `flow-response-card`（最终输出卡）**永远不折叠**；
+2. 所有过程框体（`flow-step-thinking` 思维切片与 `flow-step-tool` 工具切片）**常态保持单行紧凑折叠状态，在任何时候（启动、流式、结束）均绝不自动展开**，用户可随时手动点击 Header 展开查阅详情；
+3. 思维与工具按真实 ReAct 循环时序**一段一段交织拼接**（`思维1 ➔ 工具1 ➔ 思维2 ➔ 工具2 ➔ ...`）。
 
 ---
 
-## 📌 1. 过程框体手动折叠
+## 📌 1. 时序步骤流与单行切片卡片
 
-### 1.1 思考卡片（`agent-thinking-card`）
+### 1.1 思维链切片（`flow-step-thinking`）
 
-通过 `.open` class 控制展开/收起，CSS 通过子选择器驱动 `thinking-body` 的显隐。
+- **单行流式刷新**：在折叠状态下，Header 内的 `.flow-step-preview` 实时刷新流式输出的文本片段（`text.replace(/[\r\n\t]+/g, ' ').trim()`），结合单行文本溢出省略号（`text-overflow: ellipsis; white-space: nowrap;`）；
+- **动态读秒**：`.flow-step-duration` 在流式期间显示 `思考中 (3.2s)...`，结束时定格为 `已思考 3.2 秒`；
+- **手动折叠展开**：点击 Header 切换 `.open` class，展开后呈现完整思维 Markdown / 代码文本。
 
-```css
-/* 收起状态：body 隐藏，箭头朝下 */
-.thinking-body {
-  display: none;
-}
-.agent-thinking-card.open .thinking-body {
-  display: block;
-  animation: sketchFadeIn 0.25s ease-out;
-}
-/* 展开时箭头旋转朝上 */
-.agent-thinking-card.open .thinking-arrow-icon {
-  transform: rotate(180deg);
-}
-/* 收起时呼吸脉冲停止 */
-.agent-thinking-card:not(.open) .thinking-dot {
-  animation: none;
-}
-```
-
-```javascript
-const collapseThinkingCard = () => {
-  if (agentThinkingCard && agentThinkingCard.classList.contains("open")) {
-    agentThinkingCard.classList.remove("open");
-    thinkingToggleBtn?.setAttribute("aria-expanded", "false");
-  }
-};
-const expandThinkingCard = () => {
-  if (agentThinkingCard && !agentThinkingCard.classList.contains("open")) {
-    agentThinkingCard.classList.add("open");
-    thinkingToggleBtn?.setAttribute("aria-expanded", "true");
-  }
-};
-```
-
-点击 `#thinking-toggle-btn` 调用上述函数切换。
-
-### 1.2 工具调用卡片（`tool-card`）
-
-每张卡片动态创建，header 内含折叠箭头，绑定点击/键盘事件：
-
-```javascript
-// tool-start 事件中创建卡片时
-card.innerHTML = `
-  <div class="tool-header" role="button" tabindex="0" aria-expanded="true">
-    <div class="tool-title-group">
-      <span class="tool-icon" aria-hidden="true">${ICONS.tool}</span>
-      <span class="tool-name">${escapeHtml(toolName)}</span>
+```html
+<div class="flow-step-card flow-step-thinking">
+  <div class="flow-step-header" role="button" tabindex="0" aria-expanded="false">
+    <div class="flow-step-header-left">
+      <span class="flow-step-icon">${ICONS.sparkle}</span>
+      <span class="flow-step-title">思考过程</span>
+      <span class="flow-step-duration">思考中 (1.2s)...</span>
+      <span class="flow-step-preview">分析当前项目结构与依赖...</span>
     </div>
-    <div class="tool-header-right">
-      <span class="tool-status-badge">running</span>
-      <span class="tool-collapse-arrow" aria-hidden="true">
-        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-          <polyline points="4 6 8 10 12 6" />
-        </svg>
-      </span>
+    <div class="flow-step-header-right">
+      <span class="flow-step-arrow">${ICONS.chevronDown}</span>
     </div>
   </div>
-  <div class="tool-body">${escapeHtml(argsStr)}</div>
-`;
-
-const header = card.querySelector(".tool-header");
-const toggle = () => {
-  if (card.classList.contains("collapsed")) {
-    expandToolCard(card);
-  } else {
-    collapseToolCard(card);
-  }
-};
-header.addEventListener("click", toggle);
-header.addEventListener("keydown", (ev) => {
-  if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(); }
-});
+  <div class="flow-step-body">
+    <div class="thinking-text-stream">完整思维链 Markdown 内容...</div>
+  </div>
+</div>
 ```
 
-```css
-/* 折叠箭头默认朝下，折叠后旋转朝上 */
-.tool-collapse-arrow {
-  transition: transform 0.2s ease;
-}
-.tool-card.collapsed .tool-collapse-arrow {
-  transform: rotate(-90deg);
-}
-/* 折叠时隐藏 body */
-.tool-card.collapsed .tool-body {
-  display: none;
-}
-```
+### 1.2 工具调用切片（`flow-step-tool`）
 
-辅助函数：
+- **单行友好提醒**：自动映射友好工具名（如 `BASH 调用`、`Web 查询`、`读取文件`、`写入文件` 等），展示简短摘要（如命令或文件路径）；
+- **状态徽章**：右侧显现 `running`（琥珀黄）、`done`（翡翠绿）、`failure`（朱红）；
+- **手动折叠展开**：默认折叠，点击展开查看完整入参（Arguments JSON）与执行结果（Result）。
 
-```javascript
-const collapseToolCard = (card) => {
-  if (card && !card.classList.contains("collapsed")) {
-    card.classList.add("collapsed");
-    card.querySelector(".tool-header")?.setAttribute("aria-expanded", "false");
-  }
-};
-const expandToolCard = (card) => {
-  if (card && card.classList.contains("collapsed")) {
-    card.classList.remove("collapsed");
-    card.querySelector(".tool-header")?.setAttribute("aria-expanded", "true");
-  }
-};
-const collapseAllDoneToolCards = () => {
-  renderedToolCards.forEach((card) => {
-    if (!card.classList.contains("running")) collapseToolCard(card);
-  });
-};
-const collapseAllToolCards = () => {
-  renderedToolCards.forEach((card) => collapseToolCard(card));
-};
+```html
+<div class="flow-step-card flow-step-tool tool-card running">
+  <div class="flow-step-header tool-header" role="button" tabindex="0" aria-expanded="false">
+    <div class="flow-step-header-left">
+      <span class="flow-step-icon tool-icon">${ICONS.tool}</span>
+      <span class="flow-step-title tool-name">BASH 调用</span>
+      <span class="flow-step-preview">npm test</span>
+    </div>
+    <div class="flow-step-header-right tool-header-right">
+      <span class="tool-status-badge running">running</span>
+      <span class="flow-step-arrow tool-collapse-arrow">${ICONS.chevronDown}</span>
+    </div>
+  </div>
+  <div class="flow-step-body tool-body">[入参 / Arguments] ...</div>
+</div>
 ```
 
 ---
 
-## 📌 2. 自动收起级联流水线
+## 📌 2. 流式交织切分时序流水线
 
-### 2.1 规则定义
+> **核心逻辑**：将思维和工具调用“一段一段”流式拼接，真实还原模型的 ReAct 推理与行动链条。
 
-> **核心规则**：当前正在运行/最下方的框体默认展开；当下一个框体出现时，上一个框体自动收起。
-
-| 触发事件 | 自动收起动作 |
+| 触发事件 | 步骤切片动作 |
 |---|---|
-| `thinking-end` | 调用 `autoCollapseThinkingOnNextPhase()`，首次收起思考卡片 |
-| `toolcall-delta-start` | `autoCollapseThinkingOnNextPhase()` |
-| `tool-start`（新工具卡出现） | `collapseAllDoneToolCards()`（收起已完成旧卡，保留 running） |
-| `text-start`（输出开始） | `autoCollapseThinkingOnNextPhase()` + `collapseAllDoneToolCards()` |
-| `text-delta` | `autoCollapseThinkingOnNextPhase()` |
-| `agent-end`（全流程结束） | `collapseAllToolCards()`（收起所有工具卡，输出卡不动） |
-
-### 2.2 `hasAutoCollapsedThinking` 门禁标志
-
-`hasAutoCollapsedThinking` 是一轮对话中的一次性标志：
-
-```javascript
-let hasAutoCollapsedThinking = false;
-
-// 重置（每次新提问时）
-const resetStreamState = (query) => {
-  hasAutoCollapsedThinking = false;
-  // ...
-  expandThinkingCard(); // 新提问时展开思考卡
-};
-
-// 首次自动收起（只执行一次）
-const autoCollapseThinkingOnNextPhase = () => {
-  if (!hasAutoCollapsedThinking) {
-    hasAutoCollapsedThinking = true;
-    collapseThinkingCard();
-  }
-};
-```
-
-### ⚠️ 关键陷阱：`thinking-start` 不可无条件展开
-
-工具调用结束后，Agent 可能继续二次思考，再次触发 `thinking-start`。
-
-**错误写法**（会导致思考卡二次展开后再也不收起）：
-```javascript
-piClient.addEventListener("thinking-start", () => {
-  hasReceivedDelta = true;
-  expandThinkingCard(); // ❌ 无条件展开
-});
-```
-
-**正确写法**（通过门禁标志防止二次展开）：
-```javascript
-piClient.addEventListener("thinking-start", () => {
-  hasReceivedDelta = true;
-  // 仅首轮思考（未自动收起过）时展开；工具调用后的二次思考不再重新展开
-  if (!hasAutoCollapsedThinking) {
-    expandThinkingCard();
-  }
-});
-```
-
----
+| `thinking-start` / `thinking-delta` | 若当前无活跃思维切片，创建新思维切片（默认折叠）；实时单行刷新预览文本与秒表 |
+| `tool-start` (如 bash) | 封口上一段思维切片；创建新工具切片（单行 running，默认折叠） |
+| `tool-update` | 更新当前工具切片的执行结果文本 |
+| `tool-end` | 更新当前工具切片状态为 `done` 或 `failure`；封口工具切片 |
+| 工具结束后再次 `thinking-start` | 自动开启下一个思维切片（思维#2，默认折叠） |
+| `text-start` / `text-delta` | 封口所有前序切片，展开并在下方流式输出最终回答卡片 |
+| `agent-end` | 结算定格所有步骤切片，沉淀多轮步骤快照至历史记录 |
 
 ## 📌 3. Flow 界面全区域滚轮委托
 

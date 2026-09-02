@@ -37,25 +37,27 @@ export function initFlowUi(ctx) {
   // ==========================================================================
 
   /**
-   * 折叠单张工具卡片
+   * 折叠单张步骤/工具卡片
    * @param {HTMLElement} card
    */
   const collapseToolCard = (card) => {
-    if (card && !card.classList.contains("collapsed")) {
+    if (card && card.classList.contains("open")) {
+      card.classList.remove("open");
       card.classList.add("collapsed");
-      const header = card.querySelector(".tool-header");
+      const header = card.querySelector(".flow-step-header") || card.querySelector(".tool-header");
       if (header) header.setAttribute("aria-expanded", "false");
     }
   };
 
   /**
-   * 展开单张工具卡片
+   * 展开单张步骤/工具卡片
    * @param {HTMLElement} card
    */
   const expandToolCard = (card) => {
-    if (card && card.classList.contains("collapsed")) {
+    if (card && !card.classList.contains("open")) {
+      card.classList.add("open");
       card.classList.remove("collapsed");
-      const header = card.querySelector(".tool-header");
+      const header = card.querySelector(".flow-step-header") || card.querySelector(".tool-header");
       if (header) header.setAttribute("aria-expanded", "true");
     }
   };
@@ -102,6 +104,204 @@ export function initFlowUi(ctx) {
   };
 
   /**
+   * 工具名称友好化映射
+   * @param {string} toolName
+   * @returns {string}
+   */
+  const getFriendlyToolName = (toolName) => {
+    const raw = String(toolName || "").trim().toLowerCase();
+    switch (raw) {
+      case "bash":
+        return "BASH 调用";
+      case "read_file":
+      case "view_file":
+        return "读取文件";
+      case "write_to_file":
+        return "写入文件";
+      case "edit_file":
+      case "replace_file_content":
+      case "multi_replace_file_content":
+        return "编辑文件";
+      case "search_web":
+      case "web_search":
+      case "read_url_content":
+        return "Web 查询";
+      case "grep_search":
+        return "文本检索";
+      case "list_dir":
+        return "列出目录";
+      case "ask_question":
+        return "提问用户";
+      case "docparser":
+      case "ocr":
+      case "deword":
+        return "文档解析";
+      default:
+        return `工具调用 (${toolName || "tool"})`;
+    }
+  };
+
+  /**
+   * 工具调用入参简短摘要
+   * @param {string} toolName
+   * @param {any} args
+   * @returns {string}
+   */
+  const getToolShortSummary = (toolName, args = null) => {
+    if (!args || typeof args !== "object") return "";
+    if (args.command || args.CommandLine) {
+      const cmd = String(args.command || args.CommandLine || "").trim();
+      return cmd.length > 36 ? cmd.slice(0, 34) + "..." : cmd;
+    }
+    if (args.path || args.TargetPath || args.TargetFile || args.AbsolutePath) {
+      const p = String(args.path || args.TargetPath || args.TargetFile || args.AbsolutePath || "").trim();
+      const basename = p.split(/[/\\]/).pop() || p;
+      return basename;
+    }
+    if (args.query || args.Query) {
+      const q = String(args.query || args.Query || "").trim();
+      return q.length > 24 ? q.slice(0, 22) + "..." : q;
+    }
+    return "";
+  };
+
+  /**
+   * 创建思维切片卡片（单行流式刷新，常态折叠，任何时候不自动展开）
+   */
+  const createThinkingStepCard = ({
+    text = "",
+    durationText = "(0.0s)...",
+    isOpen = false, // 铁律：默认 false，任何时候不自动展开
+  } = {}) => {
+    const cardEl = document.createElement("div");
+    cardEl.className = `flow-step-card flow-step-thinking ${isOpen ? "open" : ""}`;
+
+    const previewText = text ? text.replace(/[\r\n\t]+/g, " ").trim() : "";
+
+    cardEl.innerHTML = `
+      <div class="flow-step-header" role="button" tabindex="0" aria-expanded="${isOpen ? "true" : "false"}">
+        <div class="flow-step-header-left">
+          <span class="flow-step-icon" aria-hidden="true">${ICONS.sparkle}</span>
+          <span class="flow-step-title">Thinking</span>
+          <span class="flow-step-duration">${escapeHtml(durationText)}</span>
+          <span class="flow-step-preview">${escapeHtml(previewText)}</span>
+        </div>
+        <div class="flow-step-header-right">
+          <span class="flow-step-arrow" aria-hidden="true">${ICONS.chevronDown}</span>
+        </div>
+      </div>
+      <div class="flow-step-body">
+        <div class="thinking-text-stream">${escapeHtml(text)}</div>
+      </div>
+    `;
+
+    const headerEl = cardEl.querySelector(".flow-step-header");
+    const durationEl = cardEl.querySelector(".flow-step-duration");
+    const previewEl = cardEl.querySelector(".flow-step-preview");
+    const bodyEl = cardEl.querySelector(".flow-step-body");
+    const textStreamEl = cardEl.querySelector(".thinking-text-stream");
+
+    if (headerEl) {
+      headerEl.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const open = cardEl.classList.toggle("open");
+        headerEl.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+      headerEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          const open = cardEl.classList.toggle("open");
+          headerEl.setAttribute("aria-expanded", open ? "true" : "false");
+        }
+      });
+    }
+
+    return {
+      cardEl,
+      headerEl,
+      durationEl,
+      previewEl,
+      bodyEl,
+      textStreamEl,
+    };
+  };
+
+  /**
+   * 创建工具调用切片卡片（单行简略展示，常态折叠，任何时候不自动展开）
+   */
+  const createToolStepCard = ({
+    id = "",
+    name = "tool",
+    args = null,
+    status = "running",
+    result = null,
+    isOpen = false, // 铁律：默认 false，任何时候不自动展开
+  } = {}) => {
+    const cardEl = document.createElement("div");
+    const statusClass = status === "error" || status === "failure" ? "error failed" : (status === "done" ? "done" : "running");
+    cardEl.className = `flow-step-card flow-step-tool tool-card ${statusClass} ${isOpen ? "open" : ""}`;
+    if (id) cardEl.id = `tool-${id}`;
+
+    const friendlyName = getFriendlyToolName(name);
+    const summary = getToolShortSummary(name, args);
+
+    let bodyContent = "";
+    if (args) {
+      bodyContent += `[入参 / Arguments]\n${typeof args === "string" ? args : JSON.stringify(args, null, 2)}\n\n`;
+    }
+    if (result) {
+      bodyContent += `[结果 / Result]\n${typeof result === "string" ? result : JSON.stringify(result, null, 2)}`;
+    }
+
+    const badgeLabel = status === "error" || status === "failure" || status === "failed" ? "failure" : (status === "done" ? "done" : "running");
+
+    cardEl.innerHTML = `
+      <div class="flow-step-header tool-header" role="button" tabindex="0" aria-expanded="${isOpen ? "true" : "false"}">
+        <div class="flow-step-header-left">
+          <span class="flow-step-icon tool-icon" aria-hidden="true">${ICONS.tool}</span>
+          <span class="flow-step-title tool-name">${escapeHtml(friendlyName)}</span>
+          ${summary ? `<span class="flow-step-preview">${escapeHtml(summary)}</span>` : ""}
+        </div>
+        <div class="flow-step-header-right tool-header-right">
+          <span class="tool-status-badge ${badgeLabel}">${escapeHtml(badgeLabel)}</span>
+          <span class="flow-step-arrow tool-collapse-arrow" aria-hidden="true">${ICONS.chevronDown}</span>
+        </div>
+      </div>
+      <div class="flow-step-body tool-body">${escapeHtml(bodyContent)}</div>
+    `;
+
+    const headerEl = cardEl.querySelector(".flow-step-header");
+    const badgeEl = cardEl.querySelector(".tool-status-badge");
+    const previewEl = cardEl.querySelector(".flow-step-preview");
+    const bodyEl = cardEl.querySelector(".flow-step-body");
+
+    if (headerEl) {
+      headerEl.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const open = cardEl.classList.toggle("open");
+        cardEl.classList.toggle("collapsed", !open);
+        headerEl.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+      headerEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          const open = cardEl.classList.toggle("open");
+          cardEl.classList.toggle("collapsed", !open);
+          headerEl.setAttribute("aria-expanded", open ? "true" : "false");
+        }
+      });
+    }
+
+    return {
+      cardEl,
+      headerEl,
+      badgeEl,
+      previewEl,
+      bodyEl,
+    };
+  };
+
+  /**
    * 动态创建单轮对话的 DOM 消息组 (Turn Message Group)
    * @param {Object} options
    * @param {string} options.query
@@ -110,7 +310,8 @@ export function initFlowUi(ctx) {
    * @param {string} [options.thinkingDurationText=""]
    * @param {string} [options.responseText=""]
    * @param {Array<any>} [options.toolCalls=[]]
-   * @param {boolean} [options.isOpenThinking=true]
+   * @param {Array<any>} [options.steps=[]]
+   * @param {boolean} [options.isOpenThinking=false]
    * @param {boolean} [options.isAborted=false]
    * @param {string | null} [options.errorMessage=null]
    * @returns {Object} 包含该轮各子元素引用的对象
@@ -122,8 +323,9 @@ export function initFlowUi(ctx) {
     thinkingDurationText = "",
     responseText = "",
     toolCalls = [],
+    steps = [],
     injectedSkills = [],
-    isOpenThinking = true,
+    isOpenThinking = false,
     isAborted = false,
     errorMessage = null,
   } = {}) => {
@@ -208,68 +410,81 @@ export function initFlowUi(ctx) {
     `;
     groupEl.appendChild(failoverCapsuleEl);
 
-    // 3. AI Agent 思考过程卡片
-    const thinkingCardEl = document.createElement("div");
-    thinkingCardEl.className = `agent-thinking-card ${isOpenThinking ? "open" : ""}`;
-    thinkingCardEl.innerHTML = `
-      <div class="thinking-header" role="button" tabindex="0" aria-expanded="${isOpenThinking ? "true" : "false"}">
-        <div class="thinking-status-indicator">
-          <span class="thinking-dot"></span>
-          <span class="thinking-title">思考过程</span>
-          <span class="thinking-duration">${escapeHtml(thinkingDurationText || "思考中...")}</span>
-        </div>
-        <div class="thinking-arrow-icon" aria-hidden="true">
-          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-            <polyline points="4 6 8 10 12 6" />
-          </svg>
-        </div>
-      </div>
-      <div class="thinking-body">
-        <div class="thinking-text-stream">${escapeHtml(thinkingText)}</div>
-      </div>
-    `;
+    // 3. 【时序步骤流容器】：按时间拼接思维切片与工具切片 (思维1-工具1-思维2-工具2...)
+    const stepsContainerEl = document.createElement("div");
+    stepsContainerEl.className = "flow-steps-container";
 
-    const thinkingToggleBtn = thinkingCardEl.querySelector(".thinking-header");
-    const thinkingDurationEl = thinkingCardEl.querySelector(".thinking-duration");
-    const thinkingTextStreamEl = thinkingCardEl.querySelector(".thinking-text-stream");
-    const thinkingBodyEl = thinkingCardEl.querySelector(".thinking-body");
+    let firstThinkingRef = null;
 
-    if (thinkingToggleBtn) {
-      thinkingToggleBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const isOpen = thinkingCardEl.classList.toggle("open");
-        thinkingToggleBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
-      });
-    }
-
-    groupEl.appendChild(thinkingCardEl);
-
-    // 4. 工具调用卡片容器
-    const toolCallsContainerEl = document.createElement("div");
-    toolCallsContainerEl.className = "tool-calls-container";
-    if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-      toolCalls.forEach((tc) => {
-        if (tc.html) {
-          toolCallsContainerEl.insertAdjacentHTML("beforeend", tc.html);
-        }
-      });
-      // 重新绑定历史工具卡片的点击折叠
-      toolCallsContainerEl.querySelectorAll(".tool-card").forEach((card) => {
-        const header = card.querySelector(".tool-header");
-        if (header) {
-          header.addEventListener("click", () => {
-            if (card.classList.contains("collapsed")) {
-              expandToolCard(card);
-            } else {
-              collapseToolCard(card);
-            }
+    // 若传入结构化 steps 数组，按序渲染切片
+    if (Array.isArray(steps) && steps.length > 0) {
+      steps.forEach((step) => {
+        if (step.type === "thinking" || step.text) {
+          const tStep = createThinkingStepCard({
+            text: step.text || "",
+            durationText: step.durationText || "已完成思考",
+            isOpen: false,
           });
+          if (!firstThinkingRef) firstThinkingRef = tStep;
+          stepsContainerEl.appendChild(tStep.cardEl);
+        } else if (step.type === "tool" || step.name || step.id) {
+          const toolStep = createToolStepCard({
+            id: step.id || "",
+            name: step.name || "tool",
+            args: step.args || step.arguments_text,
+            status: step.status || (step.is_error ? "failure" : "done"),
+            result: step.result || step.result_text,
+            isOpen: false,
+          });
+          stepsContainerEl.appendChild(toolStep.cardEl);
         }
       });
+    } else {
+      // 兼容历史单一 thinkingText 与 toolCalls 格式
+      if (thinkingText && thinkingText.trim()) {
+        const tStep = createThinkingStepCard({
+          text: thinkingText,
+          durationText: thinkingDurationText || "已完成思考",
+          isOpen: false,
+        });
+        firstThinkingRef = tStep;
+        stepsContainerEl.appendChild(tStep.cardEl);
+      }
+      if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+        toolCalls.forEach((tc) => {
+          if (tc.html) {
+            stepsContainerEl.insertAdjacentHTML("beforeend", tc.html);
+          } else {
+            const toolStep = createToolStepCard({
+              id: tc.id || "",
+              name: tc.name || "tool",
+              args: tc.args,
+              status: tc.status || "done",
+              result: tc.result,
+              isOpen: false,
+            });
+            stepsContainerEl.appendChild(toolStep.cardEl);
+          }
+        });
+      }
     }
-    groupEl.appendChild(toolCallsContainerEl);
 
-    // 5. Agent 回答卡片
+    // 重新绑定历史工具卡片的点击折叠
+    stepsContainerEl.querySelectorAll(".tool-card, .flow-step-card").forEach((card) => {
+      const header = card.querySelector(".flow-step-header") || card.querySelector(".tool-header");
+      if (header && !header.dataset.bound) {
+        header.dataset.bound = "1";
+        header.addEventListener("click", () => {
+          const open = card.classList.toggle("open");
+          card.classList.toggle("collapsed", !open);
+          header.setAttribute("aria-expanded", open ? "true" : "false");
+        });
+      }
+    });
+
+    groupEl.appendChild(stepsContainerEl);
+
+    // 5. Agent 回答卡片（永不折叠 Markdown 输出）
     const responseCardEl = document.createElement("div");
     responseCardEl.className = "flow-response-card";
     const responseContentEl = document.createElement("div");
@@ -310,12 +525,13 @@ export function initFlowUi(ctx) {
       activatedSkills: activatedSkillsSet,
       failoverCapsuleEl,
       failoverTextEl,
-      thinkingCardEl,
-      thinkingToggleBtn,
-      thinkingDurationEl,
-      thinkingTextStreamEl,
-      thinkingBodyEl,
-      toolCallsContainerEl,
+      stepsContainerEl,
+      thinkingCardEl: firstThinkingRef?.cardEl || null,
+      thinkingToggleBtn: firstThinkingRef?.headerEl || null,
+      thinkingDurationEl: firstThinkingRef?.durationEl || null,
+      thinkingTextStreamEl: firstThinkingRef?.textStreamEl || null,
+      thinkingBodyEl: firstThinkingRef?.bodyEl || null,
+      toolCallsContainerEl: stepsContainerEl,
       responseCardEl,
       responseContentEl,
     };
@@ -745,6 +961,10 @@ export function initFlowUi(ctx) {
 
 
   api.renderMarkdown = renderMarkdown;
+  api.getFriendlyToolName = getFriendlyToolName;
+  api.getToolShortSummary = getToolShortSummary;
+  api.createThinkingStepCard = createThinkingStepCard;
+  api.createToolStepCard = createToolStepCard;
   api.collapseToolCard = collapseToolCard;
   api.expandToolCard = expandToolCard;
   api.collapseAllDoneToolCards = collapseAllDoneToolCards;
