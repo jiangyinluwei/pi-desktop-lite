@@ -63,9 +63,32 @@ pub fn pi_get_app_config() -> Result<Value, String> {
 }
 
 /// 写入 ~/.pi-dl/config.json 应用全局持久化配置 (含主题色、默认思考强度、所选模型、模型列表排序等)
+///
+/// 采用「浅合并」策略：以传入 config_data 为覆盖源，保留 config.json 中未被前端声明的其余字段，
+/// 特别是 `workspace` 对象（多预设工作区 activeId / code-area 路由目标与历史记录）。
+/// 该对象由 workspace 模块通过 write_active_workspace_id / write_code_area_route_path 单独维护，
+/// 前端 saveAppConfig 并不感知它。若此处直接整文件覆盖，会在「切换模型 / 改思考等级」等保存时机
+/// 清空 workspace 字段，导致运行中工作区被重置回 default-area、code-area 路由目标丢失、需重新填写。
 #[tauri::command]
 pub fn pi_save_app_config(config_data: Value) -> Result<(), String> {
-    write_pi_dl_json("config.json", &config_data)
+    // 非对象入参：保持旧行为，按原样写入（防御性兜底）
+    if !config_data.is_object() {
+        return write_pi_dl_json("config.json", &config_data);
+    }
+
+    // 读取现有 config.json，仅当其为对象时才合并，否则从空对象开始
+    let mut merged = read_pi_dl_json("config.json", json!({})).unwrap_or_else(|_| json!({}));
+    if !merged.is_object() {
+        merged = json!({});
+    }
+
+    if let (Some(existing), Some(incoming)) = (merged.as_object_mut(), config_data.as_object()) {
+        for (k, v) in incoming {
+            existing.insert(k.clone(), v.clone());
+        }
+    }
+
+    write_pi_dl_json("config.json", &merged)
 }
 
 /// 检查用户是否配置了“不再提醒更新”（若为 true 则直接跳过启动自检与后台自动轮询）
