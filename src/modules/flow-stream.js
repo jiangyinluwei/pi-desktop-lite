@@ -673,6 +673,9 @@ export function initFlowStream(ctx) {
   // 另在输出全部结束的瞬间 (finalizeStream / appendFlowAbortNotice) 单次定位到底部
   piClient.addEventListener("thinking-start", () => {
     flow.hasReceivedDelta = true;
+    // 阶段性输出判定铁律：模型输出一段文字后再次进入 Thinking 状态，
+    // 则前面那段文字属于「阶段性输出」——先封口为 Point 卡，再继续思维切片
+    sealActivePhaseOutput();
     ensureActiveThinkingStep();
     followScrollToBottom();
   });

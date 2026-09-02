@@ -197,6 +197,11 @@ export function initFlowPipeline(ctx) {
   });
 
   piClient.addEventListener("toolcall-delta-start", (e) => {
+    // 阶段性输出判定铁律：模型输出一段文字后进入工具调用状态（工具参数流式开始即视为进入），
+    // 先封口该段文字为 Point 卡，再进入工具调用切片（tool-start 处的封口为幂等兜底）
+    if (typeof api.sealActivePhaseOutput === "function") {
+      api.sealActivePhaseOutput();
+    }
     api.autoCollapseThinkingOnNextPhase();
     const evt = e.detail;
     if (evt?.toolCall?.name) {

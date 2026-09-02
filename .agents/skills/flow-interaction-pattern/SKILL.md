@@ -44,7 +44,7 @@ description: |
 | 切片类型 | 展示规范 | 触发与封口时机 |
 |---|---|---|
 | **思维链切片 (`flow-step-thinking`)** | 单行预览流式文本，动态读秒 `思考中 (1.2s)...` ➔ 定格 `已思考 3.2 秒`；默认折叠。 | `thinking-start` 创建；`tool-start` 或 `text-start` 时封口。 |
-| **阶段性输出切片 (`flow-step-phase`)** | `Point` 标题 + 铅笔图标 + 读秒 + 折叠 Markdown；默认折叠。 | 首个 `text-delta` 创建；`tool-start` 或新轮 `text-start` 封口；最终段保留在输出卡。 |
+| **阶段性输出切片 (`flow-step-phase`)** | `Point` 标题 + 铅笔图标 + 读秒 + 折叠 Markdown；默认折叠。 | 首个 `text-delta` 创建；文本段之后再次进入 Thinking（`thinking-start`）或进入工具调用（`toolcall-delta-start` / `tool-start`）时封口；新轮 `text-start` 封口上一段；最终段保留在输出卡。 |
 | **工具调用切片 (`flow-step-tool`)** | 单行中文友好名称 + 参数预览 + 状态徽章 (`running` 琥珀黄 / `done` 翡翠绿 / `failure` 朱红)；默认折叠。 | `tool-start` 创建；`tool-end` 封口并更新状态。 |
 
 ---
