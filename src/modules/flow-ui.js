@@ -247,6 +247,16 @@ export function initFlowUi(ctx) {
   };
 
   /**
+   * 剥离终端 ANSI 颜色与控制字符，防止乱码呈现
+   * @param {string} str
+   * @returns {string}
+   */
+  const stripAnsiCodes = (str) => {
+    if (typeof str !== "string") return str;
+    return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, "");
+  };
+
+  /**
    * 格式化入参代码块 HTML（带手绘复制按钮）
    * @param {any} args
    * @returns {string}
@@ -257,13 +267,20 @@ export function initFlowUi(ctx) {
     if (typeof args === "string") {
       try {
         const parsed = JSON.parse(args);
-        formatted = JSON.stringify(parsed, null, 2);
+        if (typeof parsed === "object" && parsed !== null) {
+          formatted = JSON.stringify(parsed, null, 2);
+        } else {
+          formatted = args;
+        }
       } catch {
         formatted = args;
       }
-    } else {
+    } else if (typeof args === "object") {
       formatted = JSON.stringify(args, null, 2);
+    } else {
+      formatted = String(args);
     }
+    formatted = stripAnsiCodes(formatted);
     if (!formatted.trim()) return "";
     return `
       <div class="tool-section tool-args-section">
@@ -292,13 +309,49 @@ export function initFlowUi(ctx) {
     if (typeof result === "string") {
       try {
         const parsed = JSON.parse(result);
-        formatted = JSON.stringify(parsed, null, 2);
+        if (typeof parsed === "object" && parsed !== null) {
+          // 若为 content 块结构 [{ type: "text", text: "..." }] 则提取纯文本
+          if (Array.isArray(parsed)) {
+            const texts = parsed
+              .map((item) => (typeof item === "string" ? item : item?.text))
+              .filter(Boolean);
+            formatted = texts.length > 0 ? texts.join("\n") : JSON.stringify(parsed, null, 2);
+          } else if (Array.isArray(parsed.content)) {
+            const texts = parsed.content
+              .map((item) => (typeof item === "string" ? item : item?.text))
+              .filter(Boolean);
+            formatted = texts.length > 0 ? texts.join("\n") : JSON.stringify(parsed, null, 2);
+          } else if (typeof parsed.text === "string") {
+            formatted = parsed.text;
+          } else {
+            formatted = JSON.stringify(parsed, null, 2);
+          }
+        } else {
+          formatted = result;
+        }
       } catch {
         formatted = result;
       }
+    } else if (typeof result === "object") {
+      if (Array.isArray(result)) {
+        const texts = result
+          .map((item) => (typeof item === "string" ? item : item?.text))
+          .filter(Boolean);
+        formatted = texts.length > 0 ? texts.join("\n") : JSON.stringify(result, null, 2);
+      } else if (Array.isArray(result.content)) {
+        const texts = result.content
+          .map((item) => (typeof item === "string" ? item : item?.text))
+          .filter(Boolean);
+        formatted = texts.length > 0 ? texts.join("\n") : JSON.stringify(result, null, 2);
+      } else if (typeof result.text === "string") {
+        formatted = result.text;
+      } else {
+        formatted = JSON.stringify(result, null, 2);
+      }
     } else {
-      formatted = JSON.stringify(result, null, 2);
+      formatted = String(result);
     }
+    formatted = stripAnsiCodes(formatted);
     if (!formatted.trim()) return "";
     return `
       <div class="tool-section tool-result-section">
@@ -751,15 +804,15 @@ export function initFlowUi(ctx) {
       }
       if (Array.isArray(toolCalls) && toolCalls.length > 0) {
         toolCalls.forEach((tc) => {
-          if (tc.html) {
+          if (tc.html && tc.html.includes("flow-step-card")) {
             stepsContainerEl.insertAdjacentHTML("beforeend", tc.html);
           } else {
             const toolStep = createToolStepCard({
               id: tc.id || "",
               name: tc.name || "tool",
-              args: tc.args,
-              status: tc.status || "done",
-              result: tc.result,
+              args: tc.args || tc.arguments_text,
+              status: tc.status || (tc.is_error ? "failure" : "done"),
+              result: tc.result || tc.result_text,
               isOpen: false,
             });
             stepsContainerEl.appendChild(toolStep.cardEl);

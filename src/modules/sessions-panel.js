@@ -72,45 +72,61 @@ export function initSessionsPanel(ctx) {
     return { path: clean, name, category };
   };
 
-  // 历史工具卡片默认收起（与运行态"新卡出现旧卡自动收起"后的稳态一致）
-  const buildToolCardHtml = (tc) => {
-    const statusText = tc.is_error ? "failed" : "done";
-    const bodyText = tc.result_text || tc.arguments_text || "";
-    return `
-      <div class="tool-card collapsed ${tc.is_error ? "error" : "done"}">
-        <div class="tool-header" role="button" tabindex="0" aria-expanded="false">
-          <div class="tool-title-group">
-            <span class="tool-icon" aria-hidden="true">${ICONS.tool}</span>
-            <span class="tool-name">${escapeHtml(tc.name || "tool")}</span>
-          </div>
-          <div class="tool-header-right">
-            <span class="tool-status-badge">${statusText}</span>
-            <span class="tool-collapse-arrow" aria-hidden="true">
-              <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-                <polyline points="4 6 8 10 12 6" />
-              </svg>
-            </span>
-          </div>
-        </div>
-        <div class="tool-body">${escapeHtml(bodyText)}</div>
-      </div>
-    `;
-  };
-
+  // 历史内核会话轮次 → Flow 结构化步骤与工具切片数据适配
   const mapSessionTurns = (detail) => {
-    return (Array.isArray(detail) ? detail : []).map((t) => ({
-      query: cleanUserPrompt(t.query || ""),
-      attachments: (t.attachments || []).map(toAttachmentChip),
-      thinkingText: t.thinking_text || "",
-      thinkingDurationText: "已完成思考",
-      responseText: t.response_text || "",
-      toolCalls: (t.tool_calls || []).map((tc) => ({
+    return (Array.isArray(detail) ? detail : []).map((t) => {
+      const toolCalls = (t.tool_calls || []).map((tc) => ({
         id: tc.id || "",
-        html: buildToolCardHtml(tc),
-      })),
-      isAborted: Boolean(t.is_aborted),
-      status: "completed",
-    }));
+        name: tc.name || "tool",
+        args: tc.arguments_text || tc.args || "",
+        result: tc.result_text || tc.result || "",
+        status: tc.is_error ? "failure" : "done",
+        is_error: Boolean(tc.is_error),
+      }));
+
+      const steps = Array.isArray(t.steps) && t.steps.length > 0
+        ? t.steps.map((s) => {
+            if (s.type === "thinking") {
+              return {
+                type: "thinking",
+                text: s.text || "",
+                durationText: "已完成思考",
+              };
+            }
+            if (s.type === "text") {
+              return {
+                type: "text",
+                text: s.text || "",
+                durationText: s.durationText || "已输出",
+              };
+            }
+            return {
+              type: "tool",
+              id: s.id || "",
+              name: s.name || "tool",
+              args: s.arguments_text || s.args || "",
+              result: s.result_text || s.result || "",
+              status: s.is_error ? "failure" : "done",
+              is_error: Boolean(s.is_error),
+            };
+          })
+        : toolCalls.map((tc) => ({
+            type: "tool",
+            ...tc,
+          }));
+
+      return {
+        query: cleanUserPrompt(t.query || ""),
+        attachments: (t.attachments || []).map(toAttachmentChip),
+        thinkingText: t.thinking_text || "",
+        thinkingDurationText: "已完成思考",
+        responseText: t.response_text || "",
+        toolCalls,
+        steps,
+        isAborted: Boolean(t.is_aborted),
+        status: "completed",
+      };
+    });
   };
 
   // ==========================================================================
@@ -153,6 +169,7 @@ export function initSessionsPanel(ctx) {
             thinkingDurationText: "已完成思考",
             responseText: "",
             toolCalls: [],
+            steps: [],
             isAborted: false,
             status: "completed",
           },
@@ -171,6 +188,7 @@ export function initSessionsPanel(ctx) {
         thinkingText: lastTurn.thinkingText || "",
         responseText: lastTurn.responseText || "",
         toolCalls: lastTurn.toolCalls || [],
+        steps: lastTurn.steps || [],
         sessionPath: s.file_path,
       });
 
@@ -191,6 +209,7 @@ export function initSessionsPanel(ctx) {
       task.thinkingText = lastTurn.thinkingText || "";
       task.responseText = lastTurn.responseText || "";
       task.toolCalls = lastTurn.toolCalls || [];
+      task.steps = lastTurn.steps || [];
       task.thinkingDurationText = lastTurn.thinkingDurationText || "已完成思考";
 
       // 直接切 Flow，不调用 closeSettingsView（避免先跳回 previous 的中间态抖动）
