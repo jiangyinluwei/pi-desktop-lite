@@ -174,7 +174,13 @@ export function initViewMode(ctx) {
       e.stopPropagation();
       e.preventDefault();
       openSettingsView();
-      if (!piClient.hasKernel() && typeof api.switchSettingsTab === "function") {
+      const isKernelAbnormal =
+        !piClient.hasKernel() ||
+        flowModelTag.classList.contains("kernel-missing") ||
+        flowModelTag.classList.contains("kernel-crashed") ||
+        flowModelTag.classList.contains("kernel-reconnecting") ||
+        piClient.insurance?.state === "failed";
+      if (isKernelAbnormal && typeof api.switchSettingsTab === "function") {
         api.switchSettingsTab("tab-packages");
       }
     });

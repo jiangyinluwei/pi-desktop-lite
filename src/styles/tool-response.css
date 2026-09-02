@@ -211,7 +211,11 @@
 
 [data-view="flow"] .flow-model-tag,
 body.kernel-missing .flow-model-tag,
-.flow-model-tag.kernel-missing {
+.flow-model-tag.kernel-missing,
+body.kernel-crashed .flow-model-tag,
+.flow-model-tag.kernel-crashed,
+body.kernel-reconnecting .flow-model-tag,
+.flow-model-tag.kernel-reconnecting {
   display: inline-flex !important;
 }
 
@@ -236,11 +240,26 @@ body.kernel-missing .flow-model-tag,
 }
 
 body.kernel-missing .flow-model-tag .flow-model-icon,
-.flow-model-tag.kernel-missing .flow-model-icon {
+.flow-model-tag.kernel-missing .flow-model-icon,
+body.kernel-crashed .flow-model-tag .flow-model-icon,
+.flow-model-tag.kernel-crashed .flow-model-icon {
   color: var(--titlebar-close-hover, #dc2626);
   opacity: 1;
   animation: lightningJitter 0.5s infinite ease-in-out;
   transform-origin: center center;
+}
+
+body.kernel-reconnecting .flow-model-tag .flow-model-icon,
+.flow-model-tag.kernel-reconnecting .flow-model-icon {
+  color: var(--sketch-accent, #eab308);
+  opacity: 1;
+  animation: spinSlow 2s linear infinite;
+  transform-origin: center center;
+}
+
+body.kernel-crashed .flow-model-tag .flow-model-name,
+.flow-model-tag.kernel-crashed .flow-model-name {
+  color: var(--titlebar-close-hover, #dc2626);
 }
 
 .flow-model-icon svg {
