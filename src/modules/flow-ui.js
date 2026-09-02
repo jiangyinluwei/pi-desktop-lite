@@ -181,6 +181,20 @@ export function initFlowUi(ctx) {
     `;
     groupEl.appendChild(injectionCapsuleEl);
 
+    // 2a. code-area 路由目标项目胶囊
+    const isCodeArea = settings.activeWorkspace?.id === "code-area" || settings.activeWorkspace?.requiresRoute;
+    const routePath = settings.activeWorkspace?.routePath;
+    const routeName = settings.activeWorkspace?.routeName || (routePath ? routePath.split("/").pop() : "");
+
+    const routeCapsuleEl = document.createElement("div");
+    routeCapsuleEl.className = `flow-route-capsule ${isCodeArea && routePath ? "" : "hidden"}`;
+    routeCapsuleEl.setAttribute("title", `路由目标物理路径: ${routePath || ""}`);
+    routeCapsuleEl.innerHTML = `
+      <span class="capsule-icon" aria-hidden="true">${ICONS.folder}</span>
+      <span class="capsule-text">路由目标项目：<strong>${escapeHtml(routeName || routePath || "")}</strong></span>
+    `;
+    groupEl.appendChild(routeCapsuleEl);
+
     // 2b. 自动重连/切换进度胶囊 (手绘草图风格，运行态瞬态展示，不沉淀历史)
     const failoverCapsuleEl = document.createElement("div");
     failoverCapsuleEl.className = "flow-failover-capsule hidden";

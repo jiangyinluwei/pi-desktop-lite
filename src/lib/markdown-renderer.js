@@ -146,12 +146,12 @@ function highlightCode(code, lang = "") {
 function parseInline(text) {
   if (!text) return "";
 
-  // 1. 行内代码保护 `code` -> 暂存占位符防后续规则误伤
+  // 1. 行内代码保护 `code` -> 暂存 Unicode PUA 占位符防后续规则误伤
   const codeTokens = [];
   let rendered = text.replace(/`([^`]+)`/g, (match, code) => {
     const idx = codeTokens.length;
     codeTokens.push(`<code class="md-inline-code">${escapeHtml(code)}</code>`);
-    return `@@MD_CODE_${idx}@@`;
+    return `\uE000CODE${idx}\uE001`;
   });
 
   // 2. 行内公式 $formula$ -> 暂存占位符
@@ -159,56 +159,70 @@ function parseInline(text) {
   rendered = rendered.replace(/\$([^\$\n]+)\$/g, (match, formula) => {
     const idx = mathTokens.length;
     mathTokens.push(`<span class="md-math-inline">${escapeHtml(formula)}</span>`);
-    return `@@MD_MATH_${idx}@@`;
+    return `\uE000MATH${idx}\uE001`;
   });
 
-  // 3. 粗斜体 ***text*** / ___text___
-  rendered = rendered.replace(/\*\*\*([^*]+)\*\*\*/g, "<strong><em>$1</em></strong>");
-  rendered = rendered.replace(/___([^_]+)___/g, "<strong><em>$1</em></strong>");
-
-  // 4. 粗体 **text** / __text__
-  rendered = rendered.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  rendered = rendered.replace(/__([^_]+)__/g, "<strong>$1</strong>");
-
-  // 5. 斜体 *text* / _text_
-  rendered = rendered.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-  rendered = rendered.replace(/_([^_]+)_/g, "<em>$1</em>");
-
-  // 6. 删除线 ~~text~~ 与 高亮 ==text==
-  rendered = rendered.replace(/~~([^~]+)~~/g, "<del>$1</del>");
-  rendered = rendered.replace(/==([^=]+)==/g, "<mark>$1</mark>");
-
-  // 7. 图片 ![alt](url)
+  // 3. 图片 ![alt](url) -> 暂存占位符防 URL 中的下划线/参数被误伤
+  const imgTokens = [];
   rendered = rendered.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
+    const idx = imgTokens.length;
     const safeUrl = escapeHtml(url.trim());
     const safeAlt = escapeHtml(alt.trim());
-    return `<img class="md-img" src="${safeUrl}" alt="${safeAlt}" loading="lazy" />`;
+    imgTokens.push(`<img class="md-img" src="${safeUrl}" alt="${safeAlt}" loading="lazy" />`);
+    return `\uE000IMG${idx}\uE001`;
   });
 
-  // 8. 显式超链接 [text](url "title")
+  // 4. 显式超链接 [text](url "title") -> 暂存占位符
+  const linkTokens = [];
   const linkIconSvg = `<svg class="md-link-icon" viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.5 8.5 V12.5 A1 1 0 0 1 10.5 13.5 H3.5 A1 1 0 0 1 2.5 12.5 V5.5 A1 1 0 0 1 3.5 4.5 H7.5" /><path d="M9.5 2.5 H13.5 V6.5" /><path d="M6.5 9.5 L13.5 2.5" /></svg>`;
 
   rendered = rendered.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+|mailto:[^\s\)]+)(?:\s+"([^"]*)")?\)/g, (match, txt, url, title) => {
+    const idx = linkTokens.length;
     const safeUrl = escapeHtml(url.trim());
     const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
-    return `<a href="${safeUrl}" class="md-link" target="_blank" rel="noopener noreferrer"${titleAttr}><span>${txt}</span>${linkIconSvg}</a>`;
+    linkTokens.push(`<a href="${safeUrl}" class="md-link" target="_blank" rel="noopener noreferrer"${titleAttr}><span>${escapeHtml(txt)}</span>${linkIconSvg}</a>`);
+    return `\uE000LINK${idx}\uE001`;
   });
 
-  // 9. 自动识别纯 URL (不在 href= 或 <a> 内部的独立网址)
+  // 5. 对剩余文本执行基础 HTML 转义（保障 <stdio.h> / Map<K,V> 等非代码块中的尖括号不被吞噬或误解析为 HTML 标签）
+  rendered = escapeHtml(rendered);
+
+  // 6. 粗斜体 ***text*** / ___text___
+  rendered = rendered.replace(/\*\*\*([^*]+)\*\*\*/g, "<strong><em>$1</em></strong>");
+  rendered = rendered.replace(/(?:^|(?<=[\s\p{P}]))___([^\s_]+|.+?[^\s_])___(?=[\s\p{P}]|$)/gu, "<strong><em>$1</em></strong>");
+
+  // 7. 粗体 **text** / __text__
+  rendered = rendered.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  rendered = rendered.replace(/(?:^|(?<=[\s\p{P}]))__([^\s_]+|.+?[^\s_])__(?=[\s\p{P}]|$)/gu, "<strong>$1</strong>");
+
+  // 8. 斜体 *text* / _text_ (避免在单词内部 snake_case_var 误触)
+  rendered = rendered.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  rendered = rendered.replace(/(?:^|(?<=[\s\p{P}]))_([^\s_]+|.+?[^\s_])_(?=[\s\p{P}]|$)/gu, "<em>$1</em>");
+
+  // 9. 删除线 ~~text~~ 与 高亮 ==text==
+  rendered = rendered.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+  rendered = rendered.replace(/==([^=]+)==/g, "<mark>$1</mark>");
+
+  // 10. 自动识别纯 URL (不在 href= 或 <a> 内部的独立网址)
   rendered = rendered.replace(
-    /(?<!href=["'])(https?:\/\/[a-zA-Z0-9\-_.]+(?:\/[^\s<>"'\)]*)?)/g,
+    /(https?:\/\/[a-zA-Z0-9\-_.]+(?:\/[^\s<>"'\)]*)?)/g,
     (url) => {
-      const safeUrl = escapeHtml(url);
-      return `<a href="${safeUrl}" class="md-link auto-url" target="_blank" rel="noopener noreferrer"><span>${safeUrl}</span>${linkIconSvg}</a>`;
+      return `<a href="${url}" class="md-link auto-url" target="_blank" rel="noopener noreferrer"><span>${url}</span>${linkIconSvg}</a>`;
     }
   );
 
-  // 10. 还原公式与行内代码占位符
+  // 11. 还原公式、代码、图片与超链接占位符 (使用 split.join 彻底避免正则与单次替换缺陷)
+  imgTokens.forEach((tok, i) => {
+    rendered = rendered.split(`\uE000IMG${i}\uE001`).join(tok);
+  });
+  linkTokens.forEach((tok, i) => {
+    rendered = rendered.split(`\uE000LINK${i}\uE001`).join(tok);
+  });
   mathTokens.forEach((tok, i) => {
-    rendered = rendered.replace(`@@MD_MATH_${i}@@`, tok);
+    rendered = rendered.split(`\uE000MATH${i}\uE001`).join(tok);
   });
   codeTokens.forEach((tok, i) => {
-    rendered = rendered.replace(`@@MD_CODE_${i}@@`, tok);
+    rendered = rendered.split(`\uE000CODE${i}\uE001`).join(tok);
   });
 
   return rendered;
@@ -289,6 +303,42 @@ function renderCallout(type, bodyHtml) {
       <div class="md-callout-body">${bodyHtml}</div>
     </div>
   `.trim();
+}
+
+/**
+ * 智能拆分 Markdown 表格行，保护反引号内管道符与转义管道符
+ * @param {string} rowText
+ * @returns {Array<string>}
+ */
+function splitTableRow(rowText) {
+  const trimmed = (rowText || "").trim();
+  const inner = trimmed.replace(/^\|/, "").replace(/\|$/, "");
+  const cells = [];
+  let current = "";
+  let inBacktick = false;
+
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (ch === "\\") {
+      if (inner[i + 1] === "|") {
+        current += "|";
+        i++;
+        continue;
+      } else {
+        current += ch;
+      }
+    } else if (ch === "`") {
+      inBacktick = !inBacktick;
+      current += ch;
+    } else if (ch === "|" && !inBacktick) {
+      cells.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  cells.push(current.trim());
+  return cells;
 }
 
 /**
@@ -402,15 +452,17 @@ export function renderMarkdown(markdown) {
     const trimmed = line.trim();
 
     // ------------------------------------------------------------------------
-    // 1. 围栏代码块 ``` 处理 (支持流式自动闭合)
+    // 1. 围栏代码块 ``` 处理 (支持 3+ 反引号与流式自动闭合)
     // ------------------------------------------------------------------------
-    if (trimmed.startsWith("```")) {
+    const fenceMatch = trimmed.match(/^`{3,}(.*)$/);
+    if (fenceMatch) {
       if (!inCodeBlock) {
         flushBlockquote();
         flushTable();
         flushList();
         inCodeBlock = true;
-        codeBlockLang = trimmed.slice(3).trim();
+        const rawLang = fenceMatch[1].trim().replace(/^`+/, "").trim();
+        codeBlockLang = rawLang.split(/\s+/)[0] || "";
         codeBlockLines = [];
         continue;
       } else {
@@ -428,17 +480,14 @@ export function renderMarkdown(markdown) {
     }
 
     // ------------------------------------------------------------------------
-    // 2. 表格 GFM Table 处理
+    // 2. 表格 GFM Table 处理 (保护单元格反引号管道符)
     // ------------------------------------------------------------------------
     const isTableRow = trimmed.startsWith("|") && trimmed.endsWith("|");
     if (isTableRow) {
       flushBlockquote();
       flushList();
 
-      const cells = trimmed
-        .slice(1, -1)
-        .split("|")
-        .map((c) => c.trim());
+      const cells = splitTableRow(trimmed);
 
       // 检查下一行是否是分隔行 |:---|:---:|---:|
       if (!inTable) {
@@ -446,10 +495,7 @@ export function renderMarkdown(markdown) {
         if (nextLine.startsWith("|") && nextLine.endsWith("|") && /^[|:\-\s]+$/.test(nextLine)) {
           inTable = true;
           tableHeaders = cells;
-          const alignCells = nextLine
-            .slice(1, -1)
-            .split("|")
-            .map((c) => c.trim());
+          const alignCells = splitTableRow(nextLine);
           tableAligns = alignCells.map((ac) => {
             const left = ac.startsWith(":");
             const right = ac.endsWith(":");
@@ -595,6 +641,9 @@ export function renderMarkdown(markdown) {
  * @param {HTMLElement} [container=document] 监听容器
  */
 export function initMarkdownInteractions(container = document) {
+  if (!container || container.__mdInteractionsInit) return;
+  container.__mdInteractionsInit = true;
+
   container.addEventListener("click", async (e) => {
     const copyBtn = e.target && typeof e.target.closest === "function" ? e.target.closest(".md-copy-btn") : null;
     if (!copyBtn) return;

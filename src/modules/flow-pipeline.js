@@ -499,6 +499,31 @@ export function initFlowPipeline(ctx) {
       savedSelected?.provider ||
       "anthropic";
 
+    // 检查 code-area 路由工作区门禁 (不可空置运行)
+    try {
+      const activeWs = settings.activeWorkspace || (await workspaceService.getActiveWorkspace());
+      if (activeWs && (activeWs.id === "code-area" || activeWs.requiresRoute)) {
+        const routeInfo = await workspaceService.getCodeAreaRoute();
+        const hasRoute = Boolean(routeInfo && routeInfo.routePath && routeInfo.exists);
+        if (!hasRoute) {
+          const promptFn = typeof api.promptCodeAreaRouteModal === "function"
+            ? api.promptCodeAreaRouteModal
+            : (typeof window !== "undefined" ? window.__piPromptCodeAreaRoute : null);
+          const chosen = promptFn ? await promptFn("", "发起对话前 · 请绑定 code-area 路由目标项目") : null;
+          if (!chosen) {
+            api.showGlobalToast("code-area 必须绑定路由目标项目才能发起对话", 2500);
+            return;
+          }
+          if (settings.activeWorkspace) {
+            settings.activeWorkspace.routePath = chosen;
+            settings.activeWorkspace.routeName = chosen.split("/").pop() || chosen;
+          }
+        }
+      }
+    } catch (wsErr) {
+      console.warn("[FlowPipeline] Workspace check error:", wsErr);
+    }
+
     // 判断是否在 Flow 模式下向同一个工作流继续提问 (Multi-turn Follow-up)
     const activeTask = taskManager.getCurrentActiveTask();
     const isFollowUp = Boolean(view.mode === VIEW_FLOW && activeTask);

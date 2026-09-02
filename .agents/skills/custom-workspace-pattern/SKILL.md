@@ -16,7 +16,9 @@ description: 指导面向企业客户、甲方或特定垂直领域开发与交�
 │ 通用客户端底座 (Host Client)  : Tauri 2 + 原生 Web 前端 (通用外壳/流式交互)  │
 │ 运行时内核 (Pi Kernel Engine) : Rust 监督器 + Node/Python 执行引擎       │
 ├────────────────────────────────────────────────────────────────────────┤
-│ 公共内置预设 (Public Presets) : default-area, code-area, research-area  │
+│ 公共内置预设 (Public Presets) : default-area (默认区),                  │
+│                                code-area (全局编码技能集与路由调度中枢), │
+│                                research-area (深度调研区)              │
 │                                随安装包公开发布 (打包进 bundle.resources) │
 ├────────────────────────────────────────────────────────────────────────┤
 │ ★ 私人定制工作区 (Custom Area): enterprise-consulting-area 等专有资产    │

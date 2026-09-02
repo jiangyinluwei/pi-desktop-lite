@@ -77,6 +77,16 @@
     - 支持多级标题、围栏代码块（手绘语言徽标 + 一键复制按钮 + 复制状态微反馈 + 内置多语言轻量级语法高亮）、GFM 表格、任务清单（Checkbox）、GitHub 风格 Callout 警示框（Note/Tip/Important/Warning/Caution）、流式未闭合元素自愈容错；
     - 全域 HTTP/HTTPS/Mailto 超链接自动解析并拦截点击，通过 Tauri 后端（`tauri_plugin_opener` / `pi_open_url`）唤起操作系统默认外部浏览器打开，严禁在 Webview 内部跳转破坏应用状态。
 
+13. **预设工作区 "code-area" 路由工作区与技能调度中枢规范 (Hub & Routed Workspace)**：
+    - **定位**：`code-area` 作为全局编码技能集与调度中枢，开发端可在 `code-area/.agents/skills/` 自由增减专业技能；
+    - **物理 CWD vs 路由目标**：Pi 内核物理 CWD 驻留在 `code-area` 运行时目录（保证原生感知其内置技能），同时内设绑定「路由工作区（目标项目根路径）」；
+    - **原生 Windows 文件夹选择器**：基于 Rust `rfd` (IFileOpenDialog) 实现 Windows 原生 OpenFolder 文件夹选择器，右下角为标准的「选择文件夹」/「打开」，杜绝网页上传字样与上传确认弹窗；
+    - **平滑切换与择时绑定**：允许先切换至 `code-area` 工作区，然后再在设置面板或主界面择时添加路由；
+    - **输入框禁止输入门禁**：处于 `code-area` 且未绑定路由时，主界面输入框禁止输入（只读提示），点击输入框即可快速呼出路由绑定对话框；
+    - **免污染铁律**：`code-area` 自身绝对不创建或修改项目业务文件，所有代码读写、补丁与命令执行严格作用于目标路由项目；
+    - **存在性自动校验与失效清除**：每次切换到 `code-area` 或启动应用处于 `code-area` 时，后端自动校验当前路由工作区与「最近使用项目」历史记录是否在本地磁盘真实存在；若目标目录已被删除或失效，自动清除当前选项并过滤剔除失效历史记录，确保状态真实有效；
+    - **对话流上下文注入**：在发起 Prompt / FollowUp 时，透明注入 `<code_area_routing_context>`（目标绝对路径、免污染铁律与已装载技能清单），并在 Flow 界面呈现路由目标胶囊。
+
 > 📖 **完整功能矩阵与系统特性总览**：详见项目架构总览技能 [`.agents/skills/pi-desktop-overview/SKILL.md`](file:///.agents/skills/pi-desktop-overview/SKILL.md)。
 
 ---

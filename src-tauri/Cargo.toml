@@ -35,6 +35,7 @@ dirs = "5"
 log = "0.4"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 futures-util = "0.3"
+rfd = "0.15"
 
 [target.'cfg(windows)'.dependencies]
 tauri-winrt-notification = "0.7"

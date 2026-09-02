@@ -410,13 +410,20 @@ npm run build:check
 npm run build
 ```
 
-### 6. Multi-Workspace Switching (Settings → Workspaces)
+### 6. Multi-Workspace Switching & code-area Route Hub (Settings → Workspaces)
 
 1. Click the bottom-left gear icon to open the full-screen **Settings** view;
 2. Select **"Workspaces"** on the left tab bar;
 3. The top "Active Workspace" card displays current workspace name, badge, and runtime absolute path;
-4. The "Preset Workspaces" list displays all built-in templates (`default-area`, `code-area`, `research-area`), materialized paths, and an "In Use" indicator;
-5. Click **"Switch"** on any non-active workspace:
+4. **`code-area` Routed Workspace & Dispatch Hub (Exclusive Feature)**:
+   - Powered by Rust `rfd` (IFileOpenDialog) for a native Windows OpenFolder dialog (standard "Select Folder" / "Open" buttons with zero web upload prompt), supporting directory browsing, manual absolute path input, and quick switching between recent project paths;
+   - **Existence Validation & Auto-Cleanup**: Verifies if the currently bound route path and recent project history exist on disk whenever switching to `code-area` or starting the app; automatically clears invalid selections and purges dead paths;
+   - Displays built-in coding skills list in `code-area/.agents/skills/` (extensible by developers);
+   - In runtime, `code-area` never modifies its own files, but dispatches built-in skills to read and modify the external routed project;
+5. The "Preset Workspaces" list displays all built-in templates (`default-area`, `code-area`, `research-area`), materialized paths, and an "In Use" indicator;
+6. Click **"Switch"** on any non-active workspace:
+   - Allows switching to `code-area` immediately and binding the route target whenever ready;
+   - If unbound, the main input box is disabled from typing (read-only hint) and clicking it prompts the route binding dialog;
    - First selection copies template directory to `~/.pi-dl/workspaces/<id>/` (`default-area` retains `~/.pi-dl/default-area` with zero migration loss);
    - Prompts sketch confirmation if tasks are running, clarifying "effective for subsequent new sessions";
    - Restarts idle kernel host to re-anchor CWD automatically.
@@ -431,7 +438,7 @@ pi-desktop-lite/
 ├── .mytools/pi-body/           # Latest Pi Agent Release engine bundle (embedded as App Bundle Resources for out-of-the-box runtime)
 ├── default-area/               # Pi default workspace directory (contains AGENTS.md self-description)
 ├── workspaces/                 # Multi-preset workspace template source (code-area / research-area)
-│   ├── code-area/              #   Coding & Engineering template (workspace.json + AGENTS.md + README.md)
+│   ├── code-area/              #   Coding & Engineering Dispatch Hub template (workspace.json + AGENTS.md + README.md + .agents/skills/ built-in skills)
 │   └── research-area/          #   Deep Research template (workspace.json + AGENTS.md + README.md)
 ├── scripts/                    # Automation & tooling scripts (tauri.js, check.js)
 ├── src/                        # Frontend source files & web assets

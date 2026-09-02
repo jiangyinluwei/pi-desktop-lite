@@ -124,6 +124,28 @@
   transform: translateY(-1px) scale(1.002);
 }
 
+/* code-area 路由未绑定时的提示与禁用态样式 */
+.sketch-search-box.route-unbound {
+  border-style: dashed;
+  border-color: var(--sketch-border-subtle);
+  cursor: pointer;
+}
+
+.sketch-search-box.route-unbound:hover {
+  border-color: var(--sketch-border);
+  background: var(--sketch-box-bg-focus);
+}
+
+.sketch-search-box.route-unbound .search-input {
+  cursor: pointer;
+}
+
+.sketch-search-box.route-unbound .search-motto-item {
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
+
 /* 搜索/导入图标（换行后位于第一行，起到首行缩进的作用） */
 .search-icon {
   display: flex;

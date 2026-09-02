@@ -692,6 +692,232 @@ textarea:-webkit-autofill:focus {
   border-radius: 6px;
 }
 
+/* ==========================================================================
+   code-area 专属路由目标项目配置卡片
+   ========================================================================== */
+.code-area-route-card {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1.2px solid var(--sketch-border);
+  border-radius: 6px;
+  background: var(--sketch-box-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.code-area-route-card.hidden {
+  display: none !important;
+}
+
+.code-area-route-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.code-area-route-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.code-area-route-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-primary);
+}
+
+.code-area-route-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.code-area-route-status-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--sketch-border-subtle);
+  color: var(--ink-muted);
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.code-area-route-status-badge.active {
+  border-color: var(--sketch-border);
+  color: var(--ink-primary);
+  background: var(--sketch-tag-bg);
+  font-weight: 600;
+}
+
+.code-area-route-status-badge.warning {
+  border-color: #d97706;
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.08);
+}
+
+.code-area-route-desc {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.code-area-route-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.code-area-route-input {
+  flex: 1;
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+}
+
+.code-area-route-input.needs-attention {
+  border-color: #d97706;
+}
+
+/* 历史项目切换 */
+.code-area-history-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.code-area-history-label {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.code-area-history-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.route-history-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 4px;
+  color: var(--ink-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.route-history-pill:hover {
+  border-color: var(--sketch-border-subtle);
+  background: var(--sketch-tag-bg);
+}
+
+.route-history-pill.current {
+  border-color: var(--sketch-border);
+  background: var(--sketch-tag-bg);
+  font-weight: 600;
+}
+
+.route-history-pill .pill-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* 内置技能集清单 */
+.code-area-skills-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--sketch-border-subtle);
+}
+
+.code-area-skills-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.code-area-skills-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.code-area-skills-count {
+  font-size: 10.5px;
+  color: var(--ink-muted);
+}
+
+.code-area-skills-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px;
+}
+
+.code-area-skill-item {
+  padding: 6px 8px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 4px;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.code-area-skill-item:hover {
+  border-color: var(--sketch-border);
+}
+
+.skill-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.skill-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.skill-id-badge {
+  font-size: 9.5px;
+  color: var(--ink-muted);
+  font-family: ui-monospace, monospace;
+}
+
+.skill-desc {
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.empty-skills-tip {
+  font-size: 11px;
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+.route-hub-badge {
+  border-color: var(--sketch-border);
+  font-weight: 600;
+}
+
 
 
 /* ==========================================================================

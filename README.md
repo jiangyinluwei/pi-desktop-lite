@@ -411,13 +411,20 @@ npm run build:check
 npm run build
 ```
 
-### 6. 多工作区切换（设置 → 工作区）
+### 6. 多工作区切换与 code-area 路由调度中枢（设置 → 工作区）
 
 1. 点击主界面左下角手绘齿轮按钮进入「设置」独立全屏页；
 2. 在左侧 Tab 栏点击 **「工作区」**；
 3. 顶部「当前工作区」卡片展示生效工作区名称、ID 徽章与运行时绝对路径；
-4. 下方「预设工作区」列表罗列全部内置模板（`default-area`、`code-area`、`research-area`），已物化的条目展示运行时路径，当前项标记「使用中」；
-5. 点击非当前项的「切换」按钮即完成切换：
+4. **`code-area` 路由工作区与技能调度中枢（专享特性）**：
+    - 基于 Rust `rfd` (IFileOpenDialog) 实现 Windows 原生 OpenFolder 文件夹选择器（右下角为标准的「选择文件夹」/「打开」，无网页上传提示），支持浏览目录、绝对路径手动输入与历史最近项目快速切换；
+   - **存在性自动校验与自愈清理**：每次切换到 `code-area` 或启动应用时，自动校验当前绑定的路由目录与历史项目是否存在，若已被删除则自动清空选项并清理失效历史；
+   - 展现当前 `code-area` 已装载的「内置编码技能集」清单（开发端可在 `code-area/.agents/skills/` 自由增减技能）；
+   - 运行时 `code-area` 自身不修改内部文件，而是调度内置技能指挥操作外部路由目标项目；
+5. 下方「预设工作区」列表罗列全部内置模板（`default-area`、`code-area`、`research-area`），已物化的条目展示运行时路径，当前项标记「使用中」；
+6. 点击非当前项的「切换」按钮即完成切换：
+   - 允许先切换到 `code-area`，再在设置面板或主界面中择时绑定路由目标；
+   - 若未绑定路由目标项目，主界面输入框禁止输入（只读提示），点击输入框可直接弹出绑定对话框；
    - 首次选中会整目录复制模板到 `~/.pi-dl/workspaces/<id>/`（`default-area` 沿用 `~/.pi-dl/default-area`，零迁移零覆盖）；
    - 若有任务正在运行会先弹出手绘确认，明确“仅对之后的新会话生效”；
    - 主宿主空闲时自动重启内核重新锚定 CWD；否则提示“主会话将在空闲后重启生效”。
@@ -432,7 +439,7 @@ pi-desktop-lite/
 ├── .mytools/pi-body/           # 最新 Pi Agent Release 引擎包 (打包发布时自动内嵌作为 App Bundle Resources，开箱即用)
 ├── default-area/               # Pi 默认工作区目录（含 AGENTS.md 运行时自我描述，打包与运行时隔离工作空间）
 ├── workspaces/                 # 公共预设工作区模板源（code-area 代码工程区 / research-area 深度调研区，随安装包打包发布）
-│   ├── code-area/              #   代码工程向模板（workspace.json + AGENTS.md + README.md）
+│   ├── code-area/              #   代码工程向全局调度中枢模板（workspace.json + AGENTS.md + README.md + .agents/skills/ 内置技能集）
 │   └── research-area/          #   深度调研向模板（workspace.json + AGENTS.md + README.md）
 ├── custom-workspaces/          # [私有化] 私人定制/专有交付工作区（如 enterprise-consulting-area，.gitignore 物理隔离，不随安装包打包，定向交付）
 ├── scripts/                    # 自动化与环境配置脚本 (tauri.js, check.js)

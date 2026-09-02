@@ -1,8 +1,8 @@
 # Code Area (Pi Desktop Lite)
 
-This directory serves as the isolated **code engineering workspace** for Pi Agent.
+This directory serves as the **global coding skill hub & dispatch center** for Pi Agent.
 
-- **`AGENTS.md`**: Runtime agent description and engineering-focused constraints for Pi Agent.
-- **`workspace.json`**: Workspace preset metadata (`id`, `name`, `description`, `icon`).
-- Code, patches, scripts, and engineering artifacts generated during sessions are created here by default.
-- This directory is packaged into the application bundle resources as a read-only template; on first activation a writable copy is materialized at `~/.pi-dl/workspaces/code-area/`.
+- **`AGENTS.md`**: Runtime dispatch guidelines, hub-and-spoke routing model, and non-pollution ironclad rules.
+- **`workspace.json`**: Workspace preset metadata (`id`, `name`, `description`, `icon`, `requiresRoute: true`).
+- **`.agents/skills/`**: Global coding skills library (extensible by developers, e.g. refactoring, review, Git workflow).
+- **Routed Target Workspace**: In this workspace mode, Pi Agent never alters files in `code-area` itself. Instead, it reads and modifies files in the configured routed target project.

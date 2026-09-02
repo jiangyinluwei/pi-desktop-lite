@@ -543,7 +543,7 @@ fn pi_list_workspaces(app: tauri::AppHandle) -> Result<Vec<workspace::WorkspaceT
     Ok(workspace::list_preset_templates(&app))
 }
 
-/// 解析当前生效工作区（含运行时覆盖/环境变量优先级）
+/// 解析当前生效工作区（含运行时覆盖/环境变量优先级/路由工作区）
 #[tauri::command]
 async fn pi_get_active_workspace(
     app: tauri::AppHandle,
@@ -551,6 +551,7 @@ async fn pi_get_active_workspace(
 ) -> Result<serde_json::Value, String> {
     let path = supervisor.get_workspace().await;
     let active_id = workspace::read_active_workspace_id();
+    let route_path = workspace::read_code_area_route_path();
 
     // 判定生效来源 id：环境变量 > 配置 activeId（路径一致）> custom
     let effective_id = if std::env::var("PI_WORKSPACE")
@@ -567,20 +568,34 @@ async fn pi_get_active_workspace(
         }
     };
 
-    let name = workspace::find_template_dir(&app, &active_id)
-        .map(|dir| workspace::template_meta_for_path(&dir, &active_id).0)
+    let (name, requires_route) = workspace::find_template_dir(&app, &active_id)
+        .map(|dir| {
+            let meta = workspace::template_meta_for_path(&dir, &active_id);
+            (meta.0, meta.3)
+        })
         .unwrap_or_else(|| {
             if active_id == "default-area" {
-                "默认工作区".to_string()
+                ("默认工作区".to_string(), false)
             } else {
-                active_id.clone()
+                (active_id.clone(), active_id == "code-area")
             }
         });
+
+    let route_name = route_path.as_ref().map(|p| {
+        Path::new(p)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(p)
+            .to_string()
+    });
 
     Ok(serde_json::json!({
         "id": effective_id,
         "name": name,
-        "path": path.to_string_lossy().to_string(),
+        "path": path.to_string_lossy().to_string().replace('\\', "/"),
+        "requiresRoute": requires_route,
+        "routePath": route_path,
+        "routeName": route_name,
     }))
 }
 
@@ -612,11 +627,83 @@ async fn pi_set_active_workspace(
         }
     }
 
+    let route_path = workspace::read_code_area_route_path();
+    let requires_route = id == "code-area";
+
     Ok(serde_json::json!({
-        "path": runtime.to_string_lossy().to_string(),
+        "path": runtime.to_string_lossy().to_string().replace('\\', "/"),
         "restarted": restarted,
         "activeTasks": active_tasks,
+        "requiresRoute": requires_route,
+        "routePath": route_path,
     }))
+}
+
+/// 原生唤起系统文件夹选择器
+#[tauri::command]
+fn pi_select_folder(default_path: Option<String>) -> Result<Option<String>, String> {
+    workspace::native_select_folder(default_path)
+}
+
+/// 获取 code-area 路由工作区状态（路径、历史、技能集）
+#[tauri::command]
+fn pi_get_code_area_route(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let route_path = workspace::read_code_area_route_path();
+    let history = workspace::read_code_area_route_history();
+    let skills = workspace::list_code_area_skills(&app);
+
+    let (exists, name) = if let Some(ref p) = route_path {
+        let is_dir = Path::new(p).is_dir();
+        let folder_name = Path::new(p)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(p)
+            .to_string();
+        (is_dir, folder_name)
+    } else {
+        (false, String::new())
+    };
+
+    Ok(serde_json::json!({
+        "routePath": route_path,
+        "name": name,
+        "exists": exists,
+        "history": history,
+        "skills": skills,
+    }))
+}
+
+/// 设置并保存 code-area 路由工作区路径
+#[tauri::command]
+fn pi_set_code_area_route(route_path: String) -> Result<serde_json::Value, String> {
+    let trimmed = route_path.trim();
+    if trimmed.is_empty() {
+        return Err("路由工作区路径不能为空".to_string());
+    }
+    let p = Path::new(trimmed);
+    if !p.is_dir() {
+        return Err(format!("指定路径不存在或不是有效文件夹: {}", trimmed));
+    }
+
+    workspace::write_code_area_route_path(trimmed)?;
+    let history = workspace::read_code_area_route_history();
+    let folder_name = p
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(trimmed)
+        .to_string();
+
+    Ok(serde_json::json!({
+        "routePath": trimmed.replace('\\', "/"),
+        "name": folder_name,
+        "history": history,
+    }))
+}
+
+/// 列出 code-area 内置编码技能集
+#[tauri::command]
+fn pi_list_code_area_skills(app: tauri::AppHandle) -> Result<Vec<workspace::CodeAreaSkillInfo>, String> {
+    Ok(workspace::list_code_area_skills(&app))
 }
 
 // ==========================================================================
@@ -765,6 +852,10 @@ pub fn run() {
             pi_list_workspaces,
             pi_get_active_workspace,
             pi_set_active_workspace,
+            pi_select_folder,
+            pi_get_code_area_route,
+            pi_set_code_area_route,
+            pi_list_code_area_skills,
             pi_list_sessions,
             pi_get_prompt_history,
             pi_get_session_tree,

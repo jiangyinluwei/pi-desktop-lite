@@ -1059,6 +1059,57 @@
               <div class="workspace-current-path" id="workspace-active-path" title=""></div>
             </div>
 
+            <!-- code-area 专享路由工作区配置区 (仅当前工作区为 code-area 时展示) -->
+            <div class="code-area-route-card hidden" id="code-area-route-card">
+              <div class="code-area-route-header">
+                <div class="code-area-route-title-group">
+                  <span class="code-area-route-icon" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="4" cy="4" r="2" />
+                      <circle cx="12" cy="4" r="2" />
+                      <circle cx="12" cy="12" r="2" />
+                      <path d="M4 6 v6 a2 2 0 0 0 2 2 h4" />
+                      <path d="M6 4 h4" />
+                    </svg>
+                  </span>
+                  <span class="code-area-route-title">路由目标项目 (必选)</span>
+                </div>
+                <span class="code-area-route-status-badge" id="code-area-route-status">未绑定</span>
+              </div>
+              <p class="code-area-route-desc">code-area 作为全局编码技能调度中枢，不修改自身目录，所有代码读写与执行指令将精准路由至下方目标项目。</p>
+
+              <div class="code-area-route-input-row">
+                <input type="text" class="flat-input code-area-route-input" id="code-area-route-input"
+                  placeholder="请选择或输入目标项目根目录绝对路径..." autocomplete="off" spellcheck="false" />
+                <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-browse-route-folder" title="选择本地文件夹">
+                  <span>浏览目录</span>
+                  <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.3"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M1.5 3.5 A1 1 0 0 1 2.5 2.5 H6 L7.5 4.5 H13.5 A1 1 0 0 1 14.5 5.5 V12.5 A1 1 0 0 1 13.5 13.5 H2.5 A1 1 0 0 1 1.5 12.5 Z" />
+                  </svg>
+                </button>
+                <button type="button" class="flat-btn flat-btn-primary mini" id="btn-save-route-path">
+                  <span>保存绑定</span>
+                </button>
+              </div>
+
+              <!-- 历史路由项目快速切换 -->
+              <div class="code-area-history-section" id="code-area-history-section">
+                <span class="code-area-history-label">最近使用项目：</span>
+                <div class="code-area-history-list" id="code-area-history-list"></div>
+              </div>
+
+              <!-- 内置编码技能集清单 -->
+              <div class="code-area-skills-section" id="code-area-skills-section">
+                <div class="code-area-skills-header">
+                  <span class="code-area-skills-label">内置编码技能集 (调度中枢)：</span>
+                  <span class="code-area-skills-count" id="code-area-skills-count">3 个技能</span>
+                </div>
+                <div class="code-area-skills-list" id="code-area-skills-list"></div>
+              </div>
+            </div>
+
             <!-- 预设工作区列表 -->
             <div class="settings-group">
               <label class="group-label">预设工作区</label>

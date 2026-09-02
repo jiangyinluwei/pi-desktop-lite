@@ -74,13 +74,13 @@ export function initViewMode(ctx) {
     });
 
     searchInput.addEventListener("focus", () => {
-      if (view.mode === VIEW_DETAILED) {
+      if (view.mode === VIEW_DETAILED && !searchInput.hasAttribute("readonly")) {
         setViewMode(VIEW_FOCUS, false);
       }
     });
 
     searchInput.addEventListener("click", (e) => {
-      if (e.button === 0 && view.mode === VIEW_DETAILED) {
+      if (e.button === 0 && view.mode === VIEW_DETAILED && !searchInput.hasAttribute("readonly")) {
         setViewMode(VIEW_FOCUS, true);
       }
     });

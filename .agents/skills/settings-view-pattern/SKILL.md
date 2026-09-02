@@ -229,17 +229,26 @@ touchModelAsRecentlyUsed(provider, modelId) {
 - **状态无缝复原**：移除后，下方官方通道或自定义通道内对应的模型项将实时重新计算 `configService.isModelInWhitelist(provider, modelId)`，其操作按钮从置灰的 `<button disabled>已添加</button>` 瞬间复原为可点击的 `<button>+ 添加到当前列表</button>`，彻底杜绝状态滞后；
 - **抽屉展开按需刷新**：用户点击展开「官方通道配置」或「自定义通道配置」抽屉时，同样自动刷新该通道列表以呈现最新白名单状态。
 
-### 4.7 工作区面板 (Workspace Panel)
+### 4.7 工作区面板 (Workspace Panel & code-area Route Hub)
 - **Tab 落点**：设置页第 5 个 Tab —— `data-tab="tab-workspaces"` + `#pane-workspaces`；点击该 Tab 时通过 `api.loadWorkspaces()` 拉取并渲染（与 `tab-packages` 的按需加载模式一致），打开设置页时亦在 `openSettingsView` 中预热刷新；
 - **DOM 结构**：
   1. **当前工作区卡片**（`.workspace-current-card`）：名称（`#workspace-active-name`）+ ID 徽章（`#workspace-active-badge`）+ 运行时绝对路径（`#workspace-active-path`，`title` 悬浮完整路径）；
-  2. **预设工作区列表**（`#workspace-list`）：卡片式每项含名称、`id` 徽章、描述、已物化运行时路径、状态（「使用中」绿色墨徽章 /「切换」按钮）；
+  2. **`code-area` 专属路由配置卡片**（`.code-area-route-card`，仅当前工作区为 `code-area` 时展示）：
+     - 状态徽章（已绑定展示项目名 / 未绑定标红警示）；
+     - 路径输入框 +「浏览目录」原生文件夹选择按钮 +「保存绑定」按钮；
+     - 「最近使用项目」药丸快速点选切换；
+     - 「内置编码技能集」网格清单（展示技能名、ID 与描述，开发端可在 `code-area/.agents/skills/` 自由增减）；
+  3. **预设工作区列表**（`#workspace-list`）：卡片式每项含名称、`id` 徽章、`code-area`「路由调度中枢」徽章、描述、已物化运行时路径、状态（「使用中」绿色墨徽章 /「切换」按钮）；
 - **服务与模块划分**：
-  - `src/services/workspace-service.js`：纯 IPC 封装 `pi_list_workspaces` / `pi_get_active_workspace` / `pi_set_active_workspace`，**不碰 DOM**；
-  - `src/modules/workspace-panel.js`：渲染列表、切换交互、刷新 `ctx.settings.activeWorkspace`；
-- **切换交互**：
-  - 点击「切换」先调用 `piClient.getActiveTasks()`，当运行时任务数 > 0 时走 `sketchConfirm`（居中 / 毛玻璃 / 180ms 回弹 / 右键与 Esc 优先拦截）确认“仅对之后的新会话生效”；
-  - 确认后调用 `pi_set_active_workspace(id)`，后端物化运行时副本（首次复制、已存在绝不覆盖）→ 持久化 `workspace.activeId` → 切换 → 主宿主空闲自动重启重锚 CWD；
+  - `src/services/workspace-service.js`：纯 IPC 封装 `pi_list_workspaces` / `pi_get_active_workspace` / `pi_set_active_workspace` / `pi_select_folder` / `pi_get_code_area_route` / `pi_set_code_area_route` / `pi_list_code_area_skills`，**不碰 DOM**；
+  - `src/modules/workspace-panel.js`：渲染列表、路由配置与历史点选、技能清单、`promptCodeAreaRouteModal` 模态弹窗门禁、刷新 `ctx.settings.activeWorkspace`；
+- **切换交互与门禁铁律**：
+  - **原生 Windows 文件夹选择器**：基于 Rust `rfd` (IFileOpenDialog) 实现 Windows 原生 OpenFolder 文件夹选择器，右下角为标准的「选择文件夹」/「打开」，杜绝网页上传字样与上传确认弹窗；
+  - **存在性自动校验与失效清理**：每次切换到 `code-area` 或启动应用时，后端自动校验当前选择的路由路径与历史列表是否在磁盘真实存在，不存在自动清空选项并清理失效历史；
+  - **平滑切换与择时绑定**：允许先切换到 `code-area`，再在设置面板或主界面中择时绑定路由目标；
+  - **输入框禁止输入**：处于 `code-area` 且未绑定路由时，主界面输入框禁止输入（只读提示），点击输入框可直接弹出绑定对话框；
+  - **任务数确认**：点击「切换」先调用 `piClient.getActiveTasks()`，当运行时任务数 > 0 时走 `sketchConfirm`（居中 / 毛玻璃 / 180ms 回弹 / 右键与 Esc 优先拦截）确认“仅对之后的新会话生效”；
+  - **物化与重载**：确认后调用 `pi_set_active_workspace(id)`，后端物化运行时副本（首次复制、已存在绝不覆盖）→ 持久化 `workspace.activeId` → 切换 → 主宿主空闲自动重启重锚 CWD；
   - 刷新列表与当前卡片，并按返回的 `activeTasks` / `restarted` 展示 Toast 提示；
 - **样式铁律**：复用现有卡片 / 分组 / 徽章 / Flat 按钮 token，不新增色板；按钮常态透明无边框、悬浮显框；全图标内联 `currentColor` SVG，全域零 Emoji。
 

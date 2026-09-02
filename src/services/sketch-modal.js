@@ -233,16 +233,41 @@ export class SketchModal {
   }
 
   _bindEvents() {
+    let isConfirming = false;
+    const handleConfirm = async () => {
+      if (this._isClosing || isConfirming) return;
+      if (typeof this.options.onConfirm === "function") {
+        try {
+          isConfirming = true;
+          if (this.confirmBtn) this.confirmBtn.disabled = true;
+          const result = await this.options.onConfirm(this);
+          if (result === false) {
+            isConfirming = false;
+            if (this.confirmBtn) this.confirmBtn.disabled = false;
+            return;
+          }
+          this.dismiss(result !== undefined ? result : true);
+        } catch (err) {
+          console.warn("[SketchModal] onConfirm error:", err);
+          isConfirming = false;
+          if (this.confirmBtn) this.confirmBtn.disabled = false;
+          return;
+        }
+        return;
+      }
+      if (this.options.isPrompt) {
+        this.dismiss(this.inputEl ? this.inputEl.value : "");
+      } else if (this.options.type === "confirm") {
+        this.dismiss(true);
+      } else {
+        this.dismiss(true);
+      }
+    };
+
     // 确认按钮
     if (this.confirmBtn) {
       this.confirmBtn.addEventListener("click", () => {
-        if (this.options.isPrompt) {
-          this.dismiss(this.inputEl ? this.inputEl.value : "");
-        } else if (this.options.type === "confirm") {
-          this.dismiss(true);
-        } else {
-          this.dismiss(true);
-        }
+        handleConfirm();
       });
     }
 
@@ -289,13 +314,7 @@ export class SketchModal {
           this.dismiss(this.options.type === "confirm" ? false : null);
         } else {
           e.preventDefault();
-          if (this.options.isPrompt) {
-            this.dismiss(this.inputEl ? this.inputEl.value : "");
-          } else if (this.options.type === "confirm") {
-            this.dismiss(true);
-          } else {
-            this.dismiss(true);
-          }
+          handleConfirm();
         }
       } else if (e.key === "Tab") {
         this._trapFocus(e);

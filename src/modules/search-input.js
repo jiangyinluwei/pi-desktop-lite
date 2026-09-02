@@ -78,7 +78,151 @@ export function initSearchInput(ctx) {
     autoResizeSearchInput();
   };
 
+  // ==========================================================================
+  // 工作区路由状态对输入框的限制与择时绑定 (code-area 路由未绑定时禁止输入)
+  // ==========================================================================
+  let isRouteUnbound = false;
+  const ROUTE_UNBOUND_PROMPT = "🏷️ code-area 模式需先绑定目标项目 · 点击此处设置路由工作区";
+
+  const applyRouteUnboundPrompt = () => {
+    if (promptTimer) {
+      clearTimeout(promptTimer);
+      promptTimer = null;
+    }
+    currentPromptText = ROUTE_UNBOUND_PROMPT;
+    if (searchMottoText1) searchMottoText1.textContent = currentPromptText;
+    if (searchMottoText2) searchMottoText2.textContent = currentPromptText;
+    if (searchInput) {
+      searchInput.setAttribute("aria-placeholder", currentPromptText);
+    }
+    checkAndUpdateMottoMarquee();
+  };
+
+  const restoreDefaultPrompt = () => {
+    if (currentPromptText === ROUTE_UNBOUND_PROMPT || !currentPromptText || !SEARCH_PROMPTS.includes(currentPromptText)) {
+      rotatePrompt();
+    } else if (!promptTimer) {
+      promptTimer = setTimeout(rotatePrompt, PROMPT_INTERVAL_MS);
+    }
+  };
+
+  const syncWorkspaceInputState = async () => {
+    let ws = null;
+    try {
+      const { workspaceService } = await import("../services/workspace-service.js");
+      ws = await workspaceService.getActiveWorkspace();
+      if (ws) settings.activeWorkspace = ws;
+    } catch (_) {
+      ws = settings.activeWorkspace;
+    }
+
+    if (ws && (ws.id === "code-area" || ws.requiresRoute)) {
+      let routeInfo = null;
+      try {
+        const { workspaceService } = await import("../services/workspace-service.js");
+        routeInfo = await workspaceService.getCodeAreaRoute();
+      } catch (_) {}
+
+      const hasRoute = Boolean(routeInfo && routeInfo.routePath && routeInfo.exists);
+      if (!hasRoute) {
+        isRouteUnbound = true;
+        searchInput.setAttribute("readonly", "true");
+        searchInputWrapper?.classList.add("route-unbound");
+        if (searchForm) searchForm.classList.add("route-unbound");
+        applyRouteUnboundPrompt();
+        if (searchHint) {
+          searchHint.classList.add("disabled");
+          searchHint.setAttribute("title", "请先绑定 code-area 路由目标项目");
+        }
+        return;
+      }
+    }
+
+    // 恢复正常状态（切换到其他工作区或已绑定有效路由）
+    isRouteUnbound = false;
+    searchInput.removeAttribute("readonly");
+    searchInputWrapper?.classList.remove("route-unbound");
+    if (searchForm) searchForm.classList.remove("route-unbound");
+    restoreDefaultPrompt();
+    if (searchHint) {
+      if (piClient.hasKernel()) {
+        searchHint.classList.remove("disabled");
+        searchHint.removeAttribute("title");
+      }
+    }
+  };
+
+  let isPromptingRouteModal = false;
+
+  const handleRouteUnboundClick = async () => {
+    if (!isRouteUnbound || isPromptingRouteModal) return;
+    isPromptingRouteModal = true;
+
+    // 先取消当前输入框焦点，防止焦点还原时产生重复事件
+    if (searchInput) {
+      searchInput.blur();
+    }
+
+    try {
+      const promptFn = typeof api.promptCodeAreaRouteModal === "function"
+        ? api.promptCodeAreaRouteModal
+        : (typeof window !== "undefined" ? window.__piPromptCodeAreaRoute : null);
+      if (promptFn) {
+        const chosen = await promptFn("", "绑定 code-area 路由目标项目");
+        if (chosen) {
+          if (settings.activeWorkspace) {
+            settings.activeWorkspace.routePath = chosen;
+            settings.activeWorkspace.routeName = chosen.split("/").pop() || chosen;
+          }
+          await syncWorkspaceInputState();
+          window.dispatchEvent(new CustomEvent("workspace-changed", { detail: { routePath: chosen } }));
+          if (searchInput) {
+            searchInput.focus();
+          }
+          api.showGlobalToast?.(`已绑定路由工作区：${chosen.split("/").pop() || chosen}`, 1800);
+        } else {
+          // 用户取消绑定：退回界面1（详细版），并确保取消输入框的 focus
+          if (searchInput) {
+            searchInput.blur();
+          }
+          if (typeof api.setViewMode === "function") {
+            api.setViewMode(VIEW_DETAILED, false);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[SearchInput] Route modal error:", err);
+      if (searchInput) {
+        searchInput.blur();
+      }
+      if (typeof api.setViewMode === "function") {
+        api.setViewMode(VIEW_DETAILED, false);
+      }
+    } finally {
+      setTimeout(() => {
+        isPromptingRouteModal = false;
+      }, 300);
+    }
+  };
+
+  searchInput.addEventListener("click", (e) => {
+    if (isRouteUnbound) {
+      e.preventDefault();
+      e.stopPropagation();
+      handleRouteUnboundClick();
+    }
+  });
+
   searchInput.addEventListener("keydown", (e) => {
+    if (isRouteUnbound) {
+      if (e.key !== "Escape" && e.key !== "Tab") {
+        e.preventDefault();
+        e.stopPropagation();
+        handleRouteUnboundClick();
+        return;
+      }
+    }
+
     const sendMode = configService.getSendShortcut();
 
     if (e.key === "Enter") {
@@ -299,11 +443,13 @@ export function initSearchInput(ctx) {
       searchInput.setAttribute("aria-placeholder", currentPromptText);
     }
     checkAndUpdateMottoMarquee();
-    try {
-      localStorage.setItem(STORAGE_KEY_CURRENT, currentPromptText);
-      localStorage.setItem(STORAGE_KEY_TIMESTAMP, timestamp.toString());
-    } catch (e) {
-      console.warn("[Placeholder] Failed to save prompt:", e);
+    if (currentPromptText && currentPromptText !== ROUTE_UNBOUND_PROMPT) {
+      try {
+        localStorage.setItem(STORAGE_KEY_CURRENT, currentPromptText);
+        localStorage.setItem(STORAGE_KEY_TIMESTAMP, timestamp.toString());
+      } catch (e) {
+        console.warn("[Placeholder] Failed to save prompt:", e);
+      }
     }
   };
 
@@ -397,6 +543,17 @@ export function initSearchInput(ctx) {
     }
   });
 
+  // 监听工作区切换事件与应用加载
+  window.addEventListener("workspace-changed", () => {
+    syncWorkspaceInputState();
+  });
+
+  // 初始化时检测当前工作区状态
+  setTimeout(() => {
+    syncWorkspaceInputState();
+  }, 100);
+
   api.updateInputState = updateInputState;
   api.autoResizeSearchInput = autoResizeSearchInput;
+  api.syncWorkspaceInputState = syncWorkspaceInputState;
 }

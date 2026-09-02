@@ -601,9 +601,47 @@ impl PiSupervisor {
         self.start().await
     }
 
-    /// 对输入提示词进行运行态 Inner-Skills 上下文强行注入处理
+    /// 对输入提示词进行运行态 Inner-Skills 与 code-area 路由上下文强行注入处理
     pub fn inject_prompt(&self, message: &str) -> (String, InjectedContextInfo) {
-        self.skill_injector.process_prompt_with_info(message)
+        let (rules_injected, info) = self.skill_injector.process_prompt_with_info(message);
+
+        // 检查当前是否处于 code-area 预设工作区
+        let active_ws = crate::workspace::read_active_workspace_id();
+        if active_ws == "code-area" {
+            let route_path = crate::workspace::read_code_area_route_path().unwrap_or_default();
+            let skills = crate::workspace::list_code_area_skills(&self.app_handle);
+
+            let mut skills_summary = String::new();
+            if !skills.is_empty() {
+                for s in skills {
+                    skills_summary.push_str(&format!("  - [{}] {}: {}\n", s.id, s.name, s.description));
+                }
+            } else {
+                skills_summary.push_str("  (暂无额外扩展技能，遵循通用编码与重构规范)\n");
+            }
+
+            let routing_context = format!(
+                "\n\n<code_area_routing_context>\n\
+                [CODE-AREA ACTIVE: ROUTED WORKSPACE TARGET]\n\
+                Target Project Path: {}\n\
+                Hub CWD: ~/.pi-dl/workspaces/code-area\n\n\
+                CORE DISPATCH RULES:\n\
+                1. TARGET INTEGRITY: ALL file inspection, reading, code creation, edits, refactoring, tests, and patches MUST be performed inside the Target Project Path: '{}'.\n\
+                2. COMMAND EXECUTION: When executing shell/terminal commands (e.g. bash/powershell/git/npm/cargo), explicitly set working directory to '{}' or execute inside it.\n\
+                3. HUB PRESERVATION: The Hub CWD is the global skill registry. DO NOT create project files or temporary dumps in the Hub CWD.\n\
+                4. AVAILABLE BUILT-IN CODING SKILLS IN HUB:\n\
+                {}\
+                </code_area_routing_context>",
+                if route_path.is_empty() { "[未配置有效路由目标，请提醒用户绑定目标项目]" } else { &route_path },
+                if route_path.is_empty() { "[未配置]" } else { &route_path },
+                if route_path.is_empty() { "./" } else { &route_path },
+                skills_summary
+            );
+
+            return (format!("{}{}", rules_injected, routing_context), info);
+        }
+
+        (rules_injected, info)
     }
 
     /// 重置 Inner-Skills 会话轮次计数器

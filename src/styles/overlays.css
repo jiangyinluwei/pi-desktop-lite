@@ -802,3 +802,119 @@ body.has-task-sidebar-open .app-container {
   background-color: rgba(220, 38, 38, 0.08);
   border-color: #dc2626;
 }
+
+/* ==========================================================================
+   路由选择模态窗专用扩展样式 (sketch-route-modal-box)
+   ========================================================================== */
+.sketch-route-modal-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.sketch-route-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.sketch-route-input-row .sketch-route-input {
+  margin: 0;
+  height: 32px;
+  flex: 1;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.sketch-route-input-row .sketch-browse-btn {
+  margin: 0;
+  height: 32px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.sketch-route-tips {
+  font-size: 11px;
+  color: #dc2626;
+  min-height: 14px;
+  line-height: 1.3;
+}
+
+.sketch-route-history {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sketch-route-history-label {
+  font-size: 10.5px;
+  color: var(--ink-muted);
+}
+
+.sketch-route-history-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sketch-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  font-size: 11px;
+  color: var(--ink-primary);
+  background: transparent;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sketch-chip-btn:hover {
+  background: var(--sketch-tag-bg);
+  border-color: var(--sketch-border);
+}
+
+/* ==========================================================================
+   Flow 对话流路由目标项目胶囊 (flow-route-capsule)
+   ========================================================================== */
+.flow-route-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  margin: 4px 0 6px 0;
+  font-size: 11.5px;
+  color: var(--ink-primary);
+  background: var(--sketch-tag-bg);
+  border: 1px dashed var(--sketch-border);
+  border-radius: 4px;
+  width: fit-content;
+  user-select: text;
+}
+
+.flow-route-capsule.hidden {
+  display: none !important;
+}
+
+.flow-route-capsule .capsule-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-muted);
+}
+
+.flow-route-capsule strong {
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
