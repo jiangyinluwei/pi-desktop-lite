@@ -666,7 +666,6 @@ export function initFlowUi(ctx) {
     responseText = "",
     toolCalls = [],
     steps = [],
-    injectedSkills = [],
     isOpenThinking = false,
     isAborted = false,
     errorMessage = null,
@@ -708,27 +707,7 @@ export function initFlowUi(ctx) {
     `;
     groupEl.appendChild(userPromptCard);
 
-    // 2. 运行态 Inner-Skill 动态注入胶囊：仅在 tool-call hook 实际激活技能后显示，
-    // 不再预设兑底文案（避免未注入时误导用户）
-    const activatedSkillsSet = new Set(Array.isArray(injectedSkills) ? injectedSkills : []);
-    const hasInjectedSkills = activatedSkillsSet.size > 0;
-    const initialSkillText = hasInjectedSkills
-      ? (typeof api.formatActivatedSkillsText === "function"
-          ? api.formatActivatedSkillsText(activatedSkillsSet)
-          : `已激活运行态技能：${Array.from(activatedSkillsSet).join("，")}`)
-      : "";
-
-    const injectionCapsuleEl = document.createElement("div");
-    injectionCapsuleEl.className = `flow-injection-capsule ${hasInjectedSkills ? "" : "hidden"}`;
-    injectionCapsuleEl.setAttribute("role", "status");
-    injectionCapsuleEl.setAttribute("aria-live", "polite");
-    injectionCapsuleEl.innerHTML = `
-      <span class="capsule-icon" aria-hidden="true">${ICONS.sparkle}</span>
-      <span class="capsule-text">${escapeHtml(initialSkillText)}</span>
-    `;
-    groupEl.appendChild(injectionCapsuleEl);
-
-    // 2a. code-area 路由目标项目胶囊
+    // 2. code-area 路由目标项目胶囊
     const isCodeArea = settings.activeWorkspace?.id === "code-area" || settings.activeWorkspace?.requiresRoute;
     const routePath = settings.activeWorkspace?.routePath;
     const routeName = settings.activeWorkspace?.routeName || (routePath ? routePath.split("/").pop() : "");
@@ -891,16 +870,12 @@ export function initFlowUi(ctx) {
 
     const userTextEl = userPromptCard.querySelector(".prompt-content");
     const promptAttachmentsEl = userPromptCard.querySelector(".flow-prompt-attachments");
-    const injectionTextEl = injectionCapsuleEl.querySelector(".capsule-text");
     const failoverTextEl = failoverCapsuleEl.querySelector(".capsule-text");
 
     const turnRefs = {
       groupEl,
       userTextEl,
       promptAttachmentsEl,
-      injectionCapsuleEl,
-      injectionTextEl,
-      activatedSkills: activatedSkillsSet,
       failoverCapsuleEl,
       failoverTextEl,
       stepsContainerEl,

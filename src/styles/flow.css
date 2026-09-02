@@ -315,26 +315,110 @@
   line-height: 1.4;
 }
 
-/* 运行态 Inner-Skill 上下文注入胶囊 (手绘草图风格微徽章) */
-.flow-injection-capsule {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
-  max-width: 100%;
+/* 会话流「注入提示」信息框：位于路由目标项目胶囊下方，集中展示所有调用模型前注入的上下文条目
+   （Inner-Skill 运行态技能 / 路由 AGENTS.md / README.md / 命中技能 / 路由信封），
+   随会话动态累积；直角矩形简洁风（非手绘），默认收起仅显示注入数量，点击头部展开清单 */
+.flow-injection-notice {
+  align-self: stretch;
   box-sizing: border-box;
-  gap: 6px;
-  padding: 4px 11px;
-  margin: 0 0 10px 2px;
-  font-size: 11.5px;
-  line-height: 1.45;
+  margin: -4px 0 0 2px;
+  padding: 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
   font-family: inherit;
   color: var(--ink-muted);
   background: var(--sketch-tag-bg);
-  border: 1px dashed var(--sketch-border-subtle);
-  border-radius: 255px 12px 225px 10px / 12px 225px 10px 255px;
-  box-shadow: var(--sketch-shadow);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 4px;
   animation: sketchCapsuleFadeIn 0.25s ease-out;
+}
+
+.flow-injection-notice .injection-notice-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 0;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.flow-injection-notice .injection-notice-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.18s ease-out;
+}
+
+.flow-injection-notice .injection-notice-title {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-primary);
+}
+
+.flow-injection-notice .injection-notice-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-muted);
+  opacity: 0.8;
+}
+
+/* 收起态：仅显示注入数量（隐藏标题与清单） */
+.flow-injection-notice.collapsed .injection-notice-title {
+  display: none;
+}
+
+.flow-injection-notice.collapsed .injection-notice-list {
+  display: none;
+}
+
+.flow-injection-notice .injection-notice-list {
+  margin: 0;
+  padding: 2px 0 8px;
+  list-style: none;
+  border-top: 1px solid var(--sketch-border-subtle);
+}
+
+.flow-injection-notice .injection-notice-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+  word-break: break-word;
+}
+
+.flow-injection-notice .injection-notice-item::before {
+  content: "";
+  flex-shrink: 0;
+  width: 4px;
+  height: 4px;
+  margin-top: 1px;
+  border: 1px solid currentColor;
+  border-radius: 1px;
+  opacity: 0.6;
+}
+
+.flow-injection-notice .injection-notice-item .item-kind {
+  flex-shrink: 0;
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+
+.flow-injection-notice .injection-notice-item .item-name {
+  color: var(--ink-primary);
+  font-weight: 500;
+}
+
+.flow-injection-notice .injection-notice-header:hover .injection-notice-title,
+.flow-injection-notice .injection-notice-header:hover .injection-notice-count {
+  color: var(--ink-primary);
 }
 
 @keyframes sketchCapsuleFadeIn {
@@ -346,41 +430,6 @@
     opacity: 1;
     transform: translateY(0) scale(1);
   }
-}
-
-.flow-injection-capsule.hidden {
-  display: none !important;
-}
-
-/* 每段注入的内联提醒胶囊：随会话流逐次插入步骤流容器内，
-   与工具卡形成「注入 ➔ 工具」因果时序，复用聚合胶囊视觉并微调步内间距 */
-.flow-injection-capsule-inline {
-  margin: 2px 0 8px 2px;
-}
-
-.flow-injection-capsule-inline .capsule-text strong {
-  font-weight: 600;
-  color: var(--ink-primary);
-}
-
-.flow-injection-capsule .capsule-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  color: var(--ink-primary);
-  opacity: 0.85;
-}
-
-.flow-injection-capsule .capsule-text {
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  word-break: break-word;
-}
-
-.flow-injection-capsule:hover {
-  border-color: var(--sketch-border);
-  color: var(--ink-primary);
 }
 
 /* 自动重连/切换进度胶囊 (手绘草图风格，运行态瞬态展示，不沉淀历史) */

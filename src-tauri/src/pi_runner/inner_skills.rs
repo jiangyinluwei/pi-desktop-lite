@@ -24,6 +24,18 @@ pub struct SkillMapping {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InjectedContextInfo {
     pub injected: bool,
+    /// 本次注入的条目清单（供前端会话流顶部「注入提示」信息框展示）
+    #[serde(default)]
+    pub items: Vec<InjectedItem>,
+}
+
+/// 单条上下文注入条目元数据
+/// `kind`: inner_skill | agents_md | readme_md | routed_skill | routing_context
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InjectedItem {
+    pub kind: String,
+    /// 条目名称（文件名或技能名）
+    pub name: String,
 }
 
 /// Tool call pre-processing hook 命中结果
@@ -288,7 +300,13 @@ impl InnerSkillInjector {
         };
 
         if drained.is_empty() {
-            return (message.to_string(), InjectedContextInfo { injected: false });
+            return (
+                message.to_string(),
+                InjectedContextInfo {
+                    injected: false,
+                    items: Vec::new(),
+                },
+            );
         }
 
         let mut block = String::from(
@@ -306,7 +324,16 @@ impl InnerSkillInjector {
 
         (
             format!("{}{}", block, message),
-            InjectedContextInfo { injected: true },
+            InjectedContextInfo {
+                injected: true,
+                items: drained
+                    .iter()
+                    .map(|s| InjectedItem {
+                        kind: "inner_skill".to_string(),
+                        name: s.clone(),
+                    })
+                    .collect(),
+            },
         )
     }
 

@@ -646,8 +646,10 @@ impl PiSupervisor {
 
     /// 对输入提示词进行 code-area 路由上下文与动态激活 Inner-Skill 注入处理
     /// （不再静态注入完整 RULES.md；Inner-Skill 改由 tool-call hook 按需动态注入）
+    /// 每次真实注入后广播 `pi:context_injected` 事件，
+    /// 携带本次注入条目清单，供前端会话流顶部「注入提示」信息框展示。
     pub fn inject_prompt(&self, message: &str) -> (String, InjectedContextInfo) {
-        let (skill_injected, info) = self.skill_injector.process_prompt_with_info(message);
+        let (skill_injected, mut info) = self.skill_injector.process_prompt_with_info(message);
 
         // 检查当前是否处于 code-area 预设工作区
         let active_ws = crate::workspace::read_active_workspace_id();
@@ -655,13 +657,33 @@ impl PiSupervisor {
             let route_path = crate::workspace::read_code_area_route_path().unwrap_or_default();
             let skills = crate::workspace::list_code_area_skills(&self.app_handle);
 
-            let routing_context = crate::workspace::build_code_area_routing_context(
-                &route_path,
-                &skills,
-                &self.skill_injector,
-            );
+            let (routing_context, routing_items) =
+                crate::workspace::build_code_area_routing_context_with_items(
+                    &route_path,
+                    &skills,
+                    &self.skill_injector,
+                );
+
+            info.items.extend(routing_items);
+            info.injected = info.injected || !info.items.is_empty();
+
+            // 广播本次注入条目（前端按 kind+name 去重后追加至「注入提示」信息框）
+            if !info.items.is_empty() {
+                let _ = self.app_handle.emit(
+                    "pi:context_injected",
+                    serde_json::json!({ "items": info.items }),
+                );
+            }
 
             return (format!("{}{}", skill_injected, routing_context), info);
+        }
+
+        // 非 code-area 工作区：仅有兑底队列中的 Inner-Skill 注入时上报
+        if !info.items.is_empty() {
+            let _ = self.app_handle.emit(
+                "pi:context_injected",
+                serde_json::json!({ "items": info.items }),
+            );
         }
 
         (skill_injected, info)
@@ -700,7 +722,7 @@ impl PiSupervisor {
             activation.tool_name, activation.skill, injection_text
         );
 
-        // 通知前端更新「已激活运行态技能」胶囊（以实际注入为准：steer 即时注入或兑底入队后随下一次 Prompt 注入）
+        // 通知前端更新「注入提示」信息框（以实际注入为准：steer 即时注入或兑底入队后随下一次 Prompt 注入）
         let _ = this.app_handle.emit(
             "pi:inner-skill-activated",
             serde_json::json!({

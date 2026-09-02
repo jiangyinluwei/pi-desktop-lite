@@ -47,9 +47,12 @@ export function initFlowStream(ctx) {
     }
 
     if (!isFollowUpTurn) {
-      // 全新会话 -> 清空 flowConversation 容器
+      // 全新会话 -> 清空 flowConversation 容器，并重置「注入提示」信息框状态
       if (flowConversation) {
         flowConversation.innerHTML = "";
+      }
+      if (typeof api.resetInjectionNotice === "function") {
+        api.resetInjectionNotice();
       }
     } else {
       // 同工作流多轮对话 -> 固化上一轮（收起思考与工具卡片，移除上一轮光标）
@@ -196,18 +199,6 @@ export function initFlowStream(ctx) {
     // 清空时序步骤容器
     if (flow.activeTurnRefs?.stepsContainerEl) {
       flow.activeTurnRefs.stepsContainerEl.innerHTML = "";
-    }
-    // 重置运行态技能胶囊
-    if (flow.activeTurnRefs) {
-      if (flow.activeTurnRefs.activatedSkills) {
-        flow.activeTurnRefs.activatedSkills.clear();
-      }
-      if (flow.activeTurnRefs.injectionCapsuleEl) {
-        flow.activeTurnRefs.injectionCapsuleEl.classList.add("hidden");
-      }
-      if (flow.activeTurnRefs.injectionTextEl) {
-        flow.activeTurnRefs.injectionTextEl.textContent = "";
-      }
     }
     flow.thinkingStartTime = Date.now();
     // 立即启动伪思考框

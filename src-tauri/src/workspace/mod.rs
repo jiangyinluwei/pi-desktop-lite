@@ -928,6 +928,25 @@ pub fn build_code_area_routing_context(
     hub_skills: &[CodeAreaSkillInfo],
     skill_injector: &crate::pi_runner::inner_skills::InnerSkillInjector,
 ) -> String {
+    build_code_area_routing_context_with_items(route_path, hub_skills, skill_injector).0
+}
+
+/// 带注入条目清单的完整构建：除返回路由上下文信封文本外，
+/// 同时返回本次注入的文件/技能条目（agents_md / readme_md / routed_skill / routing_context），
+/// 供前端会话流顶部「注入提示」信息框展示。
+pub fn build_code_area_routing_context_with_items(
+    route_path: &str,
+    hub_skills: &[CodeAreaSkillInfo],
+    skill_injector: &crate::pi_runner::inner_skills::InnerSkillInjector,
+) -> (String, Vec<crate::pi_runner::inner_skills::InjectedItem>) {
+    use crate::pi_runner::inner_skills::InjectedItem;
+
+    let mut injected_items: Vec<InjectedItem> = Vec::new();
+    // 路由上下文信封本身在 code-area 工作区每次 Prompt 均强制注入，始终作为条目上报
+    injected_items.push(InjectedItem {
+        kind: "routing_context".to_string(),
+        name: "code_area_routing_context".to_string(),
+    });
     let mut skills_summary = String::new();
     if !hub_skills.is_empty() {
         for s in hub_skills {
@@ -955,6 +974,10 @@ pub fn build_code_area_routing_context(
         if let Some((filename, content)) = agents_doc {
             combined_text.push_str(&content);
             combined_text.push('\n');
+            injected_items.push(InjectedItem {
+                kind: "agents_md".to_string(),
+                name: filename.clone(),
+            });
             project_docs_section.push_str(&format!(
                 "\n[ROUTED PROJECT SPECIFICATIONS & RULES (AGENTS.MD)]:\n\
                 <routed_agents_md filename=\"{}\">\n\
@@ -973,6 +996,10 @@ pub fn build_code_area_routing_context(
         if let Some((filename, content)) = readme_doc {
             combined_text.push_str(&content);
             combined_text.push('\n');
+            injected_items.push(InjectedItem {
+                kind: "readme_md".to_string(),
+                name: filename.clone(),
+            });
             project_docs_section.push_str(&format!(
                 "\n[ROUTED PROJECT DOCUMENTATION (README.MD)]:\n\
                 <routed_readme_md filename=\"{}\">\n\
@@ -997,6 +1024,12 @@ pub fn build_code_area_routing_context(
         );
 
         if !matched_skills.is_empty() {
+            for s in &matched_skills {
+                injected_items.push(InjectedItem {
+                    kind: "routed_skill".to_string(),
+                    name: s.name.clone(),
+                });
+            }
             project_docs_section.push_str(&format!(
                 "\n[ROUTED PROJECT MATCHED SKILLS (MAPPED SKILLS INJECTION)]:\n\
                 <routed_project_skills count=\"{}\">\n",
@@ -1017,7 +1050,7 @@ pub fn build_code_area_routing_context(
         }
     }
 
-    format!(
+    let formatted_context = format!(
         "\n\n<code_area_routing_context>\n\
         [CODE-AREA ACTIVE: ROUTED WORKSPACE TARGET]\n\
         Target Project Path: {}\n\
@@ -1035,7 +1068,9 @@ pub fn build_code_area_routing_context(
         if is_valid_route { route_path } else { "./" },
         skills_summary,
         project_docs_section
-    )
+    );
+
+    (formatted_context, injected_items)
 }
 
 #[cfg(test)]

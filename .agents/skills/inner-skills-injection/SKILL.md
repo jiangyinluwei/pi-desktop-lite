@@ -23,8 +23,9 @@ description: 指导 Pi Desktop Lite 桌面端作为 Pi Agent 宿主代理时，�
 flowchart TD
     subgraph Frontend ["🖥️ Webview 前端"]
         UserInput["用户提问"] --> ClientSend["piClient.sendPrompt"]
-        EventSkill["Tauri 事件: pi:inner-skill-activated"] --> InlineCapsule["逐段内联胶囊: 已激活运行态技能: xxx (插入步骤流，先于工具卡)"]
-        InlineCapsule --> TopCapsule["顶部聚合胶囊同步维护 (兜底汇总)"]
+        EventSkill["Tauri 事件: pi:inner-skill-activated"] --> NoticeItem["「注入提示」框条目: Inner-Skill xxx (路由胶囊下方，动态累积)]
+        NoticeCtx["Tauri 事件: pi:context_injected"] --> NoticeItem
+        NoticeItem --> NoticeBox["「注入提示」信息框 (路由目标项目胶囊下方；直角简洁风，默认收起仅显示注入数量，点击展开；kind+name 去重跨轮累积)]
     end
 
     subgraph RustSupervisor ["🛡️ Rust 宿主监督器"]
@@ -82,14 +83,15 @@ description: 描述运行态技能在何种场景下被触发与主要约束。
 | `your_tool_1`, `your_tool_2`, `intent_keyword` | `your-new-skill-name` | **Mandatory** |
 ```
 
-### Step 3: 后端内嵌与前端胶囊标签挂载
+### Step 3: 后端内嵌与前端「注入提示」框条目挂载
 1. **Rust 后端 (`src-tauri/src/pi_runner/inner_skills.rs`)**：
    - 增加 `const EMBEDDED_YOUR_SKILL_MD: &str = include_str!("../../inner-skills/your-new-skill-name/SKILL.md");`；
    - 在 `get_skill_detail` 中增加匹配分支并补充单元测试。
 2. **前端模块 (`src/modules/flow-pipeline.js`)**：
-   - 在 `getSkillDisplayName` 注册中文友好标签（多技能自动中文逗号拼装展示）；
-   - 每段注入提醒：后端每次真实注入均广播一次 `pi:inner-skill-activated`，前端监听后调用 `insertInlineSkillCapsule(skillName)` 在当前轮步骤流内逐次追加内联胶囊（`.flow-injection-capsule-inline`，事件先于 tool-start 到达，胶囊自然落在触发工具卡上方），同时维护顶部聚合胶囊作兜底汇总；
-   - 同步在 `src/styles/flow.css` 保留 `.flow-injection-capsule-inline` 变体样式（步内间距 + 强调标签）。
+   - 在 `getSkillDisplayName` 注册中文友好标签（注入提示条目展示用，inner_skill 条目自动拼装展示名）；
+   - 每段注入提醒：后端每次真实注入均广播一次 `pi:inner-skill-activated`，前端监听后调用 `addInjectionNoticeItem("inner_skill", skillName)` 在路由目标项目胶囊下方的「注入提示」信息框中追加条目（kind+name 去重，跨轮累积，默认收起仅显示注入数量，全新会话重置）；
+   - 路由上下文注入上报：`inject_prompt`（`src-tauri/src/pi_runner/supervisor.rs`）在兑底 Inner-Skill 与 code-area 路由上下文（`build_code_area_routing_context_with_items`）注入后广播 `pi:context_injected`（payload 携带 `items: [{kind, name}]`，kind ∈ inner_skill / agents_md / readme_md / routed_skill / routing_context），前端监听 `context-injected` 逐条追加至「注入提示」框；
+   - 同步在 `src/styles/flow.css` 保留 `.flow-injection-notice` 信息框样式（直角矩形简洁风头部 + 可点击展开的条目清单，默认收起仅显示注入数量）；
 3. **构建验证**：
    - 运行 `npm run check` 确保前端 AST 与 Rust 编译均通过。
 

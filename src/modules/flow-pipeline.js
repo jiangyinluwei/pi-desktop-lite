@@ -26,8 +26,6 @@ export function initFlowPipeline(ctx) {
   const flowScrollArea = el.flowScrollArea;
   const flowBtnAbort = el.flowBtnAbort;
 
-  const activeToolSkillMappings = new Map();
-
   const getSkillDisplayName = (skillName) => {
     switch (skillName) {
       case "windows-bash-compatibility":
@@ -49,156 +47,148 @@ export function initFlowPipeline(ctx) {
     }
   };
 
-  const formatActivatedSkillsText = (skillNames) => {
-    if (!skillNames) return "";
-    const arr = Array.from(skillNames);
-    if (arr.length === 0) return "";
-    const labels = arr.map((s) => getSkillDisplayName(s));
-    return `已激活运行态技能：${labels.join("，")}`;
-  };
 
   api.getSkillDisplayName = getSkillDisplayName;
-  api.formatActivatedSkillsText = formatActivatedSkillsText;
 
-  const loadInnerSkillMappings = async () => {
-    try {
-      const mappings = await invokeTauri("pi_get_skill_mappings");
-      if (Array.isArray(mappings)) {
-        activeToolSkillMappings.clear();
-        mappings.forEach((item) => {
-          if (Array.isArray(item.tools) && item.skill_name) {
-            item.tools.forEach((t) => {
-              activeToolSkillMappings.set(t.toLowerCase(), {
-                skill: item.skill_name,
-                displayName: getSkillDisplayName(item.skill_name),
-              });
-            });
-          }
-        });
-      }
-    } catch (err) {
-      console.warn("[Main] Failed to load skill mappings from RULES.md:", err);
-      // 安全降级：初始化内置默认映射
-      const fallbackRules = [
-        {
-          tools: ["bash", "powershell", "terminal", "cmd", "execute_command"],
-          skill: "windows-bash-compatibility",
-        },
-        {
-          tools: ["read_file", "docparser", "ocr", "deword", "pi-ocr", "pi-docparser", "extract_text", "image_ocr"],
-          skill: "document-multimodal-inspection",
-        },
-        {
-          tools: ["subagent", "pi-subagents", "spawn_agent", "parallel_tasks", "delegate_task", "subtask_spawn"],
-          skill: "multi-agent-orchestration",
-        },
-        {
-          tools: ["web_search", "pi-web-access", "search_web", "fetch_web_page", "web_access", "browse_page"],
-          skill: "web-search-silent-access",
-        },
-        {
-          tools: ["memory_retrieve", "memory_store", "pi-memory", "recall_memory", "search_memory"],
-          skill: "persistent-memory-retrieval",
-        },
-        {
-          tools: ["dynamic_workflows", "execute_workflow", "pipeline_step", "run_workflow"],
-          skill: "dynamic-workflows-orchestration",
-        },
-        {
-          tools: ["context_prune", "prune_context", "pai-acp", "compress_context"],
-          skill: "active-context-pruning",
-        },
-      ];
+  const flowConversation = el.flowConversation;
 
-      fallbackRules.forEach((rule) => {
-        rule.tools.forEach((t) => {
-          activeToolSkillMappings.set(t.toLowerCase(), {
-            skill: rule.skill,
-            displayName: getSkillDisplayName(rule.skill),
-          });
-        });
-      });
-    }
-  };
-
-  /** 按 Skill 名直接激活胶囊（后端 tool-call hook 动态注入事件使用） */
-  const showInnerSkillCapsuleForSkill = (skillName) => {
-    if (!skillName || !flow.activeTurnRefs?.injectionCapsuleEl || !flow.activeTurnRefs?.injectionTextEl) return;
-    if (!flow.activeTurnRefs.activatedSkills) {
-      flow.activeTurnRefs.activatedSkills = new Set();
-    }
-    const wasEmpty = flow.activeTurnRefs.activatedSkills.size === 0;
-    const alreadyHas = flow.activeTurnRefs.activatedSkills.has(skillName);
-
-    if (!alreadyHas) {
-      flow.activeTurnRefs.activatedSkills.add(skillName);
-      flow.activeTurnRefs.injectionTextEl.textContent = formatActivatedSkillsText(flow.activeTurnRefs.activatedSkills);
-    }
-
-    if (wasEmpty || !alreadyHas) {
-      flow.activeTurnRefs.injectionCapsuleEl.classList.remove("hidden");
-      // 仅吸底跟随开启时随内容定位到底部，向上滚离后不打断浏览
-      if (flowScrollArea && flow.followBottom !== false) {
-        flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
-      }
-    }
-  };
-
-  const showInnerSkillCapsuleForTool = (rawToolName) => {
-    if (!rawToolName || !flow.activeTurnRefs?.injectionCapsuleEl || !flow.activeTurnRefs?.injectionTextEl) return;
-    const nameLower = rawToolName.toString().toLowerCase().trim();
-    const mapped = activeToolSkillMappings.get(nameLower);
-    if (mapped && mapped.skill) {
-      showInnerSkillCapsuleForSkill(mapped.skill);
-    }
-  };
-
-  /**
-   * 每段注入的内联提醒胶囊：后端每次真实注入（steer 即时或兑底入队）均广播一次事件，
-   * 前端逐次在当前轮步骤流内追加一段手绘提醒胶囊，事件先于 tool-start 到达，
-   * 胶囊自然落在触发该注入的工具卡上方，形成「注入 ➔ 工具」的因果时序。
+  /* ========== 「注入提示」信息框（路由目标项目胶囊下方，默认收起仅显示注入数量） ==========
+   * 展示所有在调用模型之前注入的上下文条目（Inner-Skill 运行态技能、
+   * 路由工作区 AGENTS.md / README.md、命中技能与路由上下文信封等），
+   * 随会话动态累积（跨轮保留，按 kind+name 去重），全新会话时重置。
    */
-  const insertInlineSkillCapsule = (skillName) => {
-    const stepsContainer = flow.activeTurnRefs?.stepsContainerEl;
-    if (!stepsContainer || !skillName) return;
-    const label = getSkillDisplayName(skillName) || skillName;
-    const inlineCapsule = document.createElement("div");
-    inlineCapsule.className = "flow-injection-capsule flow-injection-capsule-inline";
-    inlineCapsule.setAttribute("role", "status");
-    inlineCapsule.setAttribute("aria-live", "polite");
-    inlineCapsule.innerHTML = `
-      <span class="capsule-icon" aria-hidden="true">${ICONS.sparkle}</span>
-      <span class="capsule-text">已激活运行态技能：<strong>${escapeHtml(label)}</strong></span>
+  const INJECTION_KIND_LABELS = {
+    inner_skill: "Inner-Skill 运行态技能",
+    agents_md: "AGENTS.md",
+    readme_md: "README.md",
+    routed_skill: "路由项目技能",
+    routing_context: "路由工作区上下文",
+  };
+
+  const injectionNotice = {
+    el: null,
+    listEl: null,
+    countEl: null,
+    items: new Set(),
+    collapsed: true,
+  };
+
+  const applyInjectionNoticeCollapsedState = () => {
+    if (!injectionNotice.el) return;
+    injectionNotice.el.classList.toggle("collapsed", injectionNotice.collapsed);
+    if (injectionNotice.chevronEl) {
+      injectionNotice.chevronEl.style.transform = injectionNotice.collapsed ? "" : "rotate(180deg)";
+    }
+  };
+
+  const ensureInjectionNoticeEl = () => {
+    if (!flowConversation) return null;
+    if (!injectionNotice.el || !injectionNotice.el.isConnected) {
+      injectionNotice.el = document.createElement("div");
+      injectionNotice.el.className = "flow-injection-notice";
+      injectionNotice.el.setAttribute("role", "status");
+      injectionNotice.el.setAttribute("aria-live", "polite");
+      injectionNotice.el.innerHTML = `
+        <button type="button" class="injection-notice-header" aria-expanded="false">
+          <span class="injection-notice-chevron" aria-hidden="true">${ICONS.chevronDown}</span>
+          <span class="injection-notice-title">注入提示</span>
+          <span class="injection-notice-count"></span>
+        </button>
+        <ul class="injection-notice-list"></ul>
+      `;
+      injectionNotice.listEl = injectionNotice.el.querySelector(".injection-notice-list");
+      injectionNotice.countEl = injectionNotice.el.querySelector(".injection-notice-count");
+      injectionNotice.chevronEl = injectionNotice.el.querySelector(".injection-notice-chevron");
+      injectionNotice.items.clear();
+      // 置于首个消息组的「路由目标项目」胶囊下方（胶囊缺失时回退至组首/会话流顶部）
+      const firstGroup = flowConversation.querySelector(":scope > .flow-message-group");
+      const routeCapsule = firstGroup?.querySelector(":scope > .flow-route-capsule:not(.hidden)");
+      if (routeCapsule) {
+        routeCapsule.after(injectionNotice.el);
+      } else if (firstGroup) {
+        firstGroup.insertBefore(injectionNotice.el, firstGroup.firstChild);
+      } else {
+        flowConversation.insertBefore(injectionNotice.el, flowConversation.firstChild);
+      }
+      // 默认收起：点击头部在「仅显示注入数量」与完整清单间切换
+      injectionNotice.el
+        .querySelector(".injection-notice-header")
+        .addEventListener("click", () => {
+          injectionNotice.collapsed = !injectionNotice.collapsed;
+          injectionNotice.el
+            ?.querySelector(".injection-notice-header")
+            ?.setAttribute("aria-expanded", injectionNotice.collapsed ? "false" : "true");
+          applyInjectionNoticeCollapsedState();
+        });
+      applyInjectionNoticeCollapsedState();
+    }
+    return injectionNotice.el;
+  };
+
+  const updateInjectionNoticeCount = () => {
+    if (injectionNotice.countEl) {
+      injectionNotice.countEl.textContent =
+        injectionNotice.items.size > 0 ? `${injectionNotice.items.size} 项` : "";
+    }
+  };
+
+  /** 向「注入提示」信息框追加一条注入条目（kind+name 去重，跨轮累积） */
+  const addInjectionNoticeItem = (kind, name) => {
+    if (!kind || !name) return;
+    const key = `${kind}::${name}`;
+    const noticeEl = ensureInjectionNoticeEl();
+    if (!noticeEl || injectionNotice.items.has(key)) return;
+    injectionNotice.items.add(key);
+    const displayName = kind === "inner_skill" ? getSkillDisplayName(name) : name;
+    const itemEl = document.createElement("li");
+    itemEl.className = "injection-notice-item";
+    itemEl.innerHTML = `
+      <span class="item-kind">${escapeHtml(INJECTION_KIND_LABELS[kind] || kind)}</span>
+      <span class="item-name">${escapeHtml(displayName)}</span>
     `;
-    stepsContainer.appendChild(inlineCapsule);
+    injectionNotice.listEl.appendChild(itemEl);
+    updateInjectionNoticeCount();
     // 仅吸底跟随开启时随内容定位到底部，向上滚离后不打断浏览
     if (flowScrollArea && flow.followBottom !== false) {
       flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
     }
   };
 
-  loadInnerSkillMappings();
+  /** 全新会话时重置「注入提示」信息框（DOM 随 flowConversation 清空一并移除） */
+  const resetInjectionNotice = () => {
+    injectionNotice.el = null;
+    injectionNotice.listEl = null;
+    injectionNotice.countEl = null;
+    injectionNotice.chevronEl = null;
+    injectionNotice.items.clear();
+    injectionNotice.collapsed = true;
+  };
+
+  api.resetInjectionNotice = resetInjectionNotice;
 
   // 串轮过滤铁律：事件帧携 task_id 且非当前前台活跃任务 (后台挂起任务) 时，
   // 绝不向前台 Flow 注入任何步骤卡/胶囊/错误卡，也不触发收尾归档
   const isForegroundStreamEvent = () =>
     taskManager.isForegroundStreamTask(piClient.lastEventTaskId || null);
 
-  // Tool-call Hook 命中：后端动态注入 Inner-Skill 时同步更新胶囊（以实际注入为准）
+  // 后端真实注入广播：inject_prompt（兑底 Inner-Skill + code-area 路由上下文）
+  // 每次真实注入后携带条目清单广播，前端逐条追加至「注入提示」框
+  piClient.addEventListener("context-injected", (e) => {
+    if (!isForegroundStreamEvent()) return;
+    const items = e.detail?.items;
+    if (Array.isArray(items)) {
+      items.forEach((item) => {
+        if (item?.kind && item?.name) addInjectionNoticeItem(item.kind, item.name);
+      });
+    }
+  });
+
+  // Tool-call Hook 命中：Inner-Skill 动态激活（steer 即时或兑底入队）即同步至「注入提示」框
   piClient.addEventListener("inner-skill-activated", (e) => {
     if (!isForegroundStreamEvent()) return;
-    const detail = e.detail;
-    const skillName = detail?.skill
-      || (detail?.toolName ? activeToolSkillMappings.get(detail.toolName.toString().toLowerCase().trim())?.skill : null);
+    const skillName = e.detail?.skill;
     if (skillName) {
-      // 每段注入逐次呈现内联提醒胶囊
-      insertInlineSkillCapsule(skillName);
-    }
-    // 顶部聚合胶囊同步维护（多技能中文标签拼装，作兜底汇总展示）
-    if (detail?.skill) {
-      showInnerSkillCapsuleForSkill(detail.skill);
-    } else if (detail?.toolName) {
-      showInnerSkillCapsuleForTool(detail.toolName);
+      addInjectionNoticeItem("inner_skill", skillName);
     }
   });
 
@@ -210,10 +200,6 @@ export function initFlowPipeline(ctx) {
       api.sealActivePhaseOutput();
     }
     api.autoCollapseThinkingOnNextPhase();
-    const evt = e.detail;
-    if (evt?.toolCall?.name) {
-      showInnerSkillCapsuleForTool(evt.toolCall.name);
-    }
   });
 
   piClient.addEventListener("tool-start", (e) => {
@@ -249,9 +235,6 @@ export function initFlowPipeline(ctx) {
     if (typeof api.sealActivePhaseOutput === "function") {
       api.sealActivePhaseOutput();
     }
-
-    // 当底层 Agent 触发调用映射工具（如 bash）时，即时显现运行态技能注入胶囊
-    showInnerSkillCapsuleForTool(toolName);
 
     // 创建单行极简工具卡片（默认折叠，任何时候不自动展开）
     const toolStep = typeof api.createToolStepCard === "function"
@@ -314,11 +297,6 @@ export function initFlowPipeline(ctx) {
     if (flowScrollArea && flow.followBottom !== false) {
       flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
     }
-  });
-
-  piClient.addEventListener("bash-update", () => {
-    if (!isForegroundStreamEvent()) return;
-    showInnerSkillCapsuleForTool("bash");
   });
 
   piClient.addEventListener("tool-update", (e) => {

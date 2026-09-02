@@ -61,8 +61,7 @@ window.addEventListener("DOMContentLoaded", () => {
     flowResponseContent: document.getElementById("flow-response-content"),
     flowModelTag: document.getElementById("flow-model-tag"),
     flowModelName: document.getElementById("flow-model-name"),
-    flowInjectionCapsule: document.getElementById("flow-injection-capsule"),
-    flowInjectionText: document.getElementById("flow-injection-text"),
+
     sketchMessagesDrawer: document.getElementById("sketch-messages-drawer"),
     messagesPrimaryRow: document.getElementById("messages-primary-row"),
     messagesExpandedWrap: document.getElementById("messages-expanded-wrap"),
