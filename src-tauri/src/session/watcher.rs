@@ -40,8 +40,24 @@ impl SessionWatcher {
             let _ = std::fs::create_dir_all(&sessions_dir);
         }
 
-        // 初始化全量扫描
-        cache.scan_directory(&sessions_dir);
+        // 初始化全量扫描（后台线程执行）：会话文件可达数百个且体积较大，
+        // 同步扫描会阻塞主线程 setup 回调，导致首次启动窗口卡顿 1~2 秒。
+        // 扫描完成后主动广播 pi:sessions-updated，前端会话列表据此刷新。
+        let scan_cache = cache.clone();
+        let scan_dir = sessions_dir.clone();
+        let scan_app_handle = app_handle.clone();
+        std::thread::Builder::new()
+            .name("session-initial-scan".to_string())
+            .spawn(move || {
+                scan_cache.scan_directory(&scan_dir);
+                let list = scan_cache.list_all();
+                let _ = scan_app_handle.emit("pi:sessions-updated", &list);
+                log::info!(
+                    "[SessionWatcher] Initial session index scan completed ({} sessions)",
+                    list.len()
+                );
+            })
+            .ok();
 
         let (tx, mut rx) = mpsc::unbounded_channel::<SessionFileEvent>();
 

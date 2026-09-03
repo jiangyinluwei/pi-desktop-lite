@@ -422,18 +422,25 @@ pub fn init_windows_notification_identity() {
 
         // 3. 在 HKCU\Software\Classes\AppUserModelId\com.pidl.desktop 注册 DisplayName 与 IconUri
         // 彻底解决在开发环境 (npm run dev / cargo run) 下 Toast 顶部显示 "Windows PowerShell" 的问题
+        // 注：reg add 子进程冷启动耗时可达数百毫秒，必须放至后台线程执行，
+        // 否则会阻塞主线程 setup 回调导致首次启动卡顿
         let reg_key = format!("HKCU\\Software\\Classes\\AppUserModelId\\{}", aumid);
         let icon_path_str = target_icon.to_string_lossy().to_string();
 
-        let mut cmd_name = std::process::Command::new("reg");
-        cmd_name.args(["add", &reg_key, "/v", "DisplayName", "/d", "pi-dl", "/f"]);
-        cmd_name.creation_flags(CREATE_NO_WINDOW);
-        let _ = cmd_name.output();
+        std::thread::Builder::new()
+            .name("notification-identity-reg".to_string())
+            .spawn(move || {
+                let mut cmd_name = std::process::Command::new("reg");
+                cmd_name.args(["add", &reg_key, "/v", "DisplayName", "/d", "pi-dl", "/f"]);
+                cmd_name.creation_flags(CREATE_NO_WINDOW);
+                let _ = cmd_name.output();
 
-        let mut cmd_icon = std::process::Command::new("reg");
-        cmd_icon.args(["add", &reg_key, "/v", "IconUri", "/d", &icon_path_str, "/f"]);
-        cmd_icon.creation_flags(CREATE_NO_WINDOW);
-        let _ = cmd_icon.output();
+                let mut cmd_icon = std::process::Command::new("reg");
+                cmd_icon.args(["add", &reg_key, "/v", "IconUri", "/d", &icon_path_str, "/f"]);
+                cmd_icon.creation_flags(CREATE_NO_WINDOW);
+                let _ = cmd_icon.output();
+            })
+            .ok();
     }
 }
 

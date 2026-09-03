@@ -233,11 +233,20 @@ fn strip_generic_tags(mut text: String) -> String {
         let tag_name = captures.get(1).unwrap().as_str().to_lowercase();
         let open_start = search_from + full_match.start();
         let open_end = search_from + full_match.end();
-        let close_tag = format!("</{}>", tag_name);
+
+        // 构造闭合标签正则（支持大小写与空白，直接在 UTF-8 字节切片上匹配，杜绝 to_lowercase() 引起的字节错位与 panic）
+        let close_pattern = format!(r#"(?i)</\s*{}\s*>"#, regex::escape(&tag_name));
+        let close_regex = match Regex::new(&close_pattern) {
+            Ok(re) => re,
+            Err(_) => {
+                search_from = open_end;
+                continue;
+            }
+        };
 
         let rest = &text[open_end..];
-        if let Some(rel_close) = rest.to_lowercase().find(&close_tag) {
-            let close_end = open_end + rel_close + close_tag.len();
+        if let Some(m) = close_regex.find(rest) {
+            let close_end = open_end + m.end();
             text.replace_range(open_start..close_end, "");
             search_from = open_start;
         } else {
@@ -764,6 +773,14 @@ mod tests {
         // 6. 前置未闭合伪标签不影响后续真实标签剥离 (H5 防短路)
         let raw6 = "前置未闭合伪标签 <custom_context> 文本内容，后续标签 <custom_rules>\n真实规则\n</custom_rules>\n\n真正的用户提问";
         assert_eq!(strip_injected_contexts(raw6), "前置未闭合伪标签 <custom_context> 文本内容，后续标签 \n\n真正的用户提问");
+
+        // 7. H5 专项：包含特殊 Unicode 字符（如变长与非 ASCII 字符）与空白符闭合标签的剥离安全
+        let raw7 = "<custom_context>\n包含特殊字符 K ß 🚀 与测试内容\n</custom_context  >\n\n真正的用户提问";
+        assert_eq!(strip_injected_contexts(raw7), "真正的用户提问");
+
+        // 8. H5 专项：大小写混写闭合标签与多标签复合
+        let raw8 = "问题前缀 <unclosed_context> 包含 K ß <custom_routing>\n路由信息 🌍\n</CUSTOM_ROUTING >\n\n尾部内容";
+        assert_eq!(strip_injected_contexts(raw8), "问题前缀 <unclosed_context> 包含 K ß \n\n尾部内容");
     }
 
     #[test]

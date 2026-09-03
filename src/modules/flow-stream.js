@@ -410,7 +410,7 @@ export function initFlowStream(ctx) {
               <strong>建议：</strong>当前模型不支持直接解析多模态文件。您可在<strong>「设置 ➔ 扩展组件」</strong>中安装推荐的 Pi 多模态解析插件以自动转换图像与文档。
             </div>
           </div>
-          <button type="button" class="hint-action-btn" id="btn-err-goto-packages">
+          <button type="button" class="hint-action-btn error-goto-packages-btn">
             ${ICONS.sparkle} 前往安装组件
           </button>
         </div>
@@ -446,7 +446,7 @@ export function initFlowStream(ctx) {
         ${failoverSummaryHtml}
         ${multimodalHintHtml}
         <div class="error-actions">
-          <button type="button" class="error-btn retry-btn" id="btn-err-retry">
+          <button type="button" class="error-btn retry-btn">
             <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
               <path d="M2.5 8a5.5 5.5 0 0 1 9.39-3.89L13.5 5.5" />
               <path d="M13.5 2v3.5H10" />
@@ -455,7 +455,7 @@ export function initFlowStream(ctx) {
             </svg>
             重试当前提问
           </button>
-          <button type="button" class="error-btn" id="btn-err-switch-model">
+          <button type="button" class="error-btn switch-model-btn">
             <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="8" cy="8" r="3" />
               <path d="M8 1v2M8 13v2M1 8h2M13 8h2" />
@@ -485,28 +485,32 @@ export function initFlowStream(ctx) {
       });
     }
 
-    const btnRetry = document.getElementById("btn-err-retry");
-    const btnSwitch = document.getElementById("btn-err-switch-model");
-    const btnGotoPackages = document.getElementById("btn-err-goto-packages");
+    // 绑定当前轮次错误卡局部按钮事件（避免多轮 ID 冲突导致事件错位）
+    const errorCardEl = targetResponseEl.querySelector(".sketch-error-card");
+    if (errorCardEl) {
+      const btnRetry = errorCardEl.querySelector(".retry-btn");
+      const btnSwitch = errorCardEl.querySelector(".switch-model-btn");
+      const btnGotoPackages = errorCardEl.querySelector(".error-goto-packages-btn, .hint-action-btn");
 
-    if (btnRetry) {
-      btnRetry.addEventListener("click", () => {
-        if (flow.lastUserQuery) {
-          api.handleFlowQuery(flow.lastUserQuery, flow.lastSentAttachments);
-        }
-      });
-    }
+      if (btnRetry) {
+        btnRetry.addEventListener("click", () => {
+          if (flow.lastUserQuery) {
+            api.handleFlowQuery(flow.lastUserQuery, flow.lastSentAttachments);
+          }
+        });
+      }
 
-    if (btnSwitch) {
-      btnSwitch.addEventListener("click", () => {
-        api.openSettingsView();
-      });
-    }
+      if (btnSwitch) {
+        btnSwitch.addEventListener("click", () => {
+          api.openSettingsView();
+        });
+      }
 
-    if (btnGotoPackages) {
-      btnGotoPackages.addEventListener("click", () => {
-        api.openSettingsView("tab-packages");
-      });
+      if (btnGotoPackages) {
+        btnGotoPackages.addEventListener("click", () => {
+          api.openSettingsView("tab-packages");
+        });
+      }
     }
 
     // 报错终止时即时自动沉淀快照至历史记录
