@@ -70,7 +70,7 @@ description: |
   - 物理 CWD 驻留于 `code-area`（感知内置技能），绑定路由目标项目绝对路径；
   - 基于 Rust `rfd` 实现原生 Windows 文件夹选择器；
   - 严格遵守免污染铁律，所有代码读写作用于路由目标项目；
-  - 对话透明注入 `<code_area_routing_context>`、目标项目 `AGENTS.md` / `README.md` 与命中技能（`<routed_project_skills>`）。
+  - 对话透明注入 `<code_area_routing_context>`、目标项目 `AGENTS.md` / `README.md`（`.agents/` 下技能规约遵循 `AGENTS.md` 映射按需查阅，不进行全量强制前置注入）。
 
 ---
 
