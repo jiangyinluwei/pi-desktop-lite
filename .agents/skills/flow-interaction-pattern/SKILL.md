@@ -1,7 +1,7 @@
 ---
 name: flow-interaction-pattern
 description: |
-  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/阶段性输出 Point 切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-Point1-工具1-Point2-工具2...」真实因果链条一段一段拼接；③伪框占位机制（首 token 延迟期「Thinking (0.0s)...」伪思考框；工具参数流式期「工具调用(edit)... + 读秒 + running」伪工具运行框，真实卡就位即移除）；④Flow 界面任意区域滚轮事件委托至最外层滚动容器；⑤多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑥多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑦模型自动重连切换自愈流水线 (ModelFailoverEngine)；⑧输出卡底部手绘风格的保存操作栏；⑨会话完成后「文件变更」收纳框（flow-file-changes，收集新增/修改/删除的文件、点击条目在资源管理器中定位其所在文件夹）；⑩用户提问卡右侧一键复制提问按钮（prompt-copy-btn：常态透明无边框、悬浮显手绘边框，点击复制净化后原始提问并短暂变绿反馈，静态初始模板与动态历史轮次均生效）。当用户提出"flow界面交互"、"思维链流式展示"、"阶段性输出"、"Point卡"、"工具调用简略"、"单行思维"、"步骤切片"、"伪思考框"、"伪运行框"、"工具调用读秒"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"、"文件变更"、"修改了哪些文件"时使用此技能。
+  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/阶段性输出 Point 切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-Point1-工具1-Point2-工具2...」真实因果链条一段一段拼接；③伪框占位机制（首 token 延迟期「Thinking (0.0s)...」伪思考框；工具参数流式期「工具调用(edit)... + 读秒 + running」伪工具运行框，真实卡就位即移除）；④Flow 界面任意区域滚轮事件委托至最外层滚动容器；⑤多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑥多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑦模型自动重连切换自愈流水线 (ModelFailoverEngine)；⑧输出卡底部手绘风格的保存操作栏；⑨会话完成后「文件变更」收纳框（flow-file-changes，收集新增/修改/删除的文件、点击条目在资源管理器中定位其所在文件夹；按 Task 会话流缓存至程序生命周期结束，右键退出再经历史/Task 记录回入 Flow 一致恢复）；⑩用户提问卡右侧一键复制提问按钮（prompt-copy-btn：常态透明无边框、悬浮显手绘边框，点击复制净化后原始提问并短暂变绿反馈，静态初始模板与动态历史轮次均生效）。当用户提出"flow界面交互"、"思维链流式展示"、"阶段性输出"、"Point卡"、"工具调用简略"、"单行思维"、"步骤切片"、"伪思考框"、"伪运行框"、"工具调用读秒"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"、"文件变更"、"修改了哪些文件"时使用此技能。
 ---
 
 # Flow 交互界面规范 (Flow Interaction Pattern)
@@ -57,6 +57,14 @@ description: |
 2. **伪工具运行框**：`toolcall-delta-start`（工具参数流式开始）即插入 `工具调用... + running + (0.0s)...` 占位卡（`flow-pipeline.js` 的 `ensureActiveToolPseudoStep`），100ms 读秒；参数流式结束（`toolcall-delta-end` 携带 `toolCall.name`）回填真实工具名；真实工具卡创建（`tool-start`）时移除占位卡，避免双卡重叠；
 3. **真实工具卡读秒**：`tool-start` 创建卡片时携带 `durationText: "(0.0s)..."` 与 `startTime`，`startToolRunTimer` 每 100ms 刷新读秒；`tool-end` 定格为 `(Xs)` 并清空 `flow.toolRunTimerInterval`；
 4. **状态清理铁律**：伪框与读秒计时器（`flow.activeToolPseudoStep` / `flow.toolPseudoTimerInterval` / `flow.toolRunTimerInterval`）必须在 `resetStreamState`、`resetCurrentTurnForResend`、`finalizeStream`、`thinking-start`、`text-start` 全部边界兜底清理，杜绝幽灵计时器与残留占位卡；伪卡不写入 `flow.currentSteps`，不污染历史快照。
+
+### 历史快照卡片重绑铁律 (Snapshot Card Rebinding)
+
+历史/Task 记录回入 Flow 时，轮次卡片有两条渲染路径，监听器绑定策略必须严格区分，否则一次点击 toggle 两次互消（表现为收起状态无法点开）或快照卡彻底死卡：
+
+- **工厂新建路径**：`steps` 快照经 `createThinkingStepCard` / `createPhaseStepCard` / `createToolStepCard` 工厂创建，工厂内部已绑定 Header 点击/键盘折叠监听，并以 expando 标记 `headerEl.__piBound = true`（expando 不随 outerHTML 序列化，不污染归档快照）；
+- **outerHTML 快照路径**：`toolCalls[].html` 快照经 `insertAdjacentHTML` 解析插入，解析后节点不带任何监听器（且 Header 上可能残留旧版 `data-bound="1"` 标记，一律忽略）；`createFlowTurnGroupElement` 末尾的重绑循环仅处理无 `__piBound` 标记的快照卡，并补齐点击与键盘两种触发；
+- **严禁**在重绑循环中以 `header.dataset.bound` 作为跳过依据：工厂卡未设置过该 dataset、而快照卡却携带旧标记，双重绑定/漏绑双象限全错（历史缺陷根因）。
 
 ---
 
@@ -165,9 +173,9 @@ flowchart TD
 - **触发工具集合**：写入类 `write / write_file / write_to_file / create_file / save_file`；编辑类 `edit / edit_file / replace_file_content / multi_replace_file_content / apply_patch / apply_diff / str_replace_editor / insert_content`；删除类 `delete_file / remove_file / unlink` 等；Shell 类 `bash / powershell / cmd` 等（定义于 `src/modules/flow-file-changes.js`）；
 - **新增/修改判定**：`tool-start` 时对写入类工具经 Rust `pi_path_exists` 异步探测路径写入前是否存在，并以 **Promise 形式存起**（`tool-end` 时 `await` 取回，消除探测 IPC 未返回而 tool-end 已到的竞态 → 新增文件不再误判为修改）；工具成功 + 写前不存在 → 新增；其余 → 修改；探测失败按修改兑底；
 - **收集与去重**：`tool-end` 仅收集执行成功的工具调用（`isError` 跳过），路径从工具入参提取（兼容 JSON 字符串与 `edits/files/changes` 多文件入参结构），按规范化路径去重保留最新动作；
-- **后台过滤铁律**：全程经 `taskManager.isForegroundStreamTask(piClient.lastEventTaskId)` 门禁，后台挂起任务的文件变更绝不进入前台收纳框；
-- **删除识别与去伪**：显式删除类工具执行成功即记为「删除」；Shell 类工具启发式解析命令文本中 `rm / del / Remove-Item` 目标路径，并在命令执行成功后经 `pi_path_exists` 复核（路径确实消失才记为删除，杜绝误报）；删除为终态，同一文件多动作合并时永远胜出；
-- **展示时机**：`agent-end` 正常收尾后经 `api.showFileChangesBox()` 渲染于会话流末尾（跨轮置底累积，整条可折叠展开，平滑贝塞尔旋转过渡）；全新会话由 `api.resetFileChanges()` 清态（`flow-stream.js` resetStreamState 非 followUp 分支调用）；
+- **会话流缓存铁律（程序生命周期级）**：每个 Task 一份独立文件变更缓存仓（`sessionStores: Map<taskId, { items, collapsed }>`，定义于 `flow-file-changes.js`），前后台任务均持续收集（事件按 `piClient.lastEventTaskId || taskManager.currentActiveTaskId` 归入各自缓存仓），直至应用退出才释放；右键退出 Flow（挂起/归档）后经历史记录 / Task 记录回入时，由共享渲染器 `renderTurnsIntoFlow`（`task-panel.js`）调用 `api.restoreFileChangesFor(task.id)` 恢复收纳框，呈现与退出前完全一致；后台任务变更事件仅写入缓存仓，绝不触发前台 DOM 渲染；
+- **删除识别与去伪（工作目录感知）**：显式删除类工具执行成功即记为「删除」；Shell 类工具启发式解析命令文本中 `rm / del / Remove-Item` 目标路径，并在命令执行成功后经 `pi_path_exists` 复核（路径确实消失才记为删除，杜绝误报）；**候选路径必须先经工作目录归一化再探测**：内核 Shell 实际 CWD ≠ 桌面端进程 CWD，`cd <dir> && rm <相对路径>`、MSYS 风格 `/c/Users/...`、`~` 与 `[USER_HOME]` 直接探测全部失真 → `existedBefore=false` 被去伪规则误杀（历史缺陷根因：删除示意信息在收纳框中消失）；故 `extractDeletedPathsFromCommand(commandText, baseDirs)` 按 `&&/;/|/换行` 切段顺序扫描并维护 `cd` 链路工作目录，配合 `loadBaseDirs()`（真实主目录 + 路由工作区会话 CWD 兑底）把每个目标归一化为绝对路径，tool-start 探测与 tool-end 复核双侧统一取基准，保证配对一致；解析失败退化为原文，绝不虚报；删除为终态，同一文件多动作合并时永远胜出；
+- **展示时机**：`agent-end` 正常收尾后经 `api.showFileChangesBox()` 渲染于会话流末尾（渲染前先 `syncViewToStore` 对齐当前活跃任务缓存仓，跨轮置底累积，整条可折叠展开且折叠态回写缓存仓，平滑贝塞尔旋转过渡）；全新会话由 `api.resetFileChanges()` 清视图态（`flow-stream.js` resetStreamState 非 followUp 分支调用，会话缓存仓保留不释放）；
 - **头部统计指示 (Summary Pills)**：头部右侧展示直观的分类统计（`+N 新增` / `~N 修改` / `-N 删除`）以及总数 `N 个文件`，取消胶囊边框+背景色，纯透明背景，折叠态亦可一目了然；
 - **打开所在文件夹**：点击条目经 Rust `pi_reveal_path` 在 Windows 资源管理器中高亮定位该文件（`tauri_plugin_opener::reveal_item_in_dir`）；**删除类条目直接定位其原所在文件夹（上级目录）**，避免完整路径因父目录解析异常而退化为打开「我的文档」，并弹全局 Toast 反馈；
 - **核心标识外观与高级配色 (Kind Badges)**：

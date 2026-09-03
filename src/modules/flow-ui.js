@@ -486,6 +486,8 @@ export function initFlowUi(ctx) {
           headerEl.setAttribute("aria-expanded", open ? "true" : "false");
         }
       });
+      // 标记工厂卡已绑定（expando 不随 outerHTML 序列化），供历史快照重绑循环去重
+      headerEl.__piBound = true;
     }
 
     return {
@@ -553,6 +555,8 @@ export function initFlowUi(ctx) {
           headerEl.setAttribute("aria-expanded", open ? "true" : "false");
         }
       });
+      // 标记工厂卡已绑定（expando 不随 outerHTML 序列化），供历史快照重绑循环去重
+      headerEl.__piBound = true;
     }
 
     return {
@@ -632,6 +636,8 @@ export function initFlowUi(ctx) {
           headerEl.setAttribute("aria-expanded", open ? "true" : "false");
         }
       });
+      // 标记工厂卡已绑定（expando 不随 outerHTML 序列化），供历史快照重绑循环去重
+      headerEl.__piBound = true;
     }
 
     // 绑定一键复制入参/结果
@@ -867,17 +873,27 @@ export function initFlowUi(ctx) {
       }
     }
 
-    // 重新绑定历史工具卡片的点击折叠与一键复制
+    // 重绑历史快照卡片的点击折叠：仅处理 outerHTML 快照解析出的卡片（解析后无任何监听器）。
+    // 工厂新创建的卡片已在创建时绑定并标记 __piBound（expando 不序列化），此处跳过，
+    // 杜绝双重绑定导致一次点击 toggle 两次互消（表现为收起状态无法点开）；
+    // 快照 HTML 中可能残留旧的 data-bound="1" 标记，一律忽略并无条件重绑
     stepsContainerEl.querySelectorAll(".tool-card, .flow-step-card").forEach((card) => {
       const header = card.querySelector(".flow-step-header") || card.querySelector(".tool-header");
-      if (header && !header.dataset.bound) {
-        header.dataset.bound = "1";
-        header.addEventListener("click", () => {
+      if (!header || header.__piBound) return;
+      header.__piBound = true;
+      header.addEventListener("click", () => {
+        const open = card.classList.toggle("open");
+        card.classList.toggle("collapsed", !open);
+        header.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+      header.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
           const open = card.classList.toggle("open");
           card.classList.toggle("collapsed", !open);
           header.setAttribute("aria-expanded", open ? "true" : "false");
-        });
-      }
+        }
+      });
     });
 
     // 历史步骤卡片一键复制委托

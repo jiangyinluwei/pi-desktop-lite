@@ -414,6 +414,13 @@ export function initTaskPanel(ctx) {
       }
     });
 
+    // 会话流缓存铁律：返回 Flow 时恢复该会话生命周期内收集的「文件变更」收纳框，
+    // 保证右键退出（挂起/归档）后经历史记录 / Task 记录回入时呈现与退出前一致。
+    // 内核会话还原等无缓存仓的会话自然空操作，不产生任何串档
+    if (typeof api.restoreFileChangesFor === "function") {
+      api.restoreFileChangesFor(task.id);
+    }
+
     if (syncModelName && flowModelName) {
       flowModelName.textContent = task.model || "Model";
     }

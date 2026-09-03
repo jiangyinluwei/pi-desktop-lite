@@ -91,7 +91,7 @@ pi-desktop-lite/
 │   │   ├── flow-ui.js          # Flow 渲染核心：Markdown、轮次 DOM、悬浮提问、上下定位导航
 │   │   ├── flow-stream.js      # 流式状态机、错误卡渲染与自动重连胶囊
 │   │   ├── flow-pipeline.js    # 提问下发、工具调用事件、自愈引擎与发送拦截
-│   │   ├── flow-file-changes.js # 会话文件变更收纳框（新增/修改/删除文件汇总，点击打开所在文件夹）
+│   │   ├── flow-file-changes.js # 会话文件变更收纳框（新增/修改/删除文件汇总，点击打开所在文件夹；按 Task 会话流缓存，回入 Flow 一致恢复）
 │   │   ├── task-panel.js       # 后台任务胶囊、侧边栏、历史恢复与快照归档
 │   │   ├── sessions-panel.js   # 会话记录列表、搜索筛选、进入 Flow 管线与界面会话清空
 │   │   ├── workspace-panel.js  # 多预设工作区设置面板与路由绑定
