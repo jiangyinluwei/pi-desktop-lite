@@ -108,6 +108,7 @@
 | 领域分类 | Skill 名称 | 路径 | 核心能力与触发场景 |
 | :--- | :--- | :--- | :--- |
 | **架构与规范** | **`pi-desktop-overview`** | [`.agents/skills/pi-desktop-overview/SKILL.md`](file:///.agents/skills/pi-desktop-overview/SKILL.md) | 产品定位、四态体系、核心特性与交互流水线总览（触发：项目概述/架构总览/四态界面）。 |
+| | **`pi-ecosystem-configuration`** | [`.agents/skills/pi-ecosystem-configuration/SKILL.md`](file:///.agents/skills/pi-ecosystem-configuration/SKILL.md) | Pi API 鉴权、大模型接入、Packages 扩展包、Skills 规范、TypeScript 扩展与子代理钉住配置全指南（触发：pi配置/模型配置/组件安装/auth.json/models.json/subagents配置/Ollama配置）。 |
 | | **`custom-workspace-pattern`** | [`.agents/skills/custom-workspace-pattern/SKILL.md`](file:///.agents/skills/custom-workspace-pattern/SKILL.md) | 私人定制工作区拓扑、防泄密物理隔离与交付规范（触发：定制工作区/企业交付/隔离）。 |
 | | **`inner-skills-injection`** | [`.agents/skills/inner-skills-injection/SKILL.md`](file:///.agents/skills/inner-skills-injection/SKILL.md) | 运行态内置约束（RULES.md）按需注入架构与流水线（触发：运行态技能/上下文注入/RULES）。 |
 | **手绘 UI 与交互** | **`sketch-drafting-ui`** | [`.agents/skills/sketch-drafting-ui/SKILL.md`](file:///.agents/skills/sketch-drafting-ui/SKILL.md) | Anthropic/Pi.dev 手绘草图美学、简约线条与纸质双模主题（触发：手绘风格/工程绘图风/草图UI）。 |
