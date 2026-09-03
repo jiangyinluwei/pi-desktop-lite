@@ -25,6 +25,7 @@ dist-ssr
 
 .doc/
 
+.mytools/pi-body/
 workspaces/*
 
 # 私人定制与专有交付工作区 (Custom / Private Workspaces)
