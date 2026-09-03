@@ -370,9 +370,19 @@ export function initTaskPanel(ctx) {
 
     taskManager.setActiveTask(task.id);
 
+    // 重置文件变更收纳框 DOM 引用（旧会话缓存仓已保留，避免 DOM 销毁后残留悬垂引用）
+    if (typeof api.resetFileChanges === "function") {
+      api.resetFileChanges();
+    }
+
     if (flowConversation) {
       flowConversation.innerHTML = "";
     }
+
+    // 重置流式状态缓存，杜绝跨会话工具卡片与步骤快照残留
+    flow.renderedToolCards.clear();
+    flow.activeThinkingStep = null;
+    flow.currentSteps = [];
 
     turns.forEach((turn, idx) => {
       const isLast = idx === turns.length - 1;
@@ -404,6 +414,7 @@ export function initTaskPanel(ctx) {
         flow.currentErrorMessage = turn.errorMessage || null;
         flow.hasReceivedDelta = Boolean(turn.responseText && turn.responseText.trim().length > 0);
         flow.hasAutoCollapsedThinking = !isOpen;
+        flow.currentSteps = Array.isArray(turn.steps) ? [...turn.steps] : [];
 
         if (isRunning && groupRefs.responseContentEl) {
           groupRefs.responseContentEl.innerHTML = api.renderMarkdown(turn.responseText || "") + `<span class="streaming-cursor"></span>`;
@@ -445,6 +456,9 @@ export function initTaskPanel(ctx) {
     if (flowScrollArea) {
       flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
     }
+
+    // 活跃任务切换后即刻刷新 Mini 任务胶囊 UI
+    updateMiniTaskCapsuleUI();
   };
 
   const restoreTaskToFlow = (task) => {
@@ -464,11 +478,6 @@ export function initTaskPanel(ctx) {
           task.turns = JSON.parse(JSON.stringify(existingConv.turns));
         }
       }
-    }
-
-    taskManager.setActiveTask(task.id);
-    if (flowConversation) {
-      flowConversation.innerHTML = "";
     }
 
     const turns = Array.isArray(task.turns) && task.turns.length > 0

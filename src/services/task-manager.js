@@ -108,6 +108,14 @@ export class TaskManager extends EventTarget {
       ],
     };
 
+    // 切换活跃任务铁律：原前台任务无缝转入后台挂起 (isSuspended = true)，杜绝幽灵任务
+    if (this.currentActiveTaskId && this.currentActiveTaskId !== taskId) {
+      const prevTask = this.tasks.get(this.currentActiveTaskId);
+      if (prevTask) {
+        prevTask.isSuspended = true;
+      }
+    }
+
     this.tasks.set(taskId, task);
     this.currentActiveTaskId = taskId;
 
@@ -195,9 +203,18 @@ export class TaskManager extends EventTarget {
 
   /**
    * 设置当前前台活跃 Task
+   * 切换活跃任务铁律：原前台活跃任务自动转入后台挂起 (isSuspended = true)，
+   * 新任务进入前台 (isSuspended = false)，杜绝多任务直接切换导致旧会话丢失
    * @param {string | null} taskId
    */
   setActiveTask(taskId) {
+    if (this.currentActiveTaskId && this.currentActiveTaskId !== taskId) {
+      const prevTask = this.tasks.get(this.currentActiveTaskId);
+      if (prevTask) {
+        prevTask.isSuspended = true; // 原前台活跃任务自动转入后台挂起
+      }
+    }
+
     this.currentActiveTaskId = taskId;
     if (taskId && this.tasks.has(taskId)) {
       const task = this.tasks.get(taskId);

@@ -189,4 +189,24 @@ flowchart TD
   - 文件名（`max-width: 45%`）与目录路径（`flex: 1 1 0`）自适应收缩，过长文本统一以 `...` 省略号优雅截断，hover 可见全路径 tooltip；
   - 条目常态背景透明，悬浮/聚焦显手绘微边框与极淡背景，右侧平滑浮现“定位”提示与手绘文件夹图标。
 
+---
+
+## 📌 10. 多任务直切自动挂起与状态隔离 (Auto-Suspend on Switch)
+
+当系统存在多个并发或后台任务时，Flow 界面支持在任务之间直接切换，并遵循以下严格的状态隔离铁律：
+
+1. **自动挂起旧任务（杜绝幽灵任务）**：
+   - 从右上角任务抽屉、会话记录或系统通知中点击直接进入目标 Task 时，原前台活跃任务必须由 `TaskManager.setActiveTask` / `createTask` 自动转入后台挂起（`prevTask.isSuspended = true`）；
+   - 切换前由 `archiveCurrentFlowToHistory()` 将前台 DOM 当前进度（含未完成的流式段、思考与工具状态）完整同步回原任务，绝不丢失；
+2. **跨会话状态彻底重置与对齐**：
+   - 共享渲染管线 `renderTurnsIntoFlow` 在渲染新任务前，必须执行：
+     - `api.resetFileChanges()`：清空文件变更收纳框的 DOM 引用，防止旧任务的节点在清空 DOM 后残留；
+     - `flow.renderedToolCards.clear()`：清空旧任务工具卡片引用；
+     - `flow.activeThinkingStep = null`：重置活跃思考步骤；
+     - `flow.currentSteps = Array.isArray(turn.steps) ? [...turn.steps] : []`：对齐新任务当前轮次步骤快照；
+3. **收纳框与 Mini 胶囊自愈更新**：
+   - 由 `api.restoreFileChangesFor(task.id)` 恢复目标任务在生命周期内累积的文件变更；
+   - 切换完成后即时调用 `updateMiniTaskCapsuleUI()`，确保右上角 Mini 胶囊数字与后台挂起任务数量 100% 精确吻合。
+
+
 
