@@ -1,0 +1,21 @@
+/* ==========================================================================
+   样式聚合入口 (Style Entry)
+   说明：原 styles.css 已按功能域拆分至 styles/ 目录。
+   本文件仅保留 @import 声明，必须位于所有规则之前。
+   新增样式请直接写入对应功能域子文件。
+   加载顺序：主题令牌 -> 基础 -> 布局 -> 功能域 -> 浮层
+   ========================================================================== */
+@import url("./styles/tokens.css");
+@import url("./styles/base.css");
+@import url("./styles/layout.css");
+@import url("./styles/flow.css");
+@import url("./styles/markdown.css");
+@import url("./styles/search.css");
+@import url("./styles/message-drawer.css");
+@import url("./styles/animations.css");
+@import url("./styles/settings.css");
+@import url("./styles/form-widgets.css");
+@import url("./styles/custom-provider.css");
+@import url("./styles/tool-response.css");
+@import url("./styles/packages.css");
+@import url("./styles/overlays.css");

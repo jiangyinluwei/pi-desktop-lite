@@ -1,0 +1,8 @@
+{
+  "id": "code-area",
+  "name": "代码工程区",
+  "description": "面向代码编写、重构与工程化任务的全局调度中枢。内设路由工作区（目标项目），调度内置编码技能指挥修改目标项目文件。",
+  "icon": "code",
+  "requiresRoute": true
+}
+

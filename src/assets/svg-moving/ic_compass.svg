@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 手绘几何工程圆规 -->
+  <!-- 顶部旋转手柄与主铰链轴 -->
+  <path d="M12 2.2 L12 4.2" />
+  <circle cx="12" cy="5.4" r="1.6" />
+  <!-- 左侧钢针腿 -->
+  <path d="M10.8 6.6 L5.4 21.8" />
+  <!-- 右侧夹铅笔腿 -->
+  <path d="M13.2 6.6 L18.6 21.8" />
+  <!-- 右腿下端铅笔芯细节 -->
+  <path d="M17.2 18.2 L19.4 18.8" />
+  <path d="M18.6 21.8 L18.2 19.8" />
+  <!-- 中间微调螺纹横梁与旋钮 -->
+  <path d="M8.2 13.5 L15.8 13.5" />
+  <circle cx="12" cy="13.5" r="1" />
+</svg>

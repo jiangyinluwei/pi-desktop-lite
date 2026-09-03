@@ -1,0 +1,549 @@
+/* 两步式自定义通道样式 */
+/* ==========================================================================
+   两步式自定义通道样式 (Step 1: Provider, Step 2: Models under Provider)
+   ========================================================================== */
+.custom-step-card {
+  background: transparent;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+
+.step-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.step-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  font-family: monospace;
+  background: transparent;
+  color: var(--ink-muted);
+  padding: 1px 6px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 3px;
+}
+
+.step-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  margin: 0;
+}
+
+.custom-provider-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.custom-providers-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ==========================================================================
+   自定义通道内层 Tab 导航 (inner-tabs-nav / inner-tab-btn / inner-tab-pane)
+   ========================================================================== */
+.inner-tabs-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-bottom: 1px solid var(--sketch-border-subtle);
+  margin-bottom: 14px;
+}
+
+.inner-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 7px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  position: relative;
+  bottom: -1px;
+  transition: color 0.15s ease, background 0.15s ease;
+  white-space: nowrap;
+}
+
+.inner-tab-btn:hover {
+  color: var(--ink-primary);
+  background: var(--sketch-tag-bg);
+}
+
+.inner-tab-btn.active {
+  color: var(--ink-primary);
+  font-weight: 600;
+  background: transparent;
+  border-color: var(--sketch-border-subtle);
+  border-bottom-color: var(--bg-base);
+}
+
+:root[data-theme="dark"] .inner-tab-btn.active {
+  border-bottom-color: var(--bg-base);
+}
+
+:root[data-theme="light"] .inner-tab-btn.active {
+  border-bottom-color: var(--bg-base);
+}
+
+.inner-tab-btn.active .step-badge {
+  border-color: var(--ink-primary);
+  color: var(--ink-primary);
+}
+
+.inner-tab-pane {
+  display: none;
+}
+
+.inner-tab-pane.active {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+
+
+.custom-provider-card {
+  background: transparent;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 6px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.15s ease;
+}
+
+.custom-provider-card:hover {
+  border-color: var(--sketch-border);
+}
+
+.custom-provider-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.provider-info-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.provider-name-tag {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.provider-url-meta {
+  font-size: 11px;
+  color: var(--ink-muted);
+  font-family: ui-monospace, monospace;
+}
+
+.provider-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 运营商卡片内部模型列表 */
+.provider-models-wrapper {
+  border-top: 1px dashed var(--sketch-border-subtle);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.provider-models-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.provider-models-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* 运营商内部折叠/新增模型与编辑运营商表单 (虚线线框，透明背景) */
+.inline-add-model-box,
+.inline-edit-provider-box {
+  background: transparent;
+  border: 1px dashed var(--sketch-border-subtle);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: sketchFadeIn 0.15s ease-out;
+}
+
+.inline-add-model-box.hidden,
+.inline-edit-provider-box.hidden {
+  display: none;
+}
+
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.form-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.2fr;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  height: 32px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-primary);
+  cursor: pointer;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
+.existing-custom-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.custom-models-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+/* 内核状态卡片与会话列表 */
+.status-card {
+  padding: 12px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--sketch-border-subtle);
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.status-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.status-indicator-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kernel-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  letter-spacing: -0.01em;
+  margin-right: 2px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--ink-muted);
+}
+
+.status-dot.status-ready {
+  background-color: #62998b;
+}
+
+:root[data-theme="dark"] .status-dot.status-ready {
+  background-color: #67a16f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .status-dot.status-ready,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .status-dot.status-ready {
+    background-color: #67a16f;
+  }
+}
+
+.status-dot.status-starting {
+  background-color: #8c6d37;
+  animation: pulseDot 1.2s infinite;
+}
+
+.status-dot.status-crashed {
+  background-color: #9b3737;
+}
+
+.status-dot.status-stopped {
+  background-color: var(--ink-faint);
+}
+
+.status-text {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  text-transform: capitalize;
+}
+
+.version-chip {
+  font-size: 11px;
+  font-family: monospace;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--sketch-border-subtle);
+  color: var(--ink-muted);
+}
+
+.status-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.update-notice {
+  font-size: 12px;
+  padding: 7px 10px;
+  border-radius: 4px;
+  border: 1px dashed var(--sketch-border);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--ink-primary);
+  flex-wrap: wrap;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  opacity: 1;
+}
+
+.update-notice.fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.update-notice-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.update-notice-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.update-notice-actions.hidden {
+  display: none !important;
+}
+
+.update-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #8c6d37;
+  flex-shrink: 0;
+}
+
+:root[data-theme="dark"] .update-icon {
+  color: #c9a05b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .update-icon,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .update-icon {
+    color: #c9a05b;
+  }
+}
+
+.update-icon svg {
+  display: block;
+}
+
+.update-notice.hidden {
+  display: none !important;
+}
+
+/* 内核更新多阶段进度条 */
+.kernel-update-progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 4px;
+  background: var(--sketch-tag-bg);
+}
+
+.kernel-update-progress-wrap.hidden {
+  display: none !important;
+}
+
+.kernel-update-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+}
+
+.progress-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-cancel-update {
+  font-size: 10.5px;
+  padding: 1px 6px;
+  height: 20px;
+  line-height: 1;
+}
+
+.progress-stage-text {
+  font-weight: 500;
+  color: var(--ink-primary);
+}
+
+.progress-percent-text {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-primary);
+}
+
+.sketch-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--sketch-box-bg);
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.sketch-progress-fill {
+  height: 100%;
+  background: var(--ink-primary);
+  border-radius: 2px;
+  transition: width 0.2s ease-out;
+  background-image: repeating-linear-gradient(-45deg,
+      transparent,
+      transparent 5px,
+      rgba(255, 255, 255, 0.15) 5px,
+      rgba(255, 255, 255, 0.15) 10px);
+}
+
+.kernel-progress-sub-msg {
+  font-size: 11px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 版本更新日志抽屉 */
+.kernel-changelog-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 4px;
+  background: transparent;
+  max-height: 200px;
+  overflow: hidden;
+}
+
+.kernel-changelog-drawer.hidden {
+  display: none !important;
+}
+
+.changelog-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  padding-bottom: 4px;
+  border-bottom: 1px dashed var(--sketch-border-subtle);
+}
+
+.drawer-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--ink-muted);
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.drawer-close-btn:hover {
+  border-color: var(--sketch-border-subtle);
+  color: var(--ink-primary);
+  background: var(--sketch-tag-bg);
+}
+
+.changelog-content {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ink-muted);
+  max-height: 150px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding-right: 4px;
+}
+

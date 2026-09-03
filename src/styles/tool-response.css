@@ -1,0 +1,341 @@
+/* ==========================================================================
+   工具调用执行容器与回复辅助样式
+   说明：Thinking、Point 与 Tool Call 核心步骤切片样式已统合至 styles/flow.css。
+   ========================================================================== */
+.tool-calls-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.response-content pre {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--sketch-border-subtle);
+  background-color: var(--sketch-tag-bg);
+  overflow-x: auto;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.response-content code {
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 0.9em;
+  padding: 2px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--sketch-border-subtle);
+  background-color: var(--sketch-tag-bg);
+}
+
+.response-content pre code {
+  padding: 0;
+  border: none;
+  background-color: transparent;
+}
+
+.response-content blockquote {
+  border-left: 2px solid var(--sketch-border);
+  padding-left: 12px;
+  margin: 10px 0;
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+.streaming-cursor {
+  display: inline-block;
+  width: 6px;
+  height: 14px;
+  vertical-align: -2px;
+  background-color: var(--ink-primary);
+  margin-left: 3px;
+  animation: pulseDot 0.8s infinite;
+}
+
+/* ==========================================================================
+   顶部轻量模型快速切换标签 (Flow Model Tag)
+   ========================================================================== */
+.flow-model-tag {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 255px 8px 225px 8px / 8px 225px 8px 255px;
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: all 0.18s ease-out;
+  user-select: none;
+}
+
+.flow-model-tag * {
+  cursor: pointer;
+}
+
+[data-view="flow"] .flow-model-tag,
+body.kernel-missing .flow-model-tag,
+.flow-model-tag.kernel-missing {
+  display: inline-flex !important;
+}
+
+.flow-model-tag:hover {
+  color: var(--ink-primary);
+  background-color: var(--sketch-tag-bg);
+  border-color: var(--sketch-border-subtle);
+  transform: translateY(-1px);
+}
+
+.flow-model-tag:active {
+  transform: translateY(0) scale(0.96);
+  border-color: var(--sketch-border);
+}
+
+.flow-model-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  opacity: 0.85;
+}
+
+body.kernel-missing .flow-model-tag .flow-model-icon,
+.flow-model-tag.kernel-missing .flow-model-icon {
+  color: var(--titlebar-close-hover, #dc2626);
+  opacity: 1;
+  animation: lightningJitter 0.5s infinite ease-in-out;
+  transform-origin: center center;
+}
+
+.flow-model-icon svg {
+  display: block;
+}
+
+.flow-model-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+
+/* ==========================================================================
+   错误与异常诊断手绘卡片 (Agent Error Callout Card)
+   ========================================================================== */
+.sketch-error-card {
+  margin: 12px 0;
+  padding: 12px 16px;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  background-color: rgba(239, 68, 68, 0.04);
+  border-radius: 255px 12px 225px 10px / 12px 225px 10px 255px;
+  box-shadow: 2px 3px 0px rgba(239, 68, 68, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.error-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #dc2626;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+:root[data-theme="dark"] .error-header {
+  color: #ef4444;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .error-header,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .error-header {
+    color: #ef4444;
+  }
+}
+
+.error-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #dc2626;
+  flex-shrink: 0;
+}
+
+:root[data-theme="dark"] .error-icon {
+  color: #ef4444;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .error-icon,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .error-icon {
+    color: #ef4444;
+  }
+}
+
+.error-icon svg {
+  display: block;
+}
+
+.error-message-text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-primary);
+  word-break: break-word;
+}
+
+.error-failover-summary {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  padding: 6px 10px;
+  border: 1px dashed var(--sketch-border-subtle);
+  border-radius: 255px 10px 225px 8px / 10px 225px 8px 255px;
+  background: transparent;
+}
+
+.error-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.error-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-family: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 255px 8px 225px 8px / 8px 225px 8px 255px;
+  color: var(--ink-primary);
+  cursor: pointer;
+  transition: all 0.18s ease-out;
+}
+
+.error-btn.retry-btn {
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #dc2626;
+}
+
+:root[data-theme="dark"] .error-btn.retry-btn {
+  color: #ef4444;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .error-btn.retry-btn,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .error-btn.retry-btn {
+    color: #ef4444;
+  }
+}
+
+.error-btn:hover {
+  background-color: var(--sketch-tag-bg);
+  border-color: var(--sketch-border);
+  transform: translateY(-1px);
+}
+
+.error-btn:active {
+  transform: translateY(0) scale(0.96);
+}
+
+/* 多模态错误建议手绘提示条 (Multimodal Hint Box) */
+.multimodal-hint-box {
+  margin-top: 6px;
+  padding: 8px 12px;
+  background: var(--sketch-panel-bg);
+  border: 1px dashed var(--sketch-border-subtle);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-primary);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.hint-content-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.hint-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.hint-text {
+  font-size: 12px;
+  color: var(--ink-primary);
+}
+
+.hint-text strong {
+  font-weight: 600;
+}
+
+.hint-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  background: transparent;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hint-action-btn:hover {
+  background: var(--sketch-tag-bg);
+  border-color: var(--sketch-border);
+  transform: translateY(-1px);
+}
+
+.hint-action-btn:active {
+  transform: translateY(0) scale(0.96);
+}
+
+/* ==========================================================================
+   通用手绘图元辅助类 (Badge / Button / Header SVG Helpers)
+   ========================================================================== */
+.badge-icon,
+.btn-icon,
+.header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+
+.badge-icon svg,
+.btn-icon svg,
+.header-icon svg,
+.drag-handle svg {
+  display: block;
+}
+

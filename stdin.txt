@@ -1,0 +1,2 @@
+{" type\:\get_available_models\}
+{\type\:\set_model\,\provider\:\??\,\modelId\:\sensenova-6.8-flash-lite\}

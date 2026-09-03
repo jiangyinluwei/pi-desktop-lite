@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Pi 推荐扩展组件列表 (打包时通过 include_str! 内嵌至二进制 exe)",
+  "plugins": [
+    {
+      "name": "pi-subagents",
+      "description": "Pi 多智能体与子任务协作调度扩展",
+      "source": "npm:pi-subagents"
+    },
+    {
+      "name": "pi-web-access",
+      "description": "静默后台联网搜索与自动网页摘要扩展",
+      "source": "npm:pi-web-access"
+    },
+    {
+      "name": "pi-docparser",
+      "description": "多格式文档解析与结构化提取组件",
+      "source": "npm:pi-docparser"
+    },
+    {
+      "name": "deword",
+      "description": "Word/Docx 文档轻量解析与内容提取工具",
+      "source": "npm:deword"
+    },
+    {
+      "name": "@quintinshaw/pi-dynamic-workflows",
+      "description": "动态工作流与自动化编排引擎",
+      "source": "npm:@quintinshaw/pi-dynamic-workflows"
+    },
+    {
+      "name": "pi-memory",
+      "description": "持久化记忆与跨会话上下文检索扩展",
+      "source": "npm:pi-memory"
+    },
+    {
+      "name": "pi-ocr",
+      "description": "图像文字光学识别与视觉提取组件",
+      "source": "npm:pi-ocr"
+    },
+    {
+      "name": "pai-acp",
+      "description": "主动上下文修剪与长会话压缩扩展 (Active Context Pruning)",
+      "source": "npm:pai-acp"
+    }
+  ]
+}

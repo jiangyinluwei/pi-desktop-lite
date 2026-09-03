@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+  <!-- 手绘交叉删除/关闭线条 -->
+  <line x1="3.5" y1="3.5" x2="12.5" y2="12.5" />
+  <line x1="12.5" y1="3.5" x2="3.5" y2="12.5" />
+</svg>

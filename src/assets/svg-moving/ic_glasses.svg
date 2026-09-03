@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 手绘复古圆框眼镜 -->
+  <!-- 左镜框 -->
+  <circle cx="7.5" cy="12.5" r="4.2" />
+  <!-- 右镜框 -->
+  <circle cx="16.5" cy="12.5" r="4.2" />
+  <!-- 中间鼻梁鼻托拱桥 -->
+  <path d="M11.7 12 C12.2 11, 13.8 11, 14.3 12" />
+  <!-- 左镜腿折角延伸 -->
+  <path d="M3.3 11.5 L1.8 10.5 L1.2 12" />
+  <!-- 右镜腿折角延伸 -->
+  <path d="M20.7 11.5 L22.2 10.5 L22.8 12" />
+  <!-- 镜片反光高光手绘短线 -->
+  <path d="M6.2 10.2 L8.2 12.2" />
+  <path d="M15.2 10.2 L17.2 12.2" />
+</svg>

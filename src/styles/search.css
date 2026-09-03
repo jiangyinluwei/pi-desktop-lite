@@ -1,0 +1,650 @@
+/* 搜索输入区与通用按钮 */
+/* ==========================================================================
+   搜索与输入框区域
+   ========================================================================== */
+.search-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 600px;
+  margin-top: -36px;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  -webkit-app-region: no-drag;
+}
+
+/* 品牌 Logo & 手绘草图徽标 */
+.brand-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 32px;
+  cursor: default;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.brand-sketch-icon {
+  color: var(--ink-primary);
+  margin-bottom: 6px;
+  transition: transform 0.25s ease;
+}
+
+.brand-sketch-icon:hover {
+  transform: rotate(-3deg) scale(1.05);
+}
+
+.brand-title-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: all 0.25s ease;
+}
+
+.logo-text {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Newsreader", "Charter", Georgia, serif;
+  font-size: 46px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  color: var(--ink-primary);
+  display: inline-block;
+  position: relative;
+  transition: transform 0.2s ease;
+}
+
+.logo-text::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -3px;
+  width: 100%;
+  height: 2px;
+  background: currentColor;
+  opacity: 0.18;
+  border-radius: 2px;
+}
+
+.brand-subtitle {
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  color: var(--ink-muted);
+  margin-top: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+
+/* 手绘线条搜索区域与外部控制行 */
+.search-box-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 12px;
+}
+
+.sketch-search-box {
+  display: flex;
+  align-items: flex-start;
+  flex: 1;
+  width: 100%;
+  min-height: 52px;
+  height: auto;
+  background: var(--sketch-box-bg);
+  /* 手绘自然微有机曲线边角 */
+  border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  border: 1.5px solid var(--sketch-border-subtle);
+  box-shadow: var(--sketch-shadow);
+  padding: 13px 16px;
+  position: relative;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, background-color 0.2s ease, padding 0.2s ease, border-radius 0.2s ease;
+}
+
+.sketch-search-box:hover {
+  border-color: var(--sketch-border);
+  box-shadow: var(--sketch-shadow-hover);
+}
+
+.sketch-search-box:focus-within {
+  border-color: var(--sketch-border);
+  background: var(--sketch-box-bg-focus);
+  box-shadow: var(--sketch-shadow-focus);
+  transform: translateY(-1px);
+}
+
+/* 拖拽文件进入时的高亮状态 */
+.sketch-search-box.drag-over,
+.sketch-search-box.drag-active {
+  border-style: dashed;
+  border-color: var(--ink-primary);
+  background: var(--sketch-box-bg-focus);
+  box-shadow: 0 0 0 2px var(--sketch-border-subtle), var(--sketch-shadow-focus);
+  transform: translateY(-1px) scale(1.002);
+}
+
+/* code-area 路由未绑定时的提示与禁用态样式 */
+.sketch-search-box.route-unbound {
+  border-style: dashed;
+  border-color: var(--sketch-border-subtle);
+  cursor: pointer;
+}
+
+.sketch-search-box.route-unbound:hover {
+  border-color: var(--sketch-border);
+  background: var(--sketch-box-bg-focus);
+}
+
+.sketch-search-box.route-unbound .search-input {
+  cursor: pointer;
+}
+
+.sketch-search-box.route-unbound .search-motto-item {
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
+
+/* 搜索/导入图标（换行后位于第一行，起到首行缩进的作用） */
+.search-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  margin-right: 8px;
+  flex-shrink: 0;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 3px;
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  align-self: flex-start;
+  margin-top: 0;
+  box-sizing: border-box;
+  transition: color 0.2s ease, transform 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.search-icon:hover {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border-subtle);
+  background-color: var(--sketch-kbd-bg);
+  transform: scale(1.08);
+}
+
+.search-icon:focus-visible {
+  outline: none;
+  border-color: var(--sketch-border);
+  color: var(--ink-primary);
+}
+
+.sketch-search-box:focus-within .search-icon {
+  color: var(--ink-primary);
+}
+
+/* 输入框与格言跑马灯包装层 */
+.search-input-wrapper {
+  flex: 1;
+  min-height: 24px;
+  height: auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  gap: 0;
+}
+
+/* 概述胶囊附件容器 (置于输入框内部上方，支持多项自然换行与极简滚动条) */
+.attached-capsules-container {
+  display: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-height: 110px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sketch-border-subtle) transparent;
+  z-index: 3;
+}
+
+.attached-capsules-container::-webkit-scrollbar {
+  width: 4px;
+}
+
+.attached-capsules-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.attached-capsules-container::-webkit-scrollbar-button {
+  display: none;
+}
+
+.attached-capsules-container::-webkit-scrollbar-thumb {
+  background-color: var(--sketch-border-subtle);
+  border-radius: 4px;
+  opacity: 0.45;
+}
+
+.attached-capsules-container::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ink-primary);
+}
+
+.search-input-wrapper.has-capsules .attached-capsules-container {
+  display: flex;
+}
+
+/* 概述胶囊单项 (Sketch Overview Capsule) */
+.sketch-file-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  max-width: 100%;
+  padding: 0 6px 0 8px;
+  background: var(--sketch-panel-bg, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ink-primary);
+  white-space: nowrap;
+  user-select: none;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: capsulePop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+@keyframes capsulePop {
+  0% {
+    opacity: 0;
+    transform: scale(0.9) translateY(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.sketch-file-capsule:hover {
+  border-color: var(--sketch-border);
+  box-shadow: var(--sketch-shadow);
+}
+
+.capsule-file-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+}
+
+.sketch-file-capsule:hover .capsule-file-icon {
+  color: var(--ink-primary);
+}
+
+.capsule-file-name {
+  max-width: min(240px, calc(100vw - 220px));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: inherit;
+  font-weight: 500;
+}
+
+.capsule-remove-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 2px;
+  margin-left: 1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.capsule-remove-btn:hover {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border-subtle);
+  background: var(--sketch-kbd-bg);
+}
+
+/* 当存在附件胶囊时隐藏跑马灯 */
+.search-input-wrapper.has-capsules .search-motto-layer {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* 格言跑马灯展示层（无输入时呈现） */
+.search-motto-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1;
+  opacity: 1;
+  transition: opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.18s ease;
+}
+
+/* 文本超长滚动时左右微羽化渐变遮罩 */
+.search-motto-layer.is-scrolling {
+  mask-image: linear-gradient(
+    to right,
+    transparent 0px,
+    black 8px,
+    black calc(100% - 12px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0px,
+    black 8px,
+    black calc(100% - 12px),
+    transparent 100%
+  );
+}
+
+/* 用户已键入内容时，隐藏格言层 */
+.search-input-wrapper.has-value .search-motto-layer {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 跑马灯轨道 */
+.search-motto-track {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+/* 滚动动画激活态：从右向左平滑无缝循环滚动 */
+.search-motto-track.animating {
+  animation: piMottoMarquee var(--motto-duration, 12s) linear infinite;
+}
+
+@keyframes piMottoMarquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+/* 格言单项文本 */
+.search-motto-item {
+  font-size: 15.5px;
+  font-family: inherit;
+  color: var(--ink-muted);
+  font-weight: 400;
+  opacity: 0.75;
+  white-space: nowrap;
+  display: inline-block;
+  line-height: 1;
+}
+
+/* 激活滚动时的副本间距 */
+.search-motto-track.animating .search-motto-item {
+  padding-right: 48px;
+}
+
+/* 非滚动状态下隐藏第二个副本且消除额外间距 */
+.search-motto-track:not(.animating) .search-motto-repeat {
+  display: none !important;
+}
+
+.search-motto-track:not(.animating) .search-motto-item {
+  padding-right: 0;
+}
+
+/* 输入框 (支持 textarea 多行换行自适应，最大容纳 16 行，超出显示隐藏式极简滚动条) */
+.search-input {
+  width: 100%;
+  height: 24px;
+  min-height: 24px;
+  max-height: 384px; /* 16 行 * 24px = 384px */
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 15.5px;
+  line-height: 24px;
+  font-family: inherit;
+  color: var(--ink-primary);
+  user-select: text;
+  position: relative;
+  z-index: 2;
+  padding: 0;
+  margin: 0;
+  resize: none;
+  overflow-y: auto;
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sketch-border-subtle) transparent;
+}
+
+/* 隐藏式极简滚动条规范 (Rule 7: Minimal Slim Hidden Scrollbar) */
+.search-input::-webkit-scrollbar {
+  width: 4px;
+}
+
+.search-input::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.search-input::-webkit-scrollbar-button {
+  display: none;
+}
+
+.search-input::-webkit-scrollbar-thumb {
+  background-color: var(--sketch-border-subtle);
+  border-radius: 4px;
+  opacity: 0.45;
+  transition: background-color 0.2s ease;
+}
+
+.search-input:hover::-webkit-scrollbar-thumb {
+  background-color: var(--sketch-border);
+}
+
+.search-input::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ink-primary);
+  width: 6px;
+}
+
+.search-input::placeholder {
+  color: transparent;
+}
+
+/* 快捷引导徽章与发送示意框 (常态透明微边框，悬停高亮，点击可直接发送) */
+.search-action-hint {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+  user-select: none;
+  flex-shrink: 0;
+  cursor: pointer;
+  align-self: flex-end;
+  margin-bottom: 0;
+  height: 24px;
+  -webkit-app-region: no-drag;
+}
+
+.sketch-kbd {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  background: var(--sketch-kbd-bg);
+  border: 1px solid var(--sketch-kbd-border);
+  border-radius: 4px;
+  padding: 3px 7px;
+  line-height: 1;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.sketch-kbd .hint-send-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  transition: color 0.2s ease, transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.sketch-kbd .hint-send-icon svg {
+  display: block;
+}
+
+.sketch-search-box:focus-within .sketch-kbd {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+}
+
+.sketch-search-box:focus-within .sketch-kbd .hint-send-icon {
+  color: var(--ink-primary);
+}
+
+.search-action-hint:hover .sketch-kbd {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  background: var(--sketch-panel-bg, rgba(0, 0, 0, 0.05));
+  box-shadow: var(--sketch-shadow);
+}
+
+.search-action-hint:hover .hint-send-icon {
+  color: var(--ink-primary);
+  transform: translateX(1px);
+}
+
+.search-action-hint:active .sketch-kbd {
+  transform: translateY(1px);
+}
+
+.search-action-hint.disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.search-action-hint.disabled .sketch-kbd {
+  opacity: 0.5;
+  border-color: var(--sketch-kbd-border);
+  background: var(--sketch-kbd-bg);
+}
+
+/* ==========================================================================
+   通用手绘图标与操作按钮规范 (Button Design Principle)
+   核心原则：背景常态透明，常态无边框（1px transparent 占位防抖），悬浮（:hover）显现边框与微背景
+   ========================================================================== */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  outline: none;
+  cursor: pointer;
+  color: var(--ink-muted);
+  border-radius: 255px 8px 225px 8px / 8px 225px 8px 255px;
+  transition: all 0.18s ease-out;
+  user-select: none;
+  -webkit-app-region: no-drag;
+}
+
+.icon-button:hover {
+  color: var(--ink-primary);
+  background-color: var(--sketch-tag-bg);
+  border-color: var(--sketch-border-subtle);
+}
+
+.icon-button:active {
+  background-color: var(--sketch-tag-hover-bg);
+  border-color: var(--sketch-border);
+}
+
+.icon-button:focus-visible {
+  border-color: var(--sketch-border);
+}
+
+.icon-button svg {
+  pointer-events: none;
+  display: block;
+}
+
+/* 对话框外部左侧手绘齿轮设置按钮 */
+.icon-button.settings-btn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 255px 12px 225px 10px / 12px 225px 10px 255px;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease, opacity 0.2s ease, width 0.2s ease, margin 0.2s ease;
+}
+
+.icon-button.settings-btn:hover {
+  color: var(--ink-primary);
+  background-color: var(--sketch-tag-bg);
+  border-color: var(--sketch-border-subtle);
+  box-shadow: var(--sketch-shadow-hover);
+  transform: translateY(-1px) rotate(15deg);
+}
+
+.icon-button.settings-btn:active {
+  transform: translateY(0) rotate(15deg) scale(0.94);
+  box-shadow: var(--sketch-shadow);
+}
+
+/* 清空图标按钮 */
+.icon-button.clear-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.85);
+  margin-left: 4px;
+  flex-shrink: 0;
+  align-self: flex-end;
+  margin-bottom: -2px;
+}
+
+.icon-button.clear-btn.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+}
+
+.icon-button.clear-btn:hover {
+  color: var(--ink-primary);
+  background-color: var(--sketch-tag-bg);
+  border-color: var(--sketch-tag-border);
+  transform: scale(1);
+}
+
+.icon-button.clear-btn:active {
+  transform: scale(0.92);
+}
+

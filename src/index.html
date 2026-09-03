@@ -1,0 +1,1165 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem("pi_app_theme") || "system";
+        if (theme === "light" || theme === "dark" || theme === "system") {
+          document.documentElement.setAttribute("data-theme", theme);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <meta name="color-scheme" content="light dark" />
+  <title>pi-dl</title>
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+  <link rel="alternate icon" type="image/x-icon" href="assets/logo.ico" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body class="kernel-missing">
+  <!-- 极简沉浸式标题栏（手绘线条窗口控制按钮） -->
+  <header class="titlebar" id="titlebar" data-tauri-drag-region>
+    <!-- Flow 模式下的左上角手绘品牌 Mini 标识（仅保留手绘 Π 图标） -->
+    <div class="flow-mini-brand" id="flow-mini-brand" title="pi-dl" aria-label="pi-dl">
+      <div class="mini-sketch-icon" aria-hidden="true">
+        <svg viewBox="0 0 48 48" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 15.5 C14 14.2, 34 14.8, 40 15" />
+          <path d="M17.5 15 C17 22, 16 29, 14 34.5 C13 37, 10.5 37.5, 9.5 36" />
+          <path d="M30.5 15 C31 23, 31.5 30, 33 34 C34 36.5, 36.5 36.8, 39 35.5" />
+        </svg>
+      </div>
+    </div>
+
+    <!-- 内核保险：自动重连失败红色抖动小闪电提醒（左上角，点击手动重启内核） -->
+    <button type="button" class="kernel-alert hidden" id="kernel-alert" data-tauri-no-drag aria-label="内核连接失败"
+      title="内核自动重连失败，点击手动重启内核">
+      <span class="kernel-alert-icon" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8.5 1.5 L3.5 9 L7.5 9 L6.5 14.5 L12.5 7 L8.5 7 Z" />
+        </svg>
+      </span>
+      <span class="kernel-alert-text" id="kernel-alert-text">内核连接失败</span>
+    </button>
+
+    <!-- 顶部轻量模型快速切换标签 -->
+    <button type="button" class="flow-model-tag kernel-missing" id="flow-model-tag" data-tauri-no-drag title="点击打开模型与设置">
+      <span class="flow-model-icon" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8.5 1.5 L3.5 9 L7.5 9 L6.5 14.5 L12.5 7 L8.5 7 Z" />
+        </svg>
+      </span>
+      <span class="flow-model-name" id="flow-model-name">未检测到pi内核</span>
+    </button>
+
+    <div class="titlebar-drag-area" data-tauri-drag-region></div>
+
+    <!-- 右上角手绘 Mini 任务胶囊 [✏️ 1/3 Task] -->
+    <button type="button" class="mini-task-capsule hidden" id="mini-task-capsule" data-tauri-no-drag aria-label="后台任务"
+      title="点击展开后台对话任务监控">
+      <span class="capsule-pencil-icon" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M11.5 2.5 L13.5 4.5 L4.5 13.5 L2 14 L2.5 11.5 Z" />
+          <path d="M9.8 4.2 L11.8 6.2" />
+        </svg>
+      </span>
+      <span class="capsule-task-text" id="capsule-task-text">0/0 Task</span>
+    </button>
+
+    <div class="titlebar-controls" data-tauri-no-drag>
+      <button type="button" class="titlebar-btn" id="btn-minimize" aria-label="最小化" title="最小化">
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.3"
+          stroke-linecap="round">
+          <line x1="3" y1="8" x2="13" y2="8" />
+        </svg>
+      </button>
+      <button type="button" class="titlebar-btn" id="btn-maximize" aria-label="最大化" title="最大化">
+        <svg id="icon-maximize" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+          stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+          <!-- 手绘微自然弧度方框 -->
+          <path
+            d="M3.2 3.8 C3.2 3.3, 3.7 3.2, 4.2 3.2 L11.8 3.3 C12.3 3.3, 12.8 3.7, 12.8 4.2 L12.7 11.8 C12.7 12.3, 12.3 12.8, 11.8 12.8 L4.2 12.7 C3.7 12.7, 3.2 12.3, 3.2 11.8 Z" />
+        </svg>
+      </button>
+      <button type="button" class="titlebar-btn btn-close" id="btn-close" aria-label="关闭" title="关闭">
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.3"
+          stroke-linecap="round">
+          <line x1="3.5" y1="3.5" x2="12.5" y2="12.5" />
+          <line x1="12.5" y1="3.5" x2="3.5" y2="12.5" />
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="app-container" id="app-container" data-view="detailed">
+    <!-- Flow 模式：AI 思考过程与输出内容主体交互流容器 -->
+    <section class="flow-stage" id="flow-stage" aria-label="Agent 对话与思考流">
+      <div class="flow-scroll-area" id="flow-scroll-area">
+        <!-- 多段对话顶部悬浮当前提问提示 (手绘窗体风格，仅提醒，无任何鼠标行为；内容溢出触发滚动条时显现) -->
+        <div class="flow-question-tip" id="flow-question-tip" aria-hidden="true">
+          <div class="flow-question-tip-window-bar">
+            <span class="flow-question-tip-badge">
+              <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.3"
+                stroke-linecap="round" stroke-linejoin="round">
+                <!-- 手绘气泡/提问锚点 -->
+                <path
+                  d="M3.2 4.2 C3.2 3.5, 3.8 3, 4.5 3 L11.5 3 C12.2 3, 12.8 3.5, 12.8 4.2 L12.8 11.2 C12.8 11.9, 12.2 12.4, 11.5 12.4 L6.2 12.4 L3.5 14.5 L3.5 4.2 Z" />
+                <path d="M5.5 6.2 L10.5 6.2 M5.5 8.8 L9 8.8" />
+              </svg>
+              <span class="badge-label">当前提问</span>
+            </span>
+          </div>
+          <span class="flow-question-tip-divider" aria-hidden="true"></span>
+          <span class="flow-question-tip-text" id="flow-question-tip-text"></span>
+          <span class="flow-question-tip-pin" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.3"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="8" cy="4" r="2" />
+              <path d="M8 6 L8 14" />
+            </svg>
+          </span>
+        </div>
+        <!-- 动态消息流将通过 JS 渲染注入此处 -->
+        <div class="flow-conversation" id="flow-conversation">
+          <!-- 初始默认交互项模板 -->
+          <div class="flow-message-group" id="current-flow-group">
+            <!-- 用户问题卡片 -->
+            <div class="flow-user-prompt-card" id="flow-user-prompt">
+              <div class="prompt-icon">
+                <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round">
+                  <path d="M4 10 L16 10 M11 5 L16 10 L11 15" />
+                </svg>
+              </div>
+              <div class="prompt-main-wrap">
+                <div class="flow-prompt-attachments hidden" id="flow-prompt-attachments"></div>
+                <p class="prompt-content" id="flow-user-text">探索手绘草图风格的 Agent 交互体验</p>
+              </div>
+            </div>
+
+
+            <!-- AI Agent 思考过程卡片（手绘折叠与呼吸状态） -->
+            <div class="agent-thinking-card" id="agent-thinking-card">
+              <div class="thinking-header" id="thinking-toggle-btn" role="button" tabindex="0" aria-expanded="false">
+                <div class="thinking-status-indicator">
+                  <span class="thinking-dot"></span>
+                  <span class="thinking-title">Thinking</span>
+                  <span class="thinking-duration" id="thinking-duration">已深度思考 1.8 秒</span>
+                </div>
+                <div class="thinking-arrow-icon" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"
+                    stroke-linecap="round">
+                    <polyline points="4 6 8 10 12 6" />
+                  </svg>
+                </div>
+              </div>
+              <div class="thinking-body" id="thinking-body">
+                <div class="thinking-text-stream" id="thinking-text-stream">
+                  <ul class="thinking-steps">
+                    <li class="step-item done">
+                      <span class="step-marker" aria-hidden="true">
+                        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor"
+                          stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M3.5 8.5 L6.5 11.5 L12.5 4.5" />
+                        </svg>
+                      </span>
+                      <span class="step-text">解析意图与上下文：构建多态 Agent 交互视图</span>
+                    </li>
+                    <li class="step-item done">
+                      <span class="step-marker" aria-hidden="true">
+                        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor"
+                          stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M3.5 8.5 L6.5 11.5 L12.5 4.5" />
+                        </svg>
+                      </span>
+                      <span class="step-text">加载草图手绘风格主题与自适应双模纸质变量</span>
+                    </li>
+                    <li class="step-item in-progress">
+                      <span class="step-marker" aria-hidden="true">
+                        <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor" stroke="none">
+                          <path
+                            d="M8 1.2 C8 4.8, 8.5 7.5, 14.8 8 C8.5 8.5, 8 11.2, 8 14.8 C8 11.2, 7.5 8.5, 1.2 8 C7.5 7.5, 8 4.8, 8 1.2 Z" />
+                        </svg>
+                      </span>
+                      <span class="step-text">生成结构化响应：已完成状态机与右键回退流水线映射</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- 工具调用展示容器 -->
+            <div class="tool-calls-container" id="tool-calls-container"></div>
+
+            <!-- AI Agent 输出响应内容区域 -->
+            <div class="agent-response-card" id="agent-response-card">
+              <div class="response-content" id="flow-response-content">
+                <p>已成功进入 <strong>Flow 交互界面</strong>。在此界面中：</p>
+                <ul>
+                  <li><strong>Logo 归位</strong>：手绘 $\pi$ 图标已优雅置于最左上方，保持视野开阔；</li>
+                  <li><strong>思维透明</strong>：上方完整呈现模型的思考链路与步骤推演；</li>
+                  <li><strong>输入延展</strong>：输入框已平滑下移并自适应扩展宽度，方便输入多行或复杂指令；</li>
+                </ul>
+                <p class="sketch-callout">
+                  <span class="callout-icon" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <path
+                        d="M8 2 C5.5 2, 3.8 3.8, 4 6.2 C4.2 7.8, 5.5 9.2, 6 10.5 L10 10.5 C10.5 9.2, 11.8 7.8, 12 6.2 C12.2 3.8, 10.5 2, 8 2 Z" />
+                      <path d="M6 12.5 L10 12.5" />
+                      <path d="M7 14.5 L9 14.5" />
+                    </svg>
+                  </span>
+                  <em>提示：单击鼠标右键可一键返回「初始界面-专注版」，再次右键可回退至「初始界面-详细版」。</em>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- 多段对话上下轮次定位导航 (Flow Turn Navigation)
+         仅当多轮对话 (flow-message-group >= 2) 且处于 Flow 视图时显现；
+         右移到 flow 内容区域之外（窗体内右边距处，由 JS 对齐 flow 内容区底部），
+         纵向排列「上 / 下」按钮；所有定位效果仅在鼠标弹起时响应（按下后移出按钮再弹起不生效）。 -->
+    <div class="flow-turn-nav" id="flow-turn-nav">
+      <button type="button" class="flow-turn-nav-btn flow-turn-nav-up" id="flow-turn-nav-up"
+        aria-label="定位到上一个对话的最终输出内容顶部" title="上一个对话">
+        <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="4 10 8 6 12 10" />
+        </svg>
+      </button>
+      <button type="button" class="flow-turn-nav-btn flow-turn-nav-down" id="flow-turn-nav-down"
+        aria-label="定位到下一个对话的最终输出内容顶部 (长按 1.5 秒直接定位到底部)" title="下一个对话 (长按 1.5 秒直接定位到底部)">
+        <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="4 6 8 10 12 6" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- 主搜索与交互区域（三态自适应布局容器） -->
+    <div class="search-section" id="search-section">
+
+      <!-- 品牌标识与手绘草图徽标 -->
+      <div class="brand-header" id="brand-logo">
+        <div class="brand-sketch-icon" aria-hidden="true">
+          <!-- 手绘风 π 与思维火花草图矢量 -->
+          <svg viewBox="0 0 48 48" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.6"
+            stroke-linecap="round" stroke-linejoin="round">
+            <!-- 手绘顶部横梁微弯曲笔触 -->
+            <path d="M8 15.5 C14 14.2, 34 14.8, 40 15" />
+            <!-- 左侧自然下垂竖画 -->
+            <path d="M17.5 15 C17 22, 16 29, 14 34.5 C13 37, 10.5 37.5, 9.5 36" />
+            <!-- 右侧带微小向右勾笔的竖画 -->
+            <path d="M30.5 15 C31 23, 31.5 30, 33 34 C34 36.5, 36.5 36.8, 39 35.5" />
+            <!-- 灵感小草图星标 -->
+            <path d="M38 7 L38.5 10 L41.5 10.5 L38.5 11 L38 14 L37.5 11 L34.5 10.5 L37.5 10 Z" stroke-width="1.2" />
+          </svg>
+        </div>
+        <div class="brand-title-wrap" id="brand-title-wrap">
+          <h1 class="logo-text">pi-dl</h1>
+          <span class="brand-subtitle">pi desktop lite * Unadorned Agent</span>
+        </div>
+      </div>
+
+      <!-- 搜索框与外部控制栏组合 -->
+      <div class="search-box-row" id="search-box-row">
+        <!-- 对话框外部左侧手绘齿轮设置按钮（透明底、无常态边框、hover显示边框） -->
+        <button type="button" id="settings-btn" class="icon-button settings-btn" aria-label="设置" title="项目设置">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.4"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path
+              d="M10.2 5.8 C10.3 4.5, 10.4 3.2, 10.4 3.2 L13.6 3.1 C13.6 3.1, 13.7 4.5, 13.8 5.7 C14.6 6.1, 15.4 6.5, 16.2 7.1 L18.6 5.8 L20.3 8.6 L17.8 10.2 C18 11.1, 18 12.9, 17.8 13.8 L20.4 15.4 L18.7 18.2 L16.3 16.9 C15.5 17.5, 14.6 17.9, 13.8 18.3 L13.6 20.9 L10.4 20.8 L10.2 18.2 C9.4 17.8, 8.5 17.4, 7.8 16.9 L5.4 18.2 L3.7 15.4 L6.1 13.8 C5.9 12.9, 5.9 11.1, 6.1 10.2 L3.6 8.6 L5.3 5.8 L7.7 7.1 C8.5 6.5, 9.4 6.1, 10.2 5.8 Z" />
+            <path
+              d="M12 9.1 C13.6 9.05, 14.95 10.4, 14.9 12 C14.85 13.65, 13.55 14.95, 12 14.9 C10.4 14.85, 9.05 13.55, 9.1 12 C9.15 10.45, 10.45 9.15, 12 9.1 Z" />
+          </svg>
+          <span class="settings-badge" id="settings-badge"></span>
+        </button>
+
+        <!-- 手绘线条素描搜索框 -->
+        <form class="sketch-search-box" id="search-form" onsubmit="return false;">
+          <!-- 导入图标与文件选择 -->
+          <div class="search-icon" id="search-icon-box" role="button" tabindex="0" aria-label="导入文件"
+            title="点击导入文件，或直接将图片/文档拖入此处">
+            <svg viewBox="0 0 50 50" width="18" height="18" fill="currentColor">
+              <path
+                d="M 1.78125 -0.03125 C 1.300781 0.078125 0.960938 0.507813 0.96875 1 L 0.96875 49 C 0.972656 49.566406 1.433594 50.027344 2 50.03125 L 32 50.03125 C 32.566406 50.027344 33.027344 49.566406 33.03125 49 L 33.03125 39 L 30.96875 39 L 30.96875 47.96875 L 3.03125 47.96875 L 3.03125 2.03125 L 30.96875 2.03125 L 30.96875 11 L 33.03125 11 L 33.03125 1 L 33.027344 0.433594 32.566406 -0.0273438 32 -0.03125 L 2 -0.03125 C 1.925781 -0.0390625 1.855469 -0.0390625 1.78125 -0.03125 Z M 24.78125 15.09375 C 24.554688 15.125 24.34375 15.238281 24.1875 15.40625 L 15.28125 24.28125 L 14.59375 25 L 15.28125 25.71875 L 24.1875 34.59375 C 24.429688 34.890625 24.816406 35.027344 25.191406 34.941406 C 25.5625 34.855469 25.855469 34.5625 25.941406 34.191406 C 26.027344 33.816406 25.890625 33.429688 25.59375 33.1875 L 18.4375 26 L 48 26 C 48.359375 26.003906 48.695313 25.816406 48.878906 25.503906 C 49.058594 25.191406 49.058594 24.808594 48.878906 24.496094 C 48.695313 24.183594 48.359375 23.996094 48 24 L 18.4375 24 L 25.59375 16.8125 C 25.90625 16.515625 25.996094 16.050781 25.8125 15.660156 C 25.625 15.265625 25.210938 15.039063 24.78125 15.09375 Z" />
+            </svg>
+          </div>
+          <input type="file" id="file-picker-input" multiple class="hidden" style="display: none;" />
+
+          <!-- 文本输入区域与格言跑马灯容器 -->
+          <div class="search-input-wrapper" id="search-input-wrapper">
+            <!-- 概述胶囊附件容器 -->
+            <div class="attached-capsules-container" id="attached-capsules-container"></div>
+
+            <div class="search-motto-layer" id="search-motto-layer" aria-hidden="true">
+              <div class="search-motto-track" id="search-motto-track">
+                <span class="search-motto-item" id="search-motto-text-1">别等完美，先打个草稿</span>
+                <span class="search-motto-item search-motto-repeat" id="search-motto-text-2">别等完美，先打个草稿</span>
+              </div>
+            </div>
+            <textarea id="search-input" class="search-input" rows="1" placeholder="" autocomplete="off"
+              spellcheck="false"></textarea>
+          </div>
+
+          <!-- 手绘风格清空按钮 -->
+          <button type="button" id="clear-btn" class="icon-button clear-btn" aria-label="清空输入" title="清空 (Esc)">
+            <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4"
+              stroke-linecap="round">
+              <line x1="5" y1="5" x2="15" y2="15" />
+              <line x1="15" y1="5" x2="5" y2="15" />
+            </svg>
+          </button>
+
+          <!-- Flow 模式显式手绘「⏹ 中止」按钮 -->
+          <button type="button" id="flow-btn-abort" class="icon-button flow-btn-abort hidden" aria-label="中止生成"
+            title="彻底中止当前 Agent (Abort)">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" stroke="none">
+              <rect x="2" y="2" width="12" height="12" rx="2.2" />
+            </svg>
+          </button>
+
+          <!-- 快捷键引导徽章与发送示意框 (点击亦可直接发送) -->
+          <div class="search-action-hint" id="search-hint" role="button" tabindex="0" title="发送 (Enter)"
+            aria-label="发送 (Enter)">
+            <span class="sketch-kbd" id="search-hint-kbd">
+              <span class="hint-send-icon" aria-hidden="true">
+                <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.4"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14.5 1.5 L7 9" />
+                  <path d="M14.5 1.5 L10 14.5 L7 9 L1.5 6 Z" />
+                </svg>
+              </span>
+              <span class="hint-key-text" id="hint-key-text">Enter</span>
+            </span>
+          </div>
+        </form>
+      </div>
+
+      <!-- 底部手绘风历史会话讯息方框容器 (常态展示第1行3个，鼠标悬浮在下方进一步渐出展开每行4个) -->
+      <div class="sketch-messages-drawer hidden" id="sketch-messages-drawer" aria-label="最近对话讯息">
+        <div class="messages-primary-row" id="messages-primary-row">
+          <!-- 动态渲染：第 1 行（最多 3 个讯息方框） -->
+        </div>
+        <div class="messages-expanded-wrap" id="messages-expanded-wrap">
+          <div class="messages-expanded-grid" id="messages-expanded-grid">
+            <!-- 动态渲染：下方悬浮展开区域（每行 4 个讯息方框） -->
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 4. Settings 独立全页面视图 (独立第4态全屏视图 - 横平竖直现代工程设计) -->
+    <section class="settings-view-stage" id="settings-view" aria-label="项目设置与模型配置">
+      <!-- 顶部醒目导航与右键回退提示条 -->
+      <div class="settings-page-topbar">
+        <div class="topbar-left">
+          <div class="topbar-title-group">
+            <h2 class="topbar-title">项目设置</h2>
+            <span class="topbar-sub">Settings &amp; Model Configurations</span>
+          </div>
+        </div>
+
+        <!-- 显目用户操作提示 -->
+        <div class="topbar-hint-banner" id="topbar-hint-banner">
+          <span class="hint-icon" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path
+                d="M8 2 C5.5 2, 3.8 3.8, 4 6.2 C4.2 7.8, 5.5 9.2, 6 10.5 L10 10.5 C10.5 9.2, 11.8 7.8, 12 6.2 C12.2 3.8, 10.5 2, 8 2 Z" />
+              <path d="M6 12.5 L10 12.5" />
+              <path d="M7 14.5 L9 14.5" />
+            </svg>
+          </span>
+          <span class="hint-text">提示：在任意位置点击 <strong>鼠标右键</strong> 或按 <strong>Esc</strong> 即可快速回退</span>
+        </div>
+      </div>
+
+      <!-- 设置页面主体：左侧 Tab 导航 + 右侧面板内容 -->
+      <div class="settings-page-body">
+        <!-- 左侧 Tab 列表 -->
+        <nav class="settings-tabs-nav" aria-label="设置分类">
+          <button type="button" class="settings-tab-btn active" data-tab="tab-appearance">
+            <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="10" cy="10" r="7" />
+              <path d="M10 3v14a7 7 0 0 0 0-14z" fill="currentColor" />
+            </svg>
+            常规
+          </button>
+          <button type="button" class="settings-tab-btn" data-tab="tab-current-models">
+            <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="14" height="12" rx="2" />
+              <path d="M7 8h6M7 12h4" />
+            </svg>
+            模型配置
+          </button>
+          <button type="button" class="settings-tab-btn" data-tab="tab-packages">
+            <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="6" height="6" rx="1" />
+              <rect x="11" y="3" width="6" height="6" rx="1" />
+              <rect x="3" y="11" width="6" height="6" rx="1" />
+              <path d="M14 11v6M11 14h6" />
+            </svg>
+            内核
+          </button>
+          <button type="button" class="settings-tab-btn" data-tab="tab-sessions">
+            <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 12a4 4 0 0 1-4 4H7l-4 3V6a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v6z" />
+            </svg>
+            会话记录
+          </button>
+          <button type="button" class="settings-tab-btn" data-tab="tab-workspaces">
+            <svg class="tab-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2.5" y="3.5" width="7" height="7" rx="1.2" />
+              <rect x="10.5" y="3.5" width="7" height="7" rx="1.2" />
+              <rect x="2.5" y="11.5" width="7" height="5" rx="1.2" />
+              <rect x="10.5" y="11.5" width="7" height="5" rx="1.2" />
+            </svg>
+            工作区
+          </button>
+        </nav>
+
+        <!-- 右侧面板内容区 -->
+        <div class="settings-tab-content">
+          <!-- 1. 常规面板 -->
+          <div class="tab-pane active" id="pane-appearance">
+            <div class="pane-header">
+              <h3 class="pane-title">常规设置</h3>
+              <p class="pane-desc">管理软件界面主题色调与默认对话行为。</p>
+            </div>
+
+            <!-- 主题色设置 -->
+            <div class="settings-group">
+              <label class="group-label">软件主题色设置</label>
+              <div class="theme-segmented-control" id="theme-segmented-control">
+                <button type="button" class="theme-option active" data-theme-val="system">
+                  <span class="theme-icon" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="8" cy="8" r="6" />
+                      <path d="M8 2 A6 6 0 0 1 8 14 Z" fill="currentColor" stroke="none" />
+                    </svg>
+                  </span>
+                  <span class="theme-name">跟随系统</span>
+                </button>
+                <button type="button" class="theme-option" data-theme-val="light">
+                  <span class="theme-icon" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="8" cy="8" r="3.2" />
+                      <path
+                        d="M8 1.5v1.5M8 13v1.5M1.5 8h1.5M13 8h1.5M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" />
+                    </svg>
+                  </span>
+                  <span class="theme-name">浅色模式</span>
+                </button>
+                <button type="button" class="theme-option" data-theme-val="dark">
+                  <span class="theme-icon" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M13.2 10.5 A6 6 0 1 1 5.5 2.8 A5 5 0 0 0 13.2 10.5 Z" />
+                    </svg>
+                  </span>
+                  <span class="theme-name">暗色模式</span>
+                </button>
+              </div>
+              <span class="form-hint">浅色模式采用素描绘图纸质感，暗色模式采用黑板炭黑素描质感。</span>
+            </div>
+
+            <!-- 思考推理等级 -->
+            <div class="settings-group">
+              <label for="thinking-select-dropdown" class="group-label">默认思考推理深度 (Thinking Level)</label>
+              <select id="thinking-select-dropdown" class="flat-select">
+                <option value="off">Off (关闭思考过程)</option>
+                <option value="minimal">Minimal (极简思考 1k)</option>
+                <option value="low">Low (低思考深度 4k)</option>
+                <option value="medium" selected>Medium (中等平衡思考 10k)</option>
+                <option value="high">High (深度思考 32k)</option>
+                <option value="max">Max (最大思考上限)</option>
+              </select>
+              <span class="form-hint">适用于 Claude 3.7、DeepSeek-R1、o1/o3-mini 等支持思考过程的模型。</span>
+            </div>
+
+            <!-- 对话框发送与换行逻辑 -->
+            <div class="settings-group">
+              <label class="group-label">对话框发送与换行逻辑</label>
+              <div class="send-shortcut-segmented-control" id="send-shortcut-segmented-control">
+                <button type="button" class="shortcut-option active" data-shortcut-val="enter">
+                  <span class="shortcut-icon" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M14.5 1.5 L7 9" />
+                      <path d="M14.5 1.5 L10 14.5 L7 9 L1.5 6 Z" />
+                    </svg>
+                  </span>
+                  <span class="shortcut-name">Enter 发送 / Ctrl+Enter 换行</span>
+                </button>
+                <button type="button" class="shortcut-option" data-shortcut-val="ctrlEnter">
+                  <span class="shortcut-icon" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M14.5 1.5 L7 9" />
+                      <path d="M14.5 1.5 L10 14.5 L7 9 L1.5 6 Z" />
+                    </svg>
+                  </span>
+                  <span class="shortcut-name">Ctrl+Enter 发送 / Enter 换行</span>
+                </button>
+              </div>
+              <span class="form-hint">切换后对话框右侧示意框将即时同步对应按键与发送图标。</span>
+            </div>
+          </div>
+
+          <!-- 2. 模型配置面板 (包含当前模型列表与折叠式官方/自定义通道配置) -->
+          <div class="tab-pane" id="pane-current-models">
+            <div class="pane-header-row">
+              <div>
+                <h3 class="pane-title">模型配置</h3>
+                <p class="pane-desc">管理与选用模型列表，或展开下方通道配置以新增更多模型。</p>
+              </div>
+              <label class="auto-reconnect-toggle" title="模型调用失败时自动重连或切换其他模型">
+                <input type="checkbox" class="auto-reconnect-checkbox" id="auto-reconnect-switch" checked
+                  autocomplete="off" />
+                <span class="auto-reconnect-box" aria-hidden="true">
+                  <svg class="auto-reconnect-tick" viewBox="0 0 16 16" width="10" height="10" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 8.5 L6.5 12 L13 4.5" />
+                  </svg>
+                </span>
+                <span class="auto-reconnect-label">自动重连切换</span>
+              </label>
+            </div>
+
+            <!-- 白名单模型列表容器 (按选用次序排序) -->
+            <div class="models-list-container" id="whitelist-models-list">
+              <!-- 动态注入模型卡片 -->
+            </div>
+
+            <!-- 通道配置折叠操作栏 -->
+            <div class="channel-toggle-bar" id="channel-toggle-bar">
+              <button type="button" class="flat-btn channel-toggle-btn" id="btn-toggle-official">
+                <span>官方通道配置 - 展开</span>
+                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 6 L8 10 L12 6" />
+                </svg>
+              </button>
+              <button type="button" class="flat-btn channel-toggle-btn" id="btn-toggle-custom">
+                <span>自定义通道配置 - 展开</span>
+                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 6 L8 10 L12 6" />
+                </svg>
+              </button>
+            </div>
+
+            <!-- 折叠通道配置抽屉容器 (默认隐藏) -->
+            <div class="channel-config-drawers" id="channel-config-drawers">
+              <!-- 官方通道配置抽屉 -->
+              <div class="channel-drawer-pane hidden" id="channel-config-official">
+                <div class="drawer-inner-header">
+                  <h4 class="drawer-title">官方通道配置</h4>
+                  <span class="drawer-desc">配置官方通道 API Key（自动写入 ~/.pi/agent/auth.json），并可拉取官方可用模型添加到列表</span>
+                </div>
+
+                <!-- 服务商选择下拉/选择器 -->
+                <div class="settings-group">
+                  <label for="official-provider-select" class="group-label">选择官方服务商</label>
+                  <select id="official-provider-select" class="flat-select">
+                    <option value="anthropic" selected>Anthropic Claude</option>
+                    <option value="openai">OpenAI (ChatGPT / Codex)</option>
+                    <option value="deepseek">DeepSeek</option>
+                    <option value="google">Google Gemini</option>
+                    <option value="opencode-zen">OpenCode Zen</option>
+                    <option value="opencode-go">OpenCode Go</option>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="qwen">通义千问 Qwen</option>
+                    <option value="kimi">月之暗面 Kimi</option>
+                    <option value="minimax">MiniMax</option>
+                    <option value="groq">Groq</option>
+                    <option value="xai">xAI Grok</option>
+                  </select>
+                </div>
+
+                <!-- 服务商配置卡片 -->
+                <div class="provider-config-box" id="official-provider-box">
+                  <div class="provider-header-row">
+                    <div class="provider-meta">
+                      <span class="provider-title" id="official-provider-title">Anthropic Claude</span>
+                      <span class="provider-desc" id="official-provider-desc">Claude 3.7 / 3.5 系列大模型</span>
+                    </div>
+                    <a href="#" target="_blank" rel="noreferrer" class="flat-link" id="official-provider-doc">
+                      <span>获取 API Key</span>
+                      <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor"
+                        stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M6 3.5h6.5V10M12.5 3.5L4 12" />
+                      </svg>
+                    </a>
+                  </div>
+
+                  <!-- API Key 输入框 -->
+                  <div class="form-row">
+                    <label class="form-label" for="official-api-key-input">API Key：</label>
+                    <div class="input-with-action">
+                      <input type="password" id="official-api-key-input" class="flat-input"
+                        placeholder="输入 API Key (如 sk-ant-...)" autocomplete="off" />
+                      <button type="button" class="flat-btn flat-btn-secondary" id="btn-toggle-key-visibility"
+                        title="显示/隐藏" aria-label="显示/隐藏">
+                        <svg id="icon-key-visibility" viewBox="0 0 16 16" width="13" height="13" fill="none"
+                          stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M1.5 8 C3.5 4.5, 12.5 4.5, 14.5 8 C12.5 11.5, 3.5 11.5, 1.5 8 Z" />
+                          <circle cx="8" cy="8" r="2.2" />
+                        </svg>
+                      </button>
+                      <button type="button" class="flat-btn flat-btn-primary" id="btn-save-official-key">保存 Key</button>
+                    </div>
+                    <span class="key-status-text" id="official-key-status">状态：未配置</span>
+                  </div>
+                </div>
+
+                <!-- 官方可用模型罗列 -->
+                <div class="official-models-section">
+                  <div class="section-sub-header"
+                    style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                    <div class="section-title-wrap">
+                      <h4 class="sub-title">官方可用模型列表</h4>
+                      <span class="sub-hint">点击可一键添加至“当前模型列表”</span>
+                    </div>
+                    <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-fetch-official-models"
+                      style="display: inline-flex; align-items: center; gap: 4px;">
+                      <svg id="icon-fetch-official-models" viewBox="0 0 16 16" width="12" height="12" fill="none"
+                        stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"
+                        aria-hidden="true">
+                        <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c2.3 0 4.3 1.4 5.1 3.5M13.5 2.5v3.5H10" />
+                      </svg>
+                      <span id="btn-fetch-official-models-text">从官网拉取最新模型</span>
+                    </button>
+                  </div>
+                  <div class="official-models-grid" id="official-models-grid">
+                    <!-- 动态罗列官方模型 -->
+                  </div>
+                </div>
+              </div>
+
+              <!-- 自定义通道配置抽屉 -->
+              <div class="channel-drawer-pane hidden" id="channel-config-custom">
+                <div class="drawer-inner-header">
+                  <h4 class="drawer-title">自定义通道配置</h4>
+                  <span class="drawer-desc">先在「步骤 1」新增运营商，再切换至「步骤 2」在运营商内新增模型（自动写入 ~/.pi/agent/models.json）</span>
+                </div>
+
+                <!-- 内层顶部 Tab 导航 -->
+                <nav class="inner-tabs-nav" aria-label="自定义通道配置步骤">
+                  <button type="button" class="inner-tab-btn active" data-inner-tab="inner-step1">
+                    <span class="step-badge">步骤 1</span>
+                    新增 / 配置运营商
+                  </button>
+                  <button type="button" class="inner-tab-btn" data-inner-tab="inner-step2">
+                    <span class="step-badge">步骤 2</span>
+                    运营商列表与模型管理
+                  </button>
+                </nav>
+
+                <!-- 内层步骤1：新增或配置自定义运营商 -->
+                <div class="inner-tab-pane active" id="inner-step1">
+                  <form class="custom-provider-form" id="custom-provider-form">
+                    <div class="form-grid-2">
+                      <div class="form-field">
+                        <label for="custom-provider-id" class="form-label">运营商标识 (Provider ID) <span
+                            class="req">*</span></label>
+                        <input type="text" id="custom-provider-id" class="flat-input"
+                          placeholder="如 siliconflow, ollama, oneapi, volcengine" autocomplete="off" autocorrect="off"
+                          autocapitalize="off" spellcheck="false" required />
+                      </div>
+                      <div class="form-field">
+                        <label for="custom-api-type" class="form-label">接口类型 (API Protocol) <span
+                            class="req">*</span></label>
+                        <select id="custom-api-type" class="flat-select" required>
+                          <option value="openai-completions" selected>openai-completions</option>
+                          <option value="openai-responses">openai-responses</option>
+                          <option value="anthropic">anthropic</option>
+                          <option value="ollama">ollama</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div class="form-field">
+                      <label for="custom-base-url" class="form-label">接口地址 (Base URL) <span class="req">*</span></label>
+                      <input type="url" id="custom-base-url" class="flat-input"
+                        placeholder="如 https://api.siliconflow.cn/v1 或 http://localhost:11434/v1" autocomplete="off"
+                        autocorrect="off" autocapitalize="off" spellcheck="false" required />
+                    </div>
+
+                    <div class="form-field">
+                      <label for="custom-api-key" class="form-label">API Key (可选 / 支持 $ENV_VAR 环境变量插值)</label>
+                      <input type="password" id="custom-api-key" class="flat-input"
+                        placeholder="sk-... (Ollama 可留空或填 ollama)" autocomplete="off" autocorrect="off"
+                        autocapitalize="off" spellcheck="false" />
+                    </div>
+
+                    <div class="form-grid-2" style="margin-top: 2px;">
+                      <div class="form-field checkbox-field">
+                        <label class="checkbox-label"
+                          title="开启后以 developer role 发送系统提示词。国内/聚合平台如 DeepSeek、火山方舟等请勿勾选，否则会导致 400 invalid developer role 错误。">
+                          <input type="checkbox" id="custom-supports-dev-role" />
+                          <span>启用 developer 角色 (兼容端点请勿勾)</span>
+                        </label>
+                      </div>
+                      <div class="form-field checkbox-field">
+                        <label class="checkbox-label" title="是否支持 reasoning_effort 思考参数">
+                          <input type="checkbox" id="custom-supports-reasoning-effort" />
+                          <span>支持 reasoning_effort 思考参数</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div class="form-actions">
+                      <button type="submit" class="flat-btn flat-btn-primary" id="btn-save-custom-provider">+
+                        保存/更新运营商</button>
+                    </div>
+                  </form>
+                </div>
+
+                <!-- 内层步骤2：运营商列表与模型管理 -->
+                <div class="inner-tab-pane" id="inner-step2">
+                  <p class="form-hint" style="margin-bottom: 12px;">在下方已配置的运营商卡片中修改配置、新增模型、查看或删除模型配置。</p>
+                  <div class="custom-providers-container" id="custom-providers-container">
+                    <!-- 动态罗列已配置的运营商与模型卡片 -->
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. 内核面板 (Kernel & Package Catalog) -->
+          <div class="tab-pane" id="pane-packages">
+            <div class="pane-header">
+              <h3 class="pane-title">内核</h3>
+              <p class="pane-desc">查看底层 Pi 内核生命周期与软件版本，管理已挂载扩展并连通官方组件市场。</p>
+            </div>
+
+            <!-- 内核与版本卡片 (顶部展示) -->
+            <div class="host-kernel-section">
+              <div class="status-card">
+                <div class="status-card-row">
+                  <div class="status-indicator-wrap">
+                    <span class="kernel-label">pi内核</span>
+                    <span class="status-dot status-stopped" id="host-status-dot"></span>
+                    <span class="status-text" id="host-status-text">未检测到内核</span>
+                    <span class="version-chip" id="host-version-text">未安装</span>
+                  </div>
+                  <div class="status-actions">
+                    <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-restart-host" disabled title="未检测到pi内核，无法重启">
+                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+                        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M2.5 8a5.5 5.5 0 0 1 9.39-3.89L13.5 5.5" />
+                        <path d="M13.5 2v3.5H10" />
+                        <path d="M13.5 8a5.5 5.5 0 0 1-9.39 3.89L2.5 10.5" />
+                        <path d="M2.5 14v-3.5H6" />
+                      </svg>
+                      重启内核
+                    </button>
+                    <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-check-update">
+                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+                        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M8 2v9M4 7l4 4 4-4M2 14h12" />
+                      </svg>
+                      检查更新
+                    </button>
+                  </div>
+                </div>
+                <div class="update-notice hidden" id="update-notice">
+                  <div class="update-notice-main">
+                    <span class="update-icon" aria-hidden="true">
+                      <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" stroke="none">
+                        <path
+                          d="M8 1.2 C8 4.8, 8.5 7.5, 14.8 8 C8.5 8.5, 8 11.2, 8 14.8 C8 11.2, 7.5 8.5, 1.2 8 C7.5 7.5, 8 4.8, 8 1.2 Z" />
+                      </svg>
+                    </span>
+                    <span class="update-msg" id="update-msg">发现新版本！</span>
+                  </div>
+                  <div class="update-notice-actions hidden" id="update-notice-actions">
+                    <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-toggle-changelog"
+                      title="查看新版本特性与更新日志">
+                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+                        stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 3h10v10H3z" />
+                        <path d="M6 6h4M6 9h4M6 12h2" />
+                      </svg>
+                      更新日志
+                    </button>
+                    <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-ignore-update"
+                      title="不再提醒更新">
+                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+                        stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 4L4 12M4 4l8 8" />
+                      </svg>
+                      不再提醒更新
+                    </button>
+                    <button type="button" class="flat-btn flat-btn-primary mini" id="btn-update-kernel">
+                      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+                        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M8 2v8M4 6l4 4 4-4M2 13h12" />
+                      </svg>
+                      一键更新内核
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 内核更新多阶段进度条 -->
+                <div class="kernel-update-progress-wrap hidden" id="kernel-update-progress-wrap">
+                  <div class="kernel-update-progress-header">
+                    <span class="progress-stage-text" id="kernel-progress-stage">正在准备下载内核...</span>
+                    <div class="progress-header-right">
+                      <span class="progress-percent-text" id="kernel-progress-percent">0%</span>
+                      <button type="button" class="flat-btn flat-btn-secondary mini btn-cancel-update"
+                        id="btn-cancel-update" title="取消内核更新">
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                  <div class="sketch-progress-bar">
+                    <div class="sketch-progress-fill" id="kernel-progress-fill" style="width: 0%;"></div>
+                  </div>
+                  <div class="kernel-progress-sub-msg" id="kernel-progress-sub-msg">正在连接 GitHub Releases...</div>
+                </div>
+
+                <!-- 版本更新日志折叠抽屉 -->
+                <div class="kernel-changelog-drawer hidden" id="kernel-changelog-drawer">
+                  <div class="changelog-drawer-header">
+                    <span class="changelog-title">版本更新日志 (<span id="changelog-version-tag">最新</span>)</span>
+                    <button type="button" class="drawer-close-btn" id="btn-close-changelog" title="收起更新日志"
+                      aria-label="关闭更新日志">
+                      <svg viewBox="0 0 14 14" width="10" height="10" fill="none" stroke="currentColor"
+                        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 3l8 8M11 3l-8 8" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="changelog-content" id="kernel-changelog-content">
+                    暂无更新日志
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 内核组件区域 (仅在检测到内核时显示) -->
+            <div class="kernel-packages-area hidden" id="kernel-packages-area">
+              <!-- 已安装组件区域 (Collapsible Panel) -->
+              <div class="installed-packages-wrapper" id="installed-packages-wrapper">
+              <div class="installed-section-header" id="installed-section-toggle" role="button" tabindex="0"
+                aria-expanded="true">
+                <div class="installed-header-title">
+                  <svg class="fold-arrow" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 6 L8 10 L12 6" />
+                  </svg>
+                  <span>已安装组件 (<span id="installed-packages-count">0</span>)</span>
+                </div>
+                <div class="installed-header-actions">
+                  <button type="button" class="flat-btn flat-btn-secondary mini hidden"
+                    id="btn-install-recommended-packages" title="一键队列安装推荐扩展组件">
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" stroke="none">
+                      <path
+                        d="M8 1.2 C8 4.8, 8.5 7.5, 14.8 8 C8.5 8.5, 8 11.2, 8 14.8 C8 11.2, 7.5 8.5, 1.2 8 C7.5 7.5, 8 4.8, 8 1.2 Z" />
+                    </svg>
+                    安装推荐插件
+                  </button>
+                  <button type="button" class="flat-btn flat-btn-primary mini hidden" id="btn-update-all-packages"
+                    title="一键更新所有有可用更新的组件">
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M8 2v9M4 7l4 4 4-4M2 14h12" />
+                    </svg>
+                    一键全部更新
+                  </button>
+                  <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-check-all-package-updates"
+                    title="检查已安装组件更新">
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M1 4v4h4M15 12v-4h-4M14 4A7 7 0 0 0 3.5 5.5L1 8M15 8l-2.5 2.5A7 7 0 0 1 2 12" />
+                    </svg>
+                    检查组件更新
+                  </button>
+                </div>
+              </div>
+              <div class="installed-packages-body" id="installed-packages-body">
+                <div class="installed-packages-list" id="installed-packages-list">
+                  <div class="packages-empty-hint">暂未安装任何扩展组件</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 市场搜索与筛选栏 -->
+            <div class="packages-filter-bar">
+              <div class="search-input-group">
+                <div class="filter-search-input-wrap">
+                  <svg class="search-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="7" cy="7" r="4.5" />
+                    <line x1="10.5" y1="10.5" x2="14" y2="14" />
+                  </svg>
+                  <input type="text" id="packages-search-input" class="flat-input" placeholder="搜索组件名称、描述或作者..."
+                    autocomplete="off" />
+                  <button type="button" class="btn-clear-search hidden" id="btn-clear-package-search" title="清空搜索"
+                    aria-label="清空搜索">
+                    <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round">
+                      <line x1="3.5" y1="3.5" x2="12.5" y2="12.5" />
+                      <line x1="12.5" y1="3.5" x2="3.5" y2="12.5" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div class="filter-dropdowns-group">
+                <div class="filter-select-shell">
+                  <select id="packages-type-select" class="flat-select" aria-label="按类型筛选">
+                    <option value="" selected>全部类型 (All types)</option>
+                    <option value="extension">扩展 (extension)</option>
+                    <option value="skill">技能 (skill)</option>
+                    <option value="theme">主题 (theme)</option>
+                    <option value="prompt">提示词 (prompt)</option>
+                  </select>
+                </div>
+                <div class="filter-select-shell">
+                  <select id="packages-sort-select" class="flat-select" aria-label="排序方式">
+                    <option value="downloads" selected>按热度下载量 (Most downloads)</option>
+                    <option value="recent">最近发布更新 (Recently published)</option>
+                    <option value="name">名称排序 (A-Z)</option>
+                  </select>
+                </div>
+                <button type="button" class="flat-btn flat-btn-primary" id="btn-search-packages">
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="7" cy="7" r="4.5" />
+                    <line x1="10.5" y1="10.5" x2="14" y2="14" />
+                  </svg>
+                  搜索
+                </button>
+              </div>
+            </div>
+
+            <!-- 市场目录卡片网格与状态指示 -->
+            <div class="packages-catalog-section">
+              <div class="packages-summary-row">
+                <span class="packages-total-info" id="packages-total-info">正在加载官方组件目录...</span>
+                <span class="packages-catalog-source">数据源：<a href="https://pi.dev/packages" target="_blank"
+                    rel="noreferrer" class="flat-link">pi.dev/packages</a></span>
+              </div>
+
+              <div class="packages-catalog-grid" id="packages-catalog-grid">
+                <!-- 动态渲染组件卡片 -->
+              </div>
+
+              <!-- 分页器 -->
+              <div class="packages-pagination hidden" id="packages-pagination">
+                <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-packages-prev-page" disabled>
+                  上一页
+                </button>
+                <span class="pagination-page-indicator" id="packages-page-indicator">第 1 / 1 页</span>
+                <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-packages-next-page" disabled>
+                  下一页
+                </button>
+              </div>
+            </div>
+
+            <!-- 扩展安装/更新/卸载实时手绘进度浮动卡片 -->
+            <div class="package-progress-float-card hidden" id="package-progress-float-card" role="status"
+              aria-live="polite">
+              <div class="package-progress-card-inner">
+                <div class="package-progress-header">
+                  <div class="package-progress-title-wrap">
+                    <span class="package-progress-spinner thinking-dot"></span>
+                    <span class="package-progress-title" id="package-progress-title">正在安装</span>
+                    <span class="package-progress-pkg-name" id="package-progress-pkg-name"></span>
+                    <span class="package-queue-badge hidden" id="package-queue-badge">队列待执行: 0</span>
+                  </div>
+                  <div class="package-progress-header-right">
+                    <span class="package-progress-percent" id="package-progress-percent">0%</span>
+                    <button type="button" class="package-progress-close-btn" id="btn-close-package-progress"
+                      aria-label="关闭提示">
+                      <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor"
+                        stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="4" y1="4" x2="12" y2="12" />
+                        <line x1="12" y1="4" x2="4" y2="12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="sketch-progress-track">
+                  <div class="sketch-progress-fill" id="package-progress-fill" style="width: 0%;"></div>
+                </div>
+                <div class="package-progress-message" id="package-progress-message">正在初始化环境...</div>
+              </div>
+            </div>
+            </div>
+          </div>
+
+          <!-- 6. 会话历史面板 -->
+          <div class="tab-pane" id="pane-sessions">
+            <div class="pane-header-row">
+              <div>
+                <h3 class="pane-title">会话记录 (<span id="session-count">0</span>)</h3>
+                <p class="pane-desc">浏览、搜索本地 Pi 内核会话并进入 Flow 查看完整历史轮次。</p>
+              </div>
+              <button type="button" class="flat-btn flat-btn-primary mini" id="btn-clear-ui-sessions">清空界面会话</button>
+            </div>
+            <div class="sessions-toolbar">
+              <div class="sessions-search-box">
+                <span class="sessions-search-icon" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
+                    <circle cx="7" cy="7" r="4.5" />
+                    <line x1="10.5" y1="10.5" x2="14" y2="14" />
+                  </svg>
+                </span>
+                <input type="text" id="sessions-search-input" placeholder="搜索会话内容 / ID / 工作区" autocomplete="off" spellcheck="false" />
+              </div>
+              <select class="flat-select" id="sessions-time-filter" aria-label="按时间筛选会话">
+                <option value="all">全部时间</option>
+                <option value="24h">最近24小时</option>
+                <option value="7d">最近7天</option>
+                <option value="30d">最近30天</option>
+              </select>
+            </div>
+            <div class="sessions-list" id="sessions-list">
+              <div class="empty-sessions">暂无历史会话</div>
+            </div>
+          </div>
+
+          <!-- 7. 工作区面板 -->
+          <div class="tab-pane" id="pane-workspaces">
+            <div class="pane-header">
+              <h3 class="pane-title">工作区</h3>
+              <p class="pane-desc">选择 Pi Agent 的运行工作区。每个预设携带独立运行时约束与产物隔离空间，切换对新会话生效。</p>
+            </div>
+
+            <!-- 当前工作区卡片 -->
+            <div class="workspace-current-card">
+              <div class="workspace-current-title-row">
+                <span class="workspace-current-label">当前工作区</span>
+                <span class="flat-badge flat-badge-active" id="workspace-active-badge">default-area</span>
+              </div>
+              <div class="workspace-current-name" id="workspace-active-name">默认工作区</div>
+              <div class="workspace-current-path" id="workspace-active-path" title=""></div>
+            </div>
+
+            <!-- code-area 专享路由工作区配置区 (仅当前工作区为 code-area 时展示) -->
+            <div class="code-area-route-card hidden" id="code-area-route-card">
+              <div class="code-area-route-header">
+                <div class="code-area-route-title-group">
+                  <span class="code-area-route-icon" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="4" cy="4" r="2" />
+                      <circle cx="12" cy="4" r="2" />
+                      <circle cx="12" cy="12" r="2" />
+                      <path d="M4 6 v6 a2 2 0 0 0 2 2 h4" />
+                      <path d="M6 4 h4" />
+                    </svg>
+                  </span>
+                  <span class="code-area-route-title">路由目标项目 (必选)</span>
+                </div>
+                <span class="code-area-route-status-badge" id="code-area-route-status">未绑定</span>
+              </div>
+              <p class="code-area-route-desc">code-area 作为全局编码技能调度中枢，不修改自身目录，所有代码读写与执行指令将精准路由至下方目标项目。</p>
+
+              <div class="code-area-route-input-row">
+                <input type="text" class="flat-input code-area-route-input" id="code-area-route-input"
+                  placeholder="请选择或输入目标项目根目录绝对路径..." autocomplete="off" spellcheck="false" />
+                <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-browse-route-folder" title="选择本地文件夹">
+                  <span>浏览目录</span>
+                  <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.3"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M1.5 3.5 A1 1 0 0 1 2.5 2.5 H6 L7.5 4.5 H13.5 A1 1 0 0 1 14.5 5.5 V12.5 A1 1 0 0 1 13.5 13.5 H2.5 A1 1 0 0 1 1.5 12.5 Z" />
+                  </svg>
+                </button>
+                <button type="button" class="flat-btn flat-btn-primary mini" id="btn-save-route-path">
+                  <span>保存绑定</span>
+                </button>
+              </div>
+
+              <!-- 历史路由项目快速切换 -->
+              <div class="code-area-history-section" id="code-area-history-section">
+                <span class="code-area-history-label">最近使用项目：</span>
+                <div class="code-area-history-list" id="code-area-history-list"></div>
+              </div>
+
+              <!-- 内置编码技能集清单 -->
+              <div class="code-area-skills-section" id="code-area-skills-section">
+                <div class="code-area-skills-header">
+                  <span class="code-area-skills-label">内置编码技能集 (调度中枢)：</span>
+                  <span class="code-area-skills-count" id="code-area-skills-count">3 个技能</span>
+                </div>
+                <div class="code-area-skills-list" id="code-area-skills-list"></div>
+              </div>
+            </div>
+
+            <!-- 预设工作区列表 -->
+            <div class="settings-group">
+              <label class="group-label">预设工作区</label>
+              <div class="workspaces-list" id="workspace-list">
+                <div class="empty-workspaces">正在加载工作区...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 全局手绘微提示条 (如：已转入后台运行 / 任务上限提醒) -->
+  <div class="global-toast-banner hidden" id="global-toast-banner" role="status" aria-live="polite">
+    <span class="toast-icon" id="global-toast-icon" aria-hidden="true">
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+        stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8" cy="8" r="6" />
+        <line x1="8" y1="5" x2="8" y2="9" />
+        <circle cx="8" cy="11.5" r="0.5" fill="currentColor" />
+      </svg>
+    </span>
+    <span class="toast-message" id="global-toast-text">已转入后台运行 (Task #1)</span>
+  </div>
+
+  <!-- 半透明毛玻璃手绘侧边栏抽屉 (Task Details Sidebar) -->
+  <aside class="task-details-sidebar" id="task-details-sidebar" aria-label="后台对话任务抽屉">
+    <div class="task-sidebar-header">
+      <div class="sidebar-title-group">
+        <h3 class="sidebar-title">后台对话任务</h3>
+        <span class="sidebar-summary" id="task-sidebar-summary">已完成 0 / 共 0 个</span>
+      </div>
+      <button type="button" class="sidebar-close-btn" id="btn-close-task-sidebar" aria-label="关闭侧边栏"
+        title="收起 (Esc / 右键)">
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"
+          stroke-linecap="round">
+          <line x1="3.5" y1="3.5" x2="12.5" y2="12.5" />
+          <line x1="12.5" y1="3.5" x2="3.5" y2="12.5" />
+        </svg>
+      </button>
+    </div>
+    <div class="task-sidebar-body" id="task-sidebar-list">
+      <div class="empty-tasks-placeholder" id="empty-tasks-placeholder">暂无后台任务</div>
+    </div>
+  </aside>
+
+  <script type="module" src="./main.js"></script>
+</body>
+
+</html>

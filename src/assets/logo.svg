@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 手绘顶部横梁微弯曲笔触 -->
+  <path d="M8 15.5 C14 14.2, 34 14.8, 40 15" />
+  <!-- 左侧自然下垂竖画 -->
+  <path d="M17.5 15 C17 22, 16 29, 14 34.5 C13 37, 10.5 37.5, 9.5 36" />
+  <!-- 右侧带微小向右勾笔的竖画 -->
+  <path d="M30.5 15 C31 23, 31.5 30, 33 34 C34 36.5, 36.5 36.8, 39 35.5" />
+  <!-- 灵感小草图星标/火花 (+) -->
+  <path d="M38 7 L38.5 10 L41.5 10.5 L38.5 11 L38 14 L37.5 11 L34.5 10.5 L37.5 10 Z" stroke-width="1.2" />
+</svg>

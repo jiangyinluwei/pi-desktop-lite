@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 手绘自然弧度灯泡轮廓与灯丝 -->
+  <path d="M8 2 C5.5 2, 3.8 3.8, 4 6.2 C4.2 7.8, 5.5 9.2, 6 10.5 L10 10.5 C10.5 9.2, 11.8 7.8, 12 6.2 C12.2 3.8, 10.5 2, 8 2 Z" />
+  <path d="M6 12.5 L10 12.5" />
+  <path d="M7 14.5 L9 14.5" />
+</svg>
