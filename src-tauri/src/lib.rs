@@ -42,6 +42,44 @@ async fn pi_open_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+// 在系统文件管理器（Windows 资源管理器）中定位文件或直接打开文件夹
+#[tauri::command]
+async fn pi_reveal_path(path: String) -> Result<(), String> {
+    let p = std::path::PathBuf::from(&path);
+    if p.exists() {
+        if p.is_dir() {
+            return app_dir_open(p);
+        }
+        // 文件：优先在所在文件夹中高亮定位；失败则退化为直接打开所在文件夹
+        return match tauri_plugin_opener::reveal_item_in_dir(&path) {
+            Ok(_) => Ok(()),
+            Err(_) => match p.parent() {
+                Some(parent) => app_dir_open(parent.to_path_buf()),
+                None => Err("无法定位文件所在文件夹".to_string()),
+            },
+        };
+    }
+    // 路径已不存在（如已被删除的文件）：退化为打开其原所在文件夹
+    match p.parent() {
+        Some(parent) if parent.exists() => app_dir_open(parent.to_path_buf()),
+        _ => Err(format!("路径不存在: {}", path)),
+    }
+}
+
+fn app_dir_open(p: std::path::PathBuf) -> Result<(), String> {
+    std::process::Command::new("explorer")
+        .arg(p.as_os_str())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// 极速判断路径是否真实存在（用于区分文件「新增」与「修改」）
+#[tauri::command]
+async fn pi_path_exists(path: String) -> Result<bool, String> {
+    Ok(std::path::Path::new(&path).exists())
+}
+
 // ==========================================================================
 // 窗口控制指令
 // ==========================================================================
@@ -916,6 +954,8 @@ pub fn run() {
             pi_read_file_text_preview,
             pi_prepare_image_payload,
             pi_save_markdown_to_desktop,
+            pi_reveal_path,
+            pi_path_exists,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

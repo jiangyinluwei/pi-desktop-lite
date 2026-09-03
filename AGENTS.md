@@ -160,7 +160,7 @@
 
 - **`src/main.js`**：唯一编排入口。负责收集 DOM 引用（`ctx.el`）、构建共享上下文（`ctx.*`）并按依赖顺序初始化各模块；
 - **`src/lib/`**：跨模块共享基础件（`dom-utils.js` 文本转义、`icons.js` 手绘 SVG 图元、`markdown-renderer.js` Markdown 渲染引擎、`view-constants.js` 四态常量）；
-- **`src/modules/`**：按功能域拆分的 UI 业务模块（`view-mode.js`、`settings-navigation.js`、`model-panel.js`、`custom-provider-panel.js`、`kernel-panel.js`、`flow-ui.js`、`flow-stream.js`、`flow-pipeline.js`、`task-panel.js`、`packages-panel.js`、`workspace-panel.js`、`sessions-panel.js`、`global-interactions.js` 等）。跨模块调用一律通过 `ctx.api.<fn>()`，共享状态收敛至 `ctx.*`；
+- **`src/modules/`**：按功能域拆分的 UI 业务模块（`view-mode.js`、`settings-navigation.js`、`model-panel.js`、`custom-provider-panel.js`、`kernel-panel.js`、`flow-ui.js`、`flow-stream.js`、`flow-pipeline.js`、`flow-file-changes.js`、`task-panel.js`、`packages-panel.js`、`workspace-panel.js`、`sessions-panel.js`、`global-interactions.js` 等）。跨模块调用一律通过 `ctx.api.<fn>()`，共享状态收敛至 `ctx.*`；
 - **`src/styles/`**：按功能域拆分的样式文件（`tokens.css`、`base.css`、`layout.css`、`flow.css`、`markdown.css`、`settings.css`、`packages.css`、`overlays.css` 等），`src/styles.css` 仅为 `@import` 聚合入口；
 - **`src/services/`**：与 UI 解耦的前端服务层（IPC 桥接、配置、流式客户端、任务/会话/工作区等），**严禁**在 service 中直接操作 UI DOM。
 

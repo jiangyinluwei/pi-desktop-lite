@@ -54,6 +54,9 @@ export function initFlowStream(ctx) {
       if (typeof api.resetInjectionNotice === "function") {
         api.resetInjectionNotice();
       }
+      if (typeof api.resetFileChanges === "function") {
+        api.resetFileChanges();
+      }
     } else {
       // 同工作流多轮对话 -> 固化上一轮（收起思考与工具卡片，移除上一轮光标）
       if (flow.activeTurnRefs) {

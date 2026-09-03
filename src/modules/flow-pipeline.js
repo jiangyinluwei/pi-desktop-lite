@@ -526,6 +526,10 @@ export function initFlowPipeline(ctx) {
     api.collapseAllToolCards();
     api.finalizeStream();
     api.archiveCurrentFlowToHistory();
+    // 会话完成后展示「文件变更」收纳框（新增/修改的文件，点击可打开所在文件夹）
+    if (typeof api.showFileChangesBox === "function") {
+      api.showFileChangesBox();
+    }
   });
 
   /**

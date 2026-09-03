@@ -434,10 +434,18 @@ class PiClient extends EventTarget {
         this.dispatchEvent(new CustomEvent("tool-update", { detail: data }));
         break;
 
-      case "tool_execution_end":
+      case "tool_execution_end": {
+        // 内核 end 事件不携带 args（仅 toolCallId/toolName/result/isError），
+        // 合并 start 时缓存的入参后再派发，供文件变更收集等下游消费者读取
+        const startInfo = this.activeTools.get(data.toolCallId);
         this.activeTools.delete(data.toolCallId);
-        this.dispatchEvent(new CustomEvent("tool-end", { detail: data }));
+        this.dispatchEvent(
+          new CustomEvent("tool-end", {
+            detail: startInfo ? { ...startInfo, ...data } : data,
+          })
+        );
         break;
+      }
 
       case "bash_execution_update":
         this.dispatchEvent(new CustomEvent("bash-update", { detail: data }));

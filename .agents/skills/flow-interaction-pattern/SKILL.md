@@ -1,7 +1,7 @@
 ---
 name: flow-interaction-pattern
 description: |
-  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/阶段性输出 Point 切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-Point1-工具1-Point2-工具2...」真实因果链条一段一段拼接；③Flow 界面任意区域滚轮事件委托至最外层滚动容器；④多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑤多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑥模型自动重连切换自愈流水线 (ModelFailoverEngine)；⑦输出卡底部手绘风格的保存操作栏。当用户提出"flow界面交互"、"思维链流式展示"、"阶段性输出"、"Point卡"、"工具调用简略"、"单行思维"、"步骤切片"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"时使用此技能。
+  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/阶段性输出 Point 切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-Point1-工具1-Point2-工具2...」真实因果链条一段一段拼接；③Flow 界面任意区域滚轮事件委托至最外层滚动容器；④多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑤多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑥模型自动重连切换自愈流水线 (ModelFailoverEngine)；⑦输出卡底部手绘风格的保存操作栏；⑧会话完成后「文件变更」收纳框（flow-file-changes，收集新增/修改/删除的文件、点击条目在资源管理器中定位其所在文件夹）。当用户提出"flow界面交互"、"思维链流式展示"、"阶段性输出"、"Point卡"、"工具调用简略"、"单行思维"、"步骤切片"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"、"文件变更"、"修改了哪些文件"时使用此技能。
 ---
 
 # Flow 交互界面规范 (Flow Interaction Pattern)
@@ -144,3 +144,18 @@ flowchart TD
 
 - **Rust 后端原生净化**：`strip_injected_contexts` 与 `clean_user_prompt` 递归剥离 `<runtime_context_rules>`、`<code_area_routing_context>` 与附件绝对路径尾注；
 - **前端纵深防御**：历史列表与提问卡 100% 还原用户原始纯净输入。
+
+---
+
+## 📌 9. 会话文件变更收纳框 (flow-file-changes)
+
+模型执行文件写入/编辑/删除类工具后，会话完成时在会话流末尾以独立直角框体汇总呈现「新增 / 修改 / 删除」的文件清单：
+
+- **触发工具集合**：写入类 `write / write_file / write_to_file / create_file / save_file`；编辑类 `edit / edit_file / replace_file_content / multi_replace_file_content / apply_patch / apply_diff / str_replace_editor / insert_content`；删除类 `delete_file / remove_file / unlink` 等；Shell 类 `bash / powershell / cmd` 等（定义于 `src/modules/flow-file-changes.js`）；
+- **新增/修改判定**：`tool-start` 时对写入类工具经 Rust `pi_path_exists` 异步探测路径写入前是否存在（工具成功 + 写前不存在 → 新增；其余 → 修改；探测失败按修改兑底）；
+- **收集与去重**：`tool-end` 仅收集执行成功的工具调用（`isError` 跳过），路径从工具入参提取（兼容 JSON 字符串与 `edits/files/changes` 多文件入参结构），按规范化路径去重保留最新动作；
+- **后台过滤铁律**：全程经 `taskManager.isForegroundStreamTask(piClient.lastEventTaskId)` 门禁，后台挂起任务的文件变更绝不进入前台收纳框；
+- **删除识别与去伪**：显式删除类工具执行成功即记为「删除」；Shell 类工具启发式解析命令文本中 `rm / del / Remove-Item` 目标路径，并在命令执行成功后经 `pi_path_exists` 复核（路径确实消失才记为删除，杜绝误报）；删除为终态，同一文件多动作合并时永远胜出；
+- **展示时机**：`agent-end` 正常收尾后经 `api.showFileChangesBox()` 渲染于会话流末尾（跨轮置底累积，可折叠）；全新会话由 `api.resetFileChanges()` 清态（`flow-stream.js` resetStreamState 非 followUp 分支调用）；
+- **打开所在文件夹**：点击条目经 Rust `pi_reveal_path` 在 Windows 资源管理器中高亮定位该文件（`tauri_plugin_opener::reveal_item_in_dir`，失败/目录/路径已不存在时回退 explorer 打开所在文件夹），并弹出全局 Toast 反馈；
+- **样式**：复用「注入提示」直角简洁框语汇（`.flow-file-changes`，`src/styles/flow.css`），新增绿/修改珀/删除红徽章双模主题自适应，条目常态透明、悬浮显微框与文件夹图标。

@@ -417,6 +417,181 @@
   color: var(--ink-primary);
 }
 
+/* 会话流「文件变更」收纳框：会话完成后收集于会话流末尾，
+   集中展示本轮会话被模型「新增 / 修改」的文件；直角简洁风，
+   点击条目在系统文件管理器中打开其所在文件夹（高亮定位该文件） */
+.flow-file-changes {
+  align-self: stretch;
+  box-sizing: border-box;
+  margin: -4px 0 0 2px;
+  padding: 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: inherit;
+  color: var(--ink-muted);
+  background: var(--sketch-tag-bg);
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 4px;
+  animation: sketchCapsuleFadeIn 0.25s ease-out;
+}
+
+.flow-file-changes .file-changes-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 0;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.flow-file-changes .file-changes-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.18s ease-out;
+}
+
+.flow-file-changes .file-changes-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ink-muted);
+}
+
+.flow-file-changes .file-changes-title {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-primary);
+}
+
+.flow-file-changes .file-changes-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-muted);
+  opacity: 0.8;
+}
+
+/* 收起态：折叠隐藏文件清单列表（保留标题与数量） */
+.flow-file-changes.collapsed .file-changes-list {
+  display: none;
+}
+
+.flow-file-changes .file-changes-list {
+  margin: 0;
+  padding: 2px 0 8px;
+  list-style: none;
+  border-top: 1px solid var(--sketch-border-subtle);
+}
+
+.flow-file-changes .file-change-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 4px;
+  margin: 1px -4px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  word-break: break-all;
+}
+
+/* 按钮铁律：常态透明无边框，悬浮/聚焦才显手绘微框，杜绝布局抖动 */
+.flow-file-changes .file-change-item:hover,
+.flow-file-changes .file-change-item:focus-visible {
+  background: var(--sketch-tag-hover-bg);
+  border-color: var(--sketch-border-subtle);
+  outline: none;
+}
+
+.flow-file-changes .file-change-item .file-change-kind {
+  flex-shrink: 0;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  opacity: 0.85;
+}
+
+.flow-file-changes .file-change-item .kind-add {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.08);
+  color: #059669;
+}
+
+.flow-file-changes .file-change-item .kind-modify {
+  border-color: rgba(180, 83, 9, 0.45);
+  background: rgba(180, 83, 9, 0.08);
+  color: #b45309;
+}
+
+.flow-file-changes .file-change-item .kind-delete {
+  border-color: rgba(220, 38, 38, 0.45);
+  background: rgba(220, 38, 38, 0.08);
+  color: #dc2626;
+}
+
+:root[data-theme="dark"] .flow-file-changes .file-change-item .kind-add {
+  color: #34d399;
+}
+
+:root[data-theme="dark"] .flow-file-changes .file-change-item .kind-modify {
+  color: #fbbf24;
+}
+
+:root[data-theme="dark"] .flow-file-changes .file-change-item .kind-delete {
+  color: #f87171;
+}
+
+.flow-file-changes .file-change-item .file-change-name {
+  flex-shrink: 0;
+  font-weight: 500;
+  color: var(--ink-primary);
+}
+
+.flow-file-changes .file-change-item .file-change-dir {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--ink-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
+.flow-file-changes .file-change-item .file-change-folder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--ink-muted);
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+
+.flow-file-changes .file-change-item:hover .file-change-folder,
+.flow-file-changes .file-change-item:focus-visible .file-change-folder {
+  opacity: 0.9;
+}
+
+.flow-file-changes .file-changes-header:hover .file-changes-title,
+.flow-file-changes .file-changes-header:hover .file-changes-count {
+  color: var(--ink-primary);
+}
+
 @keyframes sketchCapsuleFadeIn {
   from {
     opacity: 0;
