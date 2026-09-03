@@ -58,6 +58,7 @@ export function initSearchInput(ctx) {
   };
 
   searchInput.addEventListener("input", () => {
+    promptHistoryNavigator.onUserInput(searchInput.value);
     updateInputState();
     autoResizeSearchInput();
   });
@@ -273,20 +274,31 @@ export function initSearchInput(ctx) {
         searchInput.blur();
       }
     } else if (e.key === "ArrowUp") {
-      const isCaretAtStart = searchInput.selectionStart === 0 && searchInput.selectionEnd === 0;
-      const isEmpty = searchInput.value.length === 0;
-      const isAllSelected = searchInput.selectionStart === 0 && searchInput.selectionEnd === searchInput.value.length;
+      const val = searchInput.value;
+      const start = searchInput.selectionStart;
+      const end = searchInput.selectionEnd;
+      const isMultiLine = val.includes("\n");
+      const isCaretAtFirstLine = !isMultiLine || !val.slice(0, start).includes("\n");
+      const isAllSelected = start === 0 && end === val.length && val.length > 0;
+      const isEmpty = val.length === 0;
 
-      if (isEmpty || isCaretAtStart || isAllSelected || promptHistoryNavigator.isNavigating) {
-        const res = promptHistoryNavigator.getPrevious(searchInput.value);
+      // 单行输入框、首行光标、全选、或已处于翻阅态时触发向上翻阅历史
+      if (isEmpty || !isMultiLine || isCaretAtFirstLine || isAllSelected || promptHistoryNavigator.isNavigating) {
+        const res = promptHistoryNavigator.getPrevious(val);
         if (res.changed) {
           e.preventDefault();
           applyNavigatedValue(res.value);
         }
       }
     } else if (e.key === "ArrowDown") {
-      if (promptHistoryNavigator.isNavigating) {
-        const res = promptHistoryNavigator.getNext(searchInput.value);
+      const val = searchInput.value;
+      const end = searchInput.selectionEnd;
+      const isMultiLine = val.includes("\n");
+      const isCaretAtLastLine = !isMultiLine || !val.slice(end).includes("\n");
+
+      // 处于翻阅态、或在末行向下翻阅历史/恢复草稿
+      if (promptHistoryNavigator.isNavigating || (isCaretAtLastLine && promptHistoryNavigator.hasHistory())) {
+        const res = promptHistoryNavigator.getNext(val);
         if (res.changed) {
           e.preventDefault();
           applyNavigatedValue(res.value);

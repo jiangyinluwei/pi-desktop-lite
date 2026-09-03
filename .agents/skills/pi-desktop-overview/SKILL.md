@@ -81,7 +81,7 @@ description: |
 | **`pi_runner`** | Win32 Job Object 孤儿收割，`\n` 分帧器，内核自动平滑重连（最多 5 次，失败触发闪电提醒） |
 | **`inner_skills`** | 基于 `RULES.md` 极简映射（<100 Tokens）在工具调用时动态 Steer 注入 7 大运行态技能 |
 | **`package_manager`** | 连通 pi.dev/packages，15min TTL 缓存，FIFO 安装队列与 ProgressStepper 步进 |
-| **`session`** | `DashMap` 并发缓存 + `notify` 递归监听 `~/.pi/agent/sessions/`，原生上下文脱敏净化 |
+| **`session`** | `DashMap` 并发缓存 + `notify` 递归监听 `~/.pi/agent/sessions/`，原生上下文脱敏净化，精确毫秒时间戳排序与 LIFO 最新提问去重历史栈 |
 | **`config_manager`** | 双层持久化：`~/.pi-dl/config.json` 与 `~/.pi/agent/` 下的 `auth.json` / `models.json` / `settings.json` |
 
 ---

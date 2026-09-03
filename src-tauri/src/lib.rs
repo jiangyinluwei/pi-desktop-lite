@@ -819,20 +819,31 @@ fn pi_list_sessions(session_cache: State<'_, SessionIndexCache>) -> Result<Vec<S
 #[tauri::command]
 fn pi_get_prompt_history(session_cache: State<'_, SessionIndexCache>) -> Result<Vec<String>, String> {
     let sessions = session_cache.list_all();
-    let mut all_prompts = Vec::new();
-    let mut seen = std::collections::HashSet::new();
+    let mut all_timestamped: Vec<(i64, String)> = Vec::new();
 
-    // 会话列表按修改时间倒序排列，逆序遍历以获得从旧到新的历史提问栈
-    for s in sessions.iter().rev() {
+    for s in &sessions {
         let p = Path::new(&s.file_path);
-        let prompts = crate::session::extract_user_prompts_from_session(p);
-        for prompt in prompts {
-            if !prompt.is_empty() && seen.insert(prompt.clone()) {
-                all_prompts.push(prompt);
-            }
+        let prompts = crate::session::extract_timestamped_prompts_from_session(p);
+        all_timestamped.extend(prompts);
+    }
+
+    // 严格按真实毫秒时间戳从小到大（从旧到新）排序
+    all_timestamped.sort_by_key(|item| item.0);
+
+    // 去重策略：保留最新出现（Keep Most Recent / LIFO）
+    // 从后往前（从最新到最旧）遍历，先记录进 seen 的就是该 prompt 最新一次出现
+    let mut seen = std::collections::HashSet::new();
+    let mut deduped_reversed = Vec::new();
+
+    for (_ts, prompt) in all_timestamped.into_iter().rev() {
+        if seen.insert(prompt.clone()) {
+            deduped_reversed.push(prompt);
         }
     }
-    Ok(all_prompts)
+
+    // 翻转回来，获得从旧到新的全局历史栈（最新发送的位于末尾）
+    deduped_reversed.reverse();
+    Ok(deduped_reversed)
 }
 
 #[tauri::command]

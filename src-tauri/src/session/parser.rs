@@ -415,14 +415,45 @@ fn extract_message_text(content: Option<&Value>) -> String {
     String::new()
 }
 
-/// 从单个 .jsonl 会话文件中提取所有真实用户提问 (role: "user")
-pub fn extract_user_prompts_from_session(path: &Path) -> Vec<String> {
+fn parse_prompt_timestamp(val: &Value, msg_obj: Option<&Value>, fallback_ms: i64) -> i64 {
+    if let Some(msg) = msg_obj {
+        if let Some(ms) = msg.get("timestamp").and_then(|v| v.as_i64()) {
+            return ms;
+        }
+        if let Some(ts_str) = msg.get("timestamp").and_then(|v| v.as_str()) {
+            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts_str) {
+                return dt.timestamp_millis();
+            }
+        }
+    }
+    if let Some(ms) = val.get("timestamp").and_then(|v| v.as_i64()) {
+        return ms;
+    }
+    if let Some(ts_str) = val.get("timestamp").and_then(|v| v.as_str()) {
+        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts_str) {
+            return dt.timestamp_millis();
+        }
+    }
+    fallback_ms
+}
+
+/// 从单个 .jsonl 会话文件中提取带时间戳的用户提问 (timestamp_millis, clean_prompt)
+pub fn extract_timestamped_prompts_from_session(path: &Path) -> Vec<(i64, String)> {
     let file = match File::open(path) {
         Ok(f) => f,
         Err(_) => return Vec::new(),
     };
+    let file_mod_time = file
+        .metadata()
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+
     let reader = BufReader::new(file);
     let mut prompts = Vec::new();
+    let mut last_ts = 0i64;
 
     for (idx, line_res) in reader.lines().enumerate() {
         if idx == 0 {
@@ -446,7 +477,10 @@ pub fn extract_user_prompts_from_session(path: &Path) -> Vec<String> {
                         let raw = extract_message_text(msg_obj.get("content"));
                         let clean = clean_user_prompt(&raw);
                         if !clean.is_empty() {
-                            prompts.push(clean);
+                            let fallback = if last_ts > 0 { last_ts + 1 } else { file_mod_time };
+                            let ts = parse_prompt_timestamp(&val, Some(msg_obj), fallback);
+                            last_ts = ts;
+                            prompts.push((ts, clean));
                         }
                     }
                 }
@@ -454,6 +488,14 @@ pub fn extract_user_prompts_from_session(path: &Path) -> Vec<String> {
         }
     }
     prompts
+}
+
+/// 从单个 .jsonl 会话文件中提取所有真实用户提问 (role: "user")
+pub fn extract_user_prompts_from_session(path: &Path) -> Vec<String> {
+    extract_timestamped_prompts_from_session(path)
+        .into_iter()
+        .map(|(_, text)| text)
+        .collect()
 }
 
 // ==========================================================================
