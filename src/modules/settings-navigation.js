@@ -50,6 +50,9 @@ export function initSettingsNavigation(ctx) {
         if (targetTab === "tab-workspaces") {
           if (typeof api.loadWorkspaces === "function") api.loadWorkspaces();
         }
+        if (targetTab === "tab-sessions") {
+          if (typeof api.loadSessions === "function") api.loadSessions();
+        }
       } else {
         pane.classList.remove("active");
       }

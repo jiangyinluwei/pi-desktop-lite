@@ -1,5 +1,6 @@
 import { escapeHtml, cleanUserPrompt } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
+import { VIEW_SETTINGS } from "../lib/view-constants.js";
 import { sessionService } from "../services/session-service.js";
 import { conversationHistoryService } from "../services/conversation-history.js";
 import { taskManager } from "../services/task-manager.js";
@@ -367,14 +368,33 @@ export function initSessionsPanel(ctx) {
     });
   };
 
-  const loadSessions = async () => {
-    const list = await sessionService.listSessions();
-    allSessions = Array.isArray(list) ? list : [];
+  const isSessionsPanelVisible = () => {
+    const isSettings = view.mode === VIEW_SETTINGS || el.appContainer?.getAttribute("data-view") === "settings";
+    if (!isSettings) return false;
+    const paneSessions = document.getElementById("pane-sessions");
+    const tabBtn = document.querySelector('.settings-tab-btn[data-tab="tab-sessions"]');
+    return Boolean(paneSessions?.classList.contains("active") || tabBtn?.classList.contains("active"));
+  };
+
+  const loadSessions = async (forceFetch = false) => {
+    if (forceFetch || (!allSessions.length && !sessionService.sessions?.length)) {
+      const list = await sessionService.listSessions();
+      allSessions = Array.isArray(list) ? list : [];
+    } else if (!allSessions.length && sessionService.sessions?.length) {
+      allSessions = [...sessionService.sessions];
+    }
     renderSessions();
   };
 
-  sessionService.addEventListener("sessions-change", () => {
-    loadSessions();
+  sessionService.addEventListener("sessions-change", (e) => {
+    // 1. 直接复用事件 payload 数据，杜绝反向二次发起 listSessions() IPC
+    const list = e.detail || sessionService.sessions || [];
+    allSessions = Array.isArray(list) ? list : [];
+
+    // 2. 仅在处于设置页且激活「会话记录」Tab 时才触发全量 DOM 重绘
+    if (isSessionsPanelVisible()) {
+      renderSessions();
+    }
   });
 
   // ==========================================================================

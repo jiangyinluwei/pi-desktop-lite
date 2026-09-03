@@ -1,3 +1,5 @@
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs::File;
@@ -183,77 +185,86 @@ pub fn parse_session_entries(path: &Path) -> Result<Vec<SessionEntrySummary>, St
     Ok(entries)
 }
 
-/// 剥离宿主运行态注入的所有上下文信封（如 <runtime_context_rules>, <code_area_routing_context> 等），还原真实用户提问
-pub fn strip_injected_contexts(text: &str) -> String {
-    let mut result = text.to_string();
+const KNOWN_TAG_NAMES: &[&str] = &[
+    "runtime_context_rules",
+    "runtime_inner_skills",
+    "runtime_inner_skill",
+    "code_area_routing_context",
+    "routed_agents_md",
+    "routed_readme_md",
+    "routed_project_skills",
+    "routed_skill",
+    "workspace_context",
+    "runtime_rules",
+    "inner_skills_context",
+    "inner_skill_rules",
+    "prompt_context",
+];
 
-    // 1. 已知确定的注入信封标签对列表
-    let known_tags = [
-        ("runtime_context_rules", "runtime_context_rules"),
-        ("runtime_inner_skills", "runtime_inner_skills"),
-        ("runtime_inner_skill", "runtime_inner_skill"),
-        ("code_area_routing_context", "code_area_routing_context"),
-        ("routed_agents_md", "routed_agents_md"),
-        ("routed_readme_md", "routed_readme_md"),
-        ("routed_project_skills", "routed_project_skills"),
-        ("routed_skill", "routed_skill"),
-        ("workspace_context", "workspace_context"),
-        ("runtime_rules", "runtime_rules"),
-        ("inner_skills_context", "inner_skills_context"),
-        ("inner_skill_rules", "inner_skill_rules"),
-        ("prompt_context", "prompt_context"),
-    ];
+static KNOWN_INJECTED_TAGS_REGEX: Lazy<Regex> = Lazy::new(|| {
+    let patterns: Vec<String> = KNOWN_TAG_NAMES
+        .iter()
+        .map(|tag| format!(r#"<{}(?:\s[^>]*)?>.*?</{}>"#, tag, tag))
+        .collect();
+    Regex::new(&format!(r#"(?is)(?:{})"#, patterns.join("|"))).unwrap()
+});
 
-    for (open_name, close_name) in known_tags {
-        let open_tag = format!("<{}>", open_name);
-        let close_tag = format!("</{}>", close_name);
-        while let Some(start) = result.find(&open_tag) {
-            if let Some(rel_end) = result[start..].find(&close_tag) {
-                let end = start + rel_end + close_tag.len();
-                let mut new_res = String::from(&result[..start]);
-                new_res.push_str(&result[end..]);
-                result = new_res;
-            } else {
-                result.truncate(start);
-                break;
-            }
+static UNCLOSED_KNOWN_TAGS_REGEX: Lazy<Regex> = Lazy::new(|| {
+    let patterns: Vec<String> = KNOWN_TAG_NAMES
+        .iter()
+        .map(|tag| format!(r#"<{}(?:\s[^>]*)?>.*$"#, tag))
+        .collect();
+    Regex::new(&format!(r#"(?is)(?:{})"#, patterns.join("|"))).unwrap()
+});
+
+static GENERIC_OPEN_TAG_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?is)<([a-zA-Z0-9_-]*(?:context|rules|skill|routing)[a-zA-Z0-9_-]*)(?:\s[^>]*)?>"#).unwrap()
+});
+
+fn strip_generic_tags(mut text: String) -> String {
+    let mut search_from = 0;
+    while search_from < text.len() {
+        let captures = match GENERIC_OPEN_TAG_REGEX.captures(&text[search_from..]) {
+            Some(c) => c,
+            None => break,
+        };
+
+        let full_match = captures.get(0).unwrap();
+        let tag_name = captures.get(1).unwrap().as_str().to_lowercase();
+        let open_start = search_from + full_match.start();
+        let open_end = search_from + full_match.end();
+        let close_tag = format!("</{}>", tag_name);
+
+        let rest = &text[open_end..];
+        if let Some(rel_close) = rest.to_lowercase().find(&close_tag) {
+            let close_end = open_end + rel_close + close_tag.len();
+            text.replace_range(open_start..close_end, "");
+            search_from = open_start;
+        } else {
+            // 未闭合标签：游标向前推进，避免死循环短路，同时确保后续真实标签不被漏剥离
+            search_from = open_end;
         }
     }
+    text
+}
 
-    // 2. 通用 XML-like context/rules 标签对清洗（防御未来新增的注入标签）
-    loop {
-        let mut found = false;
-        if let Some(open_idx) = result.find('<') {
-            if let Some(close_idx) = result[open_idx..].find('>') {
-                let tag_content = &result[open_idx + 1..open_idx + close_idx];
-                let tag_name = tag_content.trim();
-                if (tag_name.ends_with("_context")
-                    || tag_name.ends_with("_rules")
-                    || tag_name.contains("context")
-                    || tag_name.contains("rules"))
-                    && !tag_name.starts_with('/')
-                    && !tag_name.is_empty()
-                    && tag_name
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-                {
-                    let end_tag = format!("</{}>", tag_name);
-                    if let Some(rel_close) = result[open_idx..].find(&end_tag) {
-                        let end_pos = open_idx + rel_close + end_tag.len();
-                        let mut new_res = String::from(&result[..open_idx]);
-                        new_res.push_str(&result[end_pos..]);
-                        result = new_res;
-                        found = true;
-                    }
-                }
-            }
-        }
-        if !found {
+/// 剥离宿主运行态注入的所有上下文信封（如 <runtime_context_rules>, <runtime_inner_skill name="..."> 等），还原真实用户提问
+pub fn strip_injected_contexts(text: &str) -> String {
+    let mut current = text.to_string();
+
+    // 循环剥离以支持可能的多层信封嵌套（如 <runtime_inner_skills> 内嵌 <runtime_inner_skill name="...">）
+    for _ in 0..4 {
+        let after_known = KNOWN_INJECTED_TAGS_REGEX.replace_all(&current, "").to_string();
+        let after_generic = strip_generic_tags(after_known);
+        if after_generic == current {
             break;
         }
+        current = after_generic;
     }
 
-    result.trim().to_string()
+    // 针对流式截断或未闭合已知信封做末尾兜底清理
+    let final_clean = UNCLOSED_KNOWN_TAGS_REGEX.replace_all(&current, "").to_string();
+    final_clean.trim().to_string()
 }
 
 /// 兼容旧命名别名
@@ -726,6 +737,33 @@ mod tests {
         let raw = "<runtime_context_rules>\nSome rules...\n</runtime_context_rules>\n\nHello World\n\n<code_area_routing_context>\nTarget: /path\n</code_area_routing_context>";
         let stripped = strip_injected_contexts(raw);
         assert_eq!(stripped, "Hello World");
+    }
+
+    #[test]
+    fn test_strip_injected_contexts_with_attributes_and_nesting() {
+        // 1. 单个带属性标签剥离
+        let raw1 = "<runtime_inner_skill name=\"windows-bash-compatibility\">\nBash rules\n</runtime_inner_skill>\n\nHello World";
+        assert_eq!(strip_injected_contexts(raw1), "Hello World");
+
+        // 2. 多个带属性标签与路由信封
+        let raw2 = "<routed_agents_md filename=\"AGENTS.md\">\n# AGENTS RULES\n</routed_agents_md>\n\n分析目标项目\n\n<routed_readme_md filename=\"README.md\">\n# README\n</routed_readme_md>";
+        assert_eq!(strip_injected_contexts(raw2), "分析目标项目");
+
+        // 3. 嵌套信封剥离
+        let raw3 = "<runtime_inner_skills>\n<runtime_inner_skill name=\"subagent\">\nsubagent rules\n</runtime_inner_skill>\n</runtime_inner_skills>\n\n帮我写一个测试";
+        assert_eq!(strip_injected_contexts(raw3), "帮我写一个测试");
+
+        // 4. 未闭合截断信封兜底清理
+        let raw4 = "用户提问\n\n<runtime_inner_skill name=\"unclosed\">\n未闭合流式截断内容";
+        assert_eq!(strip_injected_contexts(raw4), "用户提问");
+
+        // 5. 普通 HTML 标签保护（不被误删）
+        let raw5 = "How to style <div class=\"container\">hello</div> in HTML?";
+        assert_eq!(strip_injected_contexts(raw5), "How to style <div class=\"container\">hello</div> in HTML?");
+
+        // 6. 前置未闭合伪标签不影响后续真实标签剥离 (H5 防短路)
+        let raw6 = "前置未闭合伪标签 <custom_context> 文本内容，后续标签 <custom_rules>\n真实规则\n</custom_rules>\n\n真正的用户提问";
+        assert_eq!(strip_injected_contexts(raw6), "前置未闭合伪标签 <custom_context> 文本内容，后续标签 \n\n真正的用户提问");
     }
 
     #[test]

@@ -1,7 +1,15 @@
 use crate::session::index_cache::SessionIndexCache;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter};
+use tokio::sync::mpsc;
+use tokio::time::{sleep, Duration};
+
+enum SessionFileEvent {
+    Upsert(PathBuf),
+    Remove(PathBuf),
+}
 
 pub struct SessionWatcher {
     _watcher: Option<RecommendedWatcher>,
@@ -35,32 +43,98 @@ impl SessionWatcher {
         // 初始化全量扫描
         cache.scan_directory(&sessions_dir);
 
-        let cache_clone = cache.clone();
-        let app_handle_clone = app_handle.clone();
+        let (tx, mut rx) = mpsc::unbounded_channel::<SessionFileEvent>();
 
+        // 后台异步防抖聚合通道：以 300ms 窗口合并高频刷盘事件，杜绝 IPC 广播与全量会话重排风暴
+        let debounce_cache = cache.clone();
+        let debounce_app_handle = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            let mut pending_upserts = HashSet::new();
+            let mut pending_removes = HashSet::new();
+
+            loop {
+                // 等待第一个文件变更事件到来（闲时零 CPU 消耗）
+                let first_event = match rx.recv().await {
+                    Some(ev) => ev,
+                    None => break,
+                };
+
+                match first_event {
+                    SessionFileEvent::Upsert(p) => {
+                        pending_removes.remove(&p);
+                        pending_upserts.insert(p);
+                    }
+                    SessionFileEvent::Remove(p) => {
+                        pending_upserts.remove(&p);
+                        pending_removes.insert(p);
+                    }
+                }
+
+                // 300ms 防抖滑动窗口
+                let debounce_window = Duration::from_millis(300);
+                let sleep_timer = sleep(debounce_window);
+                tokio::pin!(sleep_timer);
+
+                loop {
+                    tokio::select! {
+                        _ = &mut sleep_timer => {
+                            break;
+                        }
+                        ev_opt = rx.recv() => {
+                            match ev_opt {
+                                Some(ev) => {
+                                    match ev {
+                                        SessionFileEvent::Upsert(p) => {
+                                            pending_removes.remove(&p);
+                                            pending_upserts.insert(p);
+                                        }
+                                        SessionFileEvent::Remove(p) => {
+                                            pending_upserts.remove(&p);
+                                            pending_removes.insert(p);
+                                        }
+                                    }
+                                    sleep_timer.as_mut().reset(tokio::time::Instant::now() + debounce_window);
+                                }
+                                None => break,
+                            }
+                        }
+                    }
+                }
+
+                // 统一批处理：仅对去重后的路径单次读盘与索引更新
+                let mut changed = false;
+                for p in pending_upserts.drain() {
+                    debounce_cache.update_file(&p);
+                    changed = true;
+                }
+                for p in pending_removes.drain() {
+                    debounce_cache.remove_file(&p);
+                    changed = true;
+                }
+
+                if changed {
+                    let list = debounce_cache.list_all();
+                    let _ = debounce_app_handle.emit("pi:sessions-updated", &list);
+                }
+            }
+        });
+
+        let watcher_tx = tx.clone();
         let mut watcher = RecommendedWatcher::new(
             move |res: Result<Event, notify::Error>| {
                 if let Ok(event) = res {
-                    let mut changed = false;
                     match event.kind {
                         EventKind::Create(_) | EventKind::Modify(_) => {
                             for p in event.paths {
-                                cache_clone.update_file(&p);
-                                changed = true;
+                                let _ = watcher_tx.send(SessionFileEvent::Upsert(p));
                             }
                         }
                         EventKind::Remove(_) => {
                             for p in event.paths {
-                                cache_clone.remove_file(&p);
-                                changed = true;
+                                let _ = watcher_tx.send(SessionFileEvent::Remove(p));
                             }
                         }
                         _ => {}
-                    }
-
-                    if changed {
-                        let list = cache_clone.list_all();
-                        let _ = app_handle_clone.emit("pi:sessions-updated", &list);
                     }
                 }
             },
