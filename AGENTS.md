@@ -121,7 +121,7 @@
 | | **`sketch-modal-pattern`** | [`.agents/skills/sketch-modal-pattern/SKILL.md`](file:///.agents/skills/sketch-modal-pattern/SKILL.md) | 手绘素描居中模态弹窗（Pop & Shake、Step Back 优先拦截、焦点陷阱）（触发：模态窗/弹窗/alert替换）。 |
 | | **`sketch-form-autofill-pattern`** | [`.agents/skills/sketch-form-autofill-pattern/SKILL.md`](file:///.agents/skills/sketch-form-autofill-pattern/SKILL.md) | 手绘表单规范、消灭原生变色与 `SketchAutoFill` 智能联想（触发：新增表单/自定义填表/autofill）。 |
 | | **`svg-asset-workflow`** | [`.agents/skills/svg-asset-workflow/SKILL.md`](file:///.agents/skills/svg-asset-workflow/SKILL.md) | 手绘 SVG 图元规范、`currentColor` 主题自适应与内联管理（触发：SVG图标/替换图标/图标规范）。 |
-| | **`flow-interaction-pattern`** | [`.agents/skills/flow-interaction-pattern/SKILL.md`](file:///.agents/skills/flow-interaction-pattern/SKILL.md) | Flow 流式交互（单行紧凑过程卡、因果时序拼接、多轮定位、模型自动重连）（触发：flow交互/思维链/轮次定位）。 |
+| | **`flow-interaction-pattern`** | [`.agents/skills/flow-interaction-pattern/SKILL.md`](file:///.agents/skills/flow-interaction-pattern/SKILL.md) | Flow 流式交互（单行紧凑过程卡、因果时序拼接、多轮定位、模型自动重连、文件变更收纳框）（触发：flow交互/思维链/轮次定位/文件变更/修改了哪些文件）。 |
 | | **`settings-view-pattern`** | [`.agents/skills/settings-view-pattern/SKILL.md`](file:///.agents/skills/settings-view-pattern/SKILL.md) | 设置全屏独立视图（第4态）、5 大 Tab、MRU 模型排序与回退流（触发：设置界面/配置页面/settings）。 |
 | **工程与治理** | **`desktop-kernel-lifecycle`** | [`.agents/skills/desktop-kernel-lifecycle/SKILL.md`](file:///.agents/skills/desktop-kernel-lifecycle/SKILL.md) | Tauri 2 + Rust 内核生命周期管控、多环境寻址与 Release 打包避坑（触发：内核崩溃/进程重启/打包）。 |
 | | **`desktop-rendering-optimization`** | [`.agents/skills/desktop-rendering-optimization/SKILL.md`](file:///.agents/skills/desktop-rendering-optimization/SKILL.md) | Webview 渲染调优、缩放白闪/黑屏排查、动画掉帧与重绘治理（触发：动画卡顿/缩放闪白/掉帧/渲染优化）。 |

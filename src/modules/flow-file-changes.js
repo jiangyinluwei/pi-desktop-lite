@@ -52,12 +52,16 @@ const KIND_LABELS = {
   delete: "删除",
 };
 
-// 区分显示的矢量图元：新增 ➔ 加号，修改 ➔ 铅笔，删除 ➔ 垃圾桶
+// 区分显示的矢量图元：新增 ➔ 加号，修改 ➔ 笔触/铅笔，删除 ➔ 垃圾桶
 const KIND_ICONS = {
-  add: ICONS.plus,
-  modify: ICONS.edit,
-  delete: ICONS.trash,
+  add: `<svg viewBox="0 0 16 16" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="2.5" x2="8" y2="13.5" /><line x1="2.5" y1="8" x2="13.5" y2="8" /></svg>`,
+  modify: `<svg viewBox="0 0 16 16" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 2.5 L13.5 5 L4.5 14 L2 14 L2 11.5 Z" /><path d="M9.5 4 L12 6.5" /></svg>`,
+  delete: `<svg viewBox="0 0 16 16" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4.5 H13.5" /><path d="M5.5 4.5 V3 A1 1 0 0 1 6.5 2 H9.5 A1 1 0 0 1 10.5 3 V4.5" /><path d="M4.5 4.5 L5.2 13.5 H10.8 L11.5 4.5" /><line x1="6.5" y1="7" x2="6.8" y2="11" /><line x1="9.5" y1="7" x2="9.2" y2="11" /></svg>`,
 };
+
+// 文件变更专属折角手绘图元（头部展示）
+const FILE_CHANGES_HEADER_ICON = `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5 H9.5 L13 6 V13.5 H3 Z" /><path d="M9.5 2.5 V6 H13" /><line x1="5.5" y1="9" x2="10.5" y2="9" /><line x1="5.5" y1="11.5" x2="8.5" y2="11.5" /></svg>`;
+
 
 // 串轮过滤铁律：仅收集前台活跃任务的流式事件，后台挂起任务绝不进入前台收纳框
 const isForegroundStreamEvent = () =>
@@ -191,6 +195,7 @@ export function initFileChanges(ctx) {
     boxEl: null,
     listEl: null,
     countEl: null,
+    pillsEl: null,
     chevronEl: null,
     collapsed: false,
     items: new Map(), // normalized path -> { path, name, dir, kind }
@@ -234,7 +239,7 @@ export function initFileChanges(ctx) {
     });
   };
 
-  /* ---------- 框体渲染（复用「注入提示」直角简洁框语汇） ---------- */
+  /* ---------- 框体渲染（优雅手绘素描质感收纳框） ---------- */
 
   const ensureBoxEl = () => {
     if (!flowConversation) return null;
@@ -246,14 +251,18 @@ export function initFileChanges(ctx) {
       fileChanges.boxEl.innerHTML = `
         <button type="button" class="file-changes-header" aria-expanded="true">
           <span class="file-changes-chevron" aria-hidden="true">${ICONS.chevronDown}</span>
-          <span class="file-changes-icon" aria-hidden="true">${ICONS.edit}</span>
+          <span class="file-changes-icon" aria-hidden="true">${FILE_CHANGES_HEADER_ICON}</span>
           <span class="file-changes-title">文件变更</span>
-          <span class="file-changes-count"></span>
+          <div class="file-changes-summary">
+            <span class="file-changes-summary-pills"></span>
+            <span class="file-changes-count"></span>
+          </div>
         </button>
         <ul class="file-changes-list"></ul>
       `;
       fileChanges.listEl = fileChanges.boxEl.querySelector(".file-changes-list");
       fileChanges.countEl = fileChanges.boxEl.querySelector(".file-changes-count");
+      fileChanges.pillsEl = fileChanges.boxEl.querySelector(".file-changes-summary-pills");
       fileChanges.chevronEl = fileChanges.boxEl.querySelector(".file-changes-chevron");
       fileChanges.boxEl
         .querySelector(".file-changes-header")
@@ -311,24 +320,53 @@ export function initFileChanges(ctx) {
     const boxEl = ensureBoxEl();
     if (!boxEl) return;
 
+    // 统计各类型变更数量，用于头部紧凑胶囊摘要呈现
+    let addCount = 0;
+    let modifyCount = 0;
+    let deleteCount = 0;
+    for (const item of fileChanges.items.values()) {
+      if (item.kind === "add") addCount++;
+      else if (item.kind === "delete") deleteCount++;
+      else modifyCount++;
+    }
+
+    if (fileChanges.pillsEl) {
+      const pills = [];
+      if (addCount > 0) {
+        pills.push(`<span class="file-changes-pill pill-add" title="${addCount} 个新增文件">+${addCount} 新增</span>`);
+      }
+      if (modifyCount > 0) {
+        pills.push(`<span class="file-changes-pill pill-modify" title="${modifyCount} 个修改文件">~${modifyCount} 修改</span>`);
+      }
+      if (deleteCount > 0) {
+        pills.push(`<span class="file-changes-pill pill-delete" title="${deleteCount} 个删除文件">-${deleteCount} 删除</span>`);
+      }
+      fileChanges.pillsEl.innerHTML = pills.join("");
+    }
+
     fileChanges.countEl.textContent = `${fileChanges.items.size} 个文件`;
     fileChanges.listEl.innerHTML = "";
     for (const item of fileChanges.items.values()) {
       const li = document.createElement("li");
-      li.className = "file-change-item";
+      li.className = `file-change-item kind-${item.kind}`;
       li.dataset.path = item.path;
       li.setAttribute("role", "button");
       li.setAttribute("tabindex", "0");
-      li.title = `点击打开所在文件夹\n${item.path}`;
+      li.title = `点击在系统资源管理器中定位\n${item.path}`;
       const kindClass = item.kind === "add" ? "kind-add" : item.kind === "delete" ? "kind-delete" : "kind-modify";
       li.innerHTML = `
-        <span class="file-change-kind ${kindClass}">
-          <span class="file-change-kind-icon" aria-hidden="true">${KIND_ICONS[item.kind] || ""}</span>
-          ${KIND_LABELS[item.kind] || "修改"}
-        </span>
-        <span class="file-change-name">${escapeHtml(item.name)}</span>
-        ${item.dir ? `<span class="file-change-dir">${escapeHtml(item.dir)}</span>` : ""}
-        <span class="file-change-folder" aria-hidden="true">${ICONS.folder}</span>
+        <div class="file-change-main">
+          <span class="file-change-kind ${kindClass}">
+            <span class="file-change-kind-icon" aria-hidden="true">${KIND_ICONS[item.kind] || ""}</span>
+            <span class="file-change-kind-text">${KIND_LABELS[item.kind] || "修改"}</span>
+          </span>
+          <span class="file-change-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span>
+          ${item.dir ? `<span class="file-change-dir" title="${escapeHtml(item.dir)}">${escapeHtml(item.dir)}</span>` : ""}
+        </div>
+        <div class="file-change-action">
+          <span class="file-change-action-hint">定位</span>
+          <span class="file-change-folder" aria-hidden="true">${ICONS.folder}</span>
+        </div>
       `;
       fileChanges.listEl.appendChild(li);
     }
@@ -449,6 +487,7 @@ export function initFileChanges(ctx) {
     fileChanges.boxEl = null;
     fileChanges.listEl = null;
     fileChanges.countEl = null;
+    fileChanges.pillsEl = null;
     fileChanges.chevronEl = null;
     fileChanges.collapsed = false;
     fileChanges.items.clear();

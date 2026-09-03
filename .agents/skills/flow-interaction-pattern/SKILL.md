@@ -160,14 +160,25 @@ flowchart TD
 
 ## 📌 9. 会话文件变更收纳框 (flow-file-changes)
 
-模型执行文件写入/编辑/删除类工具后，会话完成时在会话流末尾以独立直角框体汇总呈现「新增 / 修改 / 删除」的文件清单：
+模型执行文件写入/编辑/删除类工具后，会话完成时在会话流末尾以轻盈通透的纯透明框体汇总呈现「新增 / 修改 / 删除」的文件清单：
 
 - **触发工具集合**：写入类 `write / write_file / write_to_file / create_file / save_file`；编辑类 `edit / edit_file / replace_file_content / multi_replace_file_content / apply_patch / apply_diff / str_replace_editor / insert_content`；删除类 `delete_file / remove_file / unlink` 等；Shell 类 `bash / powershell / cmd` 等（定义于 `src/modules/flow-file-changes.js`）；
 - **新增/修改判定**：`tool-start` 时对写入类工具经 Rust `pi_path_exists` 异步探测路径写入前是否存在，并以 **Promise 形式存起**（`tool-end` 时 `await` 取回，消除探测 IPC 未返回而 tool-end 已到的竞态 → 新增文件不再误判为修改）；工具成功 + 写前不存在 → 新增；其余 → 修改；探测失败按修改兑底；
 - **收集与去重**：`tool-end` 仅收集执行成功的工具调用（`isError` 跳过），路径从工具入参提取（兼容 JSON 字符串与 `edits/files/changes` 多文件入参结构），按规范化路径去重保留最新动作；
 - **后台过滤铁律**：全程经 `taskManager.isForegroundStreamTask(piClient.lastEventTaskId)` 门禁，后台挂起任务的文件变更绝不进入前台收纳框；
 - **删除识别与去伪**：显式删除类工具执行成功即记为「删除」；Shell 类工具启发式解析命令文本中 `rm / del / Remove-Item` 目标路径，并在命令执行成功后经 `pi_path_exists` 复核（路径确实消失才记为删除，杜绝误报）；删除为终态，同一文件多动作合并时永远胜出；
-- **展示时机**：`agent-end` 正常收尾后经 `api.showFileChangesBox()` 渲染于会话流末尾（跨轮置底累积，可折叠）；全新会话由 `api.resetFileChanges()` 清态（`flow-stream.js` resetStreamState 非 followUp 分支调用）；
+- **展示时机**：`agent-end` 正常收尾后经 `api.showFileChangesBox()` 渲染于会话流末尾（跨轮置底累积，整条可折叠展开，平滑贝塞尔旋转过渡）；全新会话由 `api.resetFileChanges()` 清态（`flow-stream.js` resetStreamState 非 followUp 分支调用）；
+- **头部统计指示 (Summary Pills)**：头部右侧展示直观的分类统计（`+N 新增` / `~N 修改` / `-N 删除`）以及总数 `N 个文件`，取消胶囊边框+背景色，纯透明背景，折叠态亦可一目了然；
 - **打开所在文件夹**：点击条目经 Rust `pi_reveal_path` 在 Windows 资源管理器中高亮定位该文件（`tauri_plugin_opener::reveal_item_in_dir`）；**删除类条目直接定位其原所在文件夹（上级目录）**，避免完整路径因父目录解析异常而退化为打开「我的文档」，并弹全局 Toast 反馈；
-- **区分显示**：新增/修改/删除以徽章文本 + 对应 SVG 图元（加号 / 铅笔 / 垃圾桶）区分呈现（`KIND_ICONS`），徽章色随主题自适应；条目为单行左右并排、垂直居中排版（左侧徽章+文件名，右侧目录路径+文件夹图标，长路径省略号截断）。
-- **样式**：复用「注入提示」直角简洁框语汇（`.flow-file-changes`，`src/styles/flow.css`），新增绿/修改珀/删除红徽章双模主题自适应，条目常态透明、悬浮显微框与文件夹图标。
+- **核心标识外观与高级配色 (Kind Badges)**：
+  - **取消胶囊边框+背景色**：采用纯透明背景（`background: transparent; border: none; box-shadow: none;`），无多余药丸状方块或边框，纯净通透；
+  - **新增 (kind-add)**：加号 SVG + 文本；浅色采用翠绿色 `#047857`；深色采用碧玉荧绿 `#34d399`；
+  - **修改 (kind-modify)**：笔触 SVG + 文本；浅色采用琥珀金色 `#b45309`；深色采用暖阳流金 `#fbbf24`；
+  - **删除 (kind-delete)**：垃圾桶 SVG + 文本；浅色采用胭脂朱红 `#be123c`；深色采用珊瑚粉红 `#fb7185`；条目名称带轻微删除线修饰；
+- **自适应宽度与路径截断（杜绝横向滚动条）**：
+  - 收纳框外层、头部、列表与条目统一采用 `width: 100%; max-width: 100%; box-sizing: border-box; overflow: hidden;`，禁止负外边距；
+  - 列表强制 `overflow-x: hidden;`，绝不触发横向滚动条；
+  - 文件名（`max-width: 45%`）与目录路径（`flex: 1 1 0`）自适应收缩，过长文本统一以 `...` 省略号优雅截断，hover 可见全路径 tooltip；
+  - 条目常态背景透明，悬浮/聚焦显手绘微边框与极淡背景，右侧平滑浮现“定位”提示与手绘文件夹图标。
+
+

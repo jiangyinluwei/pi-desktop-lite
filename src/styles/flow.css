@@ -418,29 +418,42 @@
 }
 
 /* 会话流「文件变更」收纳框：会话完成后收集于会话流末尾，
-   集中展示本轮会话被模型「新增 / 修改」的文件；直角简洁风，
-   点击条目在系统文件管理器中打开其所在文件夹（高亮定位该文件） */
+   集中展示本轮会话被模型「新增 / 修改 / 删除」的文件；
+   背景完全透明、无胶囊外边框；自适应宽度、路径过长自动以...省略显示，绝无横向滚动条 */
 .flow-file-changes {
   align-self: stretch;
   box-sizing: border-box;
-  margin: -4px 0 0 2px;
-  padding: 0 12px;
+  width: 100%;
+  max-width: 100%;
+  margin: 2px 0 6px 0;
+  padding: 0;
   font-size: 12px;
   line-height: 1.5;
   font-family: inherit;
   color: var(--ink-muted);
-  background: var(--sketch-tag-bg);
-  border: 1px solid var(--sketch-border-subtle);
-  border-radius: 4px;
-  animation: sketchCapsuleFadeIn 0.25s ease-out;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
+  animation: sketchCapsuleFadeIn 0.2s ease-out;
 }
 
+:root[data-theme="dark"] .flow-file-changes {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+/* 头部按钮（自适应全宽，整条可点击折叠/展开） */
 .flow-file-changes .file-changes-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
-  padding: 6px 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 6px 2px;
   background: transparent;
   border: none;
   font-family: inherit;
@@ -449,6 +462,8 @@
   color: var(--ink-muted);
   cursor: pointer;
   text-align: left;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .flow-file-changes .file-changes-chevron {
@@ -456,7 +471,8 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: transform 0.18s ease-out;
+  color: var(--ink-muted);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.15s ease;
 }
 
 .flow-file-changes .file-changes-icon {
@@ -465,47 +481,160 @@
   justify-content: center;
   flex-shrink: 0;
   color: var(--ink-muted);
+  transition: color 0.15s ease;
 }
 
 .flow-file-changes .file-changes-title {
+  flex-shrink: 0;
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--ink-primary);
+  transition: color 0.15s ease;
+}
+
+/* 头部右侧信息区：无胶囊边框+透明背景，纯文字指示 */
+.flow-file-changes .file-changes-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.flow-file-changes .file-changes-summary-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.flow-file-changes .file-changes-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  border: none;
+  background: transparent;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  user-select: none;
+}
+
+.flow-file-changes .file-changes-pill.pill-add {
+  color: #047857;
+  background: transparent;
+}
+
+.flow-file-changes .file-changes-pill.pill-modify {
+  color: #b45309;
+  background: transparent;
+}
+
+.flow-file-changes .file-changes-pill.pill-delete {
+  color: #be123c;
+  background: transparent;
+}
+
+:root[data-theme="dark"] .flow-file-changes .file-changes-pill.pill-add {
+  color: #34d399;
+  background: transparent;
+}
+
+:root[data-theme="dark"] .flow-file-changes .file-changes-pill.pill-modify {
+  color: #fbbf24;
+  background: transparent;
+}
+
+:root[data-theme="dark"] .flow-file-changes .file-changes-pill.pill-delete {
+  color: #fb7185;
+  background: transparent;
 }
 
 .flow-file-changes .file-changes-count {
-  margin-left: auto;
   font-size: 11px;
   color: var(--ink-muted);
-  opacity: 0.8;
+  opacity: 0.85;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-/* 收起态：折叠隐藏文件清单列表（保留标题与数量） */
+.flow-file-changes .file-changes-header:hover .file-changes-title {
+  color: var(--ink-primary);
+}
+
+.flow-file-changes .file-changes-header:hover .file-changes-chevron,
+.flow-file-changes .file-changes-header:hover .file-changes-icon {
+  color: var(--ink-primary);
+}
+
+/* 收起态折叠隐藏清单列表 */
 .flow-file-changes.collapsed .file-changes-list {
   display: none;
 }
 
+/* 清单列表：宽度自适应，严格禁止横向滚动条 */
 .flow-file-changes .file-changes-list {
   margin: 0;
-  padding: 2px 0 8px;
+  padding: 2px 0 6px;
   list-style: none;
-  border-top: 1px solid var(--sketch-border-subtle);
+  border-top: 1px dashed var(--sketch-border-subtle);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  max-height: 280px;
+  overflow-x: hidden !important;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.2s ease;
 }
 
+.flow-file-changes .file-changes-list:hover {
+  scrollbar-color: var(--sketch-border-subtle) transparent;
+}
+
+.flow-file-changes .file-changes-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.flow-file-changes .file-changes-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.flow-file-changes .file-changes-list::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+}
+
+.flow-file-changes .file-changes-list:hover::-webkit-scrollbar-thumb {
+  background: var(--sketch-border-subtle);
+}
+
+/* 单个文件条目：100%自适应宽度，严禁使用负外边距 */
 .flow-file-changes .file-change-item {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   min-width: 0;
-  padding: 4px 4px;
-  margin: 1px -4px;
+  overflow: hidden;
+  padding: 4px 6px;
+  margin: 1px 0;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: 4px;
   cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
 }
 
-/* 按钮铁律：常态透明无边框，悬浮/聚焦才显手绘微框，杜绝布局抖动 */
+.flow-file-changes .file-change-item:active {
+  transform: scale(0.995);
+}
+
+/* 桌面端铁律五：常态透明无边框，悬浮/聚焦显手绘微边框与轻微背景 */
 .flow-file-changes .file-change-item:hover,
 .flow-file-changes .file-change-item:focus-visible {
   background: var(--sketch-tag-hover-bg);
@@ -513,98 +642,180 @@
   outline: none;
 }
 
-.flow-file-changes .file-change-item .file-change-kind {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  flex: 0 0 auto;
-  padding: 0 5px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-  border: 1px solid currentColor;
-  border-radius: 3px;
-  opacity: 0.85;
+:root[data-theme="dark"] .flow-file-changes .file-change-item:hover,
+:root[data-theme="dark"] .flow-file-changes .file-change-item:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(237, 232, 220, 0.16);
 }
 
-.flow-file-changes .file-change-item .file-change-kind-icon {
+/* 内容主体：自适应弹性收缩，允许子元素省略溢出 */
+.flow-file-changes .file-change-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 0;
+  overflow: hidden;
+}
+
+/* ==========================================================================
+   「增加、修改、删除」标识 (取消胶囊边框+背景色，纯透明背景与语义色彩)
+   ========================================================================== */
+.flow-file-changes .file-change-kind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex-shrink: 0;
+  height: auto;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  user-select: none;
+}
+
+.flow-file-changes .file-change-kind-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   line-height: 1;
+  flex-shrink: 0;
 }
 
-.flow-file-changes .file-change-item .kind-add {
-  border-color: rgba(16, 185, 129, 0.45);
-  background: rgba(16, 185, 129, 0.08);
-  color: #059669;
+.flow-file-changes .file-change-kind-text {
+  display: inline-block;
+  line-height: 1;
 }
 
-.flow-file-changes .file-change-item .kind-modify {
-  border-color: rgba(180, 83, 9, 0.45);
-  background: rgba(180, 83, 9, 0.08);
+/* 浅色模式 - 纯透明背景、高对比度语义色彩 */
+.flow-file-changes .kind-add {
+  color: #047857;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.flow-file-changes .kind-modify {
   color: #b45309;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
-.flow-file-changes .file-change-item .kind-delete {
-  border-color: rgba(220, 38, 38, 0.45);
-  background: rgba(220, 38, 38, 0.08);
-  color: #dc2626;
+.flow-file-changes .kind-delete {
+  color: #be123c;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
-:root[data-theme="dark"] .flow-file-changes .file-change-item .kind-add {
+/* 深色模式 - 纯透明背景、高对比度语义色彩 */
+:root[data-theme="dark"] .flow-file-changes .kind-add {
   color: #34d399;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
-:root[data-theme="dark"] .flow-file-changes .file-change-item .kind-modify {
+:root[data-theme="dark"] .flow-file-changes .kind-modify {
   color: #fbbf24;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
-:root[data-theme="dark"] .flow-file-changes .file-change-item .kind-delete {
-  color: #f87171;
+:root[data-theme="dark"] .flow-file-changes .kind-delete {
+  color: #fb7185;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
-.flow-file-changes .file-change-item .file-change-name {
+/* 文件名与路径：自适应截断，文本过长用...省略，绝对避免横向滚动条 */
+.flow-file-changes .file-change-name {
   flex: 0 1 auto;
+  max-width: 45%;
   min-width: 0;
   overflow: hidden;
-  font-weight: 500;
+  font-family: ui-monospace, SFMono-Regular, "Cascadia Code", "Segoe UI Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 550;
   color: var(--ink-primary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.flow-file-changes .file-change-item .file-change-dir {
-  flex: 1 1 40%;
+/* 删除项条目名称带有优雅的删除修饰 */
+.flow-file-changes .file-change-item.kind-delete .file-change-name {
+  opacity: 0.85;
+  text-decoration: line-through;
+  text-decoration-color: rgba(190, 18, 60, 0.45);
+}
+
+:root[data-theme="dark"] .flow-file-changes .file-change-item.kind-delete .file-change-name {
+  text-decoration-color: rgba(251, 113, 133, 0.45);
+}
+
+/* 路径：自适应弹性延伸与收缩，过长文本一律以...省略 */
+.flow-file-changes .file-change-dir {
+  flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, "Cascadia Code", "Segoe UI Mono", Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
   color: var(--ink-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
-  opacity: 0.8;
+  opacity: 0.72;
 }
 
-.flow-file-changes .file-change-item .file-change-folder {
+/* 右侧定位操作区：固定右对齐，绝不换行 */
+.flow-file-changes .file-change-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 6px;
+  white-space: nowrap;
+}
+
+.flow-file-changes .file-change-action-hint {
+  font-size: 11px;
+  color: var(--ink-muted);
+  opacity: 0;
+  transform: translateX(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  user-select: none;
+}
+
+.flow-file-changes .file-change-folder {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  margin-left: auto;
   color: var(--ink-muted);
-  opacity: 0;
-  transition: opacity 0.15s ease-out;
+  opacity: 0.4;
+  transition: opacity 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.flow-file-changes .file-change-item:hover .file-change-action-hint,
+.flow-file-changes .file-change-item:focus-visible .file-change-action-hint {
+  opacity: 0.85;
+  transform: translateX(0);
 }
 
 .flow-file-changes .file-change-item:hover .file-change-folder,
 .flow-file-changes .file-change-item:focus-visible .file-change-folder {
-  opacity: 0.9;
-}
-
-.flow-file-changes .file-changes-header:hover .file-changes-title,
-.flow-file-changes .file-changes-header:hover .file-changes-count {
+  opacity: 0.95;
   color: var(--ink-primary);
+  transform: scale(1.05);
 }
 
 @keyframes sketchCapsuleFadeIn {
