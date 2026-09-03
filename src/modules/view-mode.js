@@ -1,6 +1,7 @@
 import { VIEW_DETAILED, VIEW_FOCUS, VIEW_FLOW, VIEW_SETTINGS } from "../lib/view-constants.js";
 import { taskManager } from "../services/task-manager.js";
 import { piClient } from "../services/pi-client.js";
+import { listenTauri } from "../services/tauri-bridge.js";
 
 /**
  * 四态界面状态机、设置页打开/关闭与 Tauri 唤醒路由
@@ -189,44 +190,42 @@ export function initViewMode(ctx) {
     });
   }
 
-  if (window.__TAURI__?.event?.listen) {
-    window.__TAURI__.event.listen("navigate-settings", () => {
-      openSettingsView();
-    });
+  listenTauri("navigate-settings", () => {
+    openSettingsView();
+  });
 
-    // 监听窗口托盘/快捷唤醒事件 (多态路由分发：1个直通 Flow，>=2个进 Focus+显示胶囊，0个精准记忆恢复)
-    window.__TAURI__.event.listen("app-awakened", () => {
-      const suspended = taskManager.getActiveSuspendedTasks();
-      if (suspended.length === 1) {
-        closeSettingsView();
-        api.restoreTaskToFlow(suspended[0]);
-      } else if (suspended.length >= 2) {
-        closeSettingsView();
-        setViewMode(VIEW_FOCUS, true);
-        api.updateMiniTaskCapsuleUI();
-      }
-      // 0 个挂起任务时保持当前视图 (精准记忆恢复)
-    });
-
-    // 监听用户点击系统通知事件：自动退出设置全屏页、切换至该 Task 的 Flow 模式并滚动到底部
-    window.__TAURI__.event.listen("notification-clicked", (event) => {
+  // 监听窗口托盘/快捷唤醒事件 (多态路由分发：1个直通 Flow，>=2个进 Focus+显示胶囊，0个精准记忆恢复)
+  listenTauri("app-awakened", () => {
+    const suspended = taskManager.getActiveSuspendedTasks();
+    if (suspended.length === 1) {
       closeSettingsView();
-      const targetTaskId = event?.payload?.taskId || event?.payload?.task_id;
-      if (targetTaskId && taskManager.getTask(targetTaskId)) {
-        api.restoreTaskToFlow(taskManager.getTask(targetTaskId));
+      api.restoreTaskToFlow(suspended[0]);
+    } else if (suspended.length >= 2) {
+      closeSettingsView();
+      setViewMode(VIEW_FOCUS, true);
+      api.updateMiniTaskCapsuleUI();
+    }
+    // 0 个挂起任务时保持当前视图 (精准记忆恢复)
+  });
+
+  // 监听用户点击系统通知事件：自动退出设置全屏页、切换至该 Task 的 Flow 模式并滚动到底部
+  listenTauri("notification-clicked", (event) => {
+    closeSettingsView();
+    const targetTaskId = event?.payload?.taskId || event?.payload?.task_id;
+    if (targetTaskId && taskManager.getTask(targetTaskId)) {
+      api.restoreTaskToFlow(taskManager.getTask(targetTaskId));
+    } else {
+      const activeTasks = taskManager.getActiveTasks();
+      if (activeTasks.length > 0) {
+        api.restoreTaskToFlow(activeTasks[0]);
       } else {
-        const activeTasks = taskManager.getActiveTasks();
-        if (activeTasks.length > 0) {
-          api.restoreTaskToFlow(activeTasks[0]);
-        } else {
-          setViewMode(VIEW_FLOW, true);
-        }
+        setViewMode(VIEW_FLOW, true);
       }
-      if (flowScrollArea) {
-        flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
-      }
-    });
-  }
+    }
+    if (flowScrollArea) {
+      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    }
+  });
 
   api.setViewMode = setViewMode;
   api.openSettingsView = openSettingsView;

@@ -3,7 +3,7 @@
  * 负责与 Rust 后端 supervisor 保持事件同步、分发流式消息、工具调用、模型状态与全链路错误捕获
  */
 
-import { invokeTauri } from "./tauri-bridge.js";
+import { invokeTauri, listenTauri } from "./tauri-bridge.js";
 
 /**
  * 递归解析并提炼复杂的错误信息（支持 JSON 字符串嵌套解析）
@@ -262,8 +262,6 @@ class PiClient extends EventTarget {
    * 监听来自 Rust 后端的事件广播
    */
   async initTauriListeners() {
-    if (!window.__TAURI__?.event?.listen) return;
-
     try {
       // 0. 初始化探测内核可用性
       const hasKernel = await this.invoke("pi_has_kernel");
@@ -275,7 +273,7 @@ class PiClient extends EventTarget {
       }
 
       // 1. 监听宿主状态变更
-      const unlistenStatus = await window.__TAURI__.event.listen("pi:status", async (event) => {
+      const unlistenStatus = await listenTauri("pi:status", async (event) => {
         const payload = event.payload;
         this.hostStatus = typeof payload === "string" ? payload : payload?.status || "unknown";
         if (payload?.pi_version) {
@@ -296,20 +294,20 @@ class PiClient extends EventTarget {
       this.unlistenCallbacks.push(unlistenStatus);
 
       // 2. 监听核心 RPC 数据事件
-      const unlistenEvent = await window.__TAURI__.event.listen("pi:event", (event) => {
+      const unlistenEvent = await listenTauri("pi:event", (event) => {
         const data = event.payload;
         this.handleAgentEvent(data);
       });
       this.unlistenCallbacks.push(unlistenEvent);
 
       // 3. 监听运行态上下文/Inner-Skill 动态注入事件（tool call pre-processing hook 命中）
-      const unlistenInjected = await window.__TAURI__.event.listen("pi:context_injected", (event) => {
+      const unlistenInjected = await listenTauri("pi:context_injected", (event) => {
         this.dispatchEvent(new CustomEvent("context-injected", { detail: event.payload }));
       });
       this.unlistenCallbacks.push(unlistenInjected);
 
       // 3a. 监听 Tool-call Hook 命中的 Inner-Skill 动态激活事件
-      const unlistenSkillActivated = await window.__TAURI__.event.listen(
+      const unlistenSkillActivated = await listenTauri(
         "pi:inner-skill-activated",
         (event) => {
           this.dispatchEvent(new CustomEvent("inner-skill-activated", { detail: event.payload }));
@@ -318,7 +316,7 @@ class PiClient extends EventTarget {
       this.unlistenCallbacks.push(unlistenSkillActivated);
 
       // 4. 监听内核保险自动重连失败事件（5 次重连均失败后触发，驱动左上角红色抖动小闪电提醒）
-      const unlistenReconnectFailed = await window.__TAURI__.event.listen(
+      const unlistenReconnectFailed = await listenTauri(
         "pi:kernel-reconnect-failed",
         (event) => {
           this.dispatchEvent(new CustomEvent("kernel-reconnect-failed", { detail: event.payload }));

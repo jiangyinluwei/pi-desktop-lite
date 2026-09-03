@@ -392,29 +392,15 @@ export class TaskManager extends EventTarget {
       const taskId = detail.task_id || detail.taskId || this.currentActiveTaskId;
       if (modelFailoverEngine.isTaskAborted(taskId)) return;
 
-      if (taskId && this.tasks.has(taskId)) {
-        const t = this.tasks.get(taskId);
-        if (t.status === "aborted" || t.isAborted) return;
-      }
+      const task = (taskId && this.tasks.get(taskId)) || (this.currentActiveTaskId ? this.tasks.get(this.currentActiveTaskId) : null);
+      if (!task) return;
+      if (task.status === "aborted" || task.isAborted) return;
 
       // 自动重连切换进行中 或 将被引擎接管冷启动 (自动重连开启且含模型上下文)：
       // 错误一律由 ModelFailoverEngine 结算，绝不提前置 Task 为 error / 弹错误通知
       // (注：taskManager 监听器先于 main.js 注册，故冷启动时引擎尚未激活，需以 canHandle 预判接管)
       if (modelFailoverEngine.isActive() || modelFailoverEngine.canHandle(detail)) return;
-      if (!taskId || !this.tasks.has(taskId)) {
-        if (this.currentActiveTaskId && this.tasks.has(this.currentActiveTaskId)) {
-          const currentTask = this.tasks.get(this.currentActiveTaskId);
-          if (currentTask.status === "aborted" || currentTask.isAborted) return;
-          currentTask.status = "error";
-          currentTask.completedAt = Date.now();
-          currentTask.errorMessage = detail.message || "模型调用发生异常";
-          this.dispatchEvent(new CustomEvent("task-updated", { detail: currentTask }));
-          this.dispatchEvent(new CustomEvent("tasks-changed", { detail: { tasks: this.getAllTasks() } }));
-        }
-        return;
-      }
 
-      const task = this.tasks.get(taskId);
       if (task.pendingInterruptSend) {
         // 「终止并发送」流程中旧轮报错视为已结算，不置 Task 为 error，等待新轮次发起
         task.pendingInterruptSend = false;
@@ -433,7 +419,7 @@ export class TaskManager extends EventTarget {
       notificationService.notifyError({
         title: "pi-dl",
         message: `[${task.title}] 任务异常终止：${task.errorMessage}`,
-        taskId,
+        taskId: task.id || taskId,
       });
 
       this.dispatchEvent(new CustomEvent("task-updated", { detail: task }));

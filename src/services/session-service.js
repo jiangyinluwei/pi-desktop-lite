@@ -1,4 +1,4 @@
-import { invokeTauri } from "./tauri-bridge.js";
+import { invokeTauri, listenTauri } from "./tauri-bridge.js";
 
 /**
  * 会话历史与分支导航服务 (session-service.js)
@@ -12,10 +12,8 @@ class SessionService extends EventTarget {
   }
 
   async initListeners() {
-    if (!window.__TAURI__?.event?.listen) return;
-
     try {
-      await window.__TAURI__.event.listen("pi:sessions-updated", (event) => {
+      await listenTauri("pi:sessions-updated", (event) => {
         this.sessions = event.payload || [];
         this.dispatchEvent(new CustomEvent("sessions-change", { detail: this.sessions }));
       });

@@ -1,6 +1,6 @@
 import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
-import { invokeTauri } from "../services/tauri-bridge.js";
+import { invokeTauri, listenTauri } from "../services/tauri-bridge.js";
 
 /**
  * 文件拖入、概述胶囊与多模态路径注入
@@ -168,23 +168,21 @@ export function initFileAttachments(ctx) {
   };
 
   // 绑定 Tauri 文件拖拽广播事件
-  if (window.__TAURI__?.event?.listen) {
-    window.__TAURI__.event.listen("file-drop-paths", (event) => {
-      const paths = event.payload;
-      if (Array.isArray(paths) && paths.length > 0) {
-        addAttachedFiles(paths);
-      }
-      searchForm?.classList.remove("drag-over", "drag-active");
-    });
+  listenTauri("file-drop-paths", (event) => {
+    const paths = event.payload;
+    if (Array.isArray(paths) && paths.length > 0) {
+      addAttachedFiles(paths);
+    }
+    searchForm?.classList.remove("drag-over", "drag-active");
+  });
 
-    window.__TAURI__.event.listen("file-drag-enter", () => {
-      searchForm?.classList.add("drag-over");
-    });
+  listenTauri("file-drag-enter", () => {
+    searchForm?.classList.add("drag-over");
+  });
 
-    window.__TAURI__.event.listen("file-drag-leave", () => {
-      searchForm?.classList.remove("drag-over", "drag-active");
-    });
-  }
+  listenTauri("file-drag-leave", () => {
+    searchForm?.classList.remove("drag-over", "drag-active");
+  });
 
   // 绑定原生 DOM Drag & Drop 视觉高亮与防止误跳转
   window.addEventListener("dragover", (e) => {

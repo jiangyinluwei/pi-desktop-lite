@@ -3,6 +3,7 @@ import { configService } from "../services/config-service.js";
 import { promptHistoryNavigator } from "../services/prompt-history.js";
 import { enhanceAllSelects } from "../services/sketch-select.js";
 import { startFloatingIcons, stopFloatingIcons } from "../services/floating-icons.js";
+import { workspaceService } from "../services/workspace-service.js";
 
 /**
  * 搜索输入、历史翻阅、格言跑马灯与焦点控制
@@ -110,7 +111,6 @@ export function initSearchInput(ctx) {
   const syncWorkspaceInputState = async () => {
     let ws = null;
     try {
-      const { workspaceService } = await import("../services/workspace-service.js");
       ws = await workspaceService.getActiveWorkspace();
       if (ws) settings.activeWorkspace = ws;
     } catch (_) {
@@ -120,7 +120,6 @@ export function initSearchInput(ctx) {
     if (ws && (ws.id === "code-area" || ws.requiresRoute)) {
       let routeInfo = null;
       try {
-        const { workspaceService } = await import("../services/workspace-service.js");
         routeInfo = await workspaceService.getCodeAreaRoute();
       } catch (_) {}
 

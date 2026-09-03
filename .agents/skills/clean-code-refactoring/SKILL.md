@@ -41,6 +41,23 @@ export async function invokeTauri(command, args = {}) {
   console.warn(`[Tauri IPC] Tauri core is not available for command: ${command}`);
   return null;
 }
+
+/**
+ * 安全监听 Tauri 全局事件并返回取消监听函数
+ * @param {string} event Tauri 事件名
+ * @param {(event: any) => void} handler 事件回调
+ * @returns {Promise<() => void>} 取消监听函数
+ */
+export async function listenTauri(event, handler) {
+  if (window.__TAURI__?.event?.listen) {
+    try {
+      return await window.__TAURI__.event.listen(event, handler);
+    } catch (err) {
+      console.warn(`[Tauri IPC] Failed to listen to ${event}:`, err);
+    }
+  }
+  return () => {};
+}
 ```
 
 ### 2. 配置文件泛型读写模式 (Rust Generic JSON I/O)

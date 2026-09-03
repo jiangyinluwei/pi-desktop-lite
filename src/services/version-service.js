@@ -1,4 +1,4 @@
-import { invokeTauri } from "./tauri-bridge.js";
+import { invokeTauri, listenTauri } from "./tauri-bridge.js";
 
 /**
  * 版本监测与更新提醒服务 (version-service.js)
@@ -11,15 +11,13 @@ class VersionService extends EventTarget {
   }
 
   async initListeners() {
-    if (!window.__TAURI__?.event?.listen) return;
-
     try {
-      await window.__TAURI__.event.listen("pi:update", (event) => {
+      await listenTauri("pi:update", (event) => {
         this.latestUpdate = event.payload;
         this.dispatchEvent(new CustomEvent("update-available", { detail: this.latestUpdate }));
       });
 
-      await window.__TAURI__.event.listen("kernel-update-progress", (event) => {
+      await listenTauri("kernel-update-progress", (event) => {
         const payload = event.payload;
         this.dispatchEvent(new CustomEvent("kernel-update-progress", { detail: payload }));
         if (payload?.stage === "completed") {

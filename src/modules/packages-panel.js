@@ -1,7 +1,7 @@
 import { escapeHtml, escapeCss } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { configService } from "../services/config-service.js";
-import { openExternalUrl } from "../services/tauri-bridge.js";
+import { openExternalUrl, listenTauri } from "../services/tauri-bridge.js";
 import { enhanceSelect } from "../services/sketch-select.js";
 import { ProgressStepper } from "../services/progress-stepper.js";
 import { notificationService } from "../services/notification-service.js";
@@ -287,17 +287,11 @@ export function initPackagesPanel(ctx) {
   };
 
   // 监听 Tauri 派发的 package-progress 事件
-  if (window.__TAURI__?.event?.listen) {
-    try {
-      window.__TAURI__.event.listen("package-progress", (event) => {
-        if (event.payload) {
-          updatePackageProgressUI(event.payload);
-        }
-      });
-    } catch (e) {
-      console.warn("[PackageManager] Failed to register package-progress listener:", e);
+  listenTauri("package-progress", (event) => {
+    if (event.payload) {
+      updatePackageProgressUI(event.payload);
     }
-  }
+  });
 
   // 折叠/展开已安装列表
   if (installedSectionToggle && installedPackagesWrapper) {

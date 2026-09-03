@@ -7,7 +7,7 @@
 //    - "输出完成": 并行调度检查，若仍有其他任务运行则暂不通知，当全部任务完成时弹出通知（防抖聚合单任务/多任务通知）。
 // ==========================================================================
 
-import { invokeTauri } from "./tauri-bridge.js";
+import { invokeTauri, listenTauri } from "./tauri-bridge.js";
 
 export class NotificationService {
   constructor() {
@@ -49,18 +49,12 @@ export class NotificationService {
     });
 
     // 3. Tauri 底层窗口焦点事件双重保障
-    if (window.__TAURI__?.event?.listen) {
-      try {
-        this._unlistenFocus = await window.__TAURI__.event.listen(
-          "window-focus-change",
-          (event) => {
-            this._isFocused = Boolean(event.payload);
-          }
-        );
-      } catch (err) {
-        console.warn("[NotificationService] Failed to bind window-focus-change:", err);
+    this._unlistenFocus = await listenTauri(
+      "window-focus-change",
+      (event) => {
+        this._isFocused = Boolean(event.payload);
       }
-    }
+    );
   }
 
   /**
