@@ -298,24 +298,8 @@ export function initFlowPipeline(ctx) {
     const toolName = data.toolName || "tool";
 
     // 工具开始时，结算或清理当前活跃的思维切片
-    if (flow.activeThinkingStep) {
-      if (flow.activeThinkingStep.hasRealThinking || flow.activeThinkingStep.text?.trim()) {
-        const elapsed = ((Date.now() - flow.activeThinkingStep.startTime) / 1000).toFixed(1);
-        flow.activeThinkingStep.durationText = `(${elapsed}s)`;
-        if (flow.activeThinkingStep.durationEl) {
-          flow.activeThinkingStep.durationEl.textContent = flow.activeThinkingStep.durationText;
-        }
-      } else {
-        flow.activeThinkingStep.cardEl?.remove();
-        if (Array.isArray(flow.currentSteps)) {
-          flow.currentSteps = flow.currentSteps.filter((s) => s !== flow.activeThinkingStep);
-        }
-      }
-      flow.activeThinkingStep = null;
-    }
-    if (flow.thinkingTimerInterval) {
-      clearInterval(flow.thinkingTimerInterval);
-      flow.thinkingTimerInterval = null;
+    if (typeof api.sealActiveThinkingStep === "function") {
+      api.sealActiveThinkingStep();
     }
 
     // 工具开始前，封口当前活跃的阶段性输出切片 (Point 卡)：

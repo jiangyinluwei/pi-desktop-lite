@@ -216,11 +216,6 @@ class PiClient extends EventTarget {
    */
   setHasKernel(val) {
     this._hasKernel = Boolean(val);
-    if (typeof document !== "undefined" && document.body) {
-      document.body.classList.toggle("kernel-missing", !this._hasKernel);
-      const tag = document.getElementById("flow-model-tag");
-      if (tag) tag.classList.toggle("kernel-missing", !this._hasKernel);
-    }
     this.dispatchEvent(
       new CustomEvent("kernel-status-change", { detail: { hasKernel: this._hasKernel } })
     );
@@ -274,11 +269,6 @@ class PiClient extends EventTarget {
       const hasKernel = await this.invoke("pi_has_kernel");
       if (typeof hasKernel === "boolean") {
         this._hasKernel = hasKernel;
-        if (typeof document !== "undefined" && document.body) {
-          document.body.classList.toggle("kernel-missing", !this._hasKernel);
-          const tag = document.getElementById("flow-model-tag");
-          if (tag) tag.classList.toggle("kernel-missing", !this._hasKernel);
-        }
         this.dispatchEvent(
           new CustomEvent("kernel-status-change", { detail: { hasKernel: this._hasKernel } })
         );
@@ -293,11 +283,12 @@ class PiClient extends EventTarget {
         }
         const currentHasKernel = await this.invoke("pi_has_kernel");
         if (typeof currentHasKernel === "boolean") {
+          const changed = this._hasKernel !== currentHasKernel;
           this._hasKernel = currentHasKernel;
-          if (typeof document !== "undefined" && document.body) {
-            document.body.classList.toggle("kernel-missing", !this._hasKernel);
-            const tag = document.getElementById("flow-model-tag");
-            if (tag) tag.classList.toggle("kernel-missing", !this._hasKernel);
+          if (changed) {
+            this.dispatchEvent(
+              new CustomEvent("kernel-status-change", { detail: { hasKernel: this._hasKernel } })
+            );
           }
         }
         this.dispatchEvent(new CustomEvent("status-change", { detail: payload }));

@@ -36,6 +36,18 @@ export function initModelPanel(ctx) {
   const btnFetchOfficialModels = el.btnFetchOfficialModels;
   const btnFetchOfficialModelsText = el.btnFetchOfficialModelsText;
 
+  // 同步初始化内核状态 UI（消除初次加载时的闪烁）
+  const initialHasKernel = piClient.hasKernel();
+  if (typeof document !== "undefined" && document.body) {
+    document.body.classList.toggle("kernel-missing", !initialHasKernel);
+  }
+  if (flowModelTag) {
+    flowModelTag.classList.toggle("kernel-missing", !initialHasKernel);
+  }
+  if (initialHasKernel) {
+    loadModelsAndState();
+  }
+
   // ==========================================================================
   // 3. 当前模型列表与白名单机制 (最近选用 MRU 自动排序 + 选中模型禁止删除保护)
   // ==========================================================================
@@ -313,7 +325,14 @@ export function initModelPanel(ctx) {
   });
 
   piClient.addEventListener("kernel-status-change", (e) => {
-    if (e.detail?.hasKernel) {
+    const hasKernel = Boolean(e.detail?.hasKernel);
+    if (typeof document !== "undefined" && document.body) {
+      document.body.classList.toggle("kernel-missing", !hasKernel);
+    }
+    if (flowModelTag) {
+      flowModelTag.classList.toggle("kernel-missing", !hasKernel);
+    }
+    if (hasKernel) {
       loadModelsAndState();
     } else {
       if (flowModelName) flowModelName.textContent = "未检测到pi内核";

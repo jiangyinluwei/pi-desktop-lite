@@ -231,18 +231,29 @@ pub fn read_active_workspace_id() -> String {
     "default-area".to_string()
 }
 
-/// 写入 ~/.pi-dl/config.json 的 workspace.activeId（浅合并，保留其余字段）
-pub fn write_active_workspace_id(id: &str) -> Result<(), String> {
-    let mut config = read_pi_dl_json("config.json", json!({})).unwrap_or_else(|_| json!({}));
+/// 确保配置根对象具有 "workspace" 对象字段，并返回其可变 Map 引用（无裸 unwrap，避免恐慌点）
+fn ensure_workspace_mut(config: &mut Value) -> &mut serde_json::Map<String, Value> {
     if !config.is_object() {
-        config = json!({});
+        *config = json!({});
     }
-    let obj = config.as_object_mut().unwrap();
+    let obj = match config {
+        Value::Object(map) => map,
+        _ => unreachable!(),
+    };
     let ws_val = obj.entry("workspace".to_string()).or_insert_with(|| json!({}));
     if !ws_val.is_object() {
         *ws_val = json!({});
     }
-    let ws_obj = ws_val.as_object_mut().unwrap();
+    match ws_val {
+        Value::Object(map) => map,
+        _ => unreachable!(),
+    }
+}
+
+/// 写入 ~/.pi-dl/config.json 的 workspace.activeId（浅合并，保留其余字段）
+pub fn write_active_workspace_id(id: &str) -> Result<(), String> {
+    let mut config = read_pi_dl_json("config.json", json!({})).unwrap_or_else(|_| json!({}));
+    let ws_obj = ensure_workspace_mut(&mut config);
     ws_obj.insert("activeId".to_string(), json!(id));
 
     write_pi_dl_json("config.json", &config)
@@ -300,17 +311,14 @@ pub fn validate_and_cleanup_code_area_routes() -> (Option<String>, Vec<String>) 
 
     // 3. 若发生变更，持久化写回 config.json
     if changed {
-        if let Some(ws_val) = config.get_mut("workspace") {
-            if let Some(ws_obj) = ws_val.as_object_mut() {
-                if let Some(ref p) = current_path {
-                    ws_obj.insert("codeAreaRoutePath".to_string(), json!(p));
-                } else {
-                    ws_obj.remove("codeAreaRoutePath");
-                }
-                ws_obj.insert("codeAreaRouteHistory".to_string(), json!(history));
-                let _ = write_pi_dl_json("config.json", &config);
-            }
+        let ws_obj = ensure_workspace_mut(&mut config);
+        if let Some(ref p) = current_path {
+            ws_obj.insert("codeAreaRoutePath".to_string(), json!(p));
+        } else {
+            ws_obj.remove("codeAreaRoutePath");
         }
+        ws_obj.insert("codeAreaRouteHistory".to_string(), json!(history));
+        let _ = write_pi_dl_json("config.json", &config);
     }
 
     (current_path, history)
@@ -330,15 +338,7 @@ pub fn read_code_area_route_history() -> Vec<String> {
 pub fn write_code_area_route_path(route_path: &str) -> Result<(), String> {
     let path_str = route_path.trim().replace('\\', "/");
     let mut config = read_pi_dl_json("config.json", json!({})).unwrap_or_else(|_| json!({}));
-    if !config.is_object() {
-        config = json!({});
-    }
-    let obj = config.as_object_mut().unwrap();
-    let ws_val = obj.entry("workspace".to_string()).or_insert_with(|| json!({}));
-    if !ws_val.is_object() {
-        *ws_val = json!({});
-    }
-    let ws_obj = ws_val.as_object_mut().unwrap();
+    let ws_obj = ensure_workspace_mut(&mut config);
     ws_obj.insert("codeAreaRoutePath".to_string(), json!(path_str));
 
     // 更新历史记录（按最近使用去重排序，最多保留 10 项）

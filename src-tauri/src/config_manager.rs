@@ -101,6 +101,35 @@ pub fn is_update_notification_ignored() -> bool {
     false
 }
 
+/// 从 ~/.pi-dl/config.json 预读持久化选中的模型与思考等级
+pub fn get_saved_model_and_thinking() -> (Option<(String, String)>, Option<String>) {
+    if let Ok(config) = read_pi_dl_json("config.json", json!({})) {
+        let model = config.get("selectedModel").and_then(|selected| {
+            let provider = selected.get("provider").and_then(|v| v.as_str());
+            let model_id = selected
+                .get("modelId")
+                .or_else(|| selected.get("id"))
+                .or_else(|| selected.get("name"))
+                .and_then(|v| v.as_str());
+            if let (Some(p), Some(m)) = (provider, model_id) {
+                if !p.trim().is_empty() && !m.trim().is_empty() {
+                    return Some((p.to_string(), m.to_string()));
+                }
+            }
+            None
+        });
+        let thinking = config
+            .get("defaultThinkingLevel")
+            .and_then(|v| v.as_str())
+            .filter(|lvl| !lvl.trim().is_empty())
+            .map(|lvl| lvl.to_string());
+        (model, thinking)
+    } else {
+        (None, None)
+    }
+}
+
+
 /// 通用安全读取 ~/.pi/agent/ 下的 JSON 配置文件
 pub fn read_agent_json(filename: &str, default_val: Value) -> Result<Value, String> {
     read_json_in(get_pi_agent_dir()?, filename, default_val)

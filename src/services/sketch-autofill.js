@@ -11,6 +11,8 @@
  * 7. 支持键盘 ↑/↓ 方向键高亮、Enter/Tab 快速填入、Esc 与全域右键 (Step Back) 拦截收起。
  */
 
+import { escapeHtml } from "../lib/dom-utils.js";
+
 // ============================================================================
 // 手绘 SVG 矢量图元定义（全域消除 Emoji）
 // ============================================================================
@@ -866,15 +868,3 @@ export const enhanceAllAutoFills = (container = document) => {
   });
 };
 
-/**
- * HTML 转义辅助函数
- */
-function escapeHtml(str) {
-  if (str === null || str === undefined) return "";
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}

@@ -8,8 +8,8 @@
  * @returns {string}
  */
 export const escapeHtml = (str) => {
-  if (typeof str !== "string") return "";
-  return str
+  if (str === null || str === undefined) return "";
+  return String(str)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")

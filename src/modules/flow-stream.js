@@ -24,18 +24,14 @@ export function initFlowStream(ctx) {
   const taskDetailsSidebar = el.taskDetailsSidebar;
 
   /**
-   * 初始化/重置流式状态（支持多轮追加与新会话独立划分）
-   * @param {string} query
-   * @param {Array<any>} attachments
-   * @param {boolean} isFollowUpTurn 是否为同会话多轮后续追问
+   * 清理流式临时缓冲与定时器（在 resetStreamState 与 resetCurrentTurnForResend 中复用）
    */
-  const resetStreamState = (query, attachments = [], isFollowUpTurn = false) => {
-    flow.lastUserQuery = query;
+  const clearStreamTimersAndBuffers = () => {
+    flow.currentThinkingText = "";
+    flow.currentResponseText = "";
     flow.currentErrorMessage = null;
     flow.hasReceivedDelta = false;
     flow.hasAutoCollapsedThinking = false;
-    flow.currentThinkingText = "";
-    flow.currentResponseText = "";
     flow.renderedToolCards.clear();
     flow.currentSteps = [];
     flow.activeThinkingStep = null;
@@ -56,6 +52,44 @@ export function initFlowStream(ctx) {
       clearInterval(flow.textTimerInterval);
       flow.textTimerInterval = null;
     }
+  };
+
+  /**
+   * 封口当前活跃的思维切片（Thinking Step）：
+   * 结算耗时并定格显示；若为无思维文本的空卡则予以移除
+   */
+  const sealActiveThinkingStep = () => {
+    if (flow.activeThinkingStep) {
+      if (flow.activeThinkingStep.hasRealThinking || flow.activeThinkingStep.text?.trim()) {
+        const elapsed = ((Date.now() - flow.activeThinkingStep.startTime) / 1000).toFixed(1);
+        flow.activeThinkingStep.durationText = `(${elapsed}s)`;
+        if (flow.activeThinkingStep.durationEl) {
+          flow.activeThinkingStep.durationEl.textContent = flow.activeThinkingStep.durationText;
+        }
+        flow.activeThinkingStep.cardEl?.classList.remove("running");
+      } else {
+        flow.activeThinkingStep.cardEl?.remove();
+        if (Array.isArray(flow.currentSteps)) {
+          flow.currentSteps = flow.currentSteps.filter((s) => s !== flow.activeThinkingStep);
+        }
+      }
+      flow.activeThinkingStep = null;
+    }
+    if (flow.thinkingTimerInterval) {
+      clearInterval(flow.thinkingTimerInterval);
+      flow.thinkingTimerInterval = null;
+    }
+  };
+
+  /**
+   * 初始化/重置流式状态（支持多轮追加与新会话独立划分）
+   * @param {string} query
+   * @param {Array<any>} attachments
+   * @param {boolean} isFollowUpTurn 是否为同会话多轮后续追问
+   */
+  const resetStreamState = (query, attachments = [], isFollowUpTurn = false) => {
+    flow.lastUserQuery = query;
+    clearStreamTimersAndBuffers();
 
     if (!isFollowUpTurn) {
       // 全新会话 -> 清空 flowConversation 容器，并重置「注入提示」信息框状态
@@ -132,26 +166,7 @@ export function initFlowStream(ctx) {
       clearInterval(flow.textTimerInterval);
       flow.textTimerInterval = null;
     }
-    if (flow.activeThinkingStep) {
-      if (flow.activeThinkingStep.hasRealThinking || flow.activeThinkingStep.text?.trim()) {
-        const elapsed = ((Date.now() - flow.activeThinkingStep.startTime) / 1000).toFixed(1);
-        flow.activeThinkingStep.durationText = `(${elapsed}s)`;
-        if (flow.activeThinkingStep.durationEl) {
-          flow.activeThinkingStep.durationEl.textContent = flow.activeThinkingStep.durationText;
-        }
-        flow.activeThinkingStep.cardEl?.classList.remove("running");
-      } else {
-        flow.activeThinkingStep.cardEl?.remove();
-        if (Array.isArray(flow.currentSteps)) {
-          flow.currentSteps = flow.currentSteps.filter((s) => s !== flow.activeThinkingStep);
-        }
-      }
-      flow.activeThinkingStep = null;
-    }
-    if (flow.thinkingTimerInterval) {
-      clearInterval(flow.thinkingTimerInterval);
-      flow.thinkingTimerInterval = null;
-    }
+    sealActiveThinkingStep();
     // 伪工具运行框兜底清理：流式结束时若仍在参数流式期，定格读秒后移除占位卡
     if (typeof api.removeActiveToolPseudoStep === "function") {
       api.removeActiveToolPseudoStep();
@@ -195,31 +210,7 @@ export function initFlowStream(ctx) {
    * 不重建用户提问卡、不重复压入 prompt history、不新建 Task，仅清除上一轮临时产物
    */
   const resetCurrentTurnForResend = () => {
-    flow.currentThinkingText = "";
-    flow.currentResponseText = "";
-    flow.currentErrorMessage = null;
-    flow.hasReceivedDelta = false;
-    flow.hasAutoCollapsedThinking = false;
-    flow.renderedToolCards.clear();
-    flow.currentSteps = [];
-    flow.activeThinkingStep = null;
-    flow.activeToolStep = null;
-    flow.activeTextStep = null;
-    if (typeof api.removeActiveToolPseudoStep === "function") {
-      api.removeActiveToolPseudoStep();
-    }
-    if (flow.toolPseudoTimerInterval) {
-      clearInterval(flow.toolPseudoTimerInterval);
-      flow.toolPseudoTimerInterval = null;
-    }
-    if (flow.toolRunTimerInterval) {
-      clearInterval(flow.toolRunTimerInterval);
-      flow.toolRunTimerInterval = null;
-    }
-    if (flow.textTimerInterval) {
-      clearInterval(flow.textTimerInterval);
-      flow.textTimerInterval = null;
-    }
+    clearStreamTimersAndBuffers();
 
     // 移除上一轮临时错误卡片 (避免重复堆叠)
     if (flow.activeTurnRefs?.responseContentEl) {
@@ -746,26 +737,7 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("thinking-end", () => {
     if (!isForegroundStreamEvent()) return;
-    if (flow.activeThinkingStep) {
-      if (flow.activeThinkingStep.hasRealThinking || flow.activeThinkingStep.text?.trim()) {
-        const elapsed = ((Date.now() - flow.activeThinkingStep.startTime) / 1000).toFixed(1);
-        flow.activeThinkingStep.durationText = `(${elapsed}s)`;
-        if (flow.activeThinkingStep.durationEl) {
-          flow.activeThinkingStep.durationEl.textContent = flow.activeThinkingStep.durationText;
-        }
-        flow.activeThinkingStep.cardEl?.classList.remove("running");
-      } else {
-        flow.activeThinkingStep.cardEl?.remove();
-        if (Array.isArray(flow.currentSteps)) {
-          flow.currentSteps = flow.currentSteps.filter((s) => s !== flow.activeThinkingStep);
-        }
-      }
-      flow.activeThinkingStep = null;
-    }
-    if (flow.thinkingTimerInterval) {
-      clearInterval(flow.thinkingTimerInterval);
-      flow.thinkingTimerInterval = null;
-    }
+    sealActiveThinkingStep();
   });
 
   piClient.addEventListener("text-start", () => {
@@ -777,26 +749,7 @@ export function initFlowStream(ctx) {
     if (typeof api.removeActiveToolPseudoStep === "function") {
       api.removeActiveToolPseudoStep();
     }
-    if (flow.activeThinkingStep) {
-      if (flow.activeThinkingStep.hasRealThinking || flow.activeThinkingStep.text?.trim()) {
-        const elapsed = ((Date.now() - flow.activeThinkingStep.startTime) / 1000).toFixed(1);
-        flow.activeThinkingStep.durationText = `(${elapsed}s)`;
-        if (flow.activeThinkingStep.durationEl) {
-          flow.activeThinkingStep.durationEl.textContent = flow.activeThinkingStep.durationText;
-        }
-        flow.activeThinkingStep.cardEl?.classList.remove("running");
-      } else {
-        flow.activeThinkingStep.cardEl?.remove();
-        if (Array.isArray(flow.currentSteps)) {
-          flow.currentSteps = flow.currentSteps.filter((s) => s !== flow.activeThinkingStep);
-        }
-      }
-      flow.activeThinkingStep = null;
-    }
-    if (flow.thinkingTimerInterval) {
-      clearInterval(flow.thinkingTimerInterval);
-      flow.thinkingTimerInterval = null;
-    }
+    sealActiveThinkingStep();
     // 文本输出开始时，收起所有已完成的工具卡片
     api.collapseAllDoneToolCards();
   });
@@ -804,26 +757,7 @@ export function initFlowStream(ctx) {
   piClient.addEventListener("text-delta", (e) => {
     if (!isForegroundStreamEvent()) return;
     flow.hasReceivedDelta = true;
-    if (flow.activeThinkingStep) {
-      if (flow.activeThinkingStep.hasRealThinking || flow.activeThinkingStep.text?.trim()) {
-        const elapsed = ((Date.now() - flow.activeThinkingStep.startTime) / 1000).toFixed(1);
-        flow.activeThinkingStep.durationText = `(${elapsed}s)`;
-        if (flow.activeThinkingStep.durationEl) {
-          flow.activeThinkingStep.durationEl.textContent = flow.activeThinkingStep.durationText;
-        }
-        flow.activeThinkingStep.cardEl?.classList.remove("running");
-      } else {
-        flow.activeThinkingStep.cardEl?.remove();
-        if (Array.isArray(flow.currentSteps)) {
-          flow.currentSteps = flow.currentSteps.filter((s) => s !== flow.activeThinkingStep);
-        }
-      }
-      flow.activeThinkingStep = null;
-    }
-    if (flow.thinkingTimerInterval) {
-      clearInterval(flow.thinkingTimerInterval);
-      flow.thinkingTimerInterval = null;
-    }
+    sealActiveThinkingStep();
     flow.currentResponseText += e.detail || "";
     // 阶段性输出切片：首增量时创建 Point 卡（标题 + 读秒），内容仍在最终输出卡流式可见
     const textStep = ensureActiveTextStep();
@@ -842,6 +776,7 @@ export function initFlowStream(ctx) {
 
   api.resetStreamState = resetStreamState;
   api.finalizeStream = finalizeStream;
+  api.sealActiveThinkingStep = sealActiveThinkingStep;
   api.ensureActiveThinkingStep = ensureActiveThinkingStep;
   api.ensureActiveTextStep = ensureActiveTextStep;
   api.sealActivePhaseOutput = sealActivePhaseOutput;

@@ -346,46 +346,12 @@ impl PiHostPool {
 
     /// 从 ~/.pi-dl/config.json 读取持久化选中的模型
     pub async fn get_saved_config_model(&self) -> Option<(String, String)> {
-        let home_dir = dirs::home_dir()?;
-        let config_path = home_dir.join(".pi-dl").join("config.json");
-        if config_path.is_file() {
-            if let Ok(content) = std::fs::read_to_string(config_path) {
-                if let Ok(json_val) = serde_json::from_str::<Value>(&content) {
-                    if let Some(selected) = json_val.get("selectedModel") {
-                        let provider = selected.get("provider").and_then(|v| v.as_str());
-                        let model_id = selected
-                            .get("modelId")
-                            .or_else(|| selected.get("id"))
-                            .or_else(|| selected.get("name"))
-                            .and_then(|v| v.as_str());
-                        if let (Some(p), Some(m)) = (provider, model_id) {
-                            if !p.trim().is_empty() && !m.trim().is_empty() {
-                                return Some((p.to_string(), m.to_string()));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        None
+        crate::config_manager::get_saved_model_and_thinking().0
     }
 
     /// 从 ~/.pi-dl/config.json 读取持久化的思考等级
     pub async fn get_saved_config_thinking_level(&self) -> Option<String> {
-        let home_dir = dirs::home_dir()?;
-        let config_path = home_dir.join(".pi-dl").join("config.json");
-        if config_path.is_file() {
-            if let Ok(content) = std::fs::read_to_string(config_path) {
-                if let Ok(json_val) = serde_json::from_str::<Value>(&content) {
-                    if let Some(level) = json_val.get("defaultThinkingLevel").and_then(|v| v.as_str()) {
-                        if !level.trim().is_empty() {
-                            return Some(level.to_string());
-                        }
-                    }
-                }
-            }
-        }
-        None
+        crate::config_manager::get_saved_model_and_thinking().1
     }
 
     /// 解析当前 Prompt 请求最终应该使用的模型（多级兜底保障）
