@@ -25,7 +25,8 @@ dist-ssr
 
 .doc/
 
-.mytools/pi-body/
+.mytools/pi-body/*
+!.mytools/pi-body/*.7z
 workspaces/*
 
 # 私人定制与专有交付工作区 (Custom / Private Workspaces)
