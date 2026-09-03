@@ -30,6 +30,29 @@ export function initFlowUi(ctx) {
   // 初始化代码块一键复制与 Markdown 内部交互委托
   initMarkdownInteractions(document);
 
+  // 用户提问卡片一键复制（事件委托：同时覆盖静态初始模板与动态历史轮次）
+  if (flowConversation) {
+    flowConversation.addEventListener("click", async (e) => {
+      const copyBtn = e.target.closest(".prompt-copy-btn");
+      if (!copyBtn) return;
+      e.stopPropagation();
+      const card = copyBtn.closest(".flow-user-prompt-card");
+      const text = (copyBtn.dataset.copyText || card?.querySelector(".prompt-content")?.textContent || "").trim();
+      if (!text || !navigator.clipboard) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        copyBtn.classList.add("copied");
+        copyBtn.title = "已复制";
+        setTimeout(() => {
+          copyBtn.classList.remove("copied");
+          copyBtn.title = "复制提问";
+        }, 1400);
+      } catch (err) {
+        console.warn("[FlowUi] Prompt copy failed:", err);
+      }
+    });
+  }
+
   // ==========================================================================
   // Flow 流式渲染核心
   // 说明：轮次状态（当前轮次 DOM 引用、流式文本、工具卡注册表、中断发送/自愈缓存）
@@ -733,6 +756,9 @@ export function initFlowUi(ctx) {
       attachmentsHtml = `<div class="flow-prompt-attachments">${chips}</div>`;
     }
 
+    if (cleanQuery) {
+      userPromptCard.dataset.copyText = cleanQuery;
+    }
     userPromptCard.innerHTML = `
       <div class="prompt-icon">
         <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
@@ -743,6 +769,7 @@ export function initFlowUi(ctx) {
         ${attachmentsHtml}
         <p class="prompt-content">${escapeHtml(cleanQuery || (attachments.length > 0 ? `[附带 ${attachments.length} 个文件/图片]` : ""))}</p>
       </div>
+      <button class="prompt-copy-btn" type="button" title="复制提问" aria-label="复制提问">${ICONS.copy}</button>
     `;
     groupEl.appendChild(userPromptCard);
 

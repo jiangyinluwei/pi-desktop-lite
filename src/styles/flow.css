@@ -315,6 +315,46 @@
   line-height: 1.4;
 }
 
+/* 提问一键复制按钮：常态透明无边框（1px 透明占位防抖），悬浮/聚焦显现手绘边框 */
+.flow-user-prompt-card .prompt-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 3px;
+  margin-left: 2px;
+  padding: 3px;
+  font-family: inherit;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.flow-user-prompt-card .prompt-copy-btn:hover {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  background: var(--sketch-box-bg);
+}
+
+.flow-user-prompt-card .prompt-copy-btn:focus-visible {
+  outline: none;
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  background: var(--sketch-box-bg);
+}
+
+.flow-user-prompt-card .prompt-copy-btn.copied {
+  color: #059669;
+}
+
+:root[data-theme="dark"] .flow-user-prompt-card .prompt-copy-btn.copied {
+  color: #34d399;
+}
+
 /* 会话流「注入提示」信息框：位于路由目标项目胶囊下方，集中展示所有调用模型前注入的上下文条目
    （Inner-Skill 运行态技能 / 路由 AGENTS.md / README.md / 命中技能 / 路由信封），
    随会话动态累积；直角矩形简洁风（非手绘），默认收起显示「注入提示」与注入数量，点击头部展开清单 */
