@@ -416,6 +416,18 @@ export function initTaskPanel(ctx) {
         flow.hasAutoCollapsedThinking = !isOpen;
         flow.currentSteps = Array.isArray(turn.steps) ? [...turn.steps] : [];
 
+        // H26 自愈：将最后一轮中已渲染的工具卡 DOM 节点回填至 flow.renderedToolCards
+        // 保证切入运行中任务后，后续到达的 tool-update / tool-end 能够精准定位到 DOM 节点
+        if (groupRefs?.groupEl) {
+          const toolCardEls = groupRefs.groupEl.querySelectorAll(".flow-step-tool");
+          toolCardEls.forEach((cardEl) => {
+            const rawId = cardEl.id && cardEl.id.startsWith("tool-") ? cardEl.id.replace(/^tool-/, "") : cardEl.id;
+            if (rawId) {
+              flow.renderedToolCards.set(rawId, cardEl);
+            }
+          });
+        }
+
         if (isRunning && groupRefs.responseContentEl) {
           groupRefs.responseContentEl.innerHTML = api.renderMarkdown(turn.responseText || "") + `<span class="streaming-cursor"></span>`;
         }
@@ -464,6 +476,11 @@ export function initTaskPanel(ctx) {
   const restoreTaskToFlow = (task) => {
     if (!task) return;
 
+    // H25 防重入铁律：如果已经在 Flow 模式且当前前台活跃任务正是此任务，直接返回，严禁清空 DOM 与截断流式
+    if (view.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id === task.id) {
+      return;
+    }
+
     if (view.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id !== task.id) {
       archiveCurrentFlowToHistory();
     }
@@ -504,15 +521,38 @@ export function initTaskPanel(ctx) {
   const restoreConversationToFlow = (conv) => {
     if (!conv) return;
 
+    // 智能探测对应的 Task 实例（按 conv.taskId、conv.id 或 conversationId 匹配）
+    const taskIdToUse = conv.taskId || conv.id;
+    let existingTask = taskManager.getTask(taskIdToUse);
+    if (!existingTask) {
+      existingTask = taskManager.getAllTasks().find(
+        (t) => t.conversationId === conv.id || t.id === conv.id || t.id === conv.taskId
+      );
+    }
+
+    // 防重入铁律：如果已经在 Flow 模式且当前前台活跃任务正是此任务，直接返回
+    const currentActive = taskManager.getCurrentActiveTask();
+    if (view.mode === VIEW_FLOW && currentActive && (currentActive.id === (existingTask?.id || taskIdToUse) || currentActive.conversationId === conv.id)) {
+      return;
+    }
+
+    // 刷新该讯息的浏览时间戳（MRU 刷新排序至第 1 位）
+    conversationHistoryService.touchConversation(conv.id);
+
+    // 铁律 1 & H28: 入口智能重定向与防覆写
+    // 若该 Task 在 TaskManager 中已存在（无论是活跃运行、后台挂起、还是保留在内存的终态任务），
+    // 严禁使用静态历史快照覆写实时 live turns，严禁强行置 task.status = "completed"！
+    // 直接走 restoreTaskToFlow 通道，平滑无缝接入任务现场并保留真实状态机
+    if (existingTask) {
+      restoreTaskToFlow(existingTask);
+      return;
+    }
+
     if (view.mode === VIEW_FLOW) {
       archiveCurrentFlowToHistory();
     }
 
-    // 1. 刷新该讯息的浏览时间戳（MRU 刷新排序至第 1 位）
-    conversationHistoryService.touchConversation(conv.id);
-
-    // 2. 将该历史对话还原并绑定为 TaskManager 的当前活跃 Task，确保后续提问保留在同一个工作流
-    const taskIdToUse = conv.taskId || conv.id;
+    // 仅当 Task 不存在于内存中（纯静态历史还原）时，才从 conv 快照重新构建 Task
     let task = taskManager.getTask(taskIdToUse);
     const turns = Array.isArray(conv.turns) && conv.turns.length > 0
       ? conv.turns.map((t) => ({ ...t, query: cleanUserPrompt(t.query || "") }))
@@ -541,7 +581,8 @@ export function initTaskPanel(ctx) {
     }
     task.turns = JSON.parse(JSON.stringify(turns));
     task.conversationId = conv.id;
-    task.status = "completed";
+    // H27 治理：精准保留已中止/异常状态，非中止则赋予 completed 终态
+    task.status = conv.isAborted ? "aborted" : "completed";
     const lastTurn = turns[turns.length - 1];
     task.thinkingText = lastTurn?.thinkingText || conv.thinkingText || "";
     task.responseText = lastTurn?.responseText || conv.responseText || "";
@@ -605,6 +646,18 @@ export function initTaskPanel(ctx) {
 
       // 同步内存中的 turns 状态
       currentActive.turns = turnsToSave;
+
+      // 铁律 2 (H28)：Task 归档与终结彻底解耦（完全终止才归档至历史记录）
+      // 处于运行态或待确认态（thinking / streaming / tool_exec / paused）的 Task 绝不写入 conversationHistoryService
+      const isRunningOrPaused =
+        currentActive.status === "thinking" ||
+        currentActive.status === "streaming" ||
+        currentActive.status === "tool_exec" ||
+        currentActive.status === "paused";
+
+      if (isRunningOrPaused && !isAborted) {
+        return;
+      }
 
       const firstTurn = turnsToSave[0];
       const lastTurn = turnsToSave[turnsToSave.length - 1];
@@ -682,6 +735,16 @@ export function initTaskPanel(ctx) {
 
       const timeStr = formatRelativeTime(conv.lastViewedAt || conv.createdAt);
 
+      // 探测是否存在匹配的后台活跃/挂起任务 (H28 运行中脉冲徽章)
+      const matchedTask = taskManager.getTask(conv.taskId || conv.id) ||
+        taskManager.getAllTasks().find((t) => t.conversationId === conv.id);
+      const isRunning = matchedTask && (
+        matchedTask.status === "thinking" ||
+        matchedTask.status === "streaming" ||
+        matchedTask.status === "tool_exec" ||
+        matchedTask.status === "paused"
+      );
+
       card.innerHTML = `
         <svg class="sketch-card-circle-overlay" viewBox="0 0 200 60" preserveAspectRatio="none" aria-hidden="true">
           <path class="sketch-circle-loop" d="M 14,32 C 10,13 36,4 102,4.5 C 168,5 192,15 190,32 C 187,49 162,56 98,55.5 C 34,55 8,45 10,27 C 12,14 38,5.5 106,6" />
@@ -692,6 +755,7 @@ export function initTaskPanel(ctx) {
         <div class="message-card-title" title="${escapeHtml(conv.query || conv.title)}">${escapeHtml(conv.title || conv.query)}</div>
         <div class="message-card-meta">
           <span class="message-card-time">${escapeHtml(timeStr)}</span>
+          ${isRunning ? `<span class="message-card-running-badge"><span class="badge-dot" aria-hidden="true"></span>运行中</span>` : ""}
         </div>
       `;
 

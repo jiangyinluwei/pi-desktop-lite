@@ -150,6 +150,22 @@ export function initSessionsPanel(ctx) {
       }
 
       const convId = `kernel_${s.session_id}`;
+
+      // 智能重定向铁律：若该会话已作为活跃/挂起任务运行在 TaskManager 中，直接接入实时现场，杜绝用静态历史覆写
+      let existingTask = taskManager.getTask(convId);
+      if (existingTask) {
+        const isRunning =
+          existingTask.status === "thinking" ||
+          existingTask.status === "streaming" ||
+          existingTask.status === "tool_exec" ||
+          existingTask.status === "paused";
+        if (isRunning) {
+          api.restoreTaskToFlow(existingTask);
+          view.flowFromSettings = true;
+          return;
+        }
+      }
+
       let turns;
       try {
         const detail = await sessionService.getSessionDetail(s.file_path);

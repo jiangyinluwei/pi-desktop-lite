@@ -290,3 +290,37 @@
   pointer-events: none;
 }
 
+/* H28 运行中脉冲状态徽章 */
+.message-card-running-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3.5px;
+  font-size: 9.5px;
+  color: var(--amber, #b45309);
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--amber-subtle, rgba(217, 119, 6, 0.12));
+  font-weight: 500;
+  line-height: 1.1;
+  flex-shrink: 0;
+}
+
+.message-card-running-badge .badge-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--amber, #b45309);
+  animation: pulse-dot 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+}
+

@@ -1,7 +1,7 @@
 ---
 name: flow-interaction-pattern
 description: |
-  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/阶段性输出 Point 切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-Point1-工具1-Point2-工具2...」真实因果链条一段一段拼接；③伪框占位机制（首 token 延迟期「Thinking (0.0s)...」伪思考框；工具参数流式期「工具调用(edit)... + 读秒 + running」伪工具运行框，真实卡就位即移除）；④Flow 界面任意区域滚轮事件委托至最外层滚动容器；⑤多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑥多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑦模型自动重连切换自愈流水线 (ModelFailoverEngine)；⑧输出卡底部手绘风格的保存操作栏；⑨会话完成后「文件变更」收纳框（flow-file-changes，收集新增/修改/删除的文件、点击条目在资源管理器中定位其所在文件夹；按 Task 会话流缓存至程序生命周期结束，右键退出再经历史/Task 记录回入 Flow 一致恢复）；⑩用户提问卡右侧一键复制提问按钮（prompt-copy-btn：常态透明无边框、悬浮显手绘边框，点击复制净化后原始提问并短暂变绿反馈，静态初始模板与动态历史轮次均生效）。当用户提出"flow界面交互"、"思维链流式展示"、"阶段性输出"、"Point卡"、"工具调用简略"、"单行思维"、"步骤切片"、"伪思考框"、"伪运行框"、"工具调用读秒"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"、"文件变更"、"修改了哪些文件"时使用此技能。
+  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/阶段性输出 Point 切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-Point1-工具1-Point2-工具2...」真实因果链条一段一段拼接；③伪框占位机制（首 token 延迟期「Thinking (0.0s)...」伪思考框；工具参数流式期「工具调用(edit)... + 读秒 + running」伪工具运行框，真实卡就位即移除）；④Flow 界面任意区域滚轮事件委托至最外层滚动容器；⑤多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑥多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑦模型自动重连切换自愈流水线 (ModelFailoverEngine)；⑧输出卡底部手绘风格的保存操作栏；⑨会话完成后「文件变更」收纳框（flow-file-changes，收集新增/修改/删除的文件、点击条目在资源管理器中定位其所在文件夹；按 Task 会话流缓存至程序生命周期结束，右键退出再经历史/Task 记录回入 Flow 一致恢复）；⑩用户提问卡右侧一键复制提问按钮（prompt-copy-btn：常态透明无边框、悬浮显手绘边框，点击复制净化后原始提问并短暂变绿反馈，静态初始模板与动态历史轮次均生效）；⑪多任务直切自动挂起、历史记录智能重定向与状态隔离（任务直切原活跃任务无缝转入后台挂起、历史进入智能重定向至 restoreTaskToFlow 杜绝静态快照覆写实时 live turns、Flow DOM 防重入与工具切片引用自愈回填）。当用户提出"flow界面交互"、"思维链流式展示"、"阶段性输出"、"Point卡"、"工具调用简略"、"单行思维"、"步骤切片"、"伪思考框"、"伪运行框"、"工具调用读秒"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"、"文件变更"、"修改了哪些文件"、"多任务直切"、"任务切换"、"自动挂起"、"历史记录重定向"、"防重入"时使用此技能。
 ---
 
 # Flow 交互界面规范 (Flow Interaction Pattern)
@@ -191,22 +191,28 @@ flowchart TD
 
 ---
 
-## 📌 10. 多任务直切自动挂起与状态隔离 (Auto-Suspend on Switch)
+## 📌 10. 多任务直切自动挂起、状态隔离与历史重定向 (Auto-Suspend on Switch & Smart Redirection)
 
 当系统存在多个并发或后台任务时，Flow 界面支持在任务之间直接切换，并遵循以下严格的状态隔离铁律：
 
-1. **自动挂起旧任务（杜绝幽灵任务）**：
+1. **自动挂起旧任务与解耦归档（杜绝幽灵任务与半死快照）**：
    - 从右上角任务抽屉、会话记录或系统通知中点击直接进入目标 Task 时，原前台活跃任务必须由 `TaskManager.setActiveTask` / `createTask` 自动转入后台挂起（`prevTask.isSuspended = true`）；
-   - 切换前由 `archiveCurrentFlowToHistory()` 将前台 DOM 当前进度（含未完成的流式段、思考与工具状态）完整同步回原任务，绝不丢失；
-2. **跨会话状态彻底重置与对齐**：
+   - 切换前由 `archiveCurrentFlowToHistory()` 将前台 DOM 当前进度完整同步回原任务内存 `currentActive.turns`；**但若原任务仍在运行中（thinking / streaming / tool_exec / paused），绝对不调用 `conversationHistoryService.recordConversation()` 写入静态历史**，确立“完全终止才归档”铁律；
+2. **跨会话状态彻底重置与工具引用自愈回填**：
    - 共享渲染管线 `renderTurnsIntoFlow` 在渲染新任务前，必须执行：
      - `api.resetFileChanges()`：清空文件变更收纳框的 DOM 引用，防止旧任务的节点在清空 DOM 后残留；
      - `flow.renderedToolCards.clear()`：清空旧任务工具卡片引用；
      - `flow.activeThinkingStep = null`：重置活跃思考步骤；
      - `flow.currentSteps = Array.isArray(turn.steps) ? [...turn.steps] : []`：对齐新任务当前轮次步骤快照；
-3. **收纳框与 Mini 胶囊自愈更新**：
+   - **末轮工具卡自愈回填**：`renderTurnsIntoFlow` 在创建末轮 DOM 后，遍历其中的 `.flow-step-tool` 节点回填至 `flow.renderedToolCards`，并在 `flow-pipeline.js` 的 `tool-update` / `tool-end` 中结合 DOM ID 动态检索与读秒更新兜底，保证切回运行中任务后工具卡绝不永久卡死在 `running`；
+3. **Flow DOM 防重入与历史记录智能重定向**：
+   - **防重入铁律**：`restoreTaskToFlow` 与 `restoreConversationToFlow` 在首行校验 `if (view.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id === targetId) return;`，已在 Flow 查看当前任务时绝不重复清空 DOM，防止流式截断与界面闪烁；
+   - **历史入口智能重定向**：用户从界面1历史讯息抽屉点击卡片时，优先探测该会话是否在 `TaskManager` 中作为活跃/挂起任务存在。若存在，全链路直接重定向至 `restoreTaskToFlow`，严禁用静态历史旧 turns 覆写实时 live turns，严禁强行覆盖 `task.status = "completed"`；
+   - **视觉标识互斥**：历史抽屉卡片探测后台运行态，当会话处于运行中时在 meta 区呈现手绘脉冲「运行中」微动效徽章；
+4. **收纳框与 Mini 胶囊自愈更新**：
    - 由 `api.restoreFileChangesFor(task.id)` 恢复目标任务在生命周期内累积的文件变更；
    - 切换完成后即时调用 `updateMiniTaskCapsuleUI()`，确保右上角 Mini 胶囊数字与后台挂起任务数量 100% 精确吻合。
+
 
 
 

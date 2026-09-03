@@ -382,7 +382,14 @@ export function initFlowPipeline(ctx) {
   piClient.addEventListener("tool-update", (e) => {
     if (!isForegroundStreamEvent()) return;
     const data = e.detail;
-    const card = flow.renderedToolCards.get(data.toolCallId);
+    let card = flow.renderedToolCards.get(data.toolCallId);
+    // H26 兜底自愈：若 Map 中未命中，尝试从 DOM ID 动态检索并自愈回填
+    if (!card && data.toolCallId) {
+      card = document.getElementById(`tool-${data.toolCallId}`) || document.getElementById(data.toolCallId);
+      if (card) {
+        flow.renderedToolCards.set(data.toolCallId, card);
+      }
+    }
     const matchingStep = Array.isArray(flow.currentSteps)
       ? flow.currentSteps.find((s) => s.type === "tool" && s.id === data.toolCallId)
       : null;
@@ -405,7 +412,14 @@ export function initFlowPipeline(ctx) {
   piClient.addEventListener("tool-end", (e) => {
     if (!isForegroundStreamEvent()) return;
     const data = e.detail;
-    const card = flow.renderedToolCards.get(data.toolCallId);
+    let card = flow.renderedToolCards.get(data.toolCallId);
+    // H26 兜底自愈：若 Map 中未命中，尝试从 DOM ID 动态检索并自愈回填
+    if (!card && data.toolCallId) {
+      card = document.getElementById(`tool-${data.toolCallId}`) || document.getElementById(data.toolCallId);
+      if (card) {
+        flow.renderedToolCards.set(data.toolCallId, card);
+      }
+    }
     const isError = Boolean(data.isError);
     const statusText = isError ? "failure" : "done";
 
@@ -421,6 +435,11 @@ export function initFlowPipeline(ctx) {
       matchingStep.durationText = `(${elapsed}s)`;
       if (matchingStep.durationEl) {
         matchingStep.durationEl.textContent = matchingStep.durationText;
+      } else if (card) {
+        const durEl = card.querySelector(".flow-step-duration") || card.querySelector(".tool-duration");
+        if (durEl) {
+          durEl.textContent = matchingStep.durationText;
+        }
       }
     }
     if (flow.toolRunTimerInterval) {
