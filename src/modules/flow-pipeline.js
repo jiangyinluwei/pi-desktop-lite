@@ -192,6 +192,86 @@ export function initFlowPipeline(ctx) {
     }
   });
 
+  /**
+   * 辅助：确保当前存在“伪工具运行框”占位卡（工具参数流式期空窗辅助显示）
+   * 对齐伪思考框机制：toolcall-delta-start 即插入「工具调用... + 读秒 + running」单行卡，
+   * 参数流式结束 (toolcall_end) 后回填真实工具名，真实工具卡创建 (tool-start) 时移除。
+   */
+  const ensureActiveToolPseudoStep = () => {
+    if (flow.activeToolPseudoStep) return flow.activeToolPseudoStep;
+    if (typeof api.createToolPseudoRunningCard !== "function") return null;
+
+    const pCard = api.createToolPseudoRunningCard({ durationText: "(0.0s)..." });
+    if (flow.activeTurnRefs?.stepsContainerEl) {
+      flow.activeTurnRefs.stepsContainerEl.appendChild(pCard.cardEl);
+    }
+
+    const pseudoItem = {
+      type: "tool-pseudo",
+      name: "",
+      startTime: Date.now(),
+      cardEl: pCard.cardEl,
+      titleEl: pCard.titleEl,
+      durationEl: pCard.durationEl,
+    };
+    flow.activeToolPseudoStep = pseudoItem;
+
+    if (!flow.toolPseudoTimerInterval) {
+      flow.toolPseudoTimerInterval = setInterval(() => {
+        if (flow.activeToolPseudoStep?.durationEl) {
+          const elapsed = ((Date.now() - flow.activeToolPseudoStep.startTime) / 1000).toFixed(1);
+          flow.activeToolPseudoStep.durationEl.textContent = `(${elapsed}s)...`;
+        }
+      }, 100);
+    }
+
+    return pseudoItem;
+  };
+
+  /**
+   * 辅助：回填伪工具运行框的真实工具名（toolcall_end 携带 toolCall.name 时）
+   */
+  const updateToolPseudoName = (toolName) => {
+    if (!flow.activeToolPseudoStep || !toolName) return;
+    const friendly = typeof api.getFriendlyToolName === "function"
+      ? api.getFriendlyToolName(toolName)
+      : toolName;
+    if (flow.activeToolPseudoStep.titleEl) {
+      flow.activeToolPseudoStep.titleEl.textContent = `工具调用(${friendly})`;
+    }
+  };
+
+  /**
+   * 辅助：移除伪工具运行框（真实工具卡已就位或流式状态重置/结束时）
+   */
+  const removeActiveToolPseudoStep = () => {
+    const pseudo = flow.activeToolPseudoStep;
+    if (!pseudo) return;
+    flow.activeToolPseudoStep = null;
+    if (flow.toolPseudoTimerInterval) {
+      clearInterval(flow.toolPseudoTimerInterval);
+      flow.toolPseudoTimerInterval = null;
+    }
+    pseudo.cardEl?.remove();
+  };
+
+  /**
+   * 辅助：启动/接管真实工具卡片的读秒计时 (Running 文本 + 递增读秒)
+   */
+  const startToolRunTimer = () => {
+    if (flow.toolRunTimerInterval) {
+      clearInterval(flow.toolRunTimerInterval);
+      flow.toolRunTimerInterval = null;
+    }
+    flow.toolRunTimerInterval = setInterval(() => {
+      const step = flow.activeToolStep;
+      if (!step?.durationEl || step.status !== "running") return;
+      const elapsed = ((Date.now() - step.startTime) / 1000).toFixed(1);
+      step.durationText = `(${elapsed}s)...`;
+      step.durationEl.textContent = step.durationText;
+    }, 100);
+  };
+
   piClient.addEventListener("toolcall-delta-start", (e) => {
     if (!isForegroundStreamEvent()) return;
     // 阶段性输出判定铁律：模型输出一段文字后进入工具调用状态（工具参数流式开始即视为进入），
@@ -200,6 +280,14 @@ export function initFlowPipeline(ctx) {
       api.sealActivePhaseOutput();
     }
     api.autoCollapseThinkingOnNextPhase();
+    // 伪工具运行框：参数流式期空窗即时呈现「工具调用... + 读秒 + running」
+    ensureActiveToolPseudoStep();
+  });
+
+  piClient.addEventListener("toolcall-delta-end", (e) => {
+    if (!isForegroundStreamEvent()) return;
+    // 参数流式结束：回填真实工具名（工具调用(edit)）
+    updateToolPseudoName(e.detail?.name || e.detail?.toolCall?.name);
   });
 
   piClient.addEventListener("tool-start", (e) => {
@@ -236,6 +324,9 @@ export function initFlowPipeline(ctx) {
       api.sealActivePhaseOutput();
     }
 
+    // 伪工具运行框已完成使命：真实工具名已知，移除占位卡
+    removeActiveToolPseudoStep();
+
     // 创建单行极简工具卡片（默认折叠，任何时候不自动展开）
     const toolStep = typeof api.createToolStepCard === "function"
       ? api.createToolStepCard({
@@ -243,6 +334,7 @@ export function initFlowPipeline(ctx) {
           name: toolName,
           args: data.args,
           status: "running",
+          durationText: "(0.0s)...",
           isOpen: false,
         })
       : null;
@@ -282,8 +374,11 @@ export function initFlowPipeline(ctx) {
       args: data.args,
       status: "running",
       result: null,
+      startTime: Date.now(),
+      durationText: "(0.0s)...",
       cardEl: card,
       badgeEl: toolStep?.badgeEl || card.querySelector(".tool-status-badge"),
+      durationEl: toolStep?.durationEl || card.querySelector(".tool-duration"),
       previewEl: toolStep?.previewEl || card.querySelector(".flow-step-preview"),
       bodyEl: toolStep?.bodyEl || card.querySelector(".flow-step-body") || card.querySelector(".tool-body"),
     };
@@ -293,6 +388,7 @@ export function initFlowPipeline(ctx) {
       flow.currentSteps = [];
     }
     flow.currentSteps.push(stepItem);
+    startToolRunTimer();
     // 仅吸底跟随开启时随内容定位到底部，向上滚离后不打断浏览
     if (flowScrollArea && flow.followBottom !== false) {
       flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
@@ -336,6 +432,16 @@ export function initFlowPipeline(ctx) {
       matchingStep.status = statusText;
       matchingStep.result = data.result;
       matchingStep.is_error = isError;
+      // 定格工具执行读秒 (Running -> done/failed)
+      const elapsed = ((Date.now() - (matchingStep.startTime || Date.now())) / 1000).toFixed(1);
+      matchingStep.durationText = `(${elapsed}s)`;
+      if (matchingStep.durationEl) {
+        matchingStep.durationEl.textContent = matchingStep.durationText;
+      }
+    }
+    if (flow.toolRunTimerInterval) {
+      clearInterval(flow.toolRunTimerInterval);
+      flow.toolRunTimerInterval = null;
     }
 
     if (card) {
@@ -375,6 +481,8 @@ export function initFlowPipeline(ctx) {
     if (flow.activeToolStep?.id === data.toolCallId) {
       flow.activeToolStep = null;
     }
+    // 兼容漏收 tool-start 的异常流：兜底清理可能残留的伪工具运行框
+    removeActiveToolPseudoStep();
 
     // 沿用“伪思考框”机制：工具调用结束后立即重新触发 Thinking (0.0s)... 占位卡片，
     // 覆盖工具结果回传后到下一轮模型响应首个事件（thinking-start / text-start）之间的空窗期；
@@ -860,4 +968,5 @@ export function initFlowPipeline(ctx) {
 
   api.handleFlowQuery = handleFlowQuery;
   api.submitCurrentPrompt = submitCurrentPrompt;
+  api.removeActiveToolPseudoStep = removeActiveToolPseudoStep;
 }

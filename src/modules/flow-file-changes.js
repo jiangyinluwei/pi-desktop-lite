@@ -52,11 +52,40 @@ const KIND_LABELS = {
   delete: "删除",
 };
 
+// 区分显示的矢量图元：新增 ➔ 加号，修改 ➔ 铅笔，删除 ➔ 垃圾桶
+const KIND_ICONS = {
+  add: ICONS.plus,
+  modify: ICONS.edit,
+  delete: ICONS.trash,
+};
+
 // 串轮过滤铁律：仅收集前台活跃任务的流式事件，后台挂起任务绝不进入前台收纳框
 const isForegroundStreamEvent = () =>
   taskManager.isForegroundStreamTask(piClient.lastEventTaskId || null);
 
 const normalizePathKey = (p) => String(p || "").replace(/\//g, "\\").toLowerCase();
+
+/* ---------- [USER_HOME] 脱敏占位符还原 ---------- */
+// 内核事件流在 Rust 侧（src-tauri/src/security/redaction.rs）统一脱敏，
+// 真实主目录被替换为字面量 [USER_HOME]，直接用于存在性探测与资源管理器定位全部失效；
+// 本模块在路径入桩前统一还原为真实绝对路径（脱敏层本身保持不变）
+const REDACTED_HOME_TOKEN = "[USER_HOME]";
+let realHomeDir = "";
+try {
+  invokeTauri("pi_get_home_dir", {})
+    .then((home) => {
+      realHomeDir = String(home || "");
+    })
+    .catch(() => {});
+} catch {
+  // invokeTauri 未就绪时静默降级：保持原样，后续点击仍可重试还原
+}
+
+const restoreHomePath = (p) => {
+  const raw = String(p || "");
+  if (!raw || !realHomeDir || !raw.includes(REDACTED_HOME_TOKEN)) return raw;
+  return raw.split(REDACTED_HOME_TOKEN).join(realHomeDir);
+};
 
 /** 从工具入参中提取文件绝对路径（兼容对象 / JSON 字符串与多文件入参结构） */
 const extractFilePaths = (args) => {
@@ -91,7 +120,7 @@ const extractFilePaths = (args) => {
       }
     }
   }
-  return [...new Set(paths)];
+  return [...new Set(paths)].map(restoreHomePath);
 };
 
 /** 从 Shell 类工具入参中提取命令文本（command / cmd / script） */
@@ -140,7 +169,7 @@ const extractDeletedPathsFromCommand = (commandText) => {
   for (const m of text.matchAll(/\brm\s+([^\n;&|]+)/g)) parseTargets(m[1]);
   for (const m of text.matchAll(/Remove-Item\s+([^\n;&|]+)/gi)) parseTargets(m[1]);
   for (const m of text.matchAll(/\bdel\s+([^\n;&|]+)/gi)) parseTargets(m[1]);
-  return [...new Set(found)];
+  return [...new Set(found)].map(restoreHomePath);
 };
 
 const splitPath = (p) => {
@@ -182,16 +211,24 @@ export function initFileChanges(ctx) {
 
   /** 记录一条文件变更（按路径去重；同一文件保留最新动作，删除为终态优先） */
   const recordFileChange = (toolName, path, existedBefore, forcedKind) => {
-    const key = normalizePathKey(path);
+    const restored = restoreHomePath(path);
+    const key = normalizePathKey(restored);
     if (!key) return;
-    const { name, dir } = splitPath(path);
+    const { name, dir } = splitPath(restored);
     const kind = forcedKind || classifyKind(toolName, existedBefore);
     const prev = fileChanges.items.get(key);
-    // 合并策略：删除为终态永远胜出；其余保留已有「新增」或最新动作
-    const mergedKind = kind === "delete" ? "delete" : prev ? (prev.kind === "add" || kind === "add" ? prev.kind : kind) : kind;
+    // 合并策略：删除为终态永远胜出；已录入「新增」则保持新增（后续覆盖/编辑不降级）；否则取最新动作
+    let mergedKind;
+    if (kind === "delete" || (prev && prev.kind === "delete")) {
+      mergedKind = "delete";
+    } else if ((prev && prev.kind === "add") || kind === "add") {
+      mergedKind = "add";
+    } else {
+      mergedKind = kind;
+    }
     fileChanges.items.set(key, {
-      path,
-      name: name || path,
+      path: restored,
+      name: name || restored,
       dir,
       kind: mergedKind,
     });
@@ -228,7 +265,14 @@ export function initFileChanges(ctx) {
       fileChanges.listEl.addEventListener("click", async (e) => {
         const itemEl = e.target.closest(".file-change-item");
         if (!itemEl) return;
-        const targetPath = itemEl.dataset.path || "";
+        // 定位目标：删除类文件已不在磁盘，直接打开其原所在文件夹（上级目录），
+        // 避免完整路径因父目录解析异常而退化为打开「我的文档」；其余类型高亮定位文件
+        const key = normalizePathKey(restoreHomePath(itemEl.dataset.path || ""));
+        const item = fileChanges.items.get(key);
+        let targetPath = restoreHomePath(itemEl.dataset.path || "");
+        if (item && item.kind === "delete" && item.dir) {
+          targetPath = item.dir;
+        }
         if (!targetPath) return;
         try {
           await invokeTauri("pi_reveal_path", { path: targetPath });
@@ -276,8 +320,12 @@ export function initFileChanges(ctx) {
       li.setAttribute("role", "button");
       li.setAttribute("tabindex", "0");
       li.title = `点击打开所在文件夹\n${item.path}`;
+      const kindClass = item.kind === "add" ? "kind-add" : item.kind === "delete" ? "kind-delete" : "kind-modify";
       li.innerHTML = `
-        <span class="file-change-kind ${item.kind === "add" ? "kind-add" : item.kind === "delete" ? "kind-delete" : "kind-modify"}">${KIND_LABELS[item.kind] || "修改"}</span>
+        <span class="file-change-kind ${kindClass}">
+          <span class="file-change-kind-icon" aria-hidden="true">${KIND_ICONS[item.kind] || ""}</span>
+          ${KIND_LABELS[item.kind] || "修改"}
+        </span>
         <span class="file-change-name">${escapeHtml(item.name)}</span>
         ${item.dir ? `<span class="file-change-dir">${escapeHtml(item.dir)}</span>` : ""}
         <span class="file-change-folder" aria-hidden="true">${ICONS.folder}</span>
@@ -311,24 +359,24 @@ export function initFileChanges(ctx) {
       ? extractDeletedPathsFromCommand(extractCommandText(data.args))
       : extractFilePaths(data.args);
     if (candidates.length === 0) return;
-    fileChanges.existenceProbes.set(data.toolCallId, candidates);
-    Promise.all(
-      candidates.map(async (p) => {
-        try {
-          return await invokeTauri("pi_path_exists", { path: p });
-        } catch {
-          return null;
-        }
-      })
-    )
-      .then((results) => {
-        fileChanges.existenceProbes.set(data.toolCallId, candidates.map((p, i) => ({ path: p, existed: results[i] })));
-      })
-      .catch(() => {});
+    // 存储为 Promise：tool-end 时 await 取回「执行前存在性」结果，
+    // 消除「探测 IPC 尚未返回而 tool-end 已到」导致的竞态（否则新增文件被误判为修改）
+    fileChanges.existenceProbes.set(
+      data.toolCallId,
+      Promise.all(
+        candidates.map(async (p) => {
+          try {
+            return await invokeTauri("pi_path_exists", { path: p });
+          } catch {
+            return null;
+          }
+        })
+      ).then((results) => candidates.map((p, i) => ({ path: p, existed: results[i] })))
+    );
   });
 
   // 工具结束：仅在执行成功时收集文件变更（失败的工具调用视为未发生）
-  piClient.addEventListener("tool-end", (e) => {
+  piClient.addEventListener("tool-end", async (e) => {
     if (!isForegroundStreamEvent()) return;
     const data = e.detail || {};
     if (data.isError) return;
@@ -338,6 +386,16 @@ export function initFileChanges(ctx) {
     const isDeleteTool = FILE_DELETE_TOOLS.has(toolName);
     const isShellTool = SHELL_TOOLS.has(toolName);
     if (!isWriteTool && !isEditTool && !isDeleteTool && !isShellTool) return;
+
+    // 等待「执行前存在性」探测结果（Promise），避免竞态导致新增被误判为修改
+    const probePromise = fileChanges.existenceProbes.get(data.toolCallId);
+    fileChanges.existenceProbes.delete(data.toolCallId);
+    let probeEntries = null;
+    try {
+      probeEntries = await Promise.resolve(probePromise);
+    } catch {
+      probeEntries = null;
+    }
 
     // 显式删除类工具：执行成功即记为删除
     if (isDeleteTool) {
@@ -353,8 +411,6 @@ export function initFileChanges(ctx) {
     if (isShellTool) {
       const candidates = extractDeletedPathsFromCommand(extractCommandText(data.args));
       if (candidates.length === 0) return;
-      const probeEntries = fileChanges.existenceProbes.get(data.toolCallId);
-      fileChanges.existenceProbes.delete(data.toolCallId);
       for (const path of candidates) {
         const existedBefore = Array.isArray(probeEntries)
           ? (probeEntries.find((entry) => entry?.path === path)?.existed ?? null)
@@ -372,8 +428,6 @@ export function initFileChanges(ctx) {
 
     const paths = extractFilePaths(data.args);
     if (paths.length === 0) return;
-    const probeEntries = fileChanges.existenceProbes.get(data.toolCallId);
-    fileChanges.existenceProbes.delete(data.toolCallId);
     for (const path of paths) {
       const existedBefore = Array.isArray(probeEntries)
         ? (probeEntries.find((entry) => entry?.path === path)?.existed ?? null)

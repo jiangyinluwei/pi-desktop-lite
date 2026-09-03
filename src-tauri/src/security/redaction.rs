@@ -87,3 +87,19 @@ pub fn redact_json(value: &Value) -> Value {
         _ => value.clone(),
     }
 }
+
+/// 将脱敏时注入的 `[USER_HOME]` 占位符还原为真实用户主目录路径。
+///
+/// 模型工具入参经 [`redact_json`] 脱敏后会将用户主目录路径替换为 `[USER_HOME]`，
+/// 而交互式路径操作（如文件定位 `pi_reveal_path`、存在性探测 `pi_path_exists`）
+/// 需要真实磁盘路径才能命中文件系统，故在进入这些操作前还原占位符。
+/// 还原仅作用于占位符本身，不影响跨进程通信中的脱敏展示语义。
+pub fn expand_home_placeholder(input: &str) -> String {
+    if !input.contains("[USER_HOME]") {
+        return input.to_string();
+    }
+    match &*HOME_DIR_STR {
+        Some(home) if !home.is_empty() => input.replace("[USER_HOME]", home),
+        _ => input.to_string(),
+    }
+}

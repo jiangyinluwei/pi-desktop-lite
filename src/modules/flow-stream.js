@@ -41,6 +41,17 @@ export function initFlowStream(ctx) {
     flow.activeThinkingStep = null;
     flow.activeToolStep = null;
     flow.activeTextStep = null;
+    if (typeof api.removeActiveToolPseudoStep === "function") {
+      api.removeActiveToolPseudoStep();
+    }
+    if (flow.toolPseudoTimerInterval) {
+      clearInterval(flow.toolPseudoTimerInterval);
+      flow.toolPseudoTimerInterval = null;
+    }
+    if (flow.toolRunTimerInterval) {
+      clearInterval(flow.toolRunTimerInterval);
+      flow.toolRunTimerInterval = null;
+    }
     if (flow.textTimerInterval) {
       clearInterval(flow.textTimerInterval);
       flow.textTimerInterval = null;
@@ -141,6 +152,14 @@ export function initFlowStream(ctx) {
       clearInterval(flow.thinkingTimerInterval);
       flow.thinkingTimerInterval = null;
     }
+    // 伪工具运行框兜底清理：流式结束时若仍在参数流式期，定格读秒后移除占位卡
+    if (typeof api.removeActiveToolPseudoStep === "function") {
+      api.removeActiveToolPseudoStep();
+    }
+    if (flow.toolRunTimerInterval) {
+      clearInterval(flow.toolRunTimerInterval);
+      flow.toolRunTimerInterval = null;
+    }
     // 移除光标
     if (flow.activeTurnRefs?.responseContentEl) {
       const cursor = flow.activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
@@ -186,6 +205,17 @@ export function initFlowStream(ctx) {
     flow.activeThinkingStep = null;
     flow.activeToolStep = null;
     flow.activeTextStep = null;
+    if (typeof api.removeActiveToolPseudoStep === "function") {
+      api.removeActiveToolPseudoStep();
+    }
+    if (flow.toolPseudoTimerInterval) {
+      clearInterval(flow.toolPseudoTimerInterval);
+      flow.toolPseudoTimerInterval = null;
+    }
+    if (flow.toolRunTimerInterval) {
+      clearInterval(flow.toolRunTimerInterval);
+      flow.toolRunTimerInterval = null;
+    }
     if (flow.textTimerInterval) {
       clearInterval(flow.textTimerInterval);
       flow.textTimerInterval = null;
@@ -679,6 +709,10 @@ export function initFlowStream(ctx) {
     // 阶段性输出判定铁律：模型输出一段文字后再次进入 Thinking 状态，
     // 则前面那段文字属于「阶段性输出」——先封口为 Point 卡，再继续思维切片
     sealActivePhaseOutput();
+    // 模型回到思维链：工具并未真实执行，清理可能残留的伪工具运行框
+    if (typeof api.removeActiveToolPseudoStep === "function") {
+      api.removeActiveToolPseudoStep();
+    }
     ensureActiveThinkingStep();
     followScrollToBottom();
   });
@@ -739,6 +773,10 @@ export function initFlowStream(ctx) {
     flow.hasReceivedDelta = true;
     // 新一段文本开始：若上一段阶段性输出尚未封口（无工具调用边界），先封口
     sealActivePhaseOutput();
+    // 模型回到正文输出：工具并未真实执行，清理可能残留的伪工具运行框
+    if (typeof api.removeActiveToolPseudoStep === "function") {
+      api.removeActiveToolPseudoStep();
+    }
     if (flow.activeThinkingStep) {
       if (flow.activeThinkingStep.hasRealThinking || flow.activeThinkingStep.text?.trim()) {
         const elapsed = ((Date.now() - flow.activeThinkingStep.startTime) / 1000).toFixed(1);

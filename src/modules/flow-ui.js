@@ -551,6 +551,7 @@ export function initFlowUi(ctx) {
     args = null,
     status = "running",
     result = null,
+    durationText = "",
     isOpen = false, // 铁律：默认 false，任何时候不自动展开
   } = {}) => {
     const cardEl = document.createElement("div");
@@ -574,6 +575,7 @@ export function initFlowUi(ctx) {
           ${summary ? `<span class="flow-step-preview tool-preview">${escapeHtml(summary)}</span>` : ""}
         </div>
         <div class="flow-step-header-right tool-header-right">
+          ${durationText ? `<span class="flow-step-duration tool-duration">${escapeHtml(durationText)}</span>` : ""}
           <span class="tool-status-badge ${badgeLabel}">
             <span class="badge-dot" aria-hidden="true"></span>
             <span class="badge-text">${escapeHtml(badgeLabel)}</span>
@@ -588,6 +590,7 @@ export function initFlowUi(ctx) {
 
     const headerEl = cardEl.querySelector(".flow-step-header");
     const badgeEl = cardEl.querySelector(".tool-status-badge");
+    const durationEl = cardEl.querySelector(".tool-duration");
     const previewEl = cardEl.querySelector(".flow-step-preview");
     const bodyEl = cardEl.querySelector(".flow-step-body");
 
@@ -638,8 +641,44 @@ export function initFlowUi(ctx) {
       cardEl,
       headerEl,
       badgeEl,
+      durationEl,
       previewEl,
       bodyEl,
+    };
+  };
+
+  /**
+   * 创建“伪工具运行框”占位卡片（工具参数流式期空窗辅助显示）
+   * 工具名称在参数流式结束 (toolcall_end) 前不可知，先以通用「工具调用...」呈现：
+   * 常态折叠单行卡 + running 徽标 + 读秒，待真实工具卡创建 (tool-start) 时移除。
+   */
+  const createToolPseudoRunningCard = ({
+    durationText = "(0.0s)...",
+  } = {}) => {
+    const cardEl = document.createElement("div");
+    cardEl.className = "flow-step-card flow-step-tool tool-card collapsed running tool-pseudo-card";
+
+    cardEl.innerHTML = `
+      <div class="flow-step-header tool-header" role="button" tabindex="0" aria-expanded="false">
+        <div class="flow-step-header-left">
+          <span class="flow-step-icon tool-icon" aria-hidden="true">${ICONS.tool}</span>
+          <span class="flow-step-title tool-name">工具调用...</span>
+          <span class="flow-step-duration tool-duration">${escapeHtml(durationText)}</span>
+        </div>
+        <div class="flow-step-header-right tool-header-right">
+          <span class="tool-status-badge running">
+            <span class="badge-dot" aria-hidden="true"></span>
+            <span class="badge-text">running</span>
+          </span>
+          <span class="flow-step-arrow tool-collapse-arrow" aria-hidden="true">${ICONS.chevronDown}</span>
+        </div>
+      </div>
+    `;
+
+    return {
+      cardEl,
+      titleEl: cardEl.querySelector(".tool-name"),
+      durationEl: cardEl.querySelector(".tool-duration"),
     };
   };
 
@@ -765,6 +804,7 @@ export function initFlowUi(ctx) {
             args: step.args || step.arguments_text,
             status: step.status || (step.is_error ? "failure" : "done"),
             result: step.result || step.result_text,
+            durationText: step.durationText || "",
             isOpen: false,
           });
           stepsContainerEl.appendChild(toolStep.cardEl);
@@ -1323,6 +1363,7 @@ export function initFlowUi(ctx) {
   api.updateToolBadge = updateToolBadge;
   api.createThinkingStepCard = createThinkingStepCard;
   api.createToolStepCard = createToolStepCard;
+  api.createToolPseudoRunningCard = createToolPseudoRunningCard;
   api.createPhaseStepCard = createPhaseStepCard;
   api.collapseToolCard = collapseToolCard;
   api.expandToolCard = expandToolCard;

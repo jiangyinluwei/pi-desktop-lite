@@ -42,9 +42,23 @@ async fn pi_open_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// 将脱敏占位符 `[USER_HOME]` 还原为真实用户主目录（仅用于后端路径操作，展示层保持脱敏）
+/// 内核事件流经 redaction 层时主目录前缀被替换为占位符，前端无法自行还原，
+/// 由后端路径操作指令（reveal / exists）入口统一展开，保证功能路径可用。
+fn expand_user_home_placeholder(path: &str) -> String {
+    if !path.contains("[USER_HOME]") {
+        return path.to_string();
+    }
+    match dirs::home_dir() {
+        Some(home) => path.replace("[USER_HOME]", &home.to_string_lossy()),
+        None => path.to_string(),
+    }
+}
+
 // 在系统文件管理器（Windows 资源管理器）中定位文件或直接打开文件夹
 #[tauri::command]
 async fn pi_reveal_path(path: String) -> Result<(), String> {
+    let path = expand_user_home_placeholder(&path);
     let p = std::path::PathBuf::from(&path);
     if p.exists() {
         if p.is_dir() {
@@ -54,19 +68,26 @@ async fn pi_reveal_path(path: String) -> Result<(), String> {
         return match tauri_plugin_opener::reveal_item_in_dir(&path) {
             Ok(_) => Ok(()),
             Err(_) => match p.parent() {
-                Some(parent) => app_dir_open(parent.to_path_buf()),
-                None => Err("无法定位文件所在文件夹".to_string()),
+                Some(parent) if !parent.as_os_str().is_empty() => app_dir_open(parent.to_path_buf()),
+                _ => Err("无法定位文件所在文件夹".to_string()),
             },
         };
     }
-    // 路径已不存在（如已被删除的文件）：退化为打开其原所在文件夹
+    // 路径已不存在（如已被删除的文件）：退化为打开其原所在文件夹（上级目录）
     match p.parent() {
-        Some(parent) if parent.exists() => app_dir_open(parent.to_path_buf()),
-        _ => Err(format!("路径不存在: {}", path)),
+        // 空/无效父目录绝不能交给 explorer（否则退化为打开「我的文档」），直接报错
+        Some(parent) if !parent.as_os_str().is_empty() && parent.exists() => {
+            app_dir_open(parent.to_path_buf())
+        }
+        _ => Err(format!("路径不存在或父目录无效: {}", path)),
     }
 }
 
 fn app_dir_open(p: std::path::PathBuf) -> Result<(), String> {
+    // 空路径交给 explorer 会退化为打开「我的文档」，前置拦截
+    if p.as_os_str().is_empty() {
+        return Err("无法定位所在文件夹".to_string());
+    }
     std::process::Command::new("explorer")
         .arg(p.as_os_str())
         .spawn()
@@ -74,10 +95,39 @@ fn app_dir_open(p: std::path::PathBuf) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// 极速判断路径是否真实存在（用于区分文件「新增」与「修改」）
+/// 极速判断路径是否真实存在（用于区分文件「新增」与「修改」；自动还原 [USER_HOME] 占位符）
 #[tauri::command]
 async fn pi_path_exists(path: String) -> Result<bool, String> {
+    let path = expand_user_home_placeholder(&path);
     Ok(std::path::Path::new(&path).exists())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::expand_user_home_placeholder;
+
+    #[test]
+    fn expands_user_home_placeholder() {
+        let expanded = expand_user_home_placeholder("[USER_HOME]\\.pi-dl\\workspaces");
+        assert!(!expanded.contains("[USER_HOME]"));
+        assert!(expanded.ends_with("\\.pi-dl\\workspaces"));
+        assert!(std::path::Path::new(&expanded).is_absolute());
+    }
+
+    #[test]
+    fn keeps_plain_paths_untouched() {
+        assert_eq!(expand_user_home_placeholder("C:\\foo\\bar"), "C:\\foo\\bar");
+    }
+}
+
+/// 获取当前用户主目录绝对路径
+/// （内核事件流经 security/redaction 脱敏后真实主目录被替换为 [USER_HOME] 占位符，
+/// 前端本地文件操作前需用该指令还原为真实绝对路径）
+#[tauri::command]
+async fn pi_get_home_dir() -> Result<String, String> {
+    Ok(dirs::home_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default())
 }
 
 // ==========================================================================
@@ -956,6 +1006,7 @@ pub fn run() {
             pi_save_markdown_to_desktop,
             pi_reveal_path,
             pi_path_exists,
+            pi_get_home_dir,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

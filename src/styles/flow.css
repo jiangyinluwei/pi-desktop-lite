@@ -503,7 +503,6 @@
   border: 1px solid transparent;
   border-radius: 3px;
   cursor: pointer;
-  word-break: break-all;
 }
 
 /* 按钮铁律：常态透明无边框，悬浮/聚焦才显手绘微框，杜绝布局抖动 */
@@ -515,14 +514,25 @@
 }
 
 .flow-file-changes .file-change-item .file-change-kind {
-  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
   padding: 0 5px;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
+  white-space: nowrap;
   border: 1px solid currentColor;
   border-radius: 3px;
   opacity: 0.85;
+}
+
+.flow-file-changes .file-change-item .file-change-kind-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .flow-file-changes .file-change-item .kind-add {
@@ -556,12 +566,17 @@
 }
 
 .flow-file-changes .file-change-item .file-change-name {
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   font-weight: 500;
   color: var(--ink-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .flow-file-changes .file-change-item .file-change-dir {
+  flex: 1 1 40%;
   min-width: 0;
   overflow: hidden;
   font-size: 11px;
@@ -993,6 +1008,43 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
   color: var(--ink-muted);
+}
+
+/* 伪工具运行框（参数流式期占位）：虚线边框 + 降不透明度 + 工具图标呼吸旋转，
+   视觉上与真实工具卡区分，待 tool-start 真实卡就位后被移除 */
+.flow-step-card.flow-step-tool.tool-pseudo-card {
+  border-style: dashed;
+  opacity: 0.82;
+}
+
+.flow-step-card.flow-step-tool.tool-pseudo-card .tool-duration {
+  color: #d97706;
+}
+
+:root[data-theme="dark"] .flow-step-card.flow-step-tool.tool-pseudo-card .tool-duration {
+  color: #fbbf24;
+}
+
+.flow-step-card.flow-step-tool.running .tool-icon {
+  animation: toolIconSpin 2.4s ease-in-out infinite;
+}
+
+@keyframes toolIconSpin {
+  0%, 100% {
+    transform: rotate(-12deg) scale(1);
+  }
+  50% {
+    transform: rotate(12deg) scale(1.08);
+  }
+}
+
+.flow-step-card.flow-step-tool .tool-duration {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  opacity: 0.85;
 }
 
 /* 工具状态徽章 */
