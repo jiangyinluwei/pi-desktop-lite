@@ -395,6 +395,9 @@ export default function (pi: ExtensionAPI) {
 
 ## 🚀 快速开始与桌面端开发运行
 
+> [!IMPORTANT]
+> **前置准备**：项目启动之前，请自行将 [`.mytools/pi-body/pi-windows-x64.7z`](.mytools/pi-body/pi-windows-x64.7z) 解压（解压后完整路径为 `.mytools/pi-body/pi-windows-x64/`，包含 `pi.exe` 等核心二进制）。
+
 ### 常用命令
 ```bash
 # 1. 安装依赖
@@ -428,7 +431,7 @@ npm run build
 ```text
 pi-desktop-lite/
 ├── .agents/skills/             # 项目开发级技能规范定义 (auto-compile-and-fix, sketch-drafting-ui, flow-interaction-pattern 等)
-├── .mytools/pi-body/           # 最新 Pi Agent Release 引擎包 (打包发布时自动内嵌作为 App Bundle Resources)
+├── .mytools/pi-body/           # 最新 Pi Agent Release 引擎包 (含 pi-windows-x64.7z 压缩包，开发前需解压为 pi-windows-x64 目录)
 ├── default-area/               # Pi 默认工作区目录（打包与运行时隔离工作空间）
 ├── workspaces/                 # 公共预设工作区模板（code-area 代码工程中枢 / research-area 深度调研区）
 ├── custom-workspaces/          # [私有化] 私人定制/专有交付工作区（.gitignore 物理隔离，不随安装包打包，定向分发）

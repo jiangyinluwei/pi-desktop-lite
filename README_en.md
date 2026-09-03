@@ -392,6 +392,9 @@ Run `pi config` in terminal to launch the TUI:
 
 ## 🚀 Quick Start & Desktop Development
 
+> [!IMPORTANT]
+> **Prerequisites**: Before launching the project, please extract [`.mytools/pi-body/pi-windows-x64.7z`](.mytools/pi-body/pi-windows-x64.7z) (extract into `.mytools/pi-body/pi-windows-x64/` containing `pi.exe` and core binaries).
+
 ### Common Commands
 ```bash
 # 1. Install dependencies
@@ -425,7 +428,7 @@ npm run build
 ```text
 pi-desktop-lite/
 ├── .agents/skills/             # Development-level agent skill definitions (auto-compile-and-fix, sketch-drafting-ui, flow-interaction-pattern, etc.)
-├── .mytools/pi-body/           # Bundled Pi Agent Release engine for production distribution
+├── .mytools/pi-body/           # Bundled Pi Agent Release engine (contains pi-windows-x64.7z, extract to pi-windows-x64 before development)
 ├── default-area/               # Default workspace template & runtime isolation sandbox
 ├── workspaces/                 # Public preset workspace templates (code-area hub / research-area)
 ├── custom-workspaces/          # [Private] Custom enterprise workspaces (.gitignore isolated, distributed offline)
