@@ -324,6 +324,10 @@ export function initFlowPipeline(ctx) {
       api.sealActivePhaseOutput();
     }
 
+    // 累计耗时铁律：继承伪工具运行框的起始时间（包含大模型构思与生成工具参数的延时）
+    const initialStartTime = flowView.activeToolPseudoStep?.startTime || Date.now();
+    const initialElapsed = ((Date.now() - initialStartTime) / 1000).toFixed(1);
+
     // 伪工具运行框已完成使命：真实工具名已知，移除占位卡
     removeActiveToolPseudoStep();
 
@@ -333,7 +337,7 @@ export function initFlowPipeline(ctx) {
       name: toolName,
       args: data.args,
       status: "running",
-      durationText: "(0.0s)...",
+      durationText: `(${initialElapsed}s)...`,
       isOpen: false,
     });
 
@@ -349,6 +353,7 @@ export function initFlowPipeline(ctx) {
             <span class="flow-step-title tool-name">${escapeHtml(getFriendlyToolName(toolName))}</span>
           </div>
           <div class="flow-step-header-right tool-header-right">
+            <span class="flow-step-duration tool-duration">(${initialElapsed}s)...</span>
             <span class="tool-status-badge running">running</span>
             <span class="flow-step-arrow tool-collapse-arrow" aria-hidden="true">${ICONS.chevronDown}</span>
           </div>
@@ -372,11 +377,11 @@ export function initFlowPipeline(ctx) {
       args: data.args,
       status: "running",
       result: null,
-      startTime: Date.now(),
-      durationText: "(0.0s)...",
+      startTime: initialStartTime,
+      durationText: `(${initialElapsed}s)...`,
       cardEl: card,
       badgeEl: toolStep?.badgeEl || card.querySelector(".tool-status-badge"),
-      durationEl: toolStep?.durationEl || card.querySelector(".tool-duration"),
+      durationEl: toolStep?.durationEl || card.querySelector(".flow-step-duration") || card.querySelector(".tool-duration"),
       previewEl: toolStep?.previewEl || card.querySelector(".flow-step-preview"),
       bodyEl: toolStep?.bodyEl || card.querySelector(".flow-step-body") || card.querySelector(".tool-body"),
     };
@@ -439,13 +444,21 @@ export function initFlowPipeline(ctx) {
       matchingStep.status = statusText;
       matchingStep.result = data.result;
       matchingStep.is_error = isError;
-      // 定格工具执行读秒 (Running -> done/failed)
+      // 定格工具执行读秒 (Running -> done/failed)，累计工具参数延时与执行耗时
       const elapsed = ((Date.now() - (matchingStep.startTime || Date.now())) / 1000).toFixed(1);
       matchingStep.durationText = `(${elapsed}s)`;
       if (matchingStep.durationEl) {
         matchingStep.durationEl.textContent = matchingStep.durationText;
       } else if (card) {
-        const durEl = card.querySelector(".flow-step-duration") || card.querySelector(".tool-duration");
+        let durEl = card.querySelector(".flow-step-duration") || card.querySelector(".tool-duration");
+        if (!durEl) {
+          const rightHeader = card.querySelector(".flow-step-header-right");
+          if (rightHeader) {
+            durEl = document.createElement("span");
+            durEl.className = "flow-step-duration tool-duration";
+            rightHeader.insertBefore(durEl, rightHeader.firstChild);
+          }
+        }
         if (durEl) {
           durEl.textContent = matchingStep.durationText;
         }

@@ -519,6 +519,11 @@ export class TaskManager extends EventTarget {
               // 记录当前文本段起始时间（阶段性输出 Point 卡读秒用）
               if (!currentTurn.textStartedAt) currentTurn.textStartedAt = Date.now();
             }
+          } else if (evt.type === "toolcall_start") {
+            if (currentTurn) {
+              // 记录工具参数流式生成起始时间（累计工具耗时读秒）
+              currentTurn.toolCallStartedAt = Date.now();
+            }
           }
         }
         break;
@@ -550,6 +555,8 @@ export class TaskManager extends EventTarget {
             currentTurn.responseText = "";
           }
           currentTurn.textStartedAt = null;
+          const toolStartTime = currentTurn.toolCallStartedAt || Date.now();
+          currentTurn.toolCallStartedAt = null;
           currentTurn.steps.push({
             type: "tool",
             id: data.toolCallId,
@@ -557,6 +564,7 @@ export class TaskManager extends EventTarget {
             args: data.args || {},
             status: "running",
             result: null,
+            startTime: toolStartTime,
           });
         }
         break;
@@ -581,6 +589,8 @@ export class TaskManager extends EventTarget {
               stepTool.status = data.isError ? "failure" : "done";
               stepTool.result = data.result;
               stepTool.is_error = Boolean(data.isError);
+              const elapsed = ((Date.now() - (stepTool.startTime || Date.now())) / 1000).toFixed(1);
+              stepTool.durationText = `(${elapsed}s)`;
             }
           }
         }
