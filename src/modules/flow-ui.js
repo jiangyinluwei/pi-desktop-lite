@@ -10,10 +10,9 @@ import { renderMarkdown, initMarkdownInteractions } from "../lib/markdown-render
 export function initFlowUi(ctx) {
   const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
+  const viewStore = ctx.viewStore;
+  const settingsStore = ctx.settingsStore;
   const flow = ctx.flow;
-  const attachments = ctx.attachments;
 
   const appContainer = el.appContainer;
   const flowStage = el.flowStage;
@@ -781,9 +780,9 @@ export function initFlowUi(ctx) {
     groupEl.appendChild(userPromptCard);
 
     // 2. code-area 路由目标项目胶囊
-    const isCodeArea = settings.activeWorkspace?.id === "code-area" || settings.activeWorkspace?.requiresRoute;
-    const routePath = settings.activeWorkspace?.routePath;
-    const routeName = settings.activeWorkspace?.routeName || (routePath ? routePath.split("/").pop() : "");
+    const isCodeArea = settingsStore.activeWorkspace?.id === "code-area" || settingsStore.activeWorkspace?.requiresRoute;
+    const routePath = settingsStore.activeWorkspace?.routePath;
+    const routeName = settingsStore.activeWorkspace?.routeName || (routePath ? routePath.split("/").pop() : "");
 
     const routeCapsuleEl = document.createElement("div");
     routeCapsuleEl.className = `flow-route-capsule ${isCodeArea && routePath ? "" : "hidden"}`;
@@ -1137,7 +1136,7 @@ export function initFlowUi(ctx) {
     }
 
     flowQuestionTipText.textContent = question;
-    const shouldShow = view.mode === VIEW_FLOW && overflowing && Boolean(question);
+    const shouldShow = viewStore.mode === VIEW_FLOW && overflowing && Boolean(question);
     flowQuestionTip.classList.toggle("visible", shouldShow);
   };
 
@@ -1337,7 +1336,7 @@ export function initFlowUi(ctx) {
 
   // 垂直对齐：按钮已右移到 flow 内容区域之外，垂直方向动态对齐 flow 内容区底部（问题3）
   const positionFlowTurnNav = () => {
-    if (!flowTurnNav || !flowStage || !appContainer || view.mode !== VIEW_FLOW) return;
+    if (!flowTurnNav || !flowStage || !appContainer || viewStore.mode !== VIEW_FLOW) return;
     const appRect = appContainer.getBoundingClientRect();
     const stageRect = flowStage.getBoundingClientRect();
     const navHeight = flowTurnNav.offsetHeight || 0;
@@ -1346,7 +1345,7 @@ export function initFlowUi(ctx) {
 
   const updateFlowTurnNav = () => {
     if (!flowTurnNav) return;
-    const shouldShow = view.mode === VIEW_FLOW && getFlowTurnCount() >= 2;
+    const shouldShow = viewStore.mode === VIEW_FLOW && getFlowTurnCount() >= 2;
     flowTurnNav.classList.toggle("visible", shouldShow);
     if (!shouldShow) {
       cancelNavPress("up");

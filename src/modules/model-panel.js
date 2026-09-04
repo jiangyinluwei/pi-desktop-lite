@@ -11,10 +11,7 @@ import { sketchAlert } from "../services/sketch-modal.js";
 export function initModelPanel(ctx) {
   const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
-  const flow = ctx.flow;
-  const attachments = ctx.attachments;
+  const settingsStore = ctx.settingsStore;
 
   const flowModelName = el.flowModelName;
   const flowModelTag = el.flowModelTag;
@@ -95,7 +92,7 @@ export function initModelPanel(ctx) {
   const renderWhitelistModels = (activeModel) => {
     if (!whitelistModelsList) return;
 
-    if (settings.expandedChannel) {
+    if (settingsStore.expandedChannel) {
       whitelistModelsList.classList.add("collapsed-single");
     } else {
       whitelistModelsList.classList.remove("collapsed-single");
@@ -244,7 +241,7 @@ export function initModelPanel(ctx) {
         configService.getOfficialModelsCatalog(),
       ]);
 
-      settings.officialCatalog = catalog || [];
+      settingsStore.setOfficialCatalog(catalog || []);
 
       // 检查白名单是否已存在，不存在则初始化
       let whitelist = configService.loadModelWhitelist();
@@ -252,7 +249,7 @@ export function initModelPanel(ctx) {
         if (state?.model) {
           configService.addModelToWhitelist(state.model);
         }
-        settings.officialCatalog.forEach((p) => {
+        settingsStore.officialCatalog.forEach((p) => {
           p.models
             .filter((m) => m.is_default)
             .forEach((m) => {
@@ -345,7 +342,7 @@ export function initModelPanel(ctx) {
   // ==========================================================================
 
   const renderOfficialProviderDetails = (providerId) => {
-    const provMeta = settings.officialCatalog.find((p) => p.id === providerId);
+    const provMeta = settingsStore.officialCatalog.find((p) => p.id === providerId);
     if (!provMeta) return;
 
     if (officialProviderTitle) officialProviderTitle.textContent = provMeta.name;
@@ -356,11 +353,11 @@ export function initModelPanel(ctx) {
     }
 
     const authEntry =
-      settings.currentOfficialAuth[provMeta.id] ||
+      settingsStore.currentOfficialAuth[provMeta.id] ||
       (provMeta.id.startsWith("opencode")
-        ? settings.currentOfficialAuth["opencode-zen"] ||
-          settings.currentOfficialAuth["opencode-go"] ||
-          settings.currentOfficialAuth["opencode"]
+        ? settingsStore.currentOfficialAuth["opencode-zen"] ||
+          settingsStore.currentOfficialAuth["opencode-go"] ||
+          settingsStore.currentOfficialAuth["opencode"]
         : null);
     const existingKey = typeof authEntry === "string" ? authEntry : authEntry?.key || "";
 
@@ -443,12 +440,12 @@ export function initModelPanel(ctx) {
         configService.getOfficialModelsCatalog(),
       ]);
 
-      settings.currentOfficialAuth = authConfig || {};
-      settings.officialCatalog = catalog || [];
+      settingsStore.setCurrentOfficialAuth(authConfig || {});
+      settingsStore.setOfficialCatalog(catalog || []);
 
       if (officialProviderSelect) {
         officialProviderSelect.innerHTML = "";
-        settings.officialCatalog.forEach((p, idx) => {
+        settingsStore.officialCatalog.forEach((p, idx) => {
           const opt = document.createElement("option");
           opt.value = p.id;
           opt.textContent = `${p.name} (${p.models.length} 个模型)`;
@@ -456,9 +453,9 @@ export function initModelPanel(ctx) {
           officialProviderSelect.appendChild(opt);
         });
 
-        if (settings.officialCatalog.length > 0) {
-          officialProviderSelect.value = settings.officialCatalog[0].id;
-          renderOfficialProviderDetails(settings.officialCatalog[0].id);
+        if (settingsStore.officialCatalog.length > 0) {
+          officialProviderSelect.value = settingsStore.officialCatalog[0].id;
+          renderOfficialProviderDetails(settingsStore.officialCatalog[0].id);
         }
 
         if (officialProviderSelect.__sketchSelect) {
@@ -495,7 +492,7 @@ export function initModelPanel(ctx) {
 
       try {
         await configService.saveProviderApiKey(provider, key);
-        settings.currentOfficialAuth = await configService.getAuthConfig();
+        settingsStore.setCurrentOfficialAuth(await configService.getAuthConfig());
         renderOfficialProviderDetails(provider);
         await sketchAlert(`官方通道 [${provider}] API Key 已成功保存至 ~/.pi/agent/auth.json！`, { type: "success", title: "保存成功" });
       } catch (err) {
@@ -520,7 +517,7 @@ export function initModelPanel(ctx) {
       try {
         const fetchedModels = await configService.fetchOfficialModels(provider);
         if (Array.isArray(fetchedModels) && fetchedModels.length > 0) {
-          const provMeta = settings.officialCatalog.find((p) => p.id === provider);
+          const provMeta = settingsStore.officialCatalog.find((p) => p.id === provider);
           if (provMeta) {
             provMeta.models = fetchedModels;
           }

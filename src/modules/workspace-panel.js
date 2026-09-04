@@ -160,7 +160,7 @@ export function promptCodeAreaRouteModal(initialPath = "", customTitle = "配置
 export function initWorkspacePanel(ctx) {
   const el = ctx.el;
   const api = ctx.api;
-  const settings = ctx.settings;
+  const settingsStore = ctx.settingsStore;
 
   const workspaceList = el.workspaceList;
   const workspaceActiveName = el.workspaceActiveName;
@@ -270,14 +270,14 @@ export function initWorkspacePanel(ctx) {
   // ==========================================================================
   const renderActiveCard = (active) => {
     if (!active) return;
-    settings.activeWorkspace = {
+    settingsStore.setActiveWorkspace({
       id: active.id,
       name: active.name,
       path: active.path,
       requiresRoute: Boolean(active.requiresRoute || active.id === "code-area"),
       routePath: active.routePath || null,
       routeName: active.routeName || null,
-    };
+    });
 
     if (workspaceActiveName) {
       workspaceActiveName.textContent = active.name || active.id || "默认工作区";
@@ -460,10 +460,10 @@ export function initWorkspacePanel(ctx) {
           codeAreaRouteInput.value = chosen;
           await workspaceService.setCodeAreaRoute(chosen);
           await renderCodeAreaRouteDetails();
-          if (settings.activeWorkspace) {
-            settings.activeWorkspace.routePath = chosen;
-            settings.activeWorkspace.routeName = chosen.split("/").pop() || chosen;
-          }
+          settingsStore.updateActiveWorkspace({
+            routePath: chosen,
+            routeName: chosen.split("/").pop() || chosen,
+          });
           if (typeof api.syncWorkspaceInputState === "function") {
             api.syncWorkspaceInputState();
           }
@@ -487,10 +487,10 @@ export function initWorkspacePanel(ctx) {
       try {
         await workspaceService.setCodeAreaRoute(val);
         await renderCodeAreaRouteDetails();
-        if (settings.activeWorkspace) {
-          settings.activeWorkspace.routePath = val;
-          settings.activeWorkspace.routeName = val.split("/").pop() || val;
-        }
+        settingsStore.updateActiveWorkspace({
+          routePath: val,
+          routeName: val.split("/").pop() || val,
+        });
         if (typeof api.syncWorkspaceInputState === "function") {
           api.syncWorkspaceInputState();
         }
@@ -522,10 +522,10 @@ export function initWorkspacePanel(ctx) {
           try {
             await workspaceService.setCodeAreaRoute(path);
             await renderCodeAreaRouteDetails();
-            if (settings.activeWorkspace) {
-              settings.activeWorkspace.routePath = path;
-              settings.activeWorkspace.routeName = path.split("/").pop() || path;
-            }
+            settingsStore.updateActiveWorkspace({
+              routePath: path,
+              routeName: path.split("/").pop() || path,
+            });
             if (typeof api.syncWorkspaceInputState === "function") {
               api.syncWorkspaceInputState();
             }

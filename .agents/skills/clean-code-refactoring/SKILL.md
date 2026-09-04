@@ -18,7 +18,7 @@ description: 指导在桌面端（Tauri/Rust）与 Web 前端混合项目中进�
 
 ---
 
-## 🛠️ 6 大标准重构设计范式
+## 🛠️ 7 大标准重构设计范式
 
 ### 1. IPC 调用统一桥接模式 (`tauri-bridge.js`)
 
@@ -150,7 +150,20 @@ fn show_and_focus_main_window(app: &tauri::AppHandle) {
 - 同步派发铁律：emit 内严禁任何 await / 微任务 / Promise；on 返回取消函数便于卸载退订；
 - 事件通道须在 `src/lib/contracts.js` 的《事件通道契约表》登记归类（bus / Store action / `pi:*` 内核桥接）。
 
-> **降耦合量化**：用 `npm run measure:coupling` 建立基线（api 调用 / 唯一槽 / api 引用 / bus emit 等指标），每阶段重构后对比“在降”。阶段 1 已把 `api.showGlobalToast` 迁至 `bus.emit("ui:toast")`，`task-panel.js` 为唯一 `bus.on` 渲染属主。
+> **降耦合量化**：用 `npm run measure:coupling` 建立基线（api 调用 / 唯一槽 / api 引用 / bus emit / 共享状态裸写等指标），每阶段重构后对比“在降”。阶段 1 已把 `api.showGlobalToast` 迁至 `bus.emit("ui:toast")`，`task-panel.js` 为唯一 `bus.on` 渲染属主。
+
+---
+
+### 7. 共享可变状态唯一属主模式 (`src/services/stores/*-store.js`)
+
+**消除「神对象 ctx + 多模块直改共享状态」：给 `flow / view / settings / attachments` 建立唯一属主，经 `get/action` 触达。**
+- **分层归位**：Store（无 DOM、有状态、有行为）→ `src/services/stores/`；ctx 只留 `el` + store 引用；模块经解构取 `const viewStore = ctx.viewStore`，禁再解构裸对象 `ctx.view / ctx.settings / ctx.attachments`（阶段 2 已移除）；
+- **四个 store**：`view-store.js`（四态状态机 `morph(mode, {previousMode, shouldFocusInput})` / `set`，**控制流命令禁上总线**）、`settings-store.js`（`setExpandedChannel` / `setOfficialCatalog` / `setCurrentOfficialAuth` / `setActiveWorkspace` / `updateActiveWorkspace(patch)`）、`attachments-store.js`（`addFiles` / `removeAt` / `clear` / `has` / `last`）、`flow-store.js`（纯数据，**按 taskId 分仓** `flowStore.for(taskId)`）；
+- **Store action 硬约束**：一律**同步**、禁 `async/await`、禁微任务调度（同步探测不变量 / 前台门禁 / Task 分仓三铁律）；`bus.emit` 保持同步派发；
+- **视图派生缓存不入 Store**：`renderedToolCards` / `currentSteps` / `active*Step` / `activeTurnRefs` / 计时器 / `followBottom` 属视图层，暂留 `ctx.flow` 过渡缓存，阶段 3 拆 `flow-render` 时迁出；
+- **落地方式**：`view.mode === VIEW_FLOW` → `viewStore.mode === VIEW_FLOW`；`api.setViewMode(VIEW_FLOW, true)` → `viewStore.morph(VIEW_FLOW, { shouldFocusInput: true })`；`settings.activeWorkspace.routePath = x` → `settingsStore.updateActiveWorkspace({ routePath: x })`；`attachments.files.push(m)` → `attachmentsStore.addFiles([m])`。
+
+> **降耦合量化**：阶段 2 已把 `view.*` / `settings.*` / `attachments.*` 裸写清零（`measure:coupling` 显示 93→76，剩余全为 `flow.*`：纯数据字段待阶段 3 随 `flow-render`/`flow-state-view` 拆分迁入 `flowStore`）。
 
 ---
 
@@ -159,5 +172,6 @@ fn show_and_focus_main_window(app: &tauri::AppHandle) {
 - [ ] **语义等价**：功能、RPC 接口与事件响应严格一致；
 - [ ] **遗留清理**：历史重构（如抽屉变全屏视图）的废弃方法与变量彻底删除；
 - [ ] **编译验证**：`npm run check:fe`、`npm run check` 与 `node -c src/modules/*.js` 均 Exit Code 0；
-- [ ] **耦合度量**：降耦合重构前后跑 `npm run measure:coupling`，确认指标“在降”（api 引用 / 唯一槽 / api 调用 / bus emit）；
+- [ ] **耦合度量**：降耦合重构前后跑 `npm run measure:coupling`，确认指标“在降”（api 引用 / 唯一槽 / api 调用 / bus emit / 共享状态裸写）；
+- [ ] **共享状态属主**：`view.*` / `settings.*` / `attachments.*` 裸写为 **0**（走 Store action）；`flow.*` 纯数据字段归 `flowStore`；
 - [ ] **文档对齐**：同步更新 `AGENTS.md`、`README.md` 与相关 Skill。

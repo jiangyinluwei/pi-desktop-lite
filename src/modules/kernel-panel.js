@@ -12,10 +12,6 @@ import { sketchAlert, sketchConfirm } from "../services/sketch-modal.js";
 export function initKernelPanel(ctx) {
   const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
-  const flow = ctx.flow;
-  const attachments = ctx.attachments;
 
   const settingsBadge = el.settingsBadge;
   const hostStatusDot = el.hostStatusDot;

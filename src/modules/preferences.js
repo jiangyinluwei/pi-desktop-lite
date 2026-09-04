@@ -7,10 +7,6 @@ import { piClient } from "../services/pi-client.js";
 export function initPreferences(ctx) {
   const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
-  const flow = ctx.flow;
-  const attachments = ctx.attachments;
 
   const searchHint = el.searchHint;
   const hintKeyText = el.hintKeyText;

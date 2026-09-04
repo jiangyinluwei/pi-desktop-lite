@@ -11,10 +11,7 @@ import { modelFailoverEngine } from "../services/model-failover.js";
 export function initFlowStream(ctx) {
   const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
   const flow = ctx.flow;
-  const attachments = ctx.attachments;
 
   const flowScrollArea = el.flowScrollArea;
   const flowConversation = el.flowConversation;

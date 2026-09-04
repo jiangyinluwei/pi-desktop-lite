@@ -106,6 +106,7 @@ pi-desktop-lite/
 │   │   ├── workspace-panel.js  # 多预设工作区设置面板与路由绑定
 │   │   └── global-interactions.js # 全局右键/Esc 回退与外链拦截
 │   ├── services/               # 前端服务层 (tauri-bridge, config-service, pi-client, workspace-service 等)
+│   │   └── stores/             # 共享可变状态唯一属主 (view-store, settings-store, attachments-store, flow-store)
 │   ├── styles/                 # 按功能域拆分的手绘样式 (tokens, layout, flow, markdown, settings, form-widgets 等)
 │   ├── index.html              # 页面主体
 │   ├── styles.css              # 样式聚合入口 (@import 各功能域子样式)

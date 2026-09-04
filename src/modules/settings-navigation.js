@@ -7,10 +7,7 @@ import { piClient } from "../services/pi-client.js";
 export function initSettingsNavigation(ctx) {
   const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
-  const flow = ctx.flow;
-  const attachments = ctx.attachments;
+  const settingsStore = ctx.settingsStore;
 
   const whitelistModelsList = el.whitelistModelsList;
   const btnToggleOfficial = el.btnToggleOfficial;
@@ -178,7 +175,7 @@ export function initSettingsNavigation(ctx) {
   // ==========================================================================
 
   const setExpandedChannel = (channel) => {
-    settings.expandedChannel = channel;
+    settingsStore.setExpandedChannel(channel);
 
     if (channel === "official") {
       if (whitelistModelsList) whitelistModelsList.classList.add("collapsed-single");
@@ -235,7 +232,7 @@ export function initSettingsNavigation(ctx) {
     if (btnToggleOfficial) {
       btnToggleOfficial.addEventListener("click", (e) => {
         e.preventDefault();
-        if (settings.expandedChannel === "official") {
+        if (settingsStore.expandedChannel === "official") {
           setExpandedChannel(null);
         } else {
           setExpandedChannel("official");
@@ -246,7 +243,7 @@ export function initSettingsNavigation(ctx) {
     if (btnToggleCustom) {
       btnToggleCustom.addEventListener("click", (e) => {
         e.preventDefault();
-        if (settings.expandedChannel === "custom") {
+        if (settingsStore.expandedChannel === "custom") {
           setExpandedChannel(null);
         } else {
           setExpandedChannel("custom");

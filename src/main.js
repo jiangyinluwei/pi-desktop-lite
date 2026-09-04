@@ -17,6 +17,10 @@ import { initKernelPanel } from "./modules/kernel-panel.js";
 import { initSessionsPanel } from "./modules/sessions-panel.js";
 import { initWorkspacePanel } from "./modules/workspace-panel.js";
 import { initWindowControls } from "./modules/window-controls.js";
+import { viewStore } from "./services/stores/view-store.js";
+import { settingsStore } from "./services/stores/settings-store.js";
+import { attachmentsStore } from "./services/stores/attachments-store.js";
+import { flowStore } from "./services/stores/flow-store.js";
 import { initFlowUi } from "./modules/flow-ui.js";
 import { initFlowStream } from "./modules/flow-stream.js";
 import { initFlowPipeline } from "./modules/flow-pipeline.js";
@@ -155,26 +159,21 @@ window.addEventListener("DOMContentLoaded", () => {
   };
 
   /**
-   * 模块共享上下文
-   * - view:         四态界面状态机共享状态
-   * - settings:     设置页跨模块共享状态（通道抽屉、官方目录、认证缓存）
-   * - flow:         Flow 流式交互共享状态（当前轮次 DOM、流式文本、工具卡注册表等）
-   * - attachments:  输入框附件胶囊共享状态
-   * - api:          各模块按需注册的跨模块函数调用面
+   * 模块共享上下文（阶段 2 起：状态收敛到 stores，ctx 不再承载裸可变状态对象）
+   * - viewStore:      四态界面状态机唯一属主（morph/set，控制流命令，禁上总线）
+   * - settingsStore:  设置页跨模块共享状态唯一属主（通道抽屉/官方目录/认证缓存/激活工作区）
+   * - attachmentsStore: 输入框附件胶囊状态唯一属主（addFiles/removeAt/clear）
+   * - flowStore:      Flow 纯数据状态唯一属主（按 taskId 分仓；视图派生缓存不入 store）
+   * - flow:           Flow 视图层/重构过渡期缓存（renderedToolCards、activeTurnRefs、currentSteps、计时器等）
+   *                   —— 属视图派生缓存，按铁律热区清单留在视图层，阶段 3 拆分时进一步归位 flow-render/flow-dom
+   * - api:            各模块按需注册的跨模块函数调用面（阶段 3 以显式 import 逐步替换）
    */
   const ctx = {
     el,
-    view: {
-      mode: "detailed",
-      previous: "detailed",
-      flowFromSettings: false,
-      hintBannerTimeout: null,
-    },
-    settings: {
-      expandedChannel: null,
-      officialCatalog: [],
-      currentOfficialAuth: {},
-    },
+    viewStore,
+    settingsStore,
+    attachmentsStore,
+    flowStore,
     flow: {
       thinkingStartTime: 0,
       thinkingTimerInterval: null,
@@ -190,9 +189,6 @@ window.addEventListener("DOMContentLoaded", () => {
       lastImagePayloads: null,
       activeTurnRefs: null,
       lastSentAttachments: [],
-    },
-    attachments: {
-      files: [],
     },
     api: {},
   };

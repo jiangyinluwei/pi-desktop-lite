@@ -12,10 +12,9 @@ import { workspaceService } from "../services/workspace-service.js";
 export function initSearchInput(ctx) {
   const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
-  const flow = ctx.flow;
-  const attachments = ctx.attachments;
+  const viewStore = ctx.viewStore;
+  const settingsStore = ctx.settingsStore;
+  const attachmentsStore = ctx.attachmentsStore;
 
   const appContainer = el.appContainer;
   const searchInputWrapper = el.searchInputWrapper;
@@ -44,7 +43,7 @@ export function initSearchInput(ctx) {
   const updateInputState = () => {
     if (!searchInput) return;
     const hasText = searchInput.value.length > 0;
-    const hasCapsules = attachments.files.length > 0;
+    const hasCapsules = attachmentsStore.files.length > 0;
 
     if (hasText || hasCapsules) {
       clearBtn?.classList.add("visible");
@@ -113,9 +112,9 @@ export function initSearchInput(ctx) {
     let ws = null;
     try {
       ws = await workspaceService.getActiveWorkspace();
-      if (ws) settings.activeWorkspace = ws;
+      if (ws) settingsStore.setActiveWorkspace(ws);
     } catch (_) {
-      ws = settings.activeWorkspace;
+      ws = settingsStore.activeWorkspace;
     }
 
     if (ws && (ws.id === "code-area" || ws.requiresRoute)) {
@@ -171,10 +170,10 @@ export function initSearchInput(ctx) {
       if (promptFn) {
         const chosen = await promptFn("", "绑定 code-area 路由目标项目");
         if (chosen) {
-          if (settings.activeWorkspace) {
-            settings.activeWorkspace.routePath = chosen;
-            settings.activeWorkspace.routeName = chosen.split("/").pop() || chosen;
-          }
+          settingsStore.updateActiveWorkspace({
+            routePath: chosen,
+            routeName: chosen.split("/").pop() || chosen,
+          });
           await syncWorkspaceInputState();
           window.dispatchEvent(new CustomEvent("workspace-changed", { detail: { routePath: chosen } }));
           if (searchInput) {
@@ -186,9 +185,7 @@ export function initSearchInput(ctx) {
           if (searchInput) {
             searchInput.blur();
           }
-          if (typeof api.setViewMode === "function") {
-            api.setViewMode(VIEW_DETAILED, false);
-          }
+          viewStore.morph(VIEW_DETAILED, { shouldFocusInput: false });
         }
       }
     } catch (err) {
@@ -196,9 +193,7 @@ export function initSearchInput(ctx) {
       if (searchInput) {
         searchInput.blur();
       }
-      if (typeof api.setViewMode === "function") {
-        api.setViewMode(VIEW_DETAILED, false);
-      }
+      viewStore.morph(VIEW_DETAILED, { shouldFocusInput: false });
     } finally {
       setTimeout(() => {
         isPromptingRouteModal = false;
@@ -264,7 +259,7 @@ export function initSearchInput(ctx) {
     }
 
     if (e.key === "Escape") {
-      if (searchInput.value.length > 0 || attachments.files.length > 0) {
+      if (searchInput.value.length > 0 || attachmentsStore.files.length > 0) {
         searchInput.value = "";
         api.clearAttachedFiles();
         promptHistoryNavigator.resetIndex();
@@ -548,7 +543,7 @@ export function initSearchInput(ctx) {
       !e.target.closest(".settings-btn")
     ) {
       if (document.activeElement && typeof document.activeElement.blur === "function") {
-        if (view.mode === VIEW_DETAILED) {
+        if (viewStore.mode === VIEW_DETAILED) {
           document.activeElement.blur();
         }
       }

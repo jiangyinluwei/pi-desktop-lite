@@ -9,10 +9,7 @@ import { invokeTauri, listenTauri } from "../services/tauri-bridge.js";
 export function initFileAttachments(ctx) {
   const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
-  const flow = ctx.flow;
-  const attachments = ctx.attachments;
+  const attachmentsStore = ctx.attachmentsStore;
 
   const searchInputWrapper = el.searchInputWrapper;
   const searchInput = el.searchInput;
@@ -36,7 +33,7 @@ export function initFileAttachments(ctx) {
     if (!attachedCapsulesContainer) return;
     attachedCapsulesContainer.innerHTML = "";
 
-    if (attachments.files.length === 0) {
+    if (attachmentsStore.files.length === 0) {
       searchInputWrapper?.classList.remove("has-capsules");
       api.updateInputState();
       return;
@@ -44,7 +41,7 @@ export function initFileAttachments(ctx) {
 
     searchInputWrapper?.classList.add("has-capsules");
 
-    attachments.files.forEach((file, index) => {
+    attachmentsStore.files.forEach((file, index) => {
       const capsule = document.createElement("div");
       capsule.className = "sketch-file-capsule";
       capsule.title = file.path || file.name;
@@ -130,17 +127,18 @@ export function initFileAttachments(ctx) {
     }
 
     let addedCount = 0;
+    const newItems = [];
     for (const fileMeta of inspectedList) {
       if (!fileMeta || !fileMeta.path) continue;
-      if (attachments.files.some((f) => f.path === fileMeta.path)) continue;
-      attachments.files.push(fileMeta);
-      addedCount++;
+      if (attachmentsStore.files.some((f) => f.path === fileMeta.path)) continue;
+      newItems.push(fileMeta);
     }
+    addedCount = attachmentsStore.addFiles(newItems);
 
     if (addedCount > 0) {
       renderAttachedCapsules();
       if (addedCount === 1) {
-        const item = attachments.files[attachments.files.length - 1];
+        const item = attachmentsStore.last();
         if (item?.category === "folder" || item?.category === "directory") {
           bus.emit("ui:toast", { text: `已关联文件夹「${item.name}」`, duration: 1800 });
         } else {
@@ -149,7 +147,7 @@ export function initFileAttachments(ctx) {
       } else if (addedCount > 1) {
         bus.emit("ui:toast", { text: `已添加 ${addedCount} 个关联项`, duration: 1800 });
       }
-    } else if (attachments.files.length > 0) {
+    } else if (attachmentsStore.files.length > 0) {
       bus.emit("ui:toast", { text: "所选项目已在关联列表中", duration: 1500 });
     }
 
@@ -157,14 +155,14 @@ export function initFileAttachments(ctx) {
   };
 
   const removeAttachedFile = (index) => {
-    if (index >= 0 && index < attachments.files.length) {
-      attachments.files.splice(index, 1);
+    if (index >= 0 && index < attachmentsStore.files.length) {
+      attachmentsStore.removeAt(index);
       renderAttachedCapsules();
     }
   };
 
   const clearAttachedFiles = () => {
-    attachments.files = [];
+    attachmentsStore.clear();
     renderAttachedCapsules();
   };
 

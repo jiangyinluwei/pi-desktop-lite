@@ -170,11 +170,12 @@
 
 前端按功能域模块化解耦，严禁向入口文件堆砌业务代码：
 
-- **`src/main.js`**：唯一编排入口。负责收集 DOM 引用（`ctx.el`）、构建共享上下文（`ctx.*`）并按依赖顺序初始化各模块；
+- **`src/main.js`**：唯一编排入口。负责收集 DOM 引用（`ctx.el`）、构建共享上下文（`ctx.*`，已收敛为 `viewStore` / `settingsStore` / `attachmentsStore` / `flowStore` 等 store 引用 + `ctx.flow` 视图层过渡缓存 + `ctx.api`）并按依赖顺序初始化各模块；
 - **`src/lib/`**：跨模块共享基础件（`dom-utils.js` 文本转义、`icons.js` 手绘 SVG 图元、`markdown-renderer.js` Markdown 渲染引擎、`view-constants.js` 四态常量、`event-bus.js` 极简同步事件总线、`contracts.js` 事件通道契约表）；
-- **`src/modules/`**：按功能域拆分的 UI 业务模块（`view-mode.js`、`settings-navigation.js`、`model-panel.js`、`custom-provider-panel.js`、`kernel-panel.js`、`flow-ui.js`、`flow-stream.js`、`flow-pipeline.js`、`flow-file-changes.js`、`flow-rollback.js`、`task-panel.js`、`packages-panel.js`、`workspace-panel.js`、`sessions-panel.js`、`global-interactions.js` 等）。跨模块调用通过 `ctx.api.<fn>()`；横切通知（fire-and-forget，如 `ui:toast`）走 `event-bus.js` 的 `bus.on` / `bus.emit`（事件须在 `contracts.js` 契约表登记）；控制流 / 状态迁移仍走 Store action 或显式 import；共享状态收敛至 `ctx.*`；
+- **`src/modules/`**：按功能域拆分的 UI 业务模块（`view-mode.js`、`settings-navigation.js`、`model-panel.js`、`custom-provider-panel.js`、`kernel-panel.js`、`flow-ui.js`、`flow-stream.js`、`flow-pipeline.js`、`flow-file-changes.js`、`flow-rollback.js`、`task-panel.js`、`packages-panel.js`、`workspace-panel.js`、`sessions-panel.js`、`global-interactions.js` 等）。跨模块调用通过 `ctx.api.<fn>()`；横切通知（fire-and-forget，如 `ui:toast`）走 `event-bus.js` 的 `bus.on` / `bus.emit`（事件须在 `contracts.js` 契约表登记）；控制流 / 状态迁移走 Store action（如 `viewStore.morph(mode, opts)`）或显式 import；**共享可变状态一律归 `src/services/stores/` 的唯一属主（`viewStore` / `settingsStore` / `attachmentsStore` / `flowStore`），严禁跨模块直改 `view.x` / `settings.x` / `attachments.x`（含解构后裸名）**；
+- **`src/services/stores/`**：共享可变状态唯一属主（无 DOM、有状态、有行为）。`view-store.js`（四态界面状态机 `morph`/`set`，控制流命令禁上总线）、`settings-store.js`（通道抽屉/官方目录/认证缓存/激活工作区）、`attachments-store.js`（输入框附件胶囊）、`flow-store.js`（Flow 纯数据状态，**按 taskId 分仓** `flowStore.for(taskId)`；视图派生缓存如 `renderedToolCards` / `currentSteps` / `activeStep` 属视图层不入 store，归 `ctx.flow` 过渡缓存，阶段 3 拆 `flow-render` 时迁出）。**Store action 一律同步、禁 async/await、禁微任务调度**（阶段 2 铁律热区：同步探测不变量 / 前台门禁 taskId / Task 分仓）；
 - **`src/styles/`**：按功能域拆分的样式文件（`tokens.css`、`base.css`、`layout.css`、`flow.css`、`markdown.css`、`settings.css`、`packages.css`、`overlays.css` 等），`src/styles.css` 仅为 `@import` 聚合入口；
-- **`src/services/`**：与 UI 解耦的前端服务层（IPC 桥接、配置、流式客户端、任务/会话/工作区等），**严禁**在 service 中直接操作 UI DOM。
+- **`src/services/`**：与 UI 解耦的前端服务层（IPC 桥接、配置、流式客户端、任务/会话/工作区等），**严禁**在 service 中直接操作 UI DOM；其中 `src/services/stores/` 为共享可变状态唯一属主（见上）。
 
 ---
 

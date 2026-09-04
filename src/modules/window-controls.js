@@ -6,10 +6,6 @@ import { invokeTauri } from "../services/tauri-bridge.js";
 export function initWindowControls(ctx) {
   const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
-  const flow = ctx.flow;
-  const attachments = ctx.attachments;
 
 
 

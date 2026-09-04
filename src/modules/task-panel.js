@@ -14,10 +14,8 @@ import { modelFailoverEngine } from "../services/model-failover.js";
 export function initTaskPanel(ctx) {
   const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
+  const viewStore = ctx.viewStore;
   const flow = ctx.flow;
-  const attachments = ctx.attachments;
 
   const flowScrollArea = el.flowScrollArea;
   const flowConversation = el.flowConversation;
@@ -457,7 +455,7 @@ export function initTaskPanel(ctx) {
       }
     }
 
-    api.setViewMode(VIEW_FLOW, true);
+    viewStore.morph(VIEW_FLOW, { shouldFocusInput: true });
 
     // 同步切换底层 Pi 会话
     if (sessionPath) {
@@ -478,11 +476,11 @@ export function initTaskPanel(ctx) {
     if (!task) return;
 
     // H25 防重入铁律：如果已经在 Flow 模式且当前前台活跃任务正是此任务，直接返回，严禁清空 DOM 与截断流式
-    if (view.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id === task.id) {
+    if (viewStore.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id === task.id) {
       return;
     }
 
-    if (view.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id !== task.id) {
+    if (viewStore.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id !== task.id) {
       archiveCurrentFlowToHistory();
     }
 
@@ -534,7 +532,7 @@ export function initTaskPanel(ctx) {
 
     // 防重入铁律：如果已经在 Flow 模式且当前前台活跃任务正是此任务，直接返回
     const currentActive = taskManager.getCurrentActiveTask();
-    if (view.mode === VIEW_FLOW && currentActive && (currentActive.id === (existingTask?.id || taskIdToUse) || currentActive.conversationId === conv.id)) {
+    if (viewStore.mode === VIEW_FLOW && currentActive && (currentActive.id === (existingTask?.id || taskIdToUse) || currentActive.conversationId === conv.id)) {
       return;
     }
 
@@ -550,7 +548,7 @@ export function initTaskPanel(ctx) {
       return;
     }
 
-    if (view.mode === VIEW_FLOW) {
+    if (viewStore.mode === VIEW_FLOW) {
       archiveCurrentFlowToHistory();
     }
 

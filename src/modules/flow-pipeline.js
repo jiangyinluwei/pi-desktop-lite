@@ -17,10 +17,10 @@ import { modelFailoverEngine } from "../services/model-failover.js";
 export function initFlowPipeline(ctx) {
   const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
+  const viewStore = ctx.viewStore;
+  const settingsStore = ctx.settingsStore;
   const flow = ctx.flow;
-  const attachments = ctx.attachments;
+  const attachmentsStore = ctx.attachmentsStore;
 
   const searchInput = el.searchInput;
   const searchForm = el.searchForm;
@@ -699,7 +699,7 @@ export function initFlowPipeline(ctx) {
     // 「终止并发送」先取消自愈流水线 → 后端 abort → 等待旧轮结算 → 再走正常多轮下发，
     // 彻底杜绝旧轮流式残留混入新轮、Task 提前置终态与历史提前归档等竞态
     const currentRunningTask =
-      view.mode === VIEW_FLOW
+      viewStore.mode === VIEW_FLOW
         ? (() => {
             const t = taskManager.getCurrentActiveTask();
             if (!t) return null;
@@ -781,7 +781,7 @@ export function initFlowPipeline(ctx) {
 
     // 检查 code-area 路由工作区门禁 (不可空置运行)
     try {
-      const activeWs = settings.activeWorkspace || (await workspaceService.getActiveWorkspace());
+      const activeWs = settingsStore.activeWorkspace || (await workspaceService.getActiveWorkspace());
       if (activeWs && (activeWs.id === "code-area" || activeWs.requiresRoute)) {
         const routeInfo = await workspaceService.getCodeAreaRoute();
         const hasRoute = Boolean(routeInfo && routeInfo.routePath && routeInfo.exists);
@@ -794,10 +794,10 @@ export function initFlowPipeline(ctx) {
             bus.emit("ui:toast", { text: "code-area 必须绑定路由目标项目才能发起对话", duration: 2500 });
             return;
           }
-          if (settings.activeWorkspace) {
-            settings.activeWorkspace.routePath = chosen;
-            settings.activeWorkspace.routeName = chosen.split("/").pop() || chosen;
-          }
+          settingsStore.updateActiveWorkspace({
+            routePath: chosen,
+            routeName: chosen.split("/").pop() || chosen,
+          });
         }
       }
     } catch (wsErr) {
@@ -806,7 +806,7 @@ export function initFlowPipeline(ctx) {
 
     // 判断是否在 Flow 模式下向同一个工作流继续提问 (Multi-turn Follow-up)
     const activeTask = taskManager.getCurrentActiveTask();
-    const isFollowUp = Boolean(view.mode === VIEW_FLOW && activeTask);
+    const isFollowUp = Boolean(viewStore.mode === VIEW_FLOW && activeTask);
 
     // 用户发起新的显式提问：若引擎正在自愈「当前活跃任务」，以手动操作为准取消其过期自愈，
     // 避免旧轮次退避重发污染新提问；后台挂起任务的自愈不受影响 (规范：挂起后台继续运行)
@@ -873,7 +873,7 @@ export function initFlowPipeline(ctx) {
 
     // 初始化/追加流式轮次 DOM
     api.resetStreamState(query, filesToAttach, isFollowUp);
-    api.setViewMode(VIEW_FLOW, true);
+    viewStore.morph(VIEW_FLOW, { shouldFocusInput: true });
 
     if (query && query.trim()) {
       promptHistoryNavigator.push(query.trim());
@@ -928,8 +928,8 @@ export function initFlowPipeline(ctx) {
   const submitCurrentPrompt = () => {
     if (!searchInput) return;
     const query = searchInput.value.trim();
-    if (query || attachments.files.length > 0) {
-      handleFlowQuery(query, attachments.files);
+    if (query || attachmentsStore.files.length > 0) {
+      handleFlowQuery(query, attachmentsStore.files);
       api.autoResizeSearchInput();
     } else {
       searchInput.focus();
@@ -952,7 +952,7 @@ export function initFlowPipeline(ctx) {
   if (flowScrollArea) {
     window.addEventListener("wheel", (e) => {
       // 仅在 flow 视图激活时处理
-      if (view.mode !== VIEW_FLOW) return;
+      if (viewStore.mode !== VIEW_FLOW) return;
 
       // 检测是否在独立可滚动子区域内且该子区域仍有剩余滚动空间
       const scrollableInner = e.target.closest(".thinking-body") ||

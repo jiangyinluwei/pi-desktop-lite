@@ -78,6 +78,7 @@ description: |
 ## 🧩 前端模块化与降耦合架构
 
 - **功能域模块化**：`src/modules/` 按功能域拆分，`src/main.js` 唯一编排，跨模块协调收敛至 `ctx.*`；
+- **共享状态唯一属主 (阶段 2)**：`src/services/stores/` 下 `view-store.js` / `settings-store.js` / `attachments-store.js` / `flow-store.js` 为共享可变状态唯一属主（无 DOM、有状态、有行为），`ctx` 只留 store 引用；模块经解构取 `viewStore` / `settingsStore` / `attachmentsStore`，禁再解构裸对象 `ctx.view / ctx.settings / ctx.attachments`（阶段 2 已移除）。四态状态机落 `viewStore.morph(mode, opts)`（控制流命令禁上总线）；`view.*` / `settings.*` / `attachments.*` 裸写已清零；`flow.*` 纯数据字段按 taskId 分仓（`flowStore.for(taskId)`），视图派生缓存（`renderedToolCards` / `currentSteps` / `active*Step` / 计时器）属视图层待阶段 3 拆 `flow-render` 迁出；
 - **事件总线降耦合 (阶段 1)**：`src/lib/event-bus.js` 极简同步 bus 收编「fire-and-forget」横切通知（`ui:*` / `flow:*`），`src/lib/contracts.js` 事件通道契约表统一登记（bus / Store action / `pi:*` 内核桥接三类归口）。横切通知（如 `ui:toast`）迁移为 `bus.emit` / `bus.on`；控制流 / 状态迁移仍走 Store action 或显式 import；
 - **构建与度量门禁**：`npm run check:fe`（全量前端语法 + import 图 + 循环依赖）与 `npm run measure:coupling`（耦合度量基线）支撑降耦合重构闭环。
 

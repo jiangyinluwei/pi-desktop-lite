@@ -16,7 +16,7 @@ import { enhanceSelect } from "../services/sketch-select.js";
 export function initSessionsPanel(ctx) {
   const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
+  const viewStore = ctx.viewStore;
 
   const btnClearUiSessions = el.btnClearUiSessions;
   const sessionsSearchInput = el.sessionsSearchInput;
@@ -162,7 +162,7 @@ export function initSessionsPanel(ctx) {
           existingTask.status === "paused";
         if (isRunning) {
           api.restoreTaskToFlow(existingTask);
-          view.flowFromSettings = true;
+          viewStore.set({ flowFromSettings: true });
           return;
         }
       }
@@ -232,7 +232,7 @@ export function initSessionsPanel(ctx) {
 
       // 直接切 Flow，不调用 closeSettingsView（避免先跳回 previous 的中间态抖动）
       api.renderTurnsIntoFlow(task, turns, { sessionPath: s.file_path });
-      view.flowFromSettings = true;
+      viewStore.set({ flowFromSettings: true });
 
       api.renderConversationMessages();
       api.updateMiniTaskCapsuleUI();
@@ -386,7 +386,7 @@ export function initSessionsPanel(ctx) {
   };
 
   const isSessionsPanelVisible = () => {
-    const isSettings = view.mode === VIEW_SETTINGS || el.appContainer?.getAttribute("data-view") === "settings";
+    const isSettings = viewStore.mode === VIEW_SETTINGS || el.appContainer?.getAttribute("data-view") === "settings";
     if (!isSettings) return false;
     const paneSessions = document.getElementById("pane-sessions");
     const tabBtn = document.querySelector('.settings-tab-btn[data-tab="tab-sessions"]');
