@@ -221,7 +221,7 @@ flowchart TD
 
 ## 📌 11. 会话回退与文件撤回 (Flow Rollback: Session Rewind & File Restoration)
 
-Flow 支持回退到任意一次历史对话（配合 pi 内核原生历史节点回退），并在回退时自动撤回「已修改 / 已删除」的文件（已新增的文件永不撤回，防误删铁律），完成后顶部浮窗提醒结果（成功/失败，持续 3 秒）。实现链路横跨三层：内核快照扩展 (`src-tauri/extensions/pi-rollback-guard.ts`) → Rust 还原与 RPC 路由 (`src-tauri/src/rollback.rs` + `lib.rs`) → 前端编排 (`src/modules/flow-rollback.js`)。
+Flow 支持回退到任意一次历史对话（配合 pi 内核原生历史节点回退），并在回退时自动撤回「已修改 / 已删除」的文件（已新增的文件永不撤回，防误删铁律），完成后顶部浮窗提醒结果（成功/失败，持续 3 秒）。实现链路横跨三层：内核快照扩展 (`src-tauri/extensions/pi-rollback-guard.ts`) → Rust 还原与 RPC 路由 (`src-tauri/src/rollback.rs` + `src/commands/rollback.rs`) → 前端编排 (`src/modules/flow-rollback.js`)。
 
 ### 11.1 内核侧确定性快照（工具执行前，杜绝竞态）
 - **启用开关**：桌面端拉起 pi 内核进程时注入环境变量 `PI_DL_ROLLBACK=1`（Supervisor 主进程与 SessionHost 任务进程双侧注入；扩展未检测到该变量时完全静默退出，不影响原生 pi 使用场景）；
@@ -233,7 +233,7 @@ Flow 支持回退到任意一次历史对话（配合 pi 内核原生历史节�
 
 ### 11.2 Rust 还原与 RPC 路由
 - **`src-tauri/src/rollback.rs`**：`rollback_files(session_id, targets, dry_run)` 按 `(path, toolCallId)` 精确匹配**最早**快照（还原内容 = 回退点之后第一次变更前的状态）；采用**两阶段事务性保证（Phase 1 预检与内存解码，存在任何缺失/超限/解码失败立即中止且不触碰磁盘，彻底杜绝半撤回；`dry_run: true` 模式在 Phase 1 后无副作用直接返回；Phase 2 全部就绪后原子落盘写入）**；原生支持 0 字节空文件 base64 解码与空目录恢复；返回 `{ restored, restoredCount, missing, dryRun }`；路径键归一化（`\`→`/` + Windows 小写不敏感）；
-- **新 RPC 指令**（`lib.rs`）：`pi_get_fork_messages(task_id?)` / `pi_fork_session(task_id?, entry_id)` / `pi_rollback_files(task_id?, targets, dry_run?)`；task_id 为空路由主会话 Supervisor，否则经 `PiHostPool::send_command_to_task_with_response` 路由该 Task 专属内核进程；
+- **新 RPC 指令**（`src-tauri/src/commands/rollback.rs`）：`pi_get_fork_messages(task_id?)` / `pi_fork_session(task_id?, entry_id)` / `pi_rollback_files(task_id?, targets, dry_run?)`；task_id 为空路由主会话 Supervisor，否则经 `PiHostPool::send_command_to_task_with_response` 路由该 Task 专属内核进程；
 - **响应帧隔离铁律 (P2-2)**：`pending_responses` 等待表 + stdout 事件环中 `type=="response"` 帧按 id 唤醒 oneshot 等待者；无论有无等待者（如超时后响应姗姗来迟）统一 `continue` 丢弃，绝不落入前端广播通道产生杂散 IPC 帧。
 
 ### 11.3 前端编排 (`src/modules/flow-rollback.js`)

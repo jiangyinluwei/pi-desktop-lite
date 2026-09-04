@@ -95,7 +95,8 @@ description: |
 | **`inner_skills`** | 基于 `RULES.md` 极简映射（<100 Tokens）在工具调用时动态 Steer 注入 7 大运行态技能 |
 | **`package_manager`** | 连通 pi.dev/packages，15min TTL 缓存，FIFO 安装队列与 ProgressStepper 步进 |
 | **`session`** | `DashMap` 并发缓存 + `notify` 递归监听 `~/.pi/agent/sessions/`，原生上下文脱敏净化，精确毫秒时间戳排序与 LIFO 最新提问去重历史栈 |
-| **`config_manager`** | 双层持久化：`~/.pi-dl/config.json` 与 `~/.pi/agent/` 下的 `auth.json` / `models.json` / `settings.json` |
+| **`config_manager`** | 双层持久化：`~/.pi-dl/config.json` 与 `~/.pi/agent/` 下的 `auth.json` / `models.json` / `settings.json`；已由单文件神对象拆为 `config_manager/{io,schema,migrate,validate}.rs`（阶段 5） |
+| **`commands`** | Tauri IPC 命令层（阶段 5 拆分）：`commands/{file,window,agent,session,rollback,workspace_cmd,skills,version}.rs`，`lib.rs` 仅保留 `invoke_handler!` 汇总与 `app.manage(...)`/`run()` 启动 |
 
 ---
 

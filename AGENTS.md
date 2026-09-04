@@ -182,6 +182,8 @@
 - **正式发布构建（生成安装包）**：`npm run build`
 - **Rust 后端语法检查**：`cargo check`（位于 `src-tauri` 目录）
 
+> 🛡️ **后端命令层规范（阶段 5 落地）**：Tauri IPC 命令按领域拆至 `src-tauri/src/commands/`（`file` ↔ 前端文件操作、`window` ↔ 窗口/通知、`agent` ↔ Agent RPC/任务/模型/工作区、`session` ↔ 会话索引、`rollback` ↔ 回退/fork/文件撤回、`workspace_cmd` ↔ 多预设工作区与 code-area 路由、`skills` ↔ 运行态技能规则、`version` ↔ 内核版本检测）；`lib.rs` 仅保留 `invoke_handler!` 汇总与 `run()` 启动；`config_manager.rs` 拆为 `config_manager/{io,schema,migrate,validate}.rs`（`mod.rs` `pub use` 再导出，调用方 `use` 路径不变）。新增/修改 IPC 命令时，应落在对应领域子模块，而非 `lib.rs`。
+
 ### 多预设工作区与分层原则
 - **IPC 指令**：`pi_list_workspaces`（列出预设与运行时状态）、`pi_get_active_workspace`（获取当前生效工作区）、`pi_set_active_workspace(id)`（物化副本 ➔ 持久化 ➔ 切换 ➔ 空闲重启重锚 CWD）；
 - **公共预设 (`workspaces/`)**：`default-area`、`code-area`、`research-area`，随安装包公开发布，注册于 `tauri.conf.json` 的 `bundle.resources`；
