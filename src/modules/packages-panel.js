@@ -11,7 +11,6 @@ import { sketchAlert, sketchConfirm } from "../services/sketch-modal.js";
  * 扩展组件市场、安装/更新/卸载队列与推荐插件
  */
 export function initPackagesPanel(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
 
 

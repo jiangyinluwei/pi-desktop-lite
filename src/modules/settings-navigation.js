@@ -1,14 +1,112 @@
 import { ICONS } from "../lib/icons.js";
 import { piClient } from "../services/pi-client.js";
+import { bindAll } from "../lib/el-binder.js";
 
 /**
  * 设置页 Tab、内部步骤与折叠通道抽屉导航
  */
+
+// ==========================================================================
+// 阶段 7 批次 C：跨模块纯 DOM 助手显式化（原 ctx.api 函数槽清退为显式 import，
+// 仅依赖 document，无任何模块状态闭包；设置页滚动容器 .settings-tab-content 为全局唯一）
+// ==========================================================================
+
+/** 设置面板自动平滑滚动到底部辅助函数 (针对官方通道/自定义通道抽屉首次展开行为) */
+export const scrollSettingsToBottom = (smooth = true) => {
+  const settingsTabContent = document.querySelector(".settings-tab-content");
+  if (!settingsTabContent) return;
+  const doScroll = () => {
+    settingsTabContent.scrollTo({
+      top: settingsTabContent.scrollHeight,
+      behavior: smooth ? "smooth" : "auto",
+    });
+  };
+  requestAnimationFrame(doScroll);
+  setTimeout(doScroll, 80);
+  setTimeout(doScroll, 220); // 覆盖抽屉 fadeInDrawer 动画耗时
+};
+
+/** 设置面板自动平滑滚动使得当前操作的框体/卡片底部对齐视口下边缘 (单次精准计算，杜绝动画掐断与抖动) */
+export const scrollElementIntoViewBottom = (el, padding = 20, smooth = true) => {
+  const container = document.querySelector(".settings-tab-content");
+  if (!container || !el) return;
+
+  requestAnimationFrame(() => {
+    const containerRect = container.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+
+    if (containerRect.height <= 0 || elRect.height <= 0) return;
+
+    const viewportHeight = container.clientHeight;
+    const effectivePadding = Math.min(padding, 24);
+
+    let targetScrollTop = container.scrollTop;
+
+    // 如果目标元素过大（超出视口可用高度），优先保证其顶部可见
+    if (elRect.height + effectivePadding * 2 >= viewportHeight) {
+      const topDelta = elRect.top - (containerRect.top + effectivePadding);
+      targetScrollTop = container.scrollTop + topDelta;
+    } else {
+      // 若元素底部超出视口下边缘，则向下滚动让其底部与呼吸间距露出
+      if (elRect.bottom > containerRect.bottom - effectivePadding) {
+        const bottomDelta = elRect.bottom - (containerRect.bottom - effectivePadding);
+        targetScrollTop = container.scrollTop + bottomDelta;
+      } else if (elRect.top < containerRect.top + effectivePadding) {
+        // 若元素顶部超出视口上边缘，则向上滚动让其顶部露出
+        const topDelta = elRect.top - (containerRect.top + effectivePadding);
+        targetScrollTop = container.scrollTop + topDelta;
+      }
+    }
+
+    const maxScroll = container.scrollHeight - viewportHeight;
+    targetScrollTop = Math.max(0, Math.min(targetScrollTop, maxScroll));
+
+    // 若位置已在目标范围，且差距极小 (<2px)，则无需滚动，杜绝抖动
+    if (Math.abs(targetScrollTop - container.scrollTop) > 2) {
+      container.scrollTo({
+        top: targetScrollTop,
+        behavior: smooth ? "smooth" : "auto",
+      });
+    }
+  });
+};
+
+/** 自定义通道配置内层 Tab 切换 (步骤1 / 步骤2) */
+export const switchInnerTab = (targetId) => {
+  const innerTabBtns = document.querySelectorAll(".inner-tab-btn");
+  const innerTabPanes = document.querySelectorAll(".inner-tab-pane");
+
+  innerTabBtns.forEach((b) => {
+    if (b.getAttribute("data-inner-tab") === targetId) {
+      b.classList.add("active");
+    } else {
+      b.classList.remove("active");
+    }
+  });
+
+  innerTabPanes.forEach((pane) => {
+    if (pane.id === targetId) {
+      pane.classList.add("active");
+    } else {
+      pane.classList.remove("active");
+    }
+  });
+
+  scrollSettingsToBottom(true);
+};
+
 export function initSettingsNavigation(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
   const settingsStore = ctx.settingsStore;
-
+  // 批次 B：模块自绑定（whitelistModelsList / officialProviderSelect 跨簇共享 id，同 id 同元素）
+  const el = bindAll({
+    whitelistModelsList: "whitelist-models-list",
+    btnToggleOfficial: "btn-toggle-official",
+    btnToggleCustom: "btn-toggle-custom",
+    channelConfigOfficial: "channel-config-official",
+    channelConfigCustom: "channel-config-custom",
+    officialProviderSelect: "official-provider-select",
+  });
   const whitelistModelsList = el.whitelistModelsList;
   const btnToggleOfficial = el.btnToggleOfficial;
   const btnToggleCustom = el.btnToggleCustom;
@@ -71,89 +169,8 @@ export function initSettingsNavigation(ctx) {
 
   initSettingsTabs();
 
-  // 设置面板自动平滑滚动到底部辅助函数 (针对官方通道/自定义通道抽屉首次展开行为)
-  const scrollSettingsToBottom = (smooth = true) => {
-    const settingsTabContent = document.querySelector(".settings-tab-content");
-    if (!settingsTabContent) return;
-    const doScroll = () => {
-      settingsTabContent.scrollTo({
-        top: settingsTabContent.scrollHeight,
-        behavior: smooth ? "smooth" : "auto",
-      });
-    };
-    requestAnimationFrame(doScroll);
-    setTimeout(doScroll, 80);
-    setTimeout(doScroll, 220); // 覆盖抽屉 fadeInDrawer 动画耗时
-  };
-
-  // 设置面板自动平滑滚动使得当前操作的框体/卡片底部对齐视口下边缘 (单次精准计算，杜绝动画掐断与抖动)
-  const scrollElementIntoViewBottom = (el, padding = 20, smooth = true) => {
-    const container = document.querySelector(".settings-tab-content");
-    if (!container || !el) return;
-
-    requestAnimationFrame(() => {
-      const containerRect = container.getBoundingClientRect();
-      const elRect = el.getBoundingClientRect();
-
-      if (containerRect.height <= 0 || elRect.height <= 0) return;
-
-      const viewportHeight = container.clientHeight;
-      const effectivePadding = Math.min(padding, 24);
-
-      let targetScrollTop = container.scrollTop;
-
-      // 如果目标元素过大（超出视口可用高度），优先保证其顶部可见
-      if (elRect.height + effectivePadding * 2 >= viewportHeight) {
-        const topDelta = elRect.top - (containerRect.top + effectivePadding);
-        targetScrollTop = container.scrollTop + topDelta;
-      } else {
-        // 若元素底部超出视口下边缘，则向下滚动让其底部与呼吸间距露出
-        if (elRect.bottom > containerRect.bottom - effectivePadding) {
-          const bottomDelta = elRect.bottom - (containerRect.bottom - effectivePadding);
-          targetScrollTop = container.scrollTop + bottomDelta;
-        } else if (elRect.top < containerRect.top + effectivePadding) {
-          // 若元素顶部超出视口上边缘，则向上滚动让其顶部露出
-          const topDelta = elRect.top - (containerRect.top + effectivePadding);
-          targetScrollTop = container.scrollTop + topDelta;
-        }
-      }
-
-      const maxScroll = container.scrollHeight - viewportHeight;
-      targetScrollTop = Math.max(0, Math.min(targetScrollTop, maxScroll));
-
-      // 若位置已在目标范围，且差距极小 (<2px)，则无需滚动，杜绝抖动
-      if (Math.abs(targetScrollTop - container.scrollTop) > 2) {
-        container.scrollTo({
-          top: targetScrollTop,
-          behavior: smooth ? "smooth" : "auto",
-        });
-      }
-    });
-  };
-
-  // 自定义通道配置内层 Tab 切换 (步骤1 / 步骤2)
-  const switchInnerTab = (targetId) => {
-    const innerTabBtns = document.querySelectorAll(".inner-tab-btn");
-    const innerTabPanes = document.querySelectorAll(".inner-tab-pane");
-
-    innerTabBtns.forEach((b) => {
-      if (b.getAttribute("data-inner-tab") === targetId) {
-        b.classList.add("active");
-      } else {
-        b.classList.remove("active");
-      }
-    });
-
-    innerTabPanes.forEach((pane) => {
-      if (pane.id === targetId) {
-        pane.classList.add("active");
-      } else {
-        pane.classList.remove("active");
-      }
-    });
-
-    scrollSettingsToBottom(true);
-  };
+  // 设置面板滚动/内层 Tab 助手已显式化至模块顶层（scrollSettingsToBottom /
+  // scrollElementIntoViewBottom / switchInnerTab），消费方直接 import，不再走 api 槽。
 
   const initInnerTabs = () => {
     const innerTabBtns = document.querySelectorAll(".inner-tab-btn");
@@ -253,8 +270,4 @@ export function initSettingsNavigation(ctx) {
   };
 
   initChannelDrawers();
-
-  api.scrollSettingsToBottom = scrollSettingsToBottom;
-  api.scrollElementIntoViewBottom = scrollElementIntoViewBottom;
-  api.switchInnerTab = switchInnerTab;
 }

@@ -331,8 +331,7 @@ const splitPath = (p) => {
 
 export function initFileChanges(ctx) {
   const api = ctx.api;
-  const el = ctx.el;
-  const flow = ctx.flow;
+  const flowView = ctx.flowView;
   const flowDom = ctx.flowDom;
 
   const flowConversation = flowDom.flowConversation;
@@ -564,7 +563,7 @@ export function initFileChanges(ctx) {
     // 框体收纳于会话流末尾（追加即移动到末尾，跨轮次保持置底）
     flowConversation.appendChild(boxEl);
     // 仅吸底跟随开启时随内容定位到底部
-    if (flowScrollArea && flow.followBottom !== false) {
+    if (flowScrollArea && flowView.followBottom !== false) {
       flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
     }
   };

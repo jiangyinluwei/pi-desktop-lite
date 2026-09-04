@@ -4,13 +4,10 @@ import { invokeTauri } from "../services/tauri-bridge.js";
  * 标题栏窗口控制按钮
  */
 export function initWindowControls(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
 
-
-
   // ==========================================================================
-  // 窗口控制元素
+  // 窗口控制元素（批次 B：本模块自取，不再依赖 ctx.el）
   // ==========================================================================
   const btnMinimize = document.getElementById("btn-minimize");
   const btnMaximize = document.getElementById("btn-maximize");

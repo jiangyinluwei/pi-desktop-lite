@@ -10,6 +10,9 @@ import { notificationService } from "../services/notification-service.js";
 import { taskManager } from "../services/task-manager.js";
 import { sketchAlert, sketchConfirm } from "../services/sketch-modal.js";
 import { modelFailoverEngine } from "../services/model-failover.js";
+import { flowStore } from "../services/stores/flow-store.js";
+import { flowView, resolveStreamTaskId } from "./flow-state-view.js";
+import { bindAll } from "../lib/el-binder.js";
 import {
   createToolPseudoRunningCard,
   getFriendlyToolName,
@@ -22,13 +25,22 @@ import {
  * 提问下发、工具调用事件、自愈引擎接入与发送拦截流水线
  */
 export function initFlowPipeline(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
   const viewStore = ctx.viewStore;
   const settingsStore = ctx.settingsStore;
-  const flow = ctx.flow;
+  const flowView = ctx.flowView;
+  const flowStore = ctx.flowStore;
   const attachmentsStore = ctx.attachmentsStore;
   const flowDom = ctx.flowDom;
+
+  // 事件帧归属任务的纯数据分仓（事件处理器内调用；调用点均已过前台门禁）
+  const streamData = (explicit) => flowStore.for(resolveStreamTaskId(explicit));
+
+  // 批次 B：模块自绑定（searchInput / searchForm 跨簇共享 id，同 id 同元素）
+  const el = bindAll({
+    searchInput: "search-input",
+    searchForm: "search-form",
+  });
 
   const searchInput = el.searchInput;
   const searchForm = el.searchForm;
@@ -156,7 +168,7 @@ export function initFlowPipeline(ctx) {
     injectionNotice.listEl.appendChild(itemEl);
     updateInjectionNoticeCount();
     // 仅吸底跟随开启时随内容定位到底部，向上滚离后不打断浏览
-    if (flowScrollArea && flow.followBottom !== false) {
+    if (flowScrollArea && flowView.followBottom !== false) {
       flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
     }
   };
@@ -205,11 +217,11 @@ export function initFlowPipeline(ctx) {
    * 参数流式结束 (toolcall_end) 后回填真实工具名，真实工具卡创建 (tool-start) 时移除。
    */
   const ensureActiveToolPseudoStep = () => {
-    if (flow.activeToolPseudoStep) return flow.activeToolPseudoStep;
+    if (flowView.activeToolPseudoStep) return flowView.activeToolPseudoStep;
 
     const pCard = createToolPseudoRunningCard({ durationText: "(0.0s)..." });
-    if (flow.activeTurnRefs?.stepsContainerEl) {
-      flow.activeTurnRefs.stepsContainerEl.appendChild(pCard.cardEl);
+    if (flowView.activeTurnRefs?.stepsContainerEl) {
+      flowView.activeTurnRefs.stepsContainerEl.appendChild(pCard.cardEl);
     }
 
     const pseudoItem = {
@@ -220,13 +232,13 @@ export function initFlowPipeline(ctx) {
       titleEl: pCard.titleEl,
       durationEl: pCard.durationEl,
     };
-    flow.activeToolPseudoStep = pseudoItem;
+    flowView.activeToolPseudoStep = pseudoItem;
 
-    if (!flow.toolPseudoTimerInterval) {
-      flow.toolPseudoTimerInterval = setInterval(() => {
-        if (flow.activeToolPseudoStep?.durationEl) {
-          const elapsed = ((Date.now() - flow.activeToolPseudoStep.startTime) / 1000).toFixed(1);
-          flow.activeToolPseudoStep.durationEl.textContent = `(${elapsed}s)...`;
+    if (!flowView.toolPseudoTimerInterval) {
+      flowView.toolPseudoTimerInterval = setInterval(() => {
+        if (flowView.activeToolPseudoStep?.durationEl) {
+          const elapsed = ((Date.now() - flowView.activeToolPseudoStep.startTime) / 1000).toFixed(1);
+          flowView.activeToolPseudoStep.durationEl.textContent = `(${elapsed}s)...`;
         }
       }, 100);
     }
@@ -238,10 +250,10 @@ export function initFlowPipeline(ctx) {
    * 辅助：回填伪工具运行框的真实工具名（toolcall_end 携带 toolCall.name 时）
    */
   const updateToolPseudoName = (toolName) => {
-    if (!flow.activeToolPseudoStep || !toolName) return;
+    if (!flowView.activeToolPseudoStep || !toolName) return;
     const friendly = getFriendlyToolName(toolName);
-    if (flow.activeToolPseudoStep.titleEl) {
-      flow.activeToolPseudoStep.titleEl.textContent = `工具调用(${friendly})`;
+    if (flowView.activeToolPseudoStep.titleEl) {
+      flowView.activeToolPseudoStep.titleEl.textContent = `工具调用(${friendly})`;
     }
   };
 
@@ -249,12 +261,12 @@ export function initFlowPipeline(ctx) {
    * 辅助：移除伪工具运行框（真实工具卡已就位或流式状态重置/结束时）
    */
   const removeActiveToolPseudoStep = () => {
-    const pseudo = flow.activeToolPseudoStep;
+    const pseudo = flowView.activeToolPseudoStep;
     if (!pseudo) return;
-    flow.activeToolPseudoStep = null;
-    if (flow.toolPseudoTimerInterval) {
-      clearInterval(flow.toolPseudoTimerInterval);
-      flow.toolPseudoTimerInterval = null;
+    flowView.activeToolPseudoStep = null;
+    if (flowView.toolPseudoTimerInterval) {
+      clearInterval(flowView.toolPseudoTimerInterval);
+      flowView.toolPseudoTimerInterval = null;
     }
     pseudo.cardEl?.remove();
   };
@@ -263,12 +275,12 @@ export function initFlowPipeline(ctx) {
    * 辅助：启动/接管真实工具卡片的读秒计时 (Running 文本 + 递增读秒)
    */
   const startToolRunTimer = () => {
-    if (flow.toolRunTimerInterval) {
-      clearInterval(flow.toolRunTimerInterval);
-      flow.toolRunTimerInterval = null;
+    if (flowView.toolRunTimerInterval) {
+      clearInterval(flowView.toolRunTimerInterval);
+      flowView.toolRunTimerInterval = null;
     }
-    flow.toolRunTimerInterval = setInterval(() => {
-      const step = flow.activeToolStep;
+    flowView.toolRunTimerInterval = setInterval(() => {
+      const step = flowView.activeToolStep;
       if (!step?.durationEl || step.status !== "running") return;
       const elapsed = ((Date.now() - step.startTime) / 1000).toFixed(1);
       step.durationText = `(${elapsed}s)...`;
@@ -296,7 +308,7 @@ export function initFlowPipeline(ctx) {
 
   piClient.addEventListener("tool-start", (e) => {
     if (!isForegroundStreamEvent()) return;
-    flow.hasReceivedDelta = true;
+    streamData(piClient.lastEventTaskId).set({ hasReceivedDelta: true });
     const data = e.detail;
     const toolCallId = data.toolCallId;
     const toolName = data.toolName || "tool";
@@ -345,13 +357,13 @@ export function initFlowPipeline(ctx) {
       `;
     }
 
-    if (flow.activeTurnRefs?.stepsContainerEl) {
-      flow.activeTurnRefs.stepsContainerEl.appendChild(card);
-    } else if (flow.activeTurnRefs?.toolCallsContainerEl) {
-      flow.activeTurnRefs.toolCallsContainerEl.appendChild(card);
+    if (flowView.activeTurnRefs?.stepsContainerEl) {
+      flowView.activeTurnRefs.stepsContainerEl.appendChild(card);
+    } else if (flowView.activeTurnRefs?.toolCallsContainerEl) {
+      flowView.activeTurnRefs.toolCallsContainerEl.appendChild(card);
     }
 
-    flow.renderedToolCards.set(toolCallId, card);
+    flowView.renderedToolCards.set(toolCallId, card);
 
     const stepItem = {
       type: "tool",
@@ -369,14 +381,14 @@ export function initFlowPipeline(ctx) {
       bodyEl: toolStep?.bodyEl || card.querySelector(".flow-step-body") || card.querySelector(".tool-body"),
     };
 
-    flow.activeToolStep = stepItem;
-    if (!Array.isArray(flow.currentSteps)) {
-      flow.currentSteps = [];
+    flowView.activeToolStep = stepItem;
+    if (!Array.isArray(flowView.currentSteps)) {
+      flowView.currentSteps = [];
     }
-    flow.currentSteps.push(stepItem);
+    flowView.currentSteps.push(stepItem);
     startToolRunTimer();
     // 仅吸底跟随开启时随内容定位到底部，向上滚离后不打断浏览
-    if (flowScrollArea && flow.followBottom !== false) {
+    if (flowScrollArea && flowView.followBottom !== false) {
       flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
     }
   });
@@ -384,16 +396,16 @@ export function initFlowPipeline(ctx) {
   piClient.addEventListener("tool-update", (e) => {
     if (!isForegroundStreamEvent()) return;
     const data = e.detail;
-    let card = flow.renderedToolCards.get(data.toolCallId);
+    let card = flowView.renderedToolCards.get(data.toolCallId);
     // H26 兜底自愈：若 Map 中未命中，尝试从 DOM ID 动态检索并自愈回填
     if (!card && data.toolCallId) {
       card = document.getElementById(`tool-${data.toolCallId}`) || document.getElementById(data.toolCallId);
       if (card) {
-        flow.renderedToolCards.set(data.toolCallId, card);
+        flowView.renderedToolCards.set(data.toolCallId, card);
       }
     }
-    const matchingStep = Array.isArray(flow.currentSteps)
-      ? flow.currentSteps.find((s) => s.type === "tool" && s.id === data.toolCallId)
+    const matchingStep = Array.isArray(flowView.currentSteps)
+      ? flowView.currentSteps.find((s) => s.type === "tool" && s.id === data.toolCallId)
       : null;
     if (matchingStep) {
       matchingStep.result = data.partialResult;
@@ -409,19 +421,19 @@ export function initFlowPipeline(ctx) {
   piClient.addEventListener("tool-end", (e) => {
     if (!isForegroundStreamEvent()) return;
     const data = e.detail;
-    let card = flow.renderedToolCards.get(data.toolCallId);
+    let card = flowView.renderedToolCards.get(data.toolCallId);
     // H26 兜底自愈：若 Map 中未命中，尝试从 DOM ID 动态检索并自愈回填
     if (!card && data.toolCallId) {
       card = document.getElementById(`tool-${data.toolCallId}`) || document.getElementById(data.toolCallId);
       if (card) {
-        flow.renderedToolCards.set(data.toolCallId, card);
+        flowView.renderedToolCards.set(data.toolCallId, card);
       }
     }
     const isError = Boolean(data.isError);
     const statusText = isError ? "failure" : "done";
 
-    const matchingStep = Array.isArray(flow.currentSteps)
-      ? flow.currentSteps.find((s) => s.type === "tool" && s.id === data.toolCallId)
+    const matchingStep = Array.isArray(flowView.currentSteps)
+      ? flowView.currentSteps.find((s) => s.type === "tool" && s.id === data.toolCallId)
       : null;
     if (matchingStep) {
       matchingStep.status = statusText;
@@ -439,9 +451,9 @@ export function initFlowPipeline(ctx) {
         }
       }
     }
-    if (flow.toolRunTimerInterval) {
-      clearInterval(flow.toolRunTimerInterval);
-      flow.toolRunTimerInterval = null;
+    if (flowView.toolRunTimerInterval) {
+      clearInterval(flowView.toolRunTimerInterval);
+      flowView.toolRunTimerInterval = null;
     }
 
     if (card) {
@@ -461,8 +473,8 @@ export function initFlowPipeline(ctx) {
       }
     }
 
-    if (flow.activeToolStep?.id === data.toolCallId) {
-      flow.activeToolStep = null;
+    if (flowView.activeToolStep?.id === data.toolCallId) {
+      flowView.activeToolStep = null;
     }
     // 兼容漏收 tool-start 的异常流：兜底清理可能残留的伪工具运行框
     removeActiveToolPseudoStep();
@@ -473,7 +485,7 @@ export function initFlowPipeline(ctx) {
     if (piClient.isStreaming && typeof api.ensureActiveThinkingStep === "function") {
       api.ensureActiveThinkingStep();
       // 仅吸底跟随开启时随内容定位到底部，向上滚离后不打断浏览
-      if (flowScrollArea && flow.followBottom !== false) {
+      if (flowScrollArea && flowView.followBottom !== false) {
         flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
       }
     }
@@ -484,8 +496,8 @@ export function initFlowPipeline(ctx) {
     const data = e.detail;
     // 引擎接管自愈时，内核内置 3 次快速重试降级为内部静默，不再覆盖耗时位展示
     if (modelFailoverEngine.isActive()) return;
-    if (flow.activeTurnRefs?.thinkingDurationEl && data.attempt) {
-      flow.activeTurnRefs.thinkingDurationEl.textContent = `自动重试中 (${data.attempt}/${data.maxAttempts || 3})...`;
+    if (flowView.activeTurnRefs?.thinkingDurationEl && data.attempt) {
+      flowView.activeTurnRefs.thinkingDurationEl.textContent = `自动重试中 (${data.attempt}/${data.maxAttempts || 3})...`;
     }
   });
 
@@ -535,8 +547,10 @@ export function initFlowPipeline(ctx) {
   const failoverHooks = {
     // 同 Turn 复用重发相同输入 (不重建提问卡、不重复压入 prompt history、不新建 Task)
     onResendAttempt: (taskId) => {
-      api.resetCurrentTurnForResend();
-      return piClient.sendPrompt(flow.lastSentPrompt, flow.lastImagePayloads, null, taskId);
+      api.resetCurrentTurnForResend(taskId);
+      // 自愈重发使用「该任务自己分仓」缓存的 Prompt 与图片载荷（按 Task 隔离）
+      const fs = flowStore.for(taskId);
+      return piClient.sendPrompt(fs.lastSentPrompt, fs.lastImagePayloads, null, taskId);
     },
     // 全部失败兜底：复用既有错误卡并追加自愈摘要
     onGiveUp: (errDetail, summary) => {
@@ -579,8 +593,10 @@ export function initFlowPipeline(ctx) {
     }
 
     // 「终止并发送」进行中：旧轮报错视为已结算，不渲染错误卡、不进入自愈
-    if (flow.interruptSendTaskId) {
-      if (!errTaskId || errTaskId === flow.interruptSendTaskId) {
+    // （interruptSendTaskId 写入/读取均在 errTaskId 自己的分仓上，跨任务切换不串档）
+    const errFs = flowStore.for(resolveStreamTaskId(errTaskId));
+    if (errFs.interruptSendTaskId) {
+      if (!errTaskId || errTaskId === errFs.interruptSendTaskId) {
         return;
       }
     }
@@ -607,15 +623,16 @@ export function initFlowPipeline(ctx) {
       return;
     }
     // 「终止并发送」进行中：旧轮结算由 interrupt-send 流水线接管，跳过收尾与归档
-    if (flow.interruptSendTaskId) {
+    const endFs = flowStore.for(resolveStreamTaskId(piClient.lastEventTaskId));
+    if (endFs.interruptSendTaskId) {
       const endTaskId = e.detail?.task_id || e.detail?.taskId;
-      if (!endTaskId || endTaskId === flow.interruptSendTaskId) {
+      if (!endTaskId || endTaskId === endFs.interruptSendTaskId) {
         return;
       }
     }
     // 完成后收起所有工具卡片（最终输出卡不收起）
     api.collapseAllToolCards();
-    api.finalizeStream();
+    api.finalizeStream(e.detail?.task_id || e.detail?.taskId || piClient.lastEventTaskId);
     api.archiveCurrentFlowToHistory();
     // 会话完成后展示「文件变更」收纳框（新增/修改的文件，点击可打开所在文件夹）
     if (typeof api.showFileChangesBox === "function") {
@@ -715,7 +732,8 @@ export function initFlowPipeline(ctx) {
       // 用户确认中断旧轮：取消自愈流水线 → 先注册结算监听 → 后端 abort → 等待结算
       modelFailoverEngine.cancel("new-query");
       const interruptTaskId = currentRunningTask.id;
-      flow.interruptSendTaskId = interruptTaskId;
+      // 中断标记写入该任务自己的分仓：agent-error/agent-end 按任务键比对，跨任务切换不串档
+      flowStore.for(interruptTaskId).set({ interruptSendTaskId: interruptTaskId });
       currentRunningTask.pendingInterruptSend = true;
       bus.emit("ui:toast", { text: "正在终止当前生成，即将发送新提问…", duration: 1500 });
       const settledPromise = waitForTurnSettled(interruptTaskId);
@@ -725,15 +743,15 @@ export function initFlowPipeline(ctx) {
         // abort 失败（子进程已退出等）不阻塞，由超时兜底继续
       }
       await settledPromise;
-      flow.interruptSendTaskId = null;
+      flowStore.for(interruptTaskId).set({ interruptSendTaskId: null });
       // 显式清除（结算事件到达时 taskManager 已清除；超时兜底路径必须在此兜底清除，
       // 否则新轮次的 agent_end 会被误判为旧轮中断结算）
       currentRunningTask.pendingInterruptSend = false;
 
       // 旧轮已结算：头部耗时位定格为「已中断」，避免残留「思考中」字样
-      if (flow.activeTurnRefs?.thinkingDurationEl) {
-        const elapsed = ((Date.now() - flow.thinkingStartTime) / 1000).toFixed(1);
-        flow.activeTurnRefs.thinkingDurationEl.textContent = `已中断 (${elapsed}s)`;
+      if (flowView.activeTurnRefs?.thinkingDurationEl) {
+        const elapsed = ((Date.now() - flowStore.for(interruptTaskId).thinkingStartTime) / 1000).toFixed(1);
+        flowView.activeTurnRefs.thinkingDurationEl.textContent = `已中断 (${elapsed}s)`;
       }
 
       // 等待结算期间任务被挂起/切换：丢弃本次发送并回填输入内容
@@ -822,8 +840,8 @@ export function initFlowPipeline(ctx) {
       flowBtnAbort.classList.remove("hidden");
     }
 
-    // 记录本次附带的文件用于多模态失败检测与自适应重试
-    flow.lastSentAttachments = [...filesToAttach];
+    // 记录本次附带的文件用于多模态失败检测与自适应重试（写入本任务分仓，按 Task 隔离）
+    flowStore.for(currentTask?.id).set({ lastSentAttachments: [...filesToAttach] });
 
     // 构造下发给模型的 Prompt 与上下文注入（实际注入内容为文件/目录的系统绝对路径）
     let promptToSend = query;
@@ -882,9 +900,8 @@ export function initFlowPipeline(ctx) {
       }
 
       // 同一个 Flow 使用同一个 currentTask.id 保持会话上下文
-      // 缓存构造后的 Prompt 与图片 Payload，供自动重连切换引擎同 Turn 复用重发
-      flow.lastSentPrompt = promptToSend;
-      flow.lastImagePayloads = imagePayloads;
+      // 缓存构造后的 Prompt 与图片 Payload 至本任务分仓，供自动重连切换引擎同 Turn 复用重发
+      flowStore.for(currentTask?.id).set({ lastSentPrompt: promptToSend, lastImagePayloads: imagePayloads });
       await piClient.sendPrompt(promptToSend, imagePayloads, null, currentTask.id);
     } catch (err) {
       console.error("Failed to send prompt to Pi:", err);

@@ -1,40 +1,48 @@
 import { configService } from "../services/config-service.js";
 import { piClient } from "../services/pi-client.js";
+import { bindAll } from "../lib/el-binder.js";
 
 /**
  * 主题、发送快捷键与输出 Tokens 规范吸附
  */
-export function initPreferences(ctx) {
-  const el = ctx.el;
-  const api = ctx.api;
+// ==========================================================================
+// 0. 模型输出上限规范吸附辅助函数 (Snap to Closest Canonical Token Limits)
+//    阶段 7 批次 D：纯函数显式化（原 ctx.api 函数槽清退为显式 import，无模块状态闭包）
+// ==========================================================================
+const STANDARD_OUTPUT_TOKENS = [
+  512, 1024, 2048, 4096, 8192, 16384, 32768, 64000, 65536, 100000, 128000, 131072,
+];
 
+export const snapToClosestStandardTokens = (inputVal) => {
+  let num = parseInt(inputVal, 10);
+  if (isNaN(num) || num <= 0) return 4096;
+
+  let closest = STANDARD_OUTPUT_TOKENS[0];
+  let minDiff = Math.abs(num - closest);
+
+  for (const val of STANDARD_OUTPUT_TOKENS) {
+    const diff = Math.abs(num - val);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = val;
+    }
+  }
+  return closest;
+};
+
+export function initPreferences(ctx) {
+  const api = ctx.api;
+  // 批次 B：模块自绑定（仅本模块用到的输入框提示元素）
+  const el = bindAll({
+    searchHint: "search-hint",
+    hintKeyText: "hint-key-text",
+  });
   const searchHint = el.searchHint;
   const hintKeyText = el.hintKeyText;
 
   // ==========================================================================
-  // 0. 模型输出上限规范吸附辅助函数 (Snap to Closest Canonical Token Limits)
+  // 0. 模型输出上限规范吸附（snapToClosestStandardTokens 已显式化至模块顶层，见文件头）
   // ==========================================================================
-  const STANDARD_OUTPUT_TOKENS = [
-    512, 1024, 2048, 4096, 8192, 16384, 32768, 64000, 65536, 100000, 128000, 131072,
-  ];
-
-  const snapToClosestStandardTokens = (inputVal) => {
-    let num = parseInt(inputVal, 10);
-    if (isNaN(num) || num <= 0) return 4096;
-
-    let closest = STANDARD_OUTPUT_TOKENS[0];
-    let minDiff = Math.abs(num - closest);
-
-    for (const val of STANDARD_OUTPUT_TOKENS) {
-      const diff = Math.abs(num - val);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closest = val;
-      }
-    }
-    return closest;
-  };
-
   const setupOutputTokensAutoSnap = (inputEl) => {
     if (!inputEl) return;
     const doSnap = () => {
@@ -172,6 +180,6 @@ export function initPreferences(ctx) {
     }
   })();
 
-  api.snapToClosestStandardTokens = snapToClosestStandardTokens;
+  // snapToClosestStandardTokens 已显式化（模块顶层 export），消费方直接 import
   api.setupOutputTokensAutoSnap = setupOutputTokensAutoSnap;
 }

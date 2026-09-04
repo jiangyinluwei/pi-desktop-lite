@@ -5,17 +5,28 @@ import { promptHistoryNavigator } from "../services/prompt-history.js";
 import { enhanceAllSelects } from "../services/sketch-select.js";
 import { startFloatingIcons, stopFloatingIcons } from "../services/floating-icons.js";
 import { workspaceService } from "../services/workspace-service.js";
+import { bindAll } from "../lib/el-binder.js";
 
 /**
  * 搜索输入、历史翻阅、格言跑马灯与焦点控制
  */
 export function initSearchInput(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
   const viewStore = ctx.viewStore;
   const settingsStore = ctx.settingsStore;
   const attachmentsStore = ctx.attachmentsStore;
-
+  // 批次 B：模块自绑定（searchInput / searchForm / appContainer 为跨簇共享 id，同 id 同元素）
+  const el = bindAll({
+    appContainer: "app-container",
+    searchInputWrapper: "search-input-wrapper",
+    searchInput: "search-input",
+    searchMottoLayer: "search-motto-layer",
+    searchMottoTrack: "search-motto-track",
+    searchMottoText1: "search-motto-text-1",
+    searchMottoText2: "search-motto-text-2",
+    clearBtn: "clear-btn",
+    searchForm: "search-form",
+  });
   const appContainer = el.appContainer;
   const searchInputWrapper = el.searchInputWrapper;
   const searchInput = el.searchInput;

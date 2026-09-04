@@ -4,14 +4,25 @@ import { piClient } from "../services/pi-client.js";
 import { notificationService } from "../services/notification-service.js";
 import { taskManager } from "../services/task-manager.js";
 import { modelFailoverEngine } from "../services/model-failover.js";
+import { flowStore } from "../services/stores/flow-store.js";
+import { flowView, resolveStreamTaskId } from "./flow-state-view.js";
 import { createThinkingStepCard, createPhaseStepCard } from "./flow-render.js";
 
 /**
  * 流式状态机、错误卡渲染与自动重连胶囊
+ *
+ * 阶段 7 批次 A 数据分层：
+ *   - 纯数据（responseText / thinkingText / errorMessage / lastUserQuery / hasReceivedDelta /
+ *     hasAutoCollapsedThinking / thinkingStartTime …）一律经 flowStore.for(taskId) 分仓读写；
+ *     分仓键 = resolveStreamTaskId(显式 id || piClient.lastEventTaskId)，事件驱动写入点
+ *     全部位于前台门禁之后，后台挂起任务事件绝不写入前台分仓；
+ *   - 视图派生缓存（renderedToolCards / currentSteps / active*Step / 计时器 / activeTurnRefs /
+ *     followBottom）一律走 flowView（flow-state-view.js 唯一属主）。
  */
 export function initFlowStream(ctx) {
   const api = ctx.api;
-  const flow = ctx.flow;
+  const flowView = ctx.flowView;
+  const flowStore = ctx.flowStore;
   const flowDom = ctx.flowDom;
 
   const flowScrollArea = flowDom.flowScrollArea;
@@ -21,34 +32,39 @@ export function initFlowStream(ctx) {
   const flowBtnAbort = flowDom.flowBtnAbort;
   const taskDetailsSidebar = flowDom.taskDetailsSidebar;
 
+  /** 事件帧归属任务的纯数据分仓（事件处理器内调用；调用点均已过前台门禁）。 */
+  const streamData = (explicit) => flowStore.for(resolveStreamTaskId(explicit));
+
   /**
    * 清理流式临时缓冲与定时器（在 resetStreamState 与 resetCurrentTurnForResend 中复用）
    */
-  const clearStreamTimersAndBuffers = () => {
-    flow.currentThinkingText = "";
-    flow.currentResponseText = "";
-    flow.currentErrorMessage = null;
-    flow.hasReceivedDelta = false;
-    flow.hasAutoCollapsedThinking = false;
-    flow.renderedToolCards.clear();
-    flow.currentSteps = [];
-    flow.activeThinkingStep = null;
-    flow.activeToolStep = null;
-    flow.activeTextStep = null;
+  const clearStreamTimersAndBuffers = (taskId) => {
+    streamData(taskId).set({
+      thinkingText: "",
+      responseText: "",
+      errorMessage: null,
+      hasReceivedDelta: false,
+      hasAutoCollapsedThinking: false,
+    });
+    flowView.renderedToolCards.clear();
+    flowView.currentSteps = [];
+    flowView.activeThinkingStep = null;
+    flowView.activeToolStep = null;
+    flowView.activeTextStep = null;
     if (typeof api.removeActiveToolPseudoStep === "function") {
       api.removeActiveToolPseudoStep();
     }
-    if (flow.toolPseudoTimerInterval) {
-      clearInterval(flow.toolPseudoTimerInterval);
-      flow.toolPseudoTimerInterval = null;
+    if (flowView.toolPseudoTimerInterval) {
+      clearInterval(flowView.toolPseudoTimerInterval);
+      flowView.toolPseudoTimerInterval = null;
     }
-    if (flow.toolRunTimerInterval) {
-      clearInterval(flow.toolRunTimerInterval);
-      flow.toolRunTimerInterval = null;
+    if (flowView.toolRunTimerInterval) {
+      clearInterval(flowView.toolRunTimerInterval);
+      flowView.toolRunTimerInterval = null;
     }
-    if (flow.textTimerInterval) {
-      clearInterval(flow.textTimerInterval);
-      flow.textTimerInterval = null;
+    if (flowView.textTimerInterval) {
+      clearInterval(flowView.textTimerInterval);
+      flowView.textTimerInterval = null;
     }
   };
 
@@ -57,25 +73,25 @@ export function initFlowStream(ctx) {
    * 结算耗时并定格显示；若为无思维文本的空卡则予以移除
    */
   const sealActiveThinkingStep = () => {
-    if (flow.activeThinkingStep) {
-      if (flow.activeThinkingStep.hasRealThinking || flow.activeThinkingStep.text?.trim()) {
-        const elapsed = ((Date.now() - flow.activeThinkingStep.startTime) / 1000).toFixed(1);
-        flow.activeThinkingStep.durationText = `(${elapsed}s)`;
-        if (flow.activeThinkingStep.durationEl) {
-          flow.activeThinkingStep.durationEl.textContent = flow.activeThinkingStep.durationText;
+    if (flowView.activeThinkingStep) {
+      if (flowView.activeThinkingStep.hasRealThinking || flowView.activeThinkingStep.text?.trim()) {
+        const elapsed = ((Date.now() - flowView.activeThinkingStep.startTime) / 1000).toFixed(1);
+        flowView.activeThinkingStep.durationText = `(${elapsed}s)`;
+        if (flowView.activeThinkingStep.durationEl) {
+          flowView.activeThinkingStep.durationEl.textContent = flowView.activeThinkingStep.durationText;
         }
-        flow.activeThinkingStep.cardEl?.classList.remove("running");
+        flowView.activeThinkingStep.cardEl?.classList.remove("running");
       } else {
-        flow.activeThinkingStep.cardEl?.remove();
-        if (Array.isArray(flow.currentSteps)) {
-          flow.currentSteps = flow.currentSteps.filter((s) => s !== flow.activeThinkingStep);
+        flowView.activeThinkingStep.cardEl?.remove();
+        if (Array.isArray(flowView.currentSteps)) {
+          flowView.currentSteps = flowView.currentSteps.filter((s) => s !== flowView.activeThinkingStep);
         }
       }
-      flow.activeThinkingStep = null;
+      flowView.activeThinkingStep = null;
     }
-    if (flow.thinkingTimerInterval) {
-      clearInterval(flow.thinkingTimerInterval);
-      flow.thinkingTimerInterval = null;
+    if (flowView.thinkingTimerInterval) {
+      clearInterval(flowView.thinkingTimerInterval);
+      flowView.thinkingTimerInterval = null;
     }
   };
 
@@ -84,10 +100,11 @@ export function initFlowStream(ctx) {
    * @param {string} query
    * @param {Array<any>} attachments
    * @param {boolean} isFollowUpTurn 是否为同会话多轮后续追问
+   * @param {string} [taskId] 本轮归属任务 id（发送链显式传入；缺省回退前台活跃任务）
    */
-  const resetStreamState = (query, attachments = [], isFollowUpTurn = false) => {
-    flow.lastUserQuery = query;
-    clearStreamTimersAndBuffers();
+  const resetStreamState = (query, attachments = [], isFollowUpTurn = false, taskId = null) => {
+    streamData(taskId).set({ lastUserQuery: query });
+    clearStreamTimersAndBuffers(taskId);
 
     if (!isFollowUpTurn) {
       // 全新会话 -> 清空 flowConversation 容器，并重置「注入提示」信息框状态
@@ -102,10 +119,10 @@ export function initFlowStream(ctx) {
       }
     } else {
       // 同工作流多轮对话 -> 固化上一轮（收起思考与工具卡片，移除上一轮光标）
-      if (flow.activeTurnRefs) {
-        api.collapseThinkingCard(flow.activeTurnRefs.thinkingCardEl, flow.activeTurnRefs.thinkingToggleBtn);
-        if (flow.activeTurnRefs.responseContentEl) {
-          const prevCursor = flow.activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
+      if (flowView.activeTurnRefs) {
+        api.collapseThinkingCard(flowView.activeTurnRefs.thinkingCardEl, flowView.activeTurnRefs.thinkingToggleBtn);
+        if (flowView.activeTurnRefs.responseContentEl) {
+          const prevCursor = flowView.activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
           if (prevCursor) prevCursor.remove();
         }
       }
@@ -113,7 +130,7 @@ export function initFlowStream(ctx) {
     }
 
     // 创建当前轮次的 DOM 组并追加到 flowConversation（默认折叠，不自动展开）
-    flow.activeTurnRefs = api.createFlowTurnGroupElement({
+    flowView.activeTurnRefs = api.createFlowTurnGroupElement({
       query,
       attachments,
       thinkingText: "",
@@ -124,21 +141,21 @@ export function initFlowStream(ctx) {
       isOpenThinking: false,
     });
 
-    if (flowConversation && flow.activeTurnRefs?.groupEl) {
-      flowConversation.appendChild(flow.activeTurnRefs.groupEl);
+    if (flowConversation && flowView.activeTurnRefs?.groupEl) {
+      flowConversation.appendChild(flowView.activeTurnRefs.groupEl);
     }
 
-    if (flow.activeTurnRefs.responseContentEl) {
-      flow.activeTurnRefs.responseContentEl.innerHTML = `<span class="streaming-cursor"></span>`;
+    if (flowView.activeTurnRefs.responseContentEl) {
+      flowView.activeTurnRefs.responseContentEl.innerHTML = `<span class="streaming-cursor"></span>`;
     }
 
-    flow.thinkingStartTime = Date.now();
+    streamData(taskId).set({ thinkingStartTime: Date.now() });
 
     // 立即触发“伪思考框” -- 显示 "Thinking (0.0s)..."，直到真正捕捉到思维链才流式刷新首行文本
     ensureActiveThinkingStep();
 
     if (flowScrollArea) {
-      flow.followBottom = true; // 新轮次默认重新开启吸底跟随
+      flowView.followBottom = true; // 新轮次默认重新开启吸底跟随
       flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
     }
 
@@ -148,34 +165,35 @@ export function initFlowStream(ctx) {
     api.updateFlowTurnNav();
   };
 
-  const finalizeStream = () => {
+  const finalizeStream = (taskId = null) => {
     piClient.isStreaming = false;
+    const fs = streamData(taskId);
     // 若存在未封口的活跃阶段性输出切片，说明它是本轮最终输出段：
     // 移除 Point 卡（内容保留在最终输出卡中），不沉淀为步骤快照
-    if (flow.activeTextStep) {
-      const lastStep = flow.activeTextStep;
-      flow.activeTextStep = null;
+    if (flowView.activeTextStep) {
+      const lastStep = flowView.activeTextStep;
+      flowView.activeTextStep = null;
       lastStep.cardEl?.remove();
-      if (Array.isArray(flow.currentSteps)) {
-        flow.currentSteps = flow.currentSteps.filter((s) => s !== lastStep);
+      if (Array.isArray(flowView.currentSteps)) {
+        flowView.currentSteps = flowView.currentSteps.filter((s) => s !== lastStep);
       }
     }
-    if (flow.textTimerInterval) {
-      clearInterval(flow.textTimerInterval);
-      flow.textTimerInterval = null;
+    if (flowView.textTimerInterval) {
+      clearInterval(flowView.textTimerInterval);
+      flowView.textTimerInterval = null;
     }
     sealActiveThinkingStep();
     // 伪工具运行框兜底清理：流式结束时若仍在参数流式期，定格读秒后移除占位卡
     if (typeof api.removeActiveToolPseudoStep === "function") {
       api.removeActiveToolPseudoStep();
     }
-    if (flow.toolRunTimerInterval) {
-      clearInterval(flow.toolRunTimerInterval);
-      flow.toolRunTimerInterval = null;
+    if (flowView.toolRunTimerInterval) {
+      clearInterval(flowView.toolRunTimerInterval);
+      flowView.toolRunTimerInterval = null;
     }
     // 移除光标
-    if (flow.activeTurnRefs?.responseContentEl) {
-      const cursor = flow.activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
+    if (flowView.activeTurnRefs?.responseContentEl) {
+      const cursor = flowView.activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
       if (cursor) cursor.remove();
     }
     // 流式结束时隐藏 Flow 中止按钮
@@ -184,21 +202,21 @@ export function initFlowStream(ctx) {
     }
     // 正常完成且无错误时，为当前轮次输出卡片挂载保存按钮
     if (
-      flow.activeTurnRefs &&
-      !flow.currentErrorMessage &&
-      flow.currentResponseText &&
-      flow.currentResponseText.trim() &&
+      flowView.activeTurnRefs &&
+      !fs.errorMessage &&
+      fs.responseText &&
+      fs.responseText.trim() &&
       typeof api.attachResponseSaveButton === "function"
     ) {
-      api.attachResponseSaveButton(flow.activeTurnRefs, {
-        query: flow.lastUserQuery,
-        responseText: flow.currentResponseText,
-        thinkingText: flow.currentThinkingText,
+      api.attachResponseSaveButton(flowView.activeTurnRefs, {
+        query: fs.lastUserQuery,
+        responseText: fs.responseText,
+        thinkingText: fs.thinkingText,
       });
     }
     // 输出全部结束的瞬间：单次定位到会话底部并恢复吸底跟随
     if (flowScrollArea) {
-      flow.followBottom = true;
+      flowView.followBottom = true;
       flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
     }
   };
@@ -206,23 +224,24 @@ export function initFlowStream(ctx) {
   /**
    * 自动重连切换：复用当前 Turn 容器重发相同输入前重置当前轮次流式状态
    * 不重建用户提问卡、不重复压入 prompt history、不新建 Task，仅清除上一轮临时产物
+   * @param {string} [taskId] 自愈引擎重发的任务 id（onResendAttempt 显式传入）
    */
-  const resetCurrentTurnForResend = () => {
-    clearStreamTimersAndBuffers();
+  const resetCurrentTurnForResend = (taskId = null) => {
+    clearStreamTimersAndBuffers(taskId);
 
     // 移除上一轮临时错误卡片 (避免重复堆叠)
-    if (flow.activeTurnRefs?.responseContentEl) {
-      const errCard = flow.activeTurnRefs.responseContentEl.querySelector(".sketch-error-card");
+    if (flowView.activeTurnRefs?.responseContentEl) {
+      const errCard = flowView.activeTurnRefs.responseContentEl.querySelector(".sketch-error-card");
       if (errCard) errCard.remove();
-      const cursor = flow.activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
+      const cursor = flowView.activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
       if (cursor) cursor.remove();
-      flow.activeTurnRefs.responseContentEl.innerHTML = `<span class="streaming-cursor"></span>`;
+      flowView.activeTurnRefs.responseContentEl.innerHTML = `<span class="streaming-cursor"></span>`;
     }
     // 清空时序步骤容器
-    if (flow.activeTurnRefs?.stepsContainerEl) {
-      flow.activeTurnRefs.stepsContainerEl.innerHTML = "";
+    if (flowView.activeTurnRefs?.stepsContainerEl) {
+      flowView.activeTurnRefs.stepsContainerEl.innerHTML = "";
     }
-    flow.thinkingStartTime = Date.now();
+    streamData(taskId).set({ thinkingStartTime: Date.now() });
     // 立即启动伪思考框
     ensureActiveThinkingStep();
     // 自愈期间保留「⏹ 终止」按钮可见
@@ -238,10 +257,10 @@ export function initFlowStream(ctx) {
    * 更新自动重连/切换进度胶囊 (手绘草图风格，无 Emoji)
    */
   const updateFailoverCapsule = (payload = {}) => {
-    if (!flow.activeTurnRefs?.failoverCapsuleEl || !flow.activeTurnRefs?.failoverTextEl) return;
+    if (!flowView.activeTurnRefs?.failoverCapsuleEl || !flowView.activeTurnRefs?.failoverTextEl) return;
     const phase = payload.phase || "";
-    const textEl = flow.activeTurnRefs.failoverTextEl;
-    const capsule = flow.activeTurnRefs.failoverCapsuleEl;
+    const textEl = flowView.activeTurnRefs.failoverTextEl;
+    const capsule = flowView.activeTurnRefs.failoverCapsuleEl;
 
     if (payload.status === "succeeded" && payload.switched) {
       textEl.textContent = `已自动切换至 ${payload.modelName || "其他模型"} · 已记入最近使用`;
@@ -294,18 +313,18 @@ export function initFlowStream(ctx) {
     if (
       (payload.status === "reconnecting" || payload.status === "switching") &&
       payload.phase === "waiting" &&
-      flow.thinkingTimerInterval
+      flowView.thinkingTimerInterval
     ) {
-      clearInterval(flow.thinkingTimerInterval);
-      flow.thinkingTimerInterval = null;
+      clearInterval(flowView.thinkingTimerInterval);
+      flowView.thinkingTimerInterval = null;
     }
     if (
       (payload.status === "reconnecting" || payload.status === "switching") &&
       payload.phase === "waiting" &&
-      flow.textTimerInterval
+      flowView.textTimerInterval
     ) {
-      clearInterval(flow.textTimerInterval);
-      flow.textTimerInterval = null;
+      clearInterval(flowView.textTimerInterval);
+      flowView.textTimerInterval = null;
     }
     updateFailoverCapsule(payload);
     // 侧边栏挂起任务状态徽章 (自动重连中/切换模型中) 实时刷新
@@ -330,11 +349,11 @@ export function initFlowStream(ctx) {
    * 在 Flow 对话末尾安全追加手动终止提示
    */
   const appendFlowAbortNotice = () => {
-    if (flow.activeTurnRefs?.responseContentEl) {
-      const cursor = flow.activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
+    if (flowView.activeTurnRefs?.responseContentEl) {
+      const cursor = flowView.activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
       if (cursor) cursor.remove();
-      if (!flow.activeTurnRefs.responseContentEl.querySelector(".flow-abort-callout")) {
-        flow.activeTurnRefs.responseContentEl.insertAdjacentHTML("beforeend", renderAbortNoticeHtml());
+      if (!flowView.activeTurnRefs.responseContentEl.querySelector(".flow-abort-callout")) {
+        flowView.activeTurnRefs.responseContentEl.insertAdjacentHTML("beforeend", renderAbortNoticeHtml());
       }
     }
     if (flowScrollArea) {
@@ -345,9 +364,10 @@ export function initFlowStream(ctx) {
   /**
    * 检查错误信息是否命中模型不支持多模态特征
    * @param {string} msg
+   * @param {object} fs 事件归属任务的纯数据分仓（lastSentAttachments 按任务隔离读取）
    * @returns {boolean}
    */
-  const isMultimodalError = (msg) => {
+  const isMultimodalError = (msg, fs) => {
     if (!msg) return false;
     const lower = String(msg).toLowerCase();
     return (
@@ -361,30 +381,33 @@ export function initFlowStream(ctx) {
       lower.includes("file attachments are not supported") ||
       lower.includes("messages.content: array") ||
       lower.includes("content parts") ||
-      (lower.includes("400") && Array.isArray(flow.lastSentAttachments) && flow.lastSentAttachments.some((f) => f.category === "image"))
+      (lower.includes("400") && Array.isArray(fs.lastSentAttachments) && fs.lastSentAttachments.some((f) => f.category === "image"))
     );
   };
 
   /**
    * 渲染手绘草图风格异常诊断卡片并提供快捷操作与多模态建议
-   * @param {{ message: string, model?: string, provider?: string }} errDetail
+   * @param {{ message: string, model?: string, provider?: string, taskId?: string }} errDetail
    */
   const renderErrorCard = (errDetail) => {
     piClient.isStreaming = false;
-    flow.currentErrorMessage = errDetail?.message || "与模型服务通信中断或返回异常";
+    // 分仓键：错误帧自带 taskId（agent-error / 引擎 detail）优先，缺省回退前台活跃任务
+    const bucketId = resolveStreamTaskId(errDetail?.taskId || errDetail?.task_id || errDetail?.raw?.task_id || null);
+    const fs = flowStore.for(bucketId);
+    fs.set({ errorMessage: errDetail?.message || "与模型服务通信中断或返回异常" });
     const currentTask = taskManager.getCurrentActiveTask();
     if (currentTask) {
       currentTask.status = "error";
       currentTask.completedAt = Date.now();
-      currentTask.errorMessage = flow.currentErrorMessage;
+      currentTask.errorMessage = fs.errorMessage;
       taskManager.dispatchEvent(new CustomEvent("task-updated", { detail: currentTask }));
       taskManager.dispatchEvent(new CustomEvent("tasks-changed", { detail: { tasks: taskManager.getAllTasks() } }));
     }
-    finalizeStream();
+    finalizeStream(bucketId);
     if (flowBtnAbort) {
       flowBtnAbort.classList.add("hidden");
     }
-    const errMsg = flow.currentErrorMessage;
+    const errMsg = fs.errorMessage;
 
     // 软件失焦时立即弹出报错终止通知 (带 Windows 默认提示音)
     // 注：不再传幻影 taskId "agent-prompt"，真实任务的注销与报错通知由 taskManager 的 agent-error 监听器负责
@@ -393,11 +416,11 @@ export function initFlowStream(ctx) {
       message: `模型调用异常终止：${errMsg.length > 80 ? errMsg.slice(0, 77) + "..." : errMsg}`,
     });
 
-    const targetResponseEl = flow.activeTurnRefs?.responseContentEl || flowResponseContent;
+    const targetResponseEl = flowView.activeTurnRefs?.responseContentEl || flowResponseContent;
     if (!targetResponseEl) return;
 
     const activeModelName = errDetail?.model || piClient.currentModel?.id || "当前模型";
-    const isMultiModalIssue = isMultimodalError(errMsg);
+    const isMultiModalIssue = isMultimodalError(errMsg, fs);
 
     const multimodalHintHtml = isMultiModalIssue
       ? `
@@ -470,16 +493,16 @@ export function initFlowStream(ctx) {
       existingCard.remove();
     }
 
-    if (!flow.currentResponseText || flow.currentResponseText.trim().length === 0) {
+    if (!fs.responseText || fs.responseText.trim().length === 0) {
       targetResponseEl.innerHTML = cardHtml;
     } else {
       targetResponseEl.insertAdjacentHTML("beforeend", cardHtml);
     }
 
     // 报错时确保移除可能已挂载的保存按钮
-    if (flow.activeTurnRefs && typeof api.attachResponseSaveButton === "function") {
-      api.attachResponseSaveButton(flow.activeTurnRefs, {
-        errorMessage: flow.currentErrorMessage,
+    if (flowView.activeTurnRefs && typeof api.attachResponseSaveButton === "function") {
+      api.attachResponseSaveButton(flowView.activeTurnRefs, {
+        errorMessage: fs.errorMessage,
       });
     }
 
@@ -492,8 +515,8 @@ export function initFlowStream(ctx) {
 
       if (btnRetry) {
         btnRetry.addEventListener("click", () => {
-          if (flow.lastUserQuery) {
-            api.handleFlowQuery(flow.lastUserQuery, flow.lastSentAttachments);
+          if (fs.lastUserQuery) {
+            api.handleFlowQuery(fs.lastUserQuery, fs.lastSentAttachments);
           }
         });
       }
@@ -519,7 +542,7 @@ export function initFlowStream(ctx) {
    * 辅助函数：确保当前存在活跃的思维切片卡片
    */
   const ensureActiveThinkingStep = () => {
-    if (flow.activeThinkingStep) return flow.activeThinkingStep;
+    if (flowView.activeThinkingStep) return flowView.activeThinkingStep;
 
     const tStep = createThinkingStepCard({
       text: "",
@@ -527,14 +550,14 @@ export function initFlowStream(ctx) {
       isOpen: false, // 铁律：任何时候都不自动展开
     });
 
-    if (flow.activeTurnRefs?.stepsContainerEl) {
-      flow.activeTurnRefs.stepsContainerEl.appendChild(tStep.cardEl);
+    if (flowView.activeTurnRefs?.stepsContainerEl) {
+      flowView.activeTurnRefs.stepsContainerEl.appendChild(tStep.cardEl);
     }
 
-    flow.activeTurnRefs.thinkingCardEl = tStep.cardEl;
-    flow.activeTurnRefs.thinkingDurationEl = tStep.durationEl;
-    flow.activeTurnRefs.thinkingTextStreamEl = tStep.textStreamEl;
-    flow.activeTurnRefs.thinkingBodyEl = tStep.bodyEl;
+    flowView.activeTurnRefs.thinkingCardEl = tStep.cardEl;
+    flowView.activeTurnRefs.thinkingDurationEl = tStep.durationEl;
+    flowView.activeTurnRefs.thinkingTextStreamEl = tStep.textStreamEl;
+    flowView.activeTurnRefs.thinkingBodyEl = tStep.bodyEl;
 
     const stepItem = {
       type: "thinking",
@@ -551,17 +574,17 @@ export function initFlowStream(ctx) {
       textStreamEl: tStep.textStreamEl,
     };
 
-    flow.activeThinkingStep = stepItem;
-    if (!Array.isArray(flow.currentSteps)) {
-      flow.currentSteps = [];
+    flowView.activeThinkingStep = stepItem;
+    if (!Array.isArray(flowView.currentSteps)) {
+      flowView.currentSteps = [];
     }
-    flow.currentSteps.push(stepItem);
+    flowView.currentSteps.push(stepItem);
 
-    if (!flow.thinkingTimerInterval) {
-      flow.thinkingTimerInterval = setInterval(() => {
-        if (flow.activeThinkingStep?.durationEl) {
-          const elapsed = ((Date.now() - flow.activeThinkingStep.startTime) / 1000).toFixed(1);
-          flow.activeThinkingStep.durationEl.textContent = `(${elapsed}s)...`;
+    if (!flowView.thinkingTimerInterval) {
+      flowView.thinkingTimerInterval = setInterval(() => {
+        if (flowView.activeThinkingStep?.durationEl) {
+          const elapsed = ((Date.now() - flowView.activeThinkingStep.startTime) / 1000).toFixed(1);
+          flowView.activeThinkingStep.durationEl.textContent = `(${elapsed}s)...`;
         }
       }, 100);
     }
@@ -575,7 +598,7 @@ export function initFlowStream(ctx) {
    * Point 卡仅在步骤流中承载「Point + 读秒」标题位，封口时内容整体折叠进卡片正文。
    */
   const ensureActiveTextStep = () => {
-    if (flow.activeTextStep) return flow.activeTextStep;
+    if (flowView.activeTextStep) return flowView.activeTextStep;
 
     const pStep = createPhaseStepCard({
       text: "",
@@ -583,8 +606,8 @@ export function initFlowStream(ctx) {
       isOpen: false, // 铁律：任何时候都不自动展开
     });
 
-    if (flow.activeTurnRefs?.stepsContainerEl) {
-      flow.activeTurnRefs.stepsContainerEl.appendChild(pStep.cardEl);
+    if (flowView.activeTurnRefs?.stepsContainerEl) {
+      flowView.activeTurnRefs.stepsContainerEl.appendChild(pStep.cardEl);
     }
 
     const stepItem = {
@@ -601,17 +624,17 @@ export function initFlowStream(ctx) {
       textStreamEl: pStep.textStreamEl,
     };
 
-    flow.activeTextStep = stepItem;
-    if (!Array.isArray(flow.currentSteps)) {
-      flow.currentSteps = [];
+    flowView.activeTextStep = stepItem;
+    if (!Array.isArray(flowView.currentSteps)) {
+      flowView.currentSteps = [];
     }
-    flow.currentSteps.push(stepItem);
+    flowView.currentSteps.push(stepItem);
 
-    if (!flow.textTimerInterval) {
-      flow.textTimerInterval = setInterval(() => {
-        if (flow.activeTextStep?.durationEl) {
-          const elapsed = ((Date.now() - flow.activeTextStep.startTime) / 1000).toFixed(1);
-          flow.activeTextStep.durationEl.textContent = `输出中 (${elapsed}s)...`;
+    if (!flowView.textTimerInterval) {
+      flowView.textTimerInterval = setInterval(() => {
+        if (flowView.activeTextStep?.durationEl) {
+          const elapsed = ((Date.now() - flowView.activeTextStep.startTime) / 1000).toFixed(1);
+          flowView.activeTextStep.durationEl.textContent = `输出中 (${elapsed}s)...`;
         }
       }, 100);
     }
@@ -623,22 +646,23 @@ export function initFlowStream(ctx) {
    * 封口当前活跃的阶段性输出切片：把已累积的中间段文本从最终输出卡
    * 折叠进 Point 卡正文，定格读秒，并重置最终输出卡以承接下一段输出。
    * 触发时机：tool-start（进入工具调用）或新一轮 text-start（上一段未结清）。
+   * @param {string} [taskId] 事件帧归属任务 id（缺省回退前台活跃任务）
    */
-  const sealActivePhaseOutput = () => {
-    if (!flow.activeTextStep) return;
-    const step = flow.activeTextStep;
-    flow.activeTextStep = null;
-    if (flow.textTimerInterval) {
-      clearInterval(flow.textTimerInterval);
-      flow.textTimerInterval = null;
+  const sealActivePhaseOutput = (taskId = null) => {
+    if (!flowView.activeTextStep) return;
+    const step = flowView.activeTextStep;
+    flowView.activeTextStep = null;
+    if (flowView.textTimerInterval) {
+      clearInterval(flowView.textTimerInterval);
+      flowView.textTimerInterval = null;
     }
 
     const sealedText = (step.text || "").trim();
     if (!sealedText) {
       // 空段（无实际输出内容）：直接移除空 Point 卡，不沉淀
       step.cardEl?.remove();
-      if (Array.isArray(flow.currentSteps)) {
-        flow.currentSteps = flow.currentSteps.filter((s) => s !== step);
+      if (Array.isArray(flowView.currentSteps)) {
+        flowView.currentSteps = flowView.currentSteps.filter((s) => s !== step);
       }
       return;
     }
@@ -655,19 +679,19 @@ export function initFlowStream(ctx) {
     }
 
     // 重置最终输出卡：仅保留光标，承接下一段（最终）输出
-    flow.currentResponseText = "";
-    if (flow.activeTurnRefs?.responseContentEl) {
-      flow.activeTurnRefs.responseContentEl.innerHTML = `<span class="streaming-cursor"></span>`;
+    streamData(taskId).set({ responseText: "" });
+    if (flowView.activeTurnRefs?.responseContentEl) {
+      flowView.activeTurnRefs.responseContentEl.innerHTML = `<span class="streaming-cursor"></span>`;
     }
   };
 
   /**
    * 吸底跟随滚动：仅当用户当前位于底部附近（跟随模式开启）时才随输出定位到底部；
-   * 用户向上滚动后 flow.followBottom 被置 false，流式输出不再拽动视口；
+   * 用户向上滚动后 flowView.followBottom 被置 false，流式输出不再拽动视口；
    * 任意时刻用户重新滚回最底部，scroll 监听自动重新开启跟随。
    */
   const followScrollToBottom = () => {
-    if (flowScrollArea && flow.followBottom !== false) {
+    if (flowScrollArea && flowView.followBottom !== false) {
       flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
     }
   };
@@ -680,7 +704,7 @@ export function initFlowStream(ctx) {
       () => {
         const distanceToBottom =
           flowScrollArea.scrollHeight - flowScrollArea.scrollTop - flowScrollArea.clientHeight;
-        flow.followBottom = distanceToBottom <= FLOW_BOTTOM_FOLLOW_TOLERANCE_PX;
+        flowView.followBottom = distanceToBottom <= FLOW_BOTTOM_FOLLOW_TOLERANCE_PX;
       },
       { passive: true }
     );
@@ -698,10 +722,10 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("thinking-start", () => {
     if (!isForegroundStreamEvent()) return;
-    flow.hasReceivedDelta = true;
+    streamData(piClient.lastEventTaskId).set({ hasReceivedDelta: true });
     // 阶段性输出判定铁律：模型输出一段文字后再次进入 Thinking 状态，
     // 则前面那段文字属于「阶段性输出」——先封口为 Point 卡，再继续思维切片
-    sealActivePhaseOutput();
+    sealActivePhaseOutput(piClient.lastEventTaskId);
     // 模型回到思维链：工具并未真实执行，清理可能残留的伪工具运行框
     if (typeof api.removeActiveToolPseudoStep === "function") {
       api.removeActiveToolPseudoStep();
@@ -712,9 +736,10 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("thinking-delta", (e) => {
     if (!isForegroundStreamEvent()) return;
-    flow.hasReceivedDelta = true;
+    const fs = streamData(piClient.lastEventTaskId);
+    fs.set({ hasReceivedDelta: true });
     const delta = e.detail || "";
-    flow.currentThinkingText += delta;
+    fs.set({ thinkingText: fs.thinkingText + delta });
 
     const step = ensureActiveThinkingStep();
     step.hasRealThinking = true;
@@ -744,9 +769,9 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("text-start", () => {
     if (!isForegroundStreamEvent()) return;
-    flow.hasReceivedDelta = true;
+    streamData(piClient.lastEventTaskId).set({ hasReceivedDelta: true });
     // 新一段文本开始：若上一段阶段性输出尚未封口（无工具调用边界），先封口
-    sealActivePhaseOutput();
+    sealActivePhaseOutput(piClient.lastEventTaskId);
     // 模型回到正文输出：工具并未真实执行，清理可能残留的伪工具运行框
     if (typeof api.removeActiveToolPseudoStep === "function") {
       api.removeActiveToolPseudoStep();
@@ -758,20 +783,21 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("text-delta", (e) => {
     if (!isForegroundStreamEvent()) return;
-    flow.hasReceivedDelta = true;
+    const fs = streamData(piClient.lastEventTaskId);
+    // appendResponse 同步累积响应文本并置 hasReceivedDelta（流式热路径）
+    fs.appendResponse(e.detail || "");
     sealActiveThinkingStep();
-    flow.currentResponseText += e.detail || "";
     // 阶段性输出切片：首增量时创建 Point 卡（标题 + 读秒），内容仍在最终输出卡流式可见
     const textStep = ensureActiveTextStep();
     // 关键：同步累积 Point 步骤文本 —— 否则 sealActivePhaseOutput 读到的 step.text 恒为空，
     // 封口时会被误判为「空段」直接移除，导致 Point 卡永不保留（阶段性输出显示逻辑失效的根因）
     textStep.text += e.detail || "";
     if (textStep.previewEl) {
-      textStep.previewEl.textContent = flow.currentResponseText.replace(/[\r\n\t]+/g, " ").trim();
+      textStep.previewEl.textContent = fs.responseText.replace(/[\r\n\t]+/g, " ").trim();
     }
-    if (flow.activeTurnRefs?.responseContentEl) {
-      flow.activeTurnRefs.responseContentEl.innerHTML =
-        api.renderMarkdown(flow.currentResponseText) + `<span class="streaming-cursor"></span>`;
+    if (flowView.activeTurnRefs?.responseContentEl) {
+      flowView.activeTurnRefs.responseContentEl.innerHTML =
+        api.renderMarkdown(fs.responseText) + `<span class="streaming-cursor"></span>`;
     }
     followScrollToBottom();
   });

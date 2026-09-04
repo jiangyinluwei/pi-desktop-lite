@@ -3,16 +3,20 @@ import { bus } from "../lib/event-bus.js";
 import { piClient } from "../services/pi-client.js";
 import { taskManager } from "../services/task-manager.js";
 import { openExternalUrl } from "../services/tauri-bridge.js";
+import { bindAll } from "../lib/el-binder.js";
 
 /**
  * 全局右键/Esc 回退、窗口生命周期与关闭保护
  */
 export function initGlobalInteractions(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
   const viewStore = ctx.viewStore;
   const attachmentsStore = ctx.attachmentsStore;
-
+  // 批次 B：模块自绑定（searchInput / searchForm 跨簇共享 id，同 id 同元素）
+  const el = bindAll({
+    searchInput: "search-input",
+    searchForm: "search-form",
+  });
   const searchInput = el.searchInput;
   const searchForm = el.searchForm;
 

@@ -83,7 +83,8 @@ description: |
 - **Flow 域只读 DOM 引用层 (阶段 3b)**：`src/modules/flow-dom.js` 的 `createFlowDom(el)` 从 `ctx.el` 抽出 flow 子集挂 `ctx.flowDom`，flow-* 模块改读 `flowDom.flow*` 不再解构全量 `ctx.el`（阶段 3b 已落地，模块 20→21）；元素定位助手留待阶段 4 `el-binder` 接线。
 - **DOM 国产化（阶段 4，⚠️ 需 GUI 回归）**：`src/lib/el-binder.js` 的 `bindEl(scope, ids)`（+ 全局 `bindAll`）让模块只拿自己那棵 DOM、解绑 `ctx.el`，`main.js` 只留根 + 直接子容器。**涉铁律热区（流式 / 多任务直切 / 回退链），推迟到可运行 App 的 GUI 环境**；蓝图（`el-binder` 设计、Feature 作用域归属图 121 id→容器+属主、迁移顺序、组件级+7 项铁律回归矩阵）已备，见《GUI 回归专项》§4 / 《pi-desktop-lite-降耦合-第4阶段.md》。目标：「全量 `ctx` 解构」模块 19→0。
 - **事件总线降耦合 (阶段 1)**：`src/lib/event-bus.js` 极简同步 bus 收编「fire-and-forget」横切通知（`ui:*` / `flow:*`），`src/lib/contracts.js` 事件通道契约表统一登记（bus / Store action / `pi:*` 内核桥接三类归口）。横切通知（如 `ui:toast`、`ui:workspace-changed`）迁移为 `bus.emit` / `bus.on`；控制流 / 状态迁移仍走 Store action 或显式 import；
-- **函数槽契约定型 (阶段 6)**：`src/lib/contracts.js` 以 @typedef 登记全部保留的 ctx 函数槽（按属主模块分组 + 保留原因：流式热区 / 拦截语义 / 初始化顺序依赖），新增槽位必须同步登记；幽灵槽（注册零调用）与兼容壳已清退（`setViewMode` 壳等 5 项），`pi:view-change` / `pi:step-back` 保留原通道（铁律 3 热区，收编评估归 GUI 回归专项）；
+- **函数槽契约定型 (阶段 6)**：`src/lib/contracts.js` 以 @typedef 登记全部保留的 ctx 函数槽（按属主模块分组 + 保留原因：流式热区 / 拦截语义 / 初始化顺序依赖），新增槽位必须同步登记；幽灵槽（注册零调用）与兼容壳已清退（`setViewMode` 壳等 5 项），`pi:view-change` / `pi:step-back` 经阶段 7 批次 C 评估**最终保留原通道**（铁律 3 热区，结论登记于 contracts.js）；
+- **Flow 视图分层与 DOM 自绑定 (阶段 7)**：流式「纯数据」一律经 `flowStore.for(taskId)` 分仓（`resolveStreamTaskId` 显式 id 优先解析），视图派生缓存归 `flow-state-view.js` 的 `flowView`（sealed），`flow.*` 裸写=0；各模块 DOM 引用经 `src/lib/el-binder.js` 的 `bindAll` 按需自绑定，`ctx.el` 已废除；剩余 61 个 api 槽按保留原因三类登记于 contracts.js（flow 簇约 40 槽显式化列阶段 8 候选）；
 - **构建与度量门禁**：`npm run check:fe`（全量前端语法 + import 图 + 循环依赖）与 `npm run measure:coupling`（耦合度量基线）支撑降耦合重构闭环。
 
 ---

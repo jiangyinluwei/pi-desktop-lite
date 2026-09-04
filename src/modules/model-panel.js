@@ -4,15 +4,36 @@ import { piClient } from "../services/pi-client.js";
 import { configService } from "../services/config-service.js";
 import { enhanceSelect } from "../services/sketch-select.js";
 import { sketchAlert } from "../services/sketch-modal.js";
+import { bindAll } from "../lib/el-binder.js";
+import { scrollSettingsToBottom } from "./settings-navigation.js";
 
 /**
  * 当前模型列表、白名单 MRU 与官方通道配置
  */
 export function initModelPanel(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
   const settingsStore = ctx.settingsStore;
   const flowDom = ctx.flowDom;
+  // 批次 B：模块自绑定（officialProviderSelect / autoReconnectSwitch 为跨簇共享 id，同 id 同元素）
+  const el = bindAll({
+    currentModelProvider: "current-model-provider",
+    currentModelName: "current-model-name",
+    currentModelInfo: "current-model-info",
+    thinkingSelectDropdown: "thinking-select-dropdown",
+    whitelistModelsList: "whitelist-models-list",
+    autoReconnectSwitch: "auto-reconnect-switch",
+    officialProviderSelect: "official-provider-select",
+    officialProviderTitle: "official-provider-title",
+    officialProviderDesc: "official-provider-desc",
+    officialProviderDoc: "official-provider-doc",
+    officialApiKeyInput: "official-api-key-input",
+    btnToggleKeyVisibility: "btn-toggle-key-visibility",
+    btnSaveOfficialKey: "btn-save-official-key",
+    officialKeyStatus: "official-key-status",
+    officialModelsGrid: "official-models-grid",
+    btnFetchOfficialModels: "btn-fetch-official-models",
+    btnFetchOfficialModelsText: "btn-fetch-official-models-text",
+  });
 
   const flowModelName = flowDom.flowModelName;
   const flowModelTag = flowDom.flowModelTag;
@@ -473,7 +494,7 @@ export function initModelPanel(ctx) {
   if (officialProviderSelect) {
     officialProviderSelect.addEventListener("change", () => {
       renderOfficialProviderDetails(officialProviderSelect.value);
-      api.scrollSettingsToBottom(true);
+      scrollSettingsToBottom(true);
     });
   }
 
@@ -523,7 +544,7 @@ export function initModelPanel(ctx) {
             provMeta.models = fetchedModels;
           }
           renderOfficialProviderDetails(provider);
-          api.scrollSettingsToBottom(true);
+          scrollSettingsToBottom(true);
           if (officialKeyStatus) {
             officialKeyStatus.textContent = `● 成功从官网/内核拉取并同步 ${fetchedModels.length} 个最新可用模型`;
             officialKeyStatus.style.color = "#10b981";

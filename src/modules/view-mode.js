@@ -3,17 +3,26 @@ import { bus } from "../lib/event-bus.js";
 import { taskManager } from "../services/task-manager.js";
 import { piClient } from "../services/pi-client.js";
 import { listenTauri } from "../services/tauri-bridge.js";
+import { bindAll } from "../lib/el-binder.js";
 
 /**
  * 四态界面状态机、设置页打开/关闭与 Tauri 唤醒路由
  */
 export function initViewMode(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
   const viewStore = ctx.viewStore;
 
   // hintBannerTimeout 为纯视图内定时器句柄（仅本模块使用），不进入共享状态，消灭空引用。
   let hintBannerTimeout = null;
+
+  // 批次 B：模块自绑定（searchInput / searchForm / appContainer 跨簇共享 id，同 id 同元素）
+  const el = bindAll({
+    appContainer: "app-container",
+    searchInput: "search-input",
+    settingsBtn: "settings-btn",
+    searchForm: "search-form",
+    topbarHintBanner: "topbar-hint-banner",
+  });
 
   const appContainer = el.appContainer;
   const searchInput = el.searchInput;

@@ -4,6 +4,7 @@ import { bus } from "../lib/event-bus.js";
 import { piClient } from "../services/pi-client.js";
 import { SketchModal, sketchConfirm } from "../services/sketch-modal.js";
 import { workspaceService } from "../services/workspace-service.js";
+import { bindAll } from "../lib/el-binder.js";
 
 /**
  * 弹出手绘草图质感路由工作区配置对话框 (SketchModal 规范)
@@ -158,9 +159,25 @@ export function promptCodeAreaRouteModal(initialPath = "", customTitle = "配置
  * - 切换交互：code-area 门禁拦截（必须选路由） / 运行时任务确认 / 切换后自动重载
  */
 export function initWorkspacePanel(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
   const settingsStore = ctx.settingsStore;
+  // 批次 B：模块自绑定（只取本面板用到的 DOM id，终结 ctx.el 全量注入）
+  const el = bindAll({
+    workspaceList: "workspace-list",
+    workspaceActiveName: "workspace-active-name",
+    workspaceActivePath: "workspace-active-path",
+    workspaceActiveBadge: "workspace-active-badge",
+    codeAreaRouteCard: "code-area-route-card",
+    codeAreaRouteInput: "code-area-route-input",
+    codeAreaRouteStatus: "code-area-route-status",
+    btnBrowseRouteFolder: "btn-browse-route-folder",
+    btnSaveRoutePath: "btn-save-route-path",
+    codeAreaHistorySection: "code-area-history-section",
+    codeAreaHistoryList: "code-area-history-list",
+    codeAreaSkillsSection: "code-area-skills-section",
+    codeAreaSkillsList: "code-area-skills-list",
+    codeAreaSkillsCount: "code-area-skills-count",
+  });
 
   const workspaceList = el.workspaceList;
   const workspaceActiveName = el.workspaceActiveName;

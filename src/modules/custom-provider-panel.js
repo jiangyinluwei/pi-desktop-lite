@@ -5,13 +5,25 @@ import { configService } from "../services/config-service.js";
 import { enhanceAllSelects } from "../services/sketch-select.js";
 import { enhanceInputAutoFill, enhanceAllAutoFills, PROVIDER_PRESETS, COMMON_MODEL_PRESETS, saveAutofillHistory } from "../services/sketch-autofill.js";
 import { sketchAlert, sketchConfirm } from "../services/sketch-modal.js";
+import { bindAll } from "../lib/el-binder.js";
+import { snapToClosestStandardTokens } from "./preferences.js";
+import { scrollElementIntoViewBottom, scrollSettingsToBottom, switchInnerTab } from "./settings-navigation.js";
 
 /**
  * 两步式自定义通道配置与模型管理
  */
 export function initCustomProviderPanel(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
+  // 批次 B：模块自绑定（与 model-panel 跨簇共享 officialProviderSelect，同 id 同元素）
+  const el = bindAll({
+    officialProviderSelect: "official-provider-select",
+    customProviderForm: "custom-provider-form",
+    customProviderId: "custom-provider-id",
+    customApiType: "custom-api-type",
+    customBaseUrl: "custom-base-url",
+    customApiKey: "custom-api-key",
+    customProvidersContainer: "custom-providers-container",
+  });
 
   const officialProviderSelect = el.officialProviderSelect;
   const customProviderForm = el.customProviderForm;
@@ -232,7 +244,7 @@ export function initCustomProviderPanel(ctx) {
                   inputNewContextWin.value = model.contextWindow || model.context_window;
                 }
                 if (inputNewMaxTokens && (model.maxTokens || model.max_tokens)) {
-                  inputNewMaxTokens.value = api.snapToClosestStandardTokens(model.maxTokens || model.max_tokens);
+                  inputNewMaxTokens.value = snapToClosestStandardTokens(model.maxTokens || model.max_tokens);
                 }
                 if (inputNewReasoning && model.reasoning !== undefined) {
                   inputNewReasoning.checked = !!model.reasoning;
@@ -281,7 +293,7 @@ export function initCustomProviderPanel(ctx) {
                     inputNewModelId.__sketchAutoFill.open();
                   }
 
-                  api.scrollElementIntoViewBottom(inlineAddForm, 24, true);
+                  scrollElementIntoViewBottom(inlineAddForm, 24, true);
                   await sketchAlert(`成功从运营商 [${pKey.toUpperCase()}] 获取 ${formatted.length} 个在线模型！已更新至表单推荐列表，请点击选择填入。`, {
                     type: "success",
                     title: "获取成功"
@@ -328,7 +340,7 @@ export function initCustomProviderPanel(ctx) {
               inlineAddForm.classList.add("hidden");
             }
             if (willOpen) {
-              api.scrollElementIntoViewBottom(inlineEditForm, 24, true);
+              scrollElementIntoViewBottom(inlineEditForm, 24, true);
             }
           });
         }
@@ -413,7 +425,7 @@ export function initCustomProviderPanel(ctx) {
               inlineEditForm.classList.add("hidden");
             }
             if (willOpen) {
-              api.scrollElementIntoViewBottom(inlineAddForm, 24, true);
+              scrollElementIntoViewBottom(inlineAddForm, 24, true);
             }
           });
         }
@@ -443,7 +455,7 @@ export function initCustomProviderPanel(ctx) {
 
             const modelNameVal = inputModelName?.value.trim() || modelIdVal;
             const contextWinVal = parseInt(inputContextWin?.value, 10) || 64000;
-            const maxTokensVal = api.snapToClosestStandardTokens(inputMaxTokens?.value);
+            const maxTokensVal = snapToClosestStandardTokens(inputMaxTokens?.value);
             if (inputMaxTokens) {
               inputMaxTokens.value = maxTokensVal.toString();
             }
@@ -580,7 +592,7 @@ export function initCustomProviderPanel(ctx) {
                 const willOpen = modelEditBox.classList.contains("hidden");
                 modelEditBox.classList.toggle("hidden");
                 if (willOpen) {
-                  api.scrollElementIntoViewBottom(modelEditBox, 24, true);
+                  scrollElementIntoViewBottom(modelEditBox, 24, true);
                 }
               });
             }
@@ -600,7 +612,7 @@ export function initCustomProviderPanel(ctx) {
 
                 const updatedName = inputName?.value.trim() || m.id;
                 const updatedContext = parseInt(inputContext?.value, 10) || 64000;
-                const updatedMax = api.snapToClosestStandardTokens(inputMax?.value);
+                const updatedMax = snapToClosestStandardTokens(inputMax?.value);
                 if (inputMax) {
                   inputMax.value = updatedMax.toString();
                 }
@@ -781,12 +793,12 @@ export function initCustomProviderPanel(ctx) {
         customApiKey.value = "";
 
         // 保存后自动进入步骤 2：运营商列表与模型管理
-        api.switchInnerTab("inner-step2");
+        switchInnerTab("inner-step2");
         loadCustomProvidersConfig();
-        api.scrollSettingsToBottom(true);
+        scrollSettingsToBottom(true);
 
         await sketchAlert(`运营商 [${providerId.toUpperCase()}] 已成功保存！已自动切换至“步骤 2”，可在此为该运营商添加具体模型或管理配置。`, { type: "success", title: "保存成功" });
-        api.scrollSettingsToBottom(true);
+        scrollSettingsToBottom(true);
       } catch (err) {
         console.error("Save custom provider failed:", err);
         await sketchAlert(`保存运营商失败: ${err}`, { type: "error", title: "保存失败" });

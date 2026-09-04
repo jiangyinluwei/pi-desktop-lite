@@ -4,6 +4,8 @@ import { SketchModal } from "../services/sketch-modal.js";
 import { invokeTauri } from "../services/tauri-bridge.js";
 import { taskManager } from "../services/task-manager.js";
 import { conversationHistoryService } from "../services/conversation-history.js";
+import { flowStore } from "../services/stores/flow-store.js";
+import { bindAll } from "../lib/el-binder.js";
 
 /**
  * Flow 会话回退 (历史节点回退 + 文件撤回)
@@ -42,8 +44,12 @@ const matchForkEntry = (messages, query) => {
 
 export function initFlowRollback(ctx) {
   const api = ctx.api;
-  const el = ctx.el;
-  const flow = ctx.flow;
+  // 批次 B：模块自绑定（searchInput 跨簇共享 id，同 id 同元素）
+  const el = bindAll({
+    searchInput: "search-input",
+  });
+  const flowView = ctx.flowView;
+  const flowStore = ctx.flowStore;
   const flowDom = ctx.flowDom;
   const flowConversation = flowDom.flowConversation;
   if (!flowConversation) return;
@@ -263,15 +269,16 @@ export function initFlowRollback(ctx) {
       api.renderTurnsIntoFlow(task, task.turns, { syncModelName: true });
     } else {
       // 回退至第一轮之前：清空会话流呈现并彻底复位流式状态与导航组件
+      // （视图缓存走 flowView；纯数据清空写入「该任务自己」的分仓）
       if (typeof api.resetFileChanges === "function") api.resetFileChanges();
-      if (flow) {
-        flow.renderedToolCards?.clear();
-        flow.currentSteps = [];
-        flow.activeTurnRefs = null;
-        flow.currentThinkingText = "";
-        flow.currentResponseText = "";
-        flow.currentErrorMessage = null;
-      }
+      flowView.renderedToolCards?.clear();
+      flowView.currentSteps = [];
+      flowView.activeTurnRefs = null;
+      flowStore.for(task.id).set({
+        thinkingText: "",
+        responseText: "",
+        errorMessage: null,
+      });
       flowConversation.innerHTML = "";
       if (typeof api.updateFlowTurnNav === "function") api.updateFlowTurnNav();
       if (typeof api.updateFlowQuestionTip === "function") api.updateFlowQuestionTip();

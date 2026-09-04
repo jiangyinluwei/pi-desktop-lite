@@ -22,8 +22,9 @@
  *   | :--- | :--- | :--- | :--- | :--- |
  *   | ui:toast | 任意模块 → toast 渲染 | 通知 | bus | task-panel.js (bus.on) |
  *   | ui:workspace-changed | workspace/search → 全局 | 通知 | bus | search-input.js (bus.on) [阶段 6 收编，原 window CustomEvent] |
- *   | pi:view-change | view-mode → window | UI 内部横切(见注解) | window CustomEvent | view-mode.js [保留] |
- *   | pi:step-back | global-interactions → window | UI 内部横切(见注解) | window CustomEvent | global-interactions.js [保留] |
+ *   | flow:response | flow-store → 前台 Flow UI | 通知(带 taskId) | bus | [暂无监听方；payload 必带 taskId，订阅方必须先过 isForegroundStreamTask 前台门禁再触 DOM] |
+ *   | pi:view-change | view-mode → window | UI 内部横切(见注解) | window CustomEvent | view-mode.js [保留，§7.2 评估] |
+ *   | pi:step-back | global-interactions → window | UI 内部横切(见注解) | window CustomEvent | global-interactions.js [保留，§7.2 评估] |
  *   | pi:kernel-reconnect-failed | pi-client → window | 内核桥接 | Tauri listen | pi-client.js [保留] |
  *   | pi:inner-skill-activated | pi-client → window | 内核桥接 | Tauri listen | pi-client.js [保留] |
  *   | pi:context-injected | pi-client → window | 内核桥接 | Tauri listen | pi-client.js [保留] |
@@ -69,7 +70,6 @@ export const EVENT_CHANNEL_TABLE_VERSION = 2;
 //  * 跨模块函数槽契约（由 main.js 注入 ctx.api，各模块 init 时注册）。
 //  * @typedef {Object} PiApiContracts
 //  * @property {() => void} loadCustomProvidersConfig            custom-provider-panel → 设置页刷新自定义 Provider
-//  * @property {(item: object) => string} getFileCategoryIcon    file-attachments → 附件类别 SVG 图标
 //  * @property {() => void} clearAttachedFiles                   file-attachments → 清空输入框附件胶囊
 //  * @property {() => void} showFileChangesBox                   flow-file-changes → 展示文件变更收纳框
 //  * @property {() => void} resetFileChanges                     flow-file-changes → 重置收纳框（任务直切铁律）
@@ -106,16 +106,12 @@ export const EVENT_CHANNEL_TABLE_VERSION = 2;
 //  * @property {() => Promise<void>} loadRecommendedPlugins      packages-panel → 推荐插件渲染
 //  * @property {() => Promise<void>} loadCatalogPackages         packages-panel → 组件目录渲染
 //  * @property {() => boolean} hasCatalogLoadedOnce              packages-panel → 目录是否已加载（守卫）
-//  * @property {() => void} snapToClosestStandardTokens          preferences → Token 档位吸附
 //  * @property {() => void} setupOutputTokensAutoSnap            preferences → Token 输入自动吸附
 //  * @property {() => void} updateInputState                     search-input → 输入态刷新（内核降级/路由门禁）
 //  * @property {() => void} autoResizeSearchInput                search-input → 输入框自适应高度
 //  * @property {() => Promise<void>} syncWorkspaceInputState     search-input → 工作区路由态同步
 //  * @property {() => Promise<void>} loadSessions                sessions-panel → 会话记录加载
-//  * @property {(tabId: string) => void} switchSettingsTab       settings-navigation → 设置大 Tab 切换
-//  * @property {() => void} scrollSettingsToBottom               settings-navigation → 设置页滚底
-//  * @property {(elm: HTMLElement) => void} scrollElementIntoViewBottom settings-navigation → 元素滚至可视底部
-//  * @property {(tabId: string) => void} switchInnerTab          settings-navigation → 设置内层 Tab 切换
+//  * @property {(tabId: string) => void} switchSettingsTab       settings-navigation → 设置大 Tab 切换（含懒加载分发）
 //  * @property {() => void} updateMiniTaskCapsuleUI              task-panel → Mini 任务胶囊刷新
 //  * @property {() => boolean} closeTaskSidebar                  task-panel → 侧栏关闭（拦截语义，见契约表注解）
 //  * @property {() => void} renderTaskSidebarList                task-panel → 任务抽屉渲染
@@ -130,8 +126,17 @@ export const EVENT_CHANNEL_TABLE_VERSION = 2;
 //  */
 // 保留原因三类：①流式/切换热区（flow-stream、renderTurnsIntoFlow 等，动则需 GUI 回归）；
 //               ②拦截语义（closeTaskSidebar 等有返回值参与控制流）；
-//               ③初始化顺序依赖（settings-navigation 对 loadInstalledPackages 的 typeof 守卫等）。
-// 后续批次按「降耦合方案」继续显式化（显式 import / Store action），迁移后同步删减本清单。
+//               ③初始化顺序依赖（switchSettingsTab 对 packages/workspace/sessions 加载器的
+//                 typeof 守卫分发、setupOutputTokensAutoSnap 绑定 el 输入框等）。
+// 阶段 7 批次 C/D 已显式化清退的槽（改为显式 import，见下方显式 import 契约段）：
+//   scrollSettingsToBottom / scrollElementIntoViewBottom / switchInnerTab（settings-navigation）
+//   snapToClosestStandardTokens（preferences）/ getFileCategoryIcon（file-attachments）
+// 阶段 7 批次 C 评估结论（《GUI 回归专项》§7）：
+//   §7.1 flow 簇热区约 40 槽 → **保留**（闭包重组型显式化需重排流式热路径模块结构，
+//        属独立专项批次，需专属流式回归环境逐模块推进；本轮已完成数据层 A 与 DOM 层 B 定型）；
+//   §7.2 pi:view-change / pi:step-back → **保留原通道**（UI 自身派发的 window CustomEvent，
+//        深度耦合铁律 3 四态回退链与 __piRegisterStepBack 注册器；收编 bus 收益低、回归面大）；
+//   §7.3 closeTaskSidebar → **永久控制流命令**（返回 boolean 参与拦截链，不上 bus，维持显式槽）。
 
 // =====================================================================
 // 【阶段 6 已清退槽（幽灵槽 / 兼容壳）】
@@ -166,6 +171,29 @@ export const EVENT_CHANNEL_TABLE_VERSION = 2;
 //   createToolPseudoRunningCard(opts) —— 伪工具运行框占位卡
 
 // =====================================================================
+// 【跨模块显式 import 契约 · Flow 视图层分层（阶段 7 批次 A 落地）】
+// =====================================================================
+// 自阶段 7 批次 A 起，原 ctx.flow 的「视图派生缓存」与「流式纯数据」彻底分层：
+//
+// 1. src/modules/flow-state-view.js 导出（视图层唯一属主）：
+//    flowView                  —— 视图派生缓存（renderedToolCards / currentSteps /
+//                                 active*Step / 计时器句柄 / activeTurnRefs / followBottom），
+//                                 Object.seal 封口防幽灵字段；严禁迁入 flowStore（铁律热区清单⑤）
+//    resolveStreamTaskId(id)   —— 流式纯数据分仓键解析（显式 id 优先 → 前台活跃任务 →
+//                                 事件帧 task_id → 哨兵分仓 "__stream__"）
+//    STREAM_BUCKET_FALLBACK    —— 哨兵分仓键常量
+//
+// 2. src/services/stores/flow-store.js（纯数据唯一属主，按 taskId 分仓）：
+//    flowStore.for(taskId)     —— responseText / thinkingText / errorMessage / lastUserQuery /
+//                                 hasReceivedDelta / hasAutoCollapsedThinking / interruptSendTaskId /
+//                                 lastSentPrompt / lastSentAttachments / lastImagePayloads /
+//                                 thinkingStartTime 的唯一读写面（get/set/appendResponse/resetAll）
+//
+// ⚠️ 分仓键规则：发送链传 currentTask.id、回填链（renderTurnsIntoFlow）传 task.id、
+//    自愈链传引擎 taskId；事件处理器传 piClient.lastEventTaskId（调用点均已过前台门禁）；
+//    任何纯数据读写严禁再出现 `flow.<纯数据>` 裸写（measure-coupling 断言 = 0）。
+//
+// =====================================================================
 // 【跨模块显式 import 契约 · Flow 域只读 DOM 引用（阶段 3b 落地）】
 // =====================================================================
 // 自阶段 3b 起，flow 簇的「只读 DOM 引用」不再直接解构全量 ctx.el，
@@ -178,9 +206,7 @@ export const EVENT_CHANNEL_TABLE_VERSION = 2;
 //
 // ⚠️ 指定负责方：仅 main.js 调用 createFlowDom；其余模块一律只读 ctx.flowDom，严禁再自造 flow 引用。
 //
-// 未落地（仍留 ctx.flow）—— 阶段 3b 部分完成，下列按方案 §4 铁律⑤ 继续留在视图层：
-//   1. flow-state-view.js（renderedToolCards / currentSteps / active*Step / activeTurnRefs /
-//      跟随标记 / 计时器）视图缓存归位 —— 因涉流式热路径（lastEventTaskId 与 currentActiveTaskId
-//      不一致、resetStreamState 时 taskId 未定、数据字段与 DOM 绑定视图对象混排），且需运行态回归验证；
-//   2. flow.* 纯数据字段迁 flowStore.for(taskId) —— 同上，需 taskId 穿透流式热路径。
-//   二者列入「降耦合 GUI 回归专项」（需带运行 App 的流式回归验证后落地）。
+// ✅ 已于阶段 7 批次 A 落地（原「未落地」清单）：
+//   1. 视图派生缓存归位 flow-state-view.js（flowView 唯一属主，不入 Store）；
+//   2. flow.* 纯数据字段全部迁 flowStore.for(taskId) 分仓（taskId 穿透流式热路径，
+//      经 resolveStreamTaskId 解析；measure-coupling 断言 flow.* 裸写 = 0）。

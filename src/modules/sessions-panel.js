@@ -8,16 +8,25 @@ import { taskManager } from "../services/task-manager.js";
 import { piClient } from "../services/pi-client.js";
 import { sketchConfirm, sketchAlert } from "../services/sketch-modal.js";
 import { enhanceSelect } from "../services/sketch-select.js";
+import { bindAll } from "../lib/el-binder.js";
 
 /**
  * 会话记录面板：内核全量会话列表、搜索 / 时间筛选、进入 Flow 与界面会话清空
  * 硬约束：绝不提供删除 Pi 内核会话文件的能力，清空操作仅作用于 UI 展示层。
  */
 export function initSessionsPanel(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
   const viewStore = ctx.viewStore;
-
+  // 批次 B：模块自绑定（appContainer 跨簇共享 id，同 id 同元素）
+  const el = bindAll({
+    appContainer: "app-container",
+    btnClearUiSessions: "btn-clear-ui-sessions",
+    sessionsSearchInput: "sessions-search-input",
+    sessionsTimeFilter: "sessions-time-filter",
+    sessionsList: "sessions-list",
+    sessionCount: "session-count",
+  });
+  const appContainer = el.appContainer;
   const btnClearUiSessions = el.btnClearUiSessions;
   const sessionsSearchInput = el.sessionsSearchInput;
   const sessionsTimeFilter = el.sessionsTimeFilter;

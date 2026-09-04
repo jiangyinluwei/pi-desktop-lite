@@ -7,34 +7,49 @@ import { sessionService } from "../services/session-service.js";
 import { conversationHistoryService } from "../services/conversation-history.js";
 import { taskManager } from "../services/task-manager.js";
 import { modelFailoverEngine } from "../services/model-failover.js";
+import { flowStore } from "../services/stores/flow-store.js";
+import { bindAll } from "../lib/el-binder.js";
 
 /**
  * 后台任务胶囊、侧边栏、历史恢复与快照归档
  */
 export function initTaskPanel(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
   const viewStore = ctx.viewStore;
-  const flow = ctx.flow;
+  const flowView = ctx.flowView;
+  const flowStore = ctx.flowStore;
   const flowDom = ctx.flowDom;
+  // 批次 B：模块自绑定（sketchMessagesDrawer 与 sessions-panel 跨簇共享，同 id 同元素）
+  const el = bindAll({
+    sketchMessagesDrawer: "sketch-messages-drawer",
+    messagesPrimaryRow: "messages-primary-row",
+    messagesExpandedGrid: "messages-expanded-grid",
+    miniTaskCapsule: "mini-task-capsule",
+    capsuleTaskText: "capsule-task-text",
+    globalToastBanner: "global-toast-banner",
+    globalToastText: "global-toast-text",
+    taskSidebarSummary: "task-sidebar-summary",
+    taskSidebarList: "task-sidebar-list",
+    btnCloseTaskSidebar: "btn-close-task-sidebar",
+  });
+  const sketchMessagesDrawer = el.sketchMessagesDrawer;
+  const messagesPrimaryRow = el.messagesPrimaryRow;
+  const messagesExpandedGrid = el.messagesExpandedGrid;
+  const miniTaskCapsule = el.miniTaskCapsule;
+  const capsuleTaskText = el.capsuleTaskText;
+  const globalToastBanner = el.globalToastBanner;
+  const globalToastText = el.globalToastText;
+  const taskSidebarSummary = el.taskSidebarSummary;
+  const taskSidebarList = el.taskSidebarList;
+  const btnCloseTaskSidebar = el.btnCloseTaskSidebar;
 
   const flowScrollArea = flowDom.flowScrollArea;
   const flowConversation = flowDom.flowConversation;
   const thinkingToggleBtn = flowDom.thinkingToggleBtn;
   const thinkingDuration = flowDom.thinkingDuration;
   const flowModelName = flowDom.flowModelName;
-  const sketchMessagesDrawer = el.sketchMessagesDrawer;
-  const messagesPrimaryRow = el.messagesPrimaryRow;
-  const messagesExpandedGrid = el.messagesExpandedGrid;
-  const miniTaskCapsule = el.miniTaskCapsule;
-  const capsuleTaskText = el.capsuleTaskText;
   const flowBtnAbort = flowDom.flowBtnAbort;
-  const globalToastBanner = el.globalToastBanner;
-  const globalToastText = el.globalToastText;
   const taskDetailsSidebar = flowDom.taskDetailsSidebar;
-  const taskSidebarSummary = el.taskSidebarSummary;
-  const taskSidebarList = el.taskSidebarList;
-  const btnCloseTaskSidebar = el.btnCloseTaskSidebar;
 
   // ==========================================================================
   // 详细界面历史对话讯息方框交互引擎 (Sketch Message Drawer & MRU Flow Recovery)
@@ -380,9 +395,9 @@ export function initTaskPanel(ctx) {
     }
 
     // 重置流式状态缓存，杜绝跨会话工具卡片与步骤快照残留
-    flow.renderedToolCards.clear();
-    flow.activeThinkingStep = null;
-    flow.currentSteps = [];
+    flowView.renderedToolCards.clear();
+    flowView.activeThinkingStep = null;
+    flowView.currentSteps = [];
 
     turns.forEach((turn, idx) => {
       const isLast = idx === turns.length - 1;
@@ -406,24 +421,28 @@ export function initTaskPanel(ctx) {
       }
 
       if (isLast) {
-        flow.activeTurnRefs = groupRefs;
-        flow.lastUserQuery = turn.query || "";
-        flow.lastSentAttachments = turn.attachments || [];
-        flow.currentThinkingText = turn.thinkingText || "";
-        flow.currentResponseText = turn.responseText || "";
-        flow.currentErrorMessage = turn.errorMessage || null;
-        flow.hasReceivedDelta = Boolean(turn.responseText && turn.responseText.trim().length > 0);
-        flow.hasAutoCollapsedThinking = !isOpen;
-        flow.currentSteps = Array.isArray(turn.steps) ? [...turn.steps] : [];
+        flowView.activeTurnRefs = groupRefs;
+        // 末轮纯数据回填：写入「该任务自己」的分仓（多任务直切隔离铁律 ——
+        // 后台挂起任务的流式事件写它自己的分仓，与本前台分仓互不可见）
+        flowStore.for(task.id).set({
+          lastUserQuery: turn.query || "",
+          lastSentAttachments: turn.attachments || [],
+          thinkingText: turn.thinkingText || "",
+          responseText: turn.responseText || "",
+          errorMessage: turn.errorMessage || null,
+          hasReceivedDelta: Boolean(turn.responseText && turn.responseText.trim().length > 0),
+          hasAutoCollapsedThinking: !isOpen,
+        });
+        flowView.currentSteps = Array.isArray(turn.steps) ? [...turn.steps] : [];
 
-        // H26 自愈：将最后一轮中已渲染的工具卡 DOM 节点回填至 flow.renderedToolCards
+        // H26 自愈：将最后一轮中已渲染的工具卡 DOM 节点回填至 flowView.renderedToolCards
         // 保证切入运行中任务后，后续到达的 tool-update / tool-end 能够精准定位到 DOM 节点
         if (groupRefs?.groupEl) {
           const toolCardEls = groupRefs.groupEl.querySelectorAll(".flow-step-tool");
           toolCardEls.forEach((cardEl) => {
             const rawId = cardEl.id && cardEl.id.startsWith("tool-") ? cardEl.id.replace(/^tool-/, "") : cardEl.id;
             if (rawId) {
-              flow.renderedToolCards.set(rawId, cardEl);
+              flowView.renderedToolCards.set(rawId, cardEl);
             }
           });
         }
@@ -599,27 +618,29 @@ export function initTaskPanel(ctx) {
     if (currentActive && Array.isArray(currentActive.turns) && currentActive.turns.length === 0) {
       return;
     }
+    // 快照读取走「当前活跃任务自己」的纯数据分仓（与 flowView 视图缓存并行取用）
+    const fs = flowStore.for(currentActive?.id);
 
     const isAborted = Boolean(
       (currentActive && currentActive.status === "aborted") ||
-      flow.activeTurnRefs?.responseContentEl?.querySelector(".flow-abort-callout")
+      flowView.activeTurnRefs?.responseContentEl?.querySelector(".flow-abort-callout")
     );
 
-    let responseTextToSave = flow.currentResponseText;
-    if (!responseTextToSave && (flow.currentErrorMessage || flow.activeTurnRefs?.responseContentEl?.querySelector(".sketch-error-card"))) {
-      responseTextToSave = `> ⚠️ **模型调用失败**：${flow.currentErrorMessage || "模型执行异常终止"}`;
+    let responseTextToSave = fs.responseText;
+    if (!responseTextToSave && (fs.errorMessage || flowView.activeTurnRefs?.responseContentEl?.querySelector(".sketch-error-card"))) {
+      responseTextToSave = `> ⚠️ **模型调用失败**：${fs.errorMessage || "模型执行异常终止"}`;
     }
 
     const toolCallsSnapshot = [];
-    flow.renderedToolCards.forEach((cardEl, id) => {
+    flowView.renderedToolCards.forEach((cardEl, id) => {
       toolCallsSnapshot.push({
         id,
         html: cardEl.outerHTML,
       });
     });
 
-    const stepsSnapshot = (Array.isArray(flow.currentSteps) && flow.currentSteps.length > 0)
-      ? flow.currentSteps.map((s) => ({
+    const stepsSnapshot = (Array.isArray(flowView.currentSteps) && flowView.currentSteps.length > 0)
+      ? flowView.currentSteps.map((s) => ({
           type: s.type,
           id: s.id,
           text: s.text,
@@ -638,13 +659,13 @@ export function initTaskPanel(ctx) {
         if (isLastTurn) {
           return {
             ...turn,
-            thinkingText: flow.currentThinkingText || turn.thinkingText || "",
+            thinkingText: fs.thinkingText || turn.thinkingText || "",
             responseText: responseTextToSave || turn.responseText || "",
             toolCalls: toolCallsSnapshot.length > 0 ? toolCallsSnapshot : (turn.toolCalls || []),
             steps: stepsSnapshot.length > 0 ? stepsSnapshot : (turn.steps || []),
-            thinkingDurationText: flow.activeTurnRefs?.thinkingDurationEl ? flow.activeTurnRefs.thinkingDurationEl.textContent : (turn.thinkingDurationText || "已完成思考"),
+            thinkingDurationText: flowView.activeTurnRefs?.thinkingDurationEl ? flowView.activeTurnRefs.thinkingDurationEl.textContent : (turn.thinkingDurationText || "已完成思考"),
             isAborted: isAborted || turn.isAborted,
-            errorMessage: flow.currentErrorMessage || turn.errorMessage,
+            errorMessage: fs.errorMessage || turn.errorMessage,
           };
         }
         return turn;
@@ -670,14 +691,14 @@ export function initTaskPanel(ctx) {
       const savedConv = conversationHistoryService.recordConversation({
         id: currentActive.conversationId || undefined,
         taskId: currentActive.id,
-        query: firstTurn?.query || flow.lastUserQuery,
+        query: firstTurn?.query || fs.lastUserQuery,
         title: firstTurn?.query ? conversationHistoryService.generateSummaryTitle(firstTurn.query) : undefined,
         turns: turnsToSave,
         steps: stepsSnapshot.length > 0 ? stepsSnapshot : (lastTurn?.steps || []),
-        thinkingText: lastTurn?.thinkingText || flow.currentThinkingText || "",
+        thinkingText: lastTurn?.thinkingText || fs.thinkingText || "",
         responseText: lastTurn?.responseText || responseTextToSave || "",
         toolCalls: lastTurn?.toolCalls || toolCallsSnapshot,
-        thinkingDuration: lastTurn?.thinkingDurationText || (flow.activeTurnRefs?.thinkingDurationEl ? flow.activeTurnRefs.thinkingDurationEl.textContent : null),
+        thinkingDuration: lastTurn?.thinkingDurationText || (flowView.activeTurnRefs?.thinkingDurationEl ? flowView.activeTurnRefs.thinkingDurationEl.textContent : null),
         modelId: currentActive.model || piClient.currentModel?.id || "",
         sessionPath: "",
         isAborted: turnsToSave.some((t) => t.isAborted),
@@ -686,15 +707,15 @@ export function initTaskPanel(ctx) {
       if (savedConv && savedConv.id) {
         currentActive.conversationId = savedConv.id;
       }
-    } else if (flow.lastUserQuery && (responseTextToSave || flow.currentThinkingText || isAborted)) {
+    } else if (fs.lastUserQuery && (responseTextToSave || fs.thinkingText || isAborted)) {
       const savedConv = conversationHistoryService.recordConversation({
         id: currentActive?.conversationId || undefined,
         taskId: currentActive ? currentActive.id : undefined,
-        query: flow.lastUserQuery,
-        thinkingText: flow.currentThinkingText,
+        query: fs.lastUserQuery,
+        thinkingText: fs.thinkingText,
         responseText: responseTextToSave || "",
         toolCalls: toolCallsSnapshot,
-        thinkingDuration: flow.activeTurnRefs?.thinkingDurationEl ? flow.activeTurnRefs.thinkingDurationEl.textContent : null,
+        thinkingDuration: flowView.activeTurnRefs?.thinkingDurationEl ? flowView.activeTurnRefs.thinkingDurationEl.textContent : null,
         modelId: piClient.currentModel?.id || "",
         sessionPath: "",
         isAborted,

@@ -3,18 +3,30 @@ import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
 import { invokeTauri } from "../services/tauri-bridge.js";
 import { renderMarkdown, initMarkdownInteractions } from "../lib/markdown-renderer.js";
+import { flowStore } from "../services/stores/flow-store.js";
+import { resolveStreamTaskId } from "./flow-state-view.js";
 import { collapseToolCard, createThinkingStepCard, createPhaseStepCard, createToolStepCard } from "./flow-render.js";
+import { bindAll } from "../lib/el-binder.js";
+import { getFileCategoryIcon } from "./file-attachments.js";
 
 /**
  * Flow 渲染核心：Markdown、轮次 DOM、悬浮提问提示与上下定位导航
  */
 export function initFlowUi(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
   const viewStore = ctx.viewStore;
   const settingsStore = ctx.settingsStore;
-  const flow = ctx.flow;
+  const flowView = ctx.flowView;
+  const flowStore = ctx.flowStore;
   const flowDom = ctx.flowDom;
+
+  // 用户交互路径（保存按钮 / 悬浮提示 / 自动折叠）读取前台任务纯数据分仓
+  const streamData = () => flowStore.for(resolveStreamTaskId());
+
+  // 批次 B：模块自绑定（appContainer 跨簇共享 id，同 id 同元素）
+  const el = bindAll({
+    appContainer: "app-container",
+  });
 
   const appContainer = el.appContainer;
   const flowStage = flowDom.flowStage;
@@ -56,19 +68,14 @@ export function initFlowUi(ctx) {
 
   // ==========================================================================
   // Flow 流式渲染核心
-  // 说明：轮次状态（当前轮次 DOM 引用、流式文本、工具卡注册表、中断发送/自愈缓存）
-  // 一律收敛于 ctx.flow，由 flow-ui / flow-stream / flow-pipeline / task-panel 共享。
+  // 说明：视图派生缓存（当前轮次 DOM 引用、工具卡注册表、活跃切片卡、计时器）
+  //       收敛于 flowView（flow-state-view.js 唯一属主）；流式纯数据一律经
+  //       flowStore.for(taskId) 分仓读写，两者严禁混用。
   // ==========================================================================
-
-  
-
-
-  
-
 
   /** 收起所有工具卡片（不包括 running 状态） */
   const collapseAllDoneToolCards = () => {
-    flow.renderedToolCards.forEach((card) => {
+    flowView.renderedToolCards.forEach((card) => {
       if (!card.classList.contains("running")) {
         collapseToolCard(card);
       }
@@ -77,14 +84,14 @@ export function initFlowUi(ctx) {
 
   /** 收起所有工具卡片（包括 running） */
   const collapseAllToolCards = () => {
-    flow.renderedToolCards.forEach((card) => {
+    flowView.renderedToolCards.forEach((card) => {
       collapseToolCard(card);
     });
   };
 
   const collapseThinkingCard = (cardEl = null, btnEl = null) => {
-    const targetCard = cardEl || flow.activeTurnRefs?.thinkingCardEl || agentThinkingCard;
-    const targetBtn = btnEl || flow.activeTurnRefs?.thinkingToggleBtn || thinkingToggleBtn;
+    const targetCard = cardEl || flowView.activeTurnRefs?.thinkingCardEl || agentThinkingCard;
+    const targetBtn = btnEl || flowView.activeTurnRefs?.thinkingToggleBtn || thinkingToggleBtn;
     if (targetCard && targetCard.classList.contains("open")) {
       targetCard.classList.remove("open");
       if (targetBtn) targetBtn.setAttribute("aria-expanded", "false");
@@ -92,47 +99,12 @@ export function initFlowUi(ctx) {
   };
 
   const autoCollapseThinkingOnNextPhase = () => {
-    if (!flow.hasAutoCollapsedThinking) {
-      flow.hasAutoCollapsedThinking = true;
+    const fs = streamData();
+    if (!fs.hasAutoCollapsedThinking) {
+      fs.set({ hasAutoCollapsedThinking: true });
       collapseThinkingCard();
     }
   };
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
 
   /**
    * 动态创建单轮对话的 DOM 消息组 (Turn Message Group)
@@ -176,7 +148,7 @@ export function initFlowUi(ctx) {
         .map(
           (f) => `
         <span class="flow-attachment-chip" title="${escapeHtml(f.path || f.name)}">
-          <span class="chip-icon">${api.getFileCategoryIcon(f.category)}</span>
+          <span class="chip-icon">${getFileCategoryIcon(f.category)}</span>
           <span class="chip-name">${escapeHtml(f.name)}</span>
         </span>
       `
@@ -417,9 +389,10 @@ export function initFlowUi(ctx) {
    * @param {HTMLButtonElement} [btnEl=null]
    */
   const saveTurnOutputToDesktop = async (turnData = {}, btnEl = null) => {
-    const query = turnData.query || flow.lastUserQuery || "";
-    const responseText = turnData.responseText || flow.currentResponseText || "";
-    const thinkingText = turnData.thinkingText || flow.currentThinkingText || "";
+    const fs = streamData();
+    const query = turnData.query || fs.lastUserQuery || "";
+    const responseText = turnData.responseText || fs.responseText || "";
+    const thinkingText = turnData.thinkingText || fs.thinkingText || "";
 
     if (!responseText || !responseText.trim()) {
       if (typeof window.sketchAlert === "function") {
@@ -494,7 +467,7 @@ export function initFlowUi(ctx) {
   const attachResponseSaveButton = (turnRefs, turnData = {}) => {
     if (!turnRefs || !turnRefs.responseCardEl) return;
     const responseCardEl = turnRefs.responseCardEl;
-    const responseText = turnData.responseText !== undefined ? turnData.responseText : (flow.currentResponseText || "");
+    const responseText = turnData.responseText !== undefined ? turnData.responseText : (streamData().responseText || "");
 
     // 如果没有回答文本，或者存在报错卡片 / errorMessage，则移除保存按钮
     const hasError = Boolean(turnData.errorMessage) || Boolean(responseCardEl.querySelector(".sketch-error-card"));
@@ -553,9 +526,9 @@ export function initFlowUi(ctx) {
           }
         }
         const qEl = anchorGroup.querySelector(".flow-user-prompt-card .prompt-content");
-        question = qEl?.textContent?.trim() || flow.lastUserQuery?.trim() || "";
+        question = qEl?.textContent?.trim() || streamData().lastUserQuery?.trim() || "";
       } else {
-        question = String(flow.lastUserQuery?.trim() || flow.activeTurnRefs?.userTextEl?.textContent?.trim() || "");
+        question = String(streamData().lastUserQuery?.trim() || flowView.activeTurnRefs?.userTextEl?.textContent?.trim() || "");
       }
     }
 

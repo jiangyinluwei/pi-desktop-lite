@@ -2,15 +2,34 @@ import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { bus } from "../lib/event-bus.js";
 import { invokeTauri, listenTauri } from "../services/tauri-bridge.js";
+import { bindAll } from "../lib/el-binder.js";
+
+// ==========================================================================
+// 阶段 7 批次 D：纯函数显式化（原 ctx.api 函数槽清退为显式 import）
+// 附件类别 → 手绘 SVG 图标映射（file-attachments 胶囊与 Flow 轮次附件 chip 共用）
+// ==========================================================================
+export const getFileCategoryIcon = (category) => {
+  if (category === "folder" || category === "directory") return ICONS.folder;
+  if (category === "image") return ICONS.image;
+  if (category === "code") return ICONS.code;
+  return ICONS.document;
+};
 
 /**
  * 文件拖入、概述胶囊与多模态路径注入
  */
 export function initFileAttachments(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
   const attachmentsStore = ctx.attachmentsStore;
-
+  // 批次 B：模块自绑定（searchInput / searchForm 为跨簇共享 id，bindAll 同 id 同元素）
+  const el = bindAll({
+    searchInputWrapper: "search-input-wrapper",
+    searchInput: "search-input",
+    attachedCapsulesContainer: "attached-capsules-container",
+    searchIconBox: "search-icon-box",
+    filePickerInput: "file-picker-input",
+    searchForm: "search-form",
+  });
   const searchInputWrapper = el.searchInputWrapper;
   const searchInput = el.searchInput;
   const attachedCapsulesContainer = el.attachedCapsulesContainer;
@@ -21,13 +40,6 @@ export function initFileAttachments(ctx) {
   // ==========================================================================
   // 输入框文件拖入、手绘概述胶囊与多模态文件注入引擎
   // ==========================================================================
-
-  const getFileCategoryIcon = (category) => {
-    if (category === "folder" || category === "directory") return ICONS.folder;
-    if (category === "image") return ICONS.image;
-    if (category === "code") return ICONS.code;
-    return ICONS.document;
-  };
 
   const renderAttachedCapsules = () => {
     if (!attachedCapsulesContainer) return;
@@ -225,6 +237,6 @@ export function initFileAttachments(ctx) {
     });
   }
 
-  api.getFileCategoryIcon = getFileCategoryIcon;
+  // getFileCategoryIcon 已显式化（模块顶层 export），消费方直接 import
   api.clearAttachedFiles = clearAttachedFiles;
 }

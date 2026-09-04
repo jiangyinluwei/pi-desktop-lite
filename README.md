@@ -93,8 +93,8 @@ pi-desktop-lite/
 ├── scripts/                    # 自动化与环境配置脚本 (tauri.js, check.js)
 ├── src/                        # 前端页面源码与运行时资源
 │   ├── assets/                 # 静态资源 (logo.svg, logo.ico, 手绘 SVG 图标)
-│   ├── lib/                    # 跨模块共享基础件 (dom-utils, icons, markdown-renderer, view-constants, event-bus 同步事件总线, contracts 事件通道契约表 + api 槽契约定型)
-│   ├── modules/                # 按功能域拆分的 UI 业务模块（由 main.js 统一编排）
+│   ├── lib/                    # 跨模块共享基础件 (dom-utils, icons, markdown-renderer, view-constants, event-bus 同步事件总线, el-binder DOM 按需绑定, contracts 事件通道契约表 + api 槽契约定型)
+│   ├── modules/                # 按功能域拆分的 UI 业务模块（由 main.js 统一编排；flow-render 纯渲染 / flow-dom 只读 DOM 引用 / flow-state-view 视图派生缓存属主）
 │   │   ├── view-mode.js        # 四态状态机与设置页路由
 │   │   ├── flow-ui.js          # Flow 渲染核心：Markdown、轮次 DOM、悬浮提问、上下定位导航
 │   │   ├── flow-render.js      # Flow 纯渲染层：工具/思维/阶段卡片创建、入参/结果 HTML 格式化（无副作用，显式 import）
@@ -108,7 +108,7 @@ pi-desktop-lite/
 │   │   ├── workspace-panel.js  # 多预设工作区设置面板与路由绑定
 │   │   └── global-interactions.js # 全局右键/Esc 回退与外链拦截
 │   ├── services/               # 前端服务层 (tauri-bridge, config-service, pi-client, workspace-service 等)
-│   │   └── stores/             # 共享可变状态唯一属主 (view-store, settings-store, attachments-store, flow-store)
+│   │   └── stores/             # 共享可变状态唯一属主 (view-store, settings-store, attachments-store, flow-store 按 taskId 分仓)
 │   ├── styles/                 # 按功能域拆分的手绘样式 (tokens, layout, flow, markdown, settings, form-widgets 等)
 │   ├── index.html              # 页面主体
 │   ├── styles.css              # 样式聚合入口 (@import 各功能域子样式)
