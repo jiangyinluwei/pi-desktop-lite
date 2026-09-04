@@ -208,7 +208,7 @@ flowchart TD
      - `flow.currentSteps = Array.isArray(turn.steps) ? [...turn.steps] : []`：对齐新任务当前轮次步骤快照；
    - **末轮工具卡自愈回填**：`renderTurnsIntoFlow` 在创建末轮 DOM 后，遍历其中的 `.flow-step-tool` 节点回填至 `flow.renderedToolCards`，并在 `flow-pipeline.js` 的 `tool-update` / `tool-end` 中结合 DOM ID 动态检索与读秒更新兜底，保证切回运行中任务后工具卡绝不永久卡死在 `running`；
 3. **Flow DOM 防重入与历史记录智能重定向**：
-   - **防重入铁律**：`restoreTaskToFlow` 与 `restoreConversationToFlow` 在首行校验 `if (view.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id === targetId) return;`，已在 Flow 查看当前任务时绝不重复清空 DOM，防止流式截断与界面闪烁；
+   - **防重入铁律**：`restoreTaskToFlow` 与 `restoreConversationToFlow` 在首行校验 `if (viewStore.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id === targetId) return;`（阶段 2 起 `view.mode` 已收敛为 `viewStore` 唯一属主），已在 Flow 查看当前任务时绝不重复清空 DOM，防止流式截断与界面闪烁；
    - **历史入口智能重定向**：用户从界面1历史讯息抽屉点击卡片时，优先探测该会话是否在 `TaskManager` 中作为活跃/挂起任务存在。若存在，全链路直接重定向至 `restoreTaskToFlow`，严禁用静态历史旧 turns 覆写实时 live turns，严禁强行覆盖 `task.status = "completed"`；
    - **视觉标识互斥**：历史抽屉卡片探测后台运行态，当会话处于运行中时在 meta 区呈现手绘脉冲「运行中」微动效徽章；
 4. **收纳框与 Mini 胶囊自愈更新**：
