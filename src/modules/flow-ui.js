@@ -50,7 +50,7 @@ export function initFlowUi(ctx) {
       if (!copyBtn) return;
       e.stopPropagation();
       const card = copyBtn.closest(".flow-user-prompt-card");
-      const text = (copyBtn.dataset.copyText || card?.querySelector(".prompt-content")?.textContent || "").trim();
+      const text = (copyBtn.dataset.copyText || card?.dataset?.copyText || card?.querySelector(".prompt-content")?.textContent || "").trim();
       if (!text || !navigator.clipboard) return;
       try {
         await navigator.clipboard.writeText(text);
@@ -526,9 +526,11 @@ export function initFlowUi(ctx) {
           }
         }
         const qEl = anchorGroup.querySelector(".flow-user-prompt-card .prompt-content");
-        question = qEl?.textContent?.trim() || streamData().lastUserQuery?.trim() || "";
+        const rawQuestion = qEl?.textContent || streamData().lastUserQuery || "";
+        question = rawQuestion.replace(/\r?\n+/g, " ").trim();
       } else {
-        question = String(streamData().lastUserQuery?.trim() || flowView.activeTurnRefs?.userTextEl?.textContent?.trim() || "");
+        const rawQuestion = String(streamData().lastUserQuery || flowView.activeTurnRefs?.userTextEl?.textContent || "");
+        question = rawQuestion.replace(/\r?\n+/g, " ").trim();
       }
     }
 

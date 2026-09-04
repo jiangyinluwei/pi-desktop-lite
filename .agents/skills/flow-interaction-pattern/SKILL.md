@@ -19,7 +19,7 @@ description: |
   │         ├─ flow-question-tip      ← 顶部悬浮提问提示 (sticky top: 0, pointer-events: none)
   │         └─ flow-conversation
   │              └─ flow-message-group
-  │                   ├─ flow-user-prompt-card       用户提问卡（右侧 prompt-copy-btn 一键复制提问，事件委托于 flow-conversation）
+  │                   ├─ flow-user-prompt-card       用户提问卡（支持多行换行 pre-wrap，右侧 prompt-copy-btn 一键复制提问，事件委托于 flow-conversation）
   │                   ├─ flow-route-capsule          路由目标项目胶囊
   │                   ├─ flow-injection-notice        「注入提示」信息框 (路由胶囊下方；直角简洁风，默认收起显示「注入提示」与注入数量，点击展开全部注入条目清单)
   │                   ├─ flow-failover-capsule       自动重连/切换进度胶囊
@@ -173,7 +173,8 @@ flowchart TD
 ## 📌 8. 历史会话还原与上下文脱敏
 
 - **Rust 后端原生净化**：`strip_injected_contexts` 与 `clean_user_prompt` 递归剥离 `<runtime_context_rules>`、`<code_area_routing_context>` 与附件绝对路径尾注；
-- **前端纵深防御**：历史列表与提问卡 100% 还原用户原始纯净输入。
+- **前端纵深防御**：历史列表与提问卡 100% 还原用户原始纯净输入；
+- **提问卡多行换行与防挤压排版规范**：`.flow-user-prompt-card .prompt-content` 统一采用 `white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;`，完整呈现用户提问文本中的所有换行与段落，杜绝空白合并折叠；左侧图标与操作按钮固定 `flex-shrink: 0` 防挤压，中间内容区 `flex: 1` 自适应伸缩；复制按钮优先取 `card.dataset.copyText` 原汁原味还原原始提问；顶部单行悬浮胶囊 (`flow-question-tip`) 将换行规整为空格单行展示。
 
 ---
 

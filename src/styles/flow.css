@@ -272,6 +272,7 @@
   display: flex;
   align-items: center;
   margin-top: 3px;
+  flex-shrink: 0;
 }
 
 .prompt-main-wrap {
@@ -279,6 +280,7 @@
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+  flex: 1;
 }
 
 .flow-prompt-attachments {
@@ -313,6 +315,9 @@
   font-weight: 600;
   color: var(--ink-primary);
   line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* 提问一键复制按钮：常态透明无边框（1px 透明占位防抖），悬浮/聚焦显现手绘边框 */
