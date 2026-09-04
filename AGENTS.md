@@ -40,7 +40,7 @@
 3. **全域右键“返回上一步 (Step Back)”与四态界面流**：
    - 全域禁用浏览器默认右键菜单（`contextmenu` 拦截）；
    - **四态界面层级流**：`半透明侧边栏 (最高优先级)` ➔ `设置全页面 (界面4: settings)` ➔ `Flow 交互版 (界面3: 运行/暂停态转入后台挂起，已结束/中断态归档至历史)` ➔ `专注版 (界面2)` ➔ `详细版 (界面1)` ➔ 输入框失焦/清空；
-   - **设置页 → Flow 定向回退 (`flowFromSettings`)**：从设置页会话记录 Tab「进入 Flow」时置 `view.flowFromSettings = true`；Flow 中右键/Esc 时若空闲/已结束，直接回退至设置页会话记录 Tab（`previousMode: VIEW_DETAILED` 钉住 `view.previous`，再右键照常回界面1）；若运行/暂停，走正常挂起通道；
+   - **设置页 → Flow 定向回退 (`flowFromSettings`)**：从设置页会话记录 Tab「进入 Flow」时置 `viewStore.set({ flowFromSettings: true })`；Flow 中右键/Esc 时若空闲/已结束，直接回退至设置页会话记录 Tab（`previousMode: VIEW_DETAILED` 钉住 `viewStore.previous`，再右键照常回界面1）；若运行/暂停，走正常挂起通道；
    - **挂起与终止双通道解耦与终止防重连铁律**：右键/Esc 转入后台挂起（`isSuspended = true`，进入 `TaskManager`，不调用 abort）；显式「⏹ 终止」按钮彻底终止 Agent 生成并追加手动终止提示。**手动点击终止时，全链路绝对禁止触发任何模型自动重连或模型切换**；
    - **任务直切自动挂起铁律 (Auto-Suspend on Active Task Switch)**：从右上角任务抽屉、历史会话或通知点击直接切换活跃 Task 时，原前台活跃任务必须在 TaskManager 中自动无缝转入后台挂起（`prevTask.isSuspended = true`），绝不允许产生既不在前台又未挂起的幽灵任务；切换进入新 Task 时统一在 `renderTurnsIntoFlow` 中重置收纳框引用 (`api.resetFileChanges`) 与流式步骤/工具卡片缓存，并对齐最新轮次步骤，保证多任务间任意来回直切均 100% 保持会话完整、互相隔离且不丢失；
    - **历史记录智能重定向与解耦归档铁律 (History-to-Task Smart Redirection & Decoupled Archive)**：从历史讯息抽屉点击卡片时，优先探测该会话是否在 TaskManager 中作为活跃/挂起任务存在；若存在直接重定向至 `restoreTaskToFlow`，严禁用静态旧 turns 覆写 live turns 或强制置 `completed`；`archiveCurrentFlowToHistory` 仅在终态（`completed / aborted / error`）时写入持久化历史，运行中仅同步内存 `turns`；历史抽屉对后台运行中任务展示脉冲「运行中」微动效徽章；
@@ -134,12 +134,6 @@
 | | **`auto-compile-and-fix`** | [`.agents/skills/auto-compile-and-fix/SKILL.md`](file:///.agents/skills/auto-compile-and-fix/SKILL.md) | 任务完成后自动极速编译与失败自愈闭环（触发：编译校验/自动修复/构建验证）。 |
 | | **`clean-code-refactoring`** | [`.agents/skills/clean-code-refactoring/SKILL.md`](file:///.agents/skills/clean-code-refactoring/SKILL.md) | 桌面端与 Web 混合架构逻辑去重、结构精简与样板消除（触发：代码精简/去冗余/重构优化）。 |
 | | **`iterative-modification-hygiene`** | [`.agents/skills/iterative-modification-hygiene/SKILL.md`](file:///.agents/skills/iterative-modification-hygiene/SKILL.md) | 连续迭代代码卫生、AST 语法静态校验与防幽灵残余（触发：多次修改代码/清理冗余/代码卫生）。 |
-| | **`code-hazards-remediation`** | [`.doc/code-hazards-remediation/SKILL.md`](file:///.doc/code-hazards-remediation/SKILL.md) | 全量代码健康度隐患矩阵（H1~H24）故障排查与自愈核销清零（触发：排查异常/代码隐患/健康度）。 |
-| **通用前端开发** | **`craft-web`** | [`.agents/skills/craft-web/SKILL.md`](file:///.agents/skills/craft-web/SKILL.md) | Web 前端精细化打磨、去 AI 模板味、现代排版动效与规范核查（触发：优化界面/AI味太重/前端打磨）。 |
-| | **`api-integration`** | [`.agents/skills/api-integration/SKILL.md`](file:///.agents/skills/api-integration/SKILL.md) | 规范化后端接口对接、类型化模块封装与加载/异常三态处理（触发：接接口/对接API/接口联调）。 |
-| | **`critical-path-debug-test`** | [`.agents/skills/critical-path-debug-test/SKILL.md`](file:///.agents/skills/critical-path-debug-test/SKILL.md) | 前端关键路径深度分析、状态/竞态/内存审计与测试报告（触发：关键路径测试/debug测试/系统测试）。 |
-| | **`react-mobile-responsive`** | [`.agents/skills/react-mobile-responsive/SKILL.md`](file:///.agents/skills/react-mobile-responsive/SKILL.md) | Web 与 React 全站移动端/响应式适配与触控优化（触发：移动端适配/响应式布局/手机端兼容）。 |
-| | **`ai-export-to-production`** | [`.agents/skills/ai-export-to-production/SKILL.md`](file:///.agents/skills/ai-export-to-production/SKILL.md) | AI 原型平台（v0/bolt/lovable/AI Studio）导出代码生产工程化改造（触发：原型转生产/代码改造/原型上线）。 |
 
 ---
 
@@ -172,7 +166,7 @@
 
 - **`src/main.js`**：唯一编排入口。负责收集 DOM 引用（`ctx.el`）、构建共享上下文（`ctx.*`，已收敛为 `viewStore` / `settingsStore` / `attachmentsStore` / `flowStore` 等 store 引用 + `ctx.flow` 视图层过渡缓存 + `ctx.api`）并按依赖顺序初始化各模块；
 - **`src/lib/`**：跨模块共享基础件（`dom-utils.js` 文本转义、`icons.js` 手绘 SVG 图元、`markdown-renderer.js` Markdown 渲染引擎、`view-constants.js` 四态常量、`event-bus.js` 极简同步事件总线、`contracts.js` 事件通道契约表）；
-- **`src/modules/`**：按功能域拆分的 UI 业务模块（`view-mode.js`、`settings-navigation.js`、`model-panel.js`、`custom-provider-panel.js`、`kernel-panel.js`、`flow-ui.js`、`flow-stream.js`、`flow-pipeline.js`、`flow-file-changes.js`、`flow-rollback.js`、`task-panel.js`、`packages-panel.js`、`workspace-panel.js`、`sessions-panel.js`、`global-interactions.js` 等）。跨模块调用通过 `ctx.api.<fn>()`；横切通知（fire-and-forget，如 `ui:toast`）走 `event-bus.js` 的 `bus.on` / `bus.emit`（事件须在 `contracts.js` 契约表登记）；控制流 / 状态迁移走 Store action（如 `viewStore.morph(mode, opts)`）或显式 import；**共享可变状态一律归 `src/services/stores/` 的唯一属主（`viewStore` / `settingsStore` / `attachmentsStore` / `flowStore`），严禁跨模块直改 `view.x` / `settings.x` / `attachments.x`（含解构后裸名）**；
+- **`src/modules/`**：按功能域拆分的 UI 业务模块（`view-mode.js`、`settings-navigation.js`、`model-panel.js`、`custom-provider-panel.js`、`kernel-panel.js`、`flow-ui.js`、`flow-stream.js`、`flow-pipeline.js`、`flow-file-changes.js`、`flow-rollback.js`、`task-panel.js`、`packages-panel.js`、`workspace-panel.js`、`sessions-panel.js`、`global-interactions.js`、`search-input.js`、`file-attachments.js`、`preferences.js`、`window-controls.js` 等）。跨模块调用通过 `ctx.api.<fn>()`；横切通知（fire-and-forget，如 `ui:toast`）走 `event-bus.js` 的 `bus.on` / `bus.emit`（事件须在 `contracts.js` 契约表登记）；控制流 / 状态迁移走 Store action（如 `viewStore.morph(mode, opts)`）或显式 import；**共享可变状态一律归 `src/services/stores/` 的唯一属主（`viewStore` / `settingsStore` / `attachmentsStore` / `flowStore`），严禁跨模块直改 `view.x` / `settings.x` / `attachments.x`（含解构后裸名）**；
 - **`src/services/stores/`**：共享可变状态唯一属主（无 DOM、有状态、有行为）。`view-store.js`（四态界面状态机 `morph`/`set`，控制流命令禁上总线）、`settings-store.js`（通道抽屉/官方目录/认证缓存/激活工作区）、`attachments-store.js`（输入框附件胶囊）、`flow-store.js`（Flow 纯数据状态，**按 taskId 分仓** `flowStore.for(taskId)`；视图派生缓存如 `renderedToolCards` / `currentSteps` / `activeStep` 属视图层不入 store，归 `ctx.flow` 过渡缓存，阶段 3 拆 `flow-render` 时迁出）。**Store action 一律同步、禁 async/await、禁微任务调度**（阶段 2 铁律热区：同步探测不变量 / 前台门禁 taskId / Task 分仓）；
 - **`src/styles/`**：按功能域拆分的样式文件（`tokens.css`、`base.css`、`layout.css`、`flow.css`、`markdown.css`、`settings.css`、`packages.css`、`overlays.css` 等），`src/styles.css` 仅为 `@import` 聚合入口；
 - **`src/services/`**：与 UI 解耦的前端服务层（IPC 桥接、配置、流式客户端、任务/会话/工作区等），**严禁**在 service 中直接操作 UI DOM；其中 `src/services/stores/` 为共享可变状态唯一属主（见上）。
