@@ -50,10 +50,16 @@ npm run check
 # 3. 启动桌面端开发调试
 npm run dev
 
-# 4. 构建测试（生成二进制，无需打包）
+# 4. 前端静态校验门禁（语法 + import 图解析 + 循环依赖检测，~复合重构前必做）
+npm run check:fe
+
+# 5. 耦合度量基线（自动化约 §1 指标，每阶段对比“在降”）
+npm run measure:coupling
+
+# 6. 构建测试（生成二进制，无需打包）
 npm run build:check
 
-# 5. 正式发布构建（生成安装包）
+# 7. 正式发布构建（生成安装包）
 npm run build
 ```
 
