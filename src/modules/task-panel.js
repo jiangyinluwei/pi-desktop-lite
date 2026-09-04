@@ -1,6 +1,7 @@
 import { escapeHtml, cleanUserPrompt } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
+import { bus } from "../lib/event-bus.js";
 import { piClient } from "../services/pi-client.js";
 import { sessionService } from "../services/session-service.js";
 import { conversationHistoryService } from "../services/conversation-history.js";
@@ -952,7 +953,11 @@ export function initTaskPanel(ctx) {
   // 初始渲染讯息方框
   renderConversationMessages();
 
-  api.showGlobalToast = showGlobalToast;
+  // 全局 toast 通知：唯一监听方（阶段 1 事件总线收编）
+  bus.on("ui:toast", ({ text, duration }) => {
+    showGlobalToast(text, duration);
+  });
+
   api.updateMiniTaskCapsuleUI = updateMiniTaskCapsuleUI;
   api.closeTaskSidebar = closeTaskSidebar;
   api.renderTaskSidebarList = renderTaskSidebarList;

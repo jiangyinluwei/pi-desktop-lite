@@ -1,5 +1,6 @@
 import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
+import { bus } from "../lib/event-bus.js";
 import { piClient } from "../services/pi-client.js";
 import { taskManager } from "../services/task-manager.js";
 import { invokeTauri } from "../services/tauri-bridge.js";
@@ -476,14 +477,10 @@ export function initFileChanges(ctx) {
         if (!targetPath) return;
         try {
           await invokeTauri("pi_reveal_path", { path: targetPath });
-          if (typeof api.showGlobalToast === "function") {
-            api.showGlobalToast("已在资源管理器中打开所在文件夹", 1600);
-          }
+          bus.emit("ui:toast", { text: "已在资源管理器中打开所在文件夹", duration: 1600 });
         } catch (err) {
           console.warn("[FileChanges] Reveal path failed:", err);
-          if (typeof api.showGlobalToast === "function") {
-            api.showGlobalToast(`打开所在文件夹失败: ${err}`, 2200);
-          }
+          bus.emit("ui:toast", { text: `打开所在文件夹失败: ${err}`, duration: 2200 });
         }
       });
       fileChanges.listEl.addEventListener("keydown", (e) => {

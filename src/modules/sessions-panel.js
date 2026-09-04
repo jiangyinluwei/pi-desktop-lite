@@ -1,6 +1,7 @@
 import { escapeHtml, cleanUserPrompt } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_SETTINGS } from "../lib/view-constants.js";
+import { bus } from "../lib/event-bus.js";
 import { sessionService } from "../services/session-service.js";
 import { conversationHistoryService } from "../services/conversation-history.js";
 import { taskManager } from "../services/task-manager.js";
@@ -443,7 +444,7 @@ export function initSessionsPanel(ctx) {
       );
       if (!confirmed) return;
       conversationHistoryService.clearAllConversations();
-      api.showGlobalToast("已清空界面会话记录");
+      bus.emit("ui:toast", { text: "已清空界面会话记录", duration: 1500 });
       api.renderConversationMessages();
     });
   }

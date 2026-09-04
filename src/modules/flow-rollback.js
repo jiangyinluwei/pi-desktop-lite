@@ -1,4 +1,5 @@
 import { escapeHtml } from "../lib/dom-utils.js";
+import { bus } from "../lib/event-bus.js";
 import { SketchModal } from "../services/sketch-modal.js";
 import { invokeTauri } from "../services/tauri-bridge.js";
 import { taskManager } from "../services/task-manager.js";
@@ -47,9 +48,7 @@ export function initFlowRollback(ctx) {
   if (!flowConversation) return;
 
   const toast = (message, duration = 3000) => {
-    if (typeof api.showGlobalToast === "function") {
-      api.showGlobalToast(message, duration);
-    }
+    bus.emit("ui:toast", { text: message, duration });
   };
 
   /** 由 DOM 定位轮次下标（渲染顺序即轮次顺序，注入信封等非 .flow-message-group 元素天然排除） */

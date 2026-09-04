@@ -1,5 +1,6 @@
 import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
+import { bus } from "../lib/event-bus.js";
 import { invokeTauri, listenTauri } from "../services/tauri-bridge.js";
 
 /**
@@ -124,7 +125,7 @@ export function initFileAttachments(ctx) {
     }
 
     if (inspectedList.length === 0) {
-      api.showGlobalToast?.("未检测到支持解析的文件或目录", 2000);
+      bus.emit("ui:toast", { text: "未检测到支持解析的文件或目录", duration: 2000 });
       return;
     }
 
@@ -141,15 +142,15 @@ export function initFileAttachments(ctx) {
       if (addedCount === 1) {
         const item = attachments.files[attachments.files.length - 1];
         if (item?.category === "folder" || item?.category === "directory") {
-          api.showGlobalToast?.(`已关联文件夹「${item.name}」`, 1800);
+          bus.emit("ui:toast", { text: `已关联文件夹「${item.name}」`, duration: 1800 });
         } else {
-          api.showGlobalToast?.(`已添加文件「${item.name}」`, 1800);
+          bus.emit("ui:toast", { text: `已添加文件「${item.name}」`, duration: 1800 });
         }
       } else if (addedCount > 1) {
-        api.showGlobalToast?.(`已添加 ${addedCount} 个关联项`, 1800);
+        bus.emit("ui:toast", { text: `已添加 ${addedCount} 个关联项`, duration: 1800 });
       }
     } else if (attachments.files.length > 0) {
-      api.showGlobalToast?.("所选项目已在关联列表中", 1500);
+      bus.emit("ui:toast", { text: "所选项目已在关联列表中", duration: 1500 });
     }
 
     if (searchInput) searchInput.focus();

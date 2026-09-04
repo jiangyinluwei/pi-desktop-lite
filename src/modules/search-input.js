@@ -1,4 +1,5 @@
 import { VIEW_DETAILED } from "../lib/view-constants.js";
+import { bus } from "../lib/event-bus.js";
 import { configService } from "../services/config-service.js";
 import { promptHistoryNavigator } from "../services/prompt-history.js";
 import { enhanceAllSelects } from "../services/sketch-select.js";
@@ -179,7 +180,7 @@ export function initSearchInput(ctx) {
           if (searchInput) {
             searchInput.focus();
           }
-          api.showGlobalToast?.(`已绑定路由工作区：${chosen.split("/").pop() || chosen}`, 1800);
+          bus.emit("ui:toast", { text: `已绑定路由工作区：${chosen.split("/").pop() || chosen}`, duration: 1800 });
         } else {
           // 用户取消绑定：退回界面1（详细版），并确保取消输入框的 focus
           if (searchInput) {

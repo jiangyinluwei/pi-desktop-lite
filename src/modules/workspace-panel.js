@@ -1,5 +1,6 @@
 import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
+import { bus } from "../lib/event-bus.js";
 import { piClient } from "../services/pi-client.js";
 import { SketchModal, sketchConfirm } from "../services/sketch-modal.js";
 import { workspaceService } from "../services/workspace-service.js";
@@ -179,9 +180,7 @@ export function initWorkspacePanel(ctx) {
   const codeAreaSkillsCount = el.codeAreaSkillsCount;
 
   const showGlobalToast = (msg, duration = 1500) => {
-    if (typeof api.showGlobalToast === "function") {
-      api.showGlobalToast(msg, duration);
-    }
+    bus.emit("ui:toast", { text: msg, duration });
   };
 
   // ==========================================================================

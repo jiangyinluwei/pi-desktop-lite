@@ -1,4 +1,5 @@
 import { VIEW_DETAILED, VIEW_FOCUS, VIEW_FLOW } from "../lib/view-constants.js";
+import { bus } from "../lib/event-bus.js";
 import { piClient } from "../services/pi-client.js";
 import { taskManager } from "../services/task-manager.js";
 import { openExternalUrl } from "../services/tauri-bridge.js";
@@ -79,7 +80,7 @@ export function initGlobalInteractions(ctx) {
         api.setViewMode(VIEW_FOCUS, true);
         const taskTitle = suspended?.title || "Task";
         const pauseSuffix = isPaused ? " [待确认]" : "";
-        api.showGlobalToast(`已转入后台运行 (${taskTitle})${pauseSuffix}`, 1500);
+        bus.emit("ui:toast", { text: `已转入后台运行 (${taskTitle})${pauseSuffix}`, duration: 1500 });
         api.updateMiniTaskCapsuleUI();
         return;
       } else {

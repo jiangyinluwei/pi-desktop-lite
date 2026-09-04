@@ -1,6 +1,7 @@
 import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
+import { bus } from "../lib/event-bus.js";
 import { piClient, isAbortError } from "../services/pi-client.js";
 import { configService } from "../services/config-service.js";
 import { promptHistoryNavigator } from "../services/prompt-history.js";
@@ -737,7 +738,7 @@ export function initFlowPipeline(ctx) {
       const interruptTaskId = currentRunningTask.id;
       flow.interruptSendTaskId = interruptTaskId;
       currentRunningTask.pendingInterruptSend = true;
-      api.showGlobalToast("正在终止当前生成，即将发送新提问…", 1500);
+      bus.emit("ui:toast", { text: "正在终止当前生成，即将发送新提问…", duration: 1500 });
       const settledPromise = waitForTurnSettled(interruptTaskId);
       try {
         await piClient.abort(interruptTaskId);
@@ -790,7 +791,7 @@ export function initFlowPipeline(ctx) {
             : (typeof window !== "undefined" ? window.__piPromptCodeAreaRoute : null);
           const chosen = promptFn ? await promptFn("", "发起对话前 · 请绑定 code-area 路由目标项目") : null;
           if (!chosen) {
-            api.showGlobalToast("code-area 必须绑定路由目标项目才能发起对话", 2500);
+            bus.emit("ui:toast", { text: "code-area 必须绑定路由目标项目才能发起对话", duration: 2500 });
             return;
           }
           if (settings.activeWorkspace) {
@@ -822,7 +823,7 @@ export function initFlowPipeline(ctx) {
       // 发起全新对话工作流：检查并发任务上限保护 (MAX_CONCURRENT_TASKS = 3)
       const runningTasks = taskManager.getActiveTasks();
       if (runningTasks.length >= taskManager.maxConcurrent) {
-        api.showGlobalToast(`后台任务已达上限 (${runningTasks.length}/${taskManager.maxConcurrent})，请等待某个任务完成后再发起新对话`, 2500);
+        bus.emit("ui:toast", { text: `后台任务已达上限 (${runningTasks.length}/${taskManager.maxConcurrent})，请等待某个任务完成后再发起新对话`, duration: 2500 });
         return;
       }
 

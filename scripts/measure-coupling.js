@@ -60,7 +60,7 @@ for (const file of moduleFiles) {
 // B/C/D. api 槽注册与调用
 const registerMap = new Map(); // slot -> Set(module)
 const callMap = new Map(); // module -> Map(slot -> count)
-const regRe = /\bapi\.([A-Za-z0-9_$]+)\s*=/g;
+const regRe = /\bapi\.([A-Za-z0-9_$]+)\s*=(?!=)/g; // 排除 == 与 ===
 const callRe = /\bapi\.([A-Za-z0-9_$]+)\s*\(/g;
 
 let totalRegistrations = 0;
