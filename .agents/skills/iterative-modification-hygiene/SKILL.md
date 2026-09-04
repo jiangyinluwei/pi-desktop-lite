@@ -37,8 +37,10 @@ grep "const expandToolCard" src/modules/flow-ui.js
 grep "activeTurnRefs" src/main.js src/modules/*.js
 ```
 
-### 铁律 4：强制执行极速 AST 静态门禁 (`node -c`)
-修改 JavaScript 代码后，**必须立即运行 Node.js 静态语法编译检查**（0.05秒极速完成）：
+### 铁律 4：强制执行前端静态校验门禁 (`check:fe` / `node -c`)
+修改 JavaScript 代码后，**必须立即运行前端静态校验门禁**（秒级极速完成）：
+- **首选（复合重构 / 多文件改动）**：`npm run check:fe` — 覆盖全量前端语法 + import 图解析 + 循环依赖检测；
+- **快速单文件 AST**：`node -c <filePath>`；
 ```bash
 node -c src/main.js
 node -c src/modules/flow-ui.js
@@ -46,6 +48,7 @@ node -c src/modules/flow-stream.js
 node -c src/modules/flow-pipeline.js
 node -c src/modules/task-panel.js
 node -c src/services/task-manager.js
+npm run check:fe   # 复合重构门禁（语法 + import 图 + 循环依赖）
 ```
 
 ### 铁律 5：多轮数据结构的幂等迁移
@@ -65,7 +68,7 @@ node -c src/services/task-manager.js
      ↓
 [3. 临时测试即测即清] 验证逻辑所添加的单元测试必须彻底删除
      ↓
-[4. node -c] 极速执行 JS AST 语法扫描（秒级自愈语法报错）
+[4. npm run check:fe / node -c] 极速执行前端静态校验门禁（语法 + import 图 + 循环依赖，秒级自愈语法报错）
      ↓
 [5. grep 扫描] 验证无重复声明、无测试代码残余与幽灵残余
      ↓
@@ -78,7 +81,7 @@ node -c src/services/task-manager.js
 
 | 检查场景 | 推荐命令 | 作用 |
 |---|---|---|
-| **JS 语法与 AST 完整性** | `node -c <filePath>` | 静态解析 JS 语法，秒级捕获未闭合括号与语法错误 |
+| **JS 语法与 AST 完整性** | `npm run check:fe` / `node -c <filePath>` | 全量前端语法 + import 图 + 循环依赖检测，秒级捕获未闭合括号、幽灵残余与循环依赖 |
 | **重复声明与残余检索** | `grep_search` / `grep` | 检查关键符号声明次数，杜绝重复副本 |
 | **测试代码清空检查** | `grep_search` (Query: `#[cfg(test)]`) | 检查全工程是否无残留单元测试与测试桩 |
 | **全工程集成编译** | `npm run check` | 验证 Rust 与前端类型系统完整性 |

@@ -14,11 +14,11 @@ description: 指导在桌面端（Tauri/Rust）与 Web 前端混合项目中进�
 1. **DRY 统一收口**：高频重复逻辑提炼为单一职责的 Helper、Bridge 或 Service；
 2. **零运行时副作用**：精简重构保持对外 API、RPC 指令与事件响应 100% 等价；
 3. **添加单元测试代码后必须清除**：重构验证期间编写的临时单元测试、断言或测试桩在交付前**必须彻底清除**，保持生产源码纯粹精炼；
-4. **闭环验证**：重构完成后自动执行 `node -c` 与 `npm run check` 验证。
+4. **闭环验证**：重构完成后自动执行 `node -c` / `npm run check:fe` 与 `npm run check` 验证；涉及降耦合时对比 `npm run measure:coupling` 量化基线。
 
 ---
 
-## 🛠️ 5 大标准重构设计范式
+## 🛠️ 6 大标准重构设计范式
 
 ### 1. IPC 调用统一桥接模式 (`tauri-bridge.js`)
 
@@ -141,11 +141,23 @@ fn show_and_focus_main_window(app: &tauri::AppHandle) {
 }
 ```
 
+### 6. 跨模块通知降耦合模式 (`event-bus.js` / `contracts.js`)
+
+**消除跨模块通过 `ctx.api.<slot>` 字符串约定调用横切通知（如 toast）造成的隐式耦合**：
+- 仅收编「fire-and-forget」横切通知（`ui:*`、`flow:*`），**严禁**收编控制流命令 / 状态迁移（后者走 Store action 或显式 import）；
+- 事件注册：`bus.on("ui:toast", ({ text, duration }) => renderToast(text, duration))`；
+- 事件派发：`bus.emit("ui:toast", { text, duration })`，payload 自包含上下文（如必带 taskId）；
+- 同步派发铁律：emit 内严禁任何 await / 微任务 / Promise；on 返回取消函数便于卸载退订；
+- 事件通道须在 `src/lib/contracts.js` 的《事件通道契约表》登记归类（bus / Store action / `pi:*` 内核桥接）。
+
+> **降耦合量化**：用 `npm run measure:coupling` 建立基线（api 调用 / 唯一槽 / api 引用 / bus emit 等指标），每阶段重构后对比“在降”。阶段 1 已把 `api.showGlobalToast` 迁至 `bus.emit("ui:toast")`，`task-panel.js` 为唯一 `bus.on` 渲染属主。
+
 ---
 
 ## 📋 重构交付检查清单
 
 - [ ] **语义等价**：功能、RPC 接口与事件响应严格一致；
 - [ ] **遗留清理**：历史重构（如抽屉变全屏视图）的废弃方法与变量彻底删除；
-- [ ] **编译验证**：`npm run check` 与 `node -c src/modules/*.js` 均 Exit Code 0；
-- [ ] **文档对齐**：同步更新 `AGENTS.md` 与相关 Skill。
+- [ ] **编译验证**：`npm run check:fe`、`npm run check` 与 `node -c src/modules/*.js` 均 Exit Code 0；
+- [ ] **耦合度量**：降耦合重构前后跑 `npm run measure:coupling`，确认指标“在降”（api 引用 / 唯一槽 / api 调用 / bus emit）；
+- [ ] **文档对齐**：同步更新 `AGENTS.md`、`README.md` 与相关 Skill。

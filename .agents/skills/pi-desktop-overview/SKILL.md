@@ -75,6 +75,14 @@ description: |
 
 ---
 
+## 🧩 前端模块化与降耦合架构
+
+- **功能域模块化**：`src/modules/` 按功能域拆分，`src/main.js` 唯一编排，跨模块协调收敛至 `ctx.*`；
+- **事件总线降耦合 (阶段 1)**：`src/lib/event-bus.js` 极简同步 bus 收编「fire-and-forget」横切通知（`ui:*` / `flow:*`），`src/lib/contracts.js` 事件通道契约表统一登记（bus / Store action / `pi:*` 内核桥接三类归口）。横切通知（如 `ui:toast`）迁移为 `bus.emit` / `bus.on`；控制流 / 状态迁移仍走 Store action 或显式 import；
+- **构建与度量门禁**：`npm run check:fe`（全量前端语法 + import 图 + 循环依赖）与 `npm run measure:coupling`（耦合度量基线）支撑降耦合重构闭环。
+
+---
+
 ## 🛡️ Rust 后端子系统矩阵
 
 | 子系统模块 | 核心职责 |

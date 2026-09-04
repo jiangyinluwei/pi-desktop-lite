@@ -28,8 +28,10 @@ flowchart LR
 | 项目类型 | 极速校验 (首选，~1s) | 全量/配置变更校验 (~10s) |
 |---|---|---|
 | **桌面应用 (pi-desktop-lite)** | `npm run check` (或 `cd src-tauri && cargo check`) | `npm run build:check` |
-| **Web 前端工程** | `node -c <filePath>` (静态 AST 检查) | `npm run build` |
+| **Web 前端工程** | `npm run check:fe`（语法 + import 图 + 循环依赖，复合重构前必做）；快速单文件可用 `node -c <filePath>` | `npm run build` |
 | **Rust 后端工程** | `cargo check --all-targets` | `cargo build` |
+
+> **pi-desktop-lite 前端门禁**：日常快速用 `node -c <filePath>`；**复合重构 / 架构改动**必须加跑 `npm run check:fe`（全量前端语法 + import 图 + 循环依赖检测）与 `npm run measure:coupling`（耦合度量基线，每阶段对比“在降”）。详见 `scripts/check-frontend.js` 与 `scripts/measure-coupling.js`。
 
 ---
 

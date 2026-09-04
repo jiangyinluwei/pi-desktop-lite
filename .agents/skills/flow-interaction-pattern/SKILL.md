@@ -249,4 +249,4 @@ Flow 支持回退到任意一次历史对话（配合 pi 内核原生历史节�
      - **首轮回退（`turnIndex === 0`）**：会话轮次归零退化为草稿，调用 `conversationHistoryService.deleteConversation` 物理删除该历史记录并解绑 `task.conversationId = null`，通知抽屉重渲；打上 `task.__isRolledBack = true` 显式标记，彻底阻断 `restoreTaskToFlow` 从历史中盲目恢复旧轮次；`archiveCurrentFlowToHistory` 与 Step Back 增加 0 轮归档门禁防御；
      - **多轮回退（`turnIndex > 0`）**：调用 `conversationHistoryService.pruneConversationTurns` 将历史快照同步截断至 `turnIndex` 轮并刷新最终回答与耗时快照，保持历史卡片与当前 Flow 100% 同步；
 - **回退语义**：fork 至第 k 轮用户消息 = 保留前 k-1 轮完整对话，第 k 轮提问回填输入框供编辑重发，第 k 轮回复及其后全部丢弃；文件状态还原至第 k 轮执行前；
-- **结果提醒**：顶部浮窗（`api.showGlobalToast`）持续 3 秒，成功/失败/部分失败文案精确到恢复文件数与原因。
+- **结果提醒**：顶部浮窗（`bus.emit("ui:toast")`，事件在 `contracts.js` 契约表登记，`task-panel.js` 为唯一 `bus.on` 渲染属主）持续 3 秒，成功/失败/部分失败文案精确到恢复文件数与原因。
