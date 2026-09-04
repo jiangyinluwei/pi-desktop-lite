@@ -33,7 +33,7 @@
 
 ## 📌 核心准则三：桌面端交互铁律与手势约束
 
-本项目前端作为轻量桌面应用，**所有 UI 与交互修改必须严格遵守以下 13 项核心铁律**：
+本项目前端作为轻量桌面应用，**所有 UI 与交互修改必须严格遵守以下 16 项核心铁律**：
 
 1. **拖拽区域限制**：全窗口仅顶部约 **30px** 标题栏支持拖拽（`-webkit-app-region: drag` / `data-tauri-drag-region`），内容主体、背景与品牌区严禁开启拖拽；
 2. **焦点释放与消除高亮**：输入框高亮在点击外部空白区、非输入元素或右键点击时，必须立即失焦（`blur()`）并消除高亮；
@@ -121,17 +121,15 @@
 | :--- | :--- | :--- | :--- |
 | **架构与规范** | **`pi-desktop-overview`** | [`.agents/skills/pi-desktop-overview/SKILL.md`](file:///.agents/skills/pi-desktop-overview/SKILL.md) | 产品定位、四态体系、核心特性与交互流水线总览（触发：项目概述/架构总览/四态界面）。 |
 | | **`pi-ecosystem-configuration`** | [`.agents/skills/pi-ecosystem-configuration/SKILL.md`](file:///.agents/skills/pi-ecosystem-configuration/SKILL.md) | Pi API 鉴权、大模型接入、Packages 扩展包、Skills 规范、TypeScript 扩展与子代理钉住配置全指南（触发：pi配置/模型配置/组件安装/auth.json/models.json/subagents配置/Ollama配置）。 |
-| | **`custom-workspace-pattern`** | [`.agents/skills/custom-workspace-pattern/SKILL.md`](file:///.agents/skills/custom-workspace-pattern/SKILL.md) | 私人定制工作区拓扑、防泄密物理隔离与交付规范（触发：定制工作区/企业交付/隔离）。 |
 | | **`inner-skills-injection`** | [`.agents/skills/inner-skills-injection/SKILL.md`](file:///.agents/skills/inner-skills-injection/SKILL.md) | 运行态内置约束（RULES.md）按需注入架构与流水线（触发：运行态技能/上下文注入/RULES）。 |
 | **手绘 UI 与交互** | **`sketch-drafting-ui`** | [`.agents/skills/sketch-drafting-ui/SKILL.md`](file:///.agents/skills/sketch-drafting-ui/SKILL.md) | Anthropic/Pi.dev 手绘草图美学、简约线条与纸质双模主题（触发：手绘风格/工程绘图风/草图UI）。 |
 | | **`sketch-modal-pattern`** | [`.agents/skills/sketch-modal-pattern/SKILL.md`](file:///.agents/skills/sketch-modal-pattern/SKILL.md) | 手绘素描居中模态弹窗（Pop & Shake、Step Back 优先拦截、焦点陷阱）（触发：模态窗/弹窗/alert替换）。 |
 | | **`sketch-form-autofill-pattern`** | [`.agents/skills/sketch-form-autofill-pattern/SKILL.md`](file:///.agents/skills/sketch-form-autofill-pattern/SKILL.md) | 手绘表单规范、消灭原生变色与 `SketchAutoFill` 智能联想（触发：新增表单/自定义填表/autofill）。 |
 | | **`svg-asset-workflow`** | [`.agents/skills/svg-asset-workflow/SKILL.md`](file:///.agents/skills/svg-asset-workflow/SKILL.md) | 手绘 SVG 图元规范、`currentColor` 主题自适应与内联管理（触发：SVG图标/替换图标/图标规范）。 |
-| | **`flow-interaction-pattern`** | [`.agents/skills/flow-interaction-pattern/SKILL.md`](file:///.agents/skills/flow-interaction-pattern/SKILL.md) | Flow 流式交互（单行紧凑过程卡、因果时序拼接、多轮定位、模型自动重连、文件变更收纳框）（触发：flow交互/思维链/轮次定位/文件变更/修改了哪些文件）。 |
+| | **`flow-interaction-pattern`** | [`.agents/skills/flow-interaction-pattern/SKILL.md`](file:///.agents/skills/flow-interaction-pattern/SKILL.md) | Flow 流式交互（单行紧凑过程卡、因果时序拼接、多轮定位、模型自动重连、文件变更收纳框、会话回退撤回、状态分仓与自绑定）（触发：flow交互/思维链/轮次定位/文件变更/修改了哪些文件/会话回退/撤回文件）。 |
 | | **`settings-view-pattern`** | [`.agents/skills/settings-view-pattern/SKILL.md`](file:///.agents/skills/settings-view-pattern/SKILL.md) | 设置全屏独立视图（第4态）、5 大 Tab、MRU 模型排序与回退流（触发：设置界面/配置页面/settings）。 |
 | **工程与治理** | **`desktop-kernel-lifecycle`** | [`.agents/skills/desktop-kernel-lifecycle/SKILL.md`](file:///.agents/skills/desktop-kernel-lifecycle/SKILL.md) | Tauri 2 + Rust 内核生命周期管控、多环境寻址与 Release 打包避坑（触发：内核崩溃/进程重启/打包）。 |
-| | **`desktop-rendering-optimization`** | [`.agents/skills/desktop-rendering-optimization/SKILL.md`](file:///.agents/skills/desktop-rendering-optimization/SKILL.md) | Webview 渲染调优、缩放白闪/黑屏排查、动画掉帧与重绘治理（触发：动画卡顿/缩放闪白/掉帧/渲染优化）。 |
-| | **`auto-compile-and-fix`** | [`.agents/skills/auto-compile-and-fix/SKILL.md`](file:///.agents/skills/auto-compile-and-fix/SKILL.md) | 任务完成后自动极速编译与失败自愈闭环（触发：编译校验/自动修复/构建验证）。 |
+| | **`auto-compile-and-fix`** | [`.agents/skills/auto-compile-and-fix/SKILL.md`](file:///.agents/skills/auto-compile-and-fix/SKILL.md) | 任务完成后自动极速编译与失败自愈闭环、前端门禁与度量（触发：编译校验/自动修复/构建验证/门禁）。 |
 | | **`clean-code-refactoring`** | [`.agents/skills/clean-code-refactoring/SKILL.md`](file:///.agents/skills/clean-code-refactoring/SKILL.md) | 桌面端与 Web 混合架构逻辑去重、结构精简与样板消除（触发：代码精简/去冗余/重构优化）。 |
 | | **`iterative-modification-hygiene`** | [`.agents/skills/iterative-modification-hygiene/SKILL.md`](file:///.agents/skills/iterative-modification-hygiene/SKILL.md) | 连续迭代代码卫生、AST 语法静态校验与防幽灵残余（触发：多次修改代码/清理冗余/代码卫生）。 |
 
@@ -164,10 +162,10 @@
 
 前端按功能域模块化解耦，严禁向入口文件堆砌业务代码：
 
-- **`src/main.js`**：唯一编排入口。**不收集 DOM 引用（`ctx.el` 已于阶段 7 批次 B 废除，各模块经 `src/lib/el-binder.js` 的 `bindAll` 按需自绑定）**，仅构建共享上下文（`ctx.*`：`flowDom` + `viewStore` / `settingsStore` / `attachmentsStore` / `flowStore` store 引用 + `ctx.flowView` 视图派生缓存 + `ctx.api`）并按依赖顺序初始化各模块；
-- **`src/lib/`**：跨模块共享基础件（`dom-utils.js` 文本转义、`icons.js` 手绘 SVG 图元、`markdown-renderer.js` Markdown 渲染引擎、`view-constants.js` 四态常量、`event-bus.js` 极简同步事件总线、`el-binder.js` DOM 按需绑定（`bindAll` 全局按 id / `bindEl` 容器内按 id，阶段 7 批次 B）、`contracts.js` 事件通道契约表（bus / Store action / `pi:*` 内核桥接三类归口，含 `ui:workspace-changed` 与 `flow:response`（payload 必带 taskId））+ 跨模块显式 import 契约（flow-render 纯渲染接口、flow-state-view 视图层分层、el-binder）+ `ctx.api` 函数槽契约 @typedef 定型（全量槽位按属主模块分组登记 + 三类保留原因注解，新增槽位必须同步登记，严禁幽灵槽/兼容壳复发）。
-- **`src/modules/`**：按功能域拆分的 UI 业务模块（`view-mode.js`、`settings-navigation.js`、`model-panel.js`、`custom-provider-panel.js`、`kernel-panel.js`、`flow-ui.js`、`flow-stream.js`、`flow-pipeline.js`、`flow-file-changes.js`、`flow-rollback.js`、`task-panel.js`、`packages-panel.js`、`workspace-panel.js`、`sessions-panel.js`、`global-interactions.js`、`search-input.js`、`file-attachments.js`、`preferences.js`、`window-controls.js` 等；`flow-render.js` 纯渲染层、`flow-dom.js` Flow 域只读 DOM 引用层、`flow-state-view.js` Flow 视图派生缓存唯一属主（阶段 3 / 3b / 7 批次 A 落地））。跨模块调用通过 `ctx.api.<fn>()` 与显式 import；**纯渲染助手已迁至 `flow-render.js`（无副作用、无共享状态），其它模块直接 `import { ... } from './flow-render.js'`**；**Flow 视图分层铁律（阶段 7 批次 A）：流式「纯数据」（responseText / thinkingText / errorMessage / lastUserQuery / hasReceivedDelta / interruptSendTaskId / lastSentPrompt / lastSentAttachments / lastImagePayloads / thinkingStartTime 等 11 字段）一律经 `flowStore.for(taskId)` 分仓读写（分仓键经 `resolveStreamTaskId` 解析：显式 id 优先→前台活跃任务→事件帧 task_id→哨兵分仓），严禁 `flow.<纯数据>` 裸写（度量断言 = 0）；视图派生缓存（renderedToolCards / currentSteps / active*Step / 计时器 / activeTurnRefs / followBottom）一律归 `flow-state-view.js` 的 `flowView`（Object.seal 封口，严禁入 store）**；**Flow 域只读 DOM 引用由 `createFlowDom()` 产出挂到 `ctx.flowDom`（内部经 el-binder 自取），flow-* 模块改读 `flowDom.flow*`；其余模块 DOM 引用一律模块内 `bindAll({...})` 自绑定自己的 id 子集，严禁解构 `ctx.el`（已废除）**；横切通知（fire-and-forget，如 `ui:toast`）走 `event-bus.js` 的 `bus.on` / `bus.emit`（事件须在 `contracts.js` 契约表登记）；控制流 / 状态迁移走 Store action（如 `viewStore.morph(mode, opts)`）或显式 import；**共享可变状态一律归 `src/services/stores/` 的唯一属主（`viewStore` / `settingsStore` / `attachmentsStore` / `flowStore`），严禁跨模块直改 `view.x` / `settings.x` / `attachments.x`（含解构后裸名）**；
-- **`src/services/stores/`**：共享可变状态唯一属主（无 DOM、有状态、有行为）。`view-store.js`（四态界面状态机 `morph`/`set`，控制流命令禁上总线）、`settings-store.js`（通道抽屉/官方目录/认证缓存/激活工作区）、`attachments-store.js`（输入框附件胶囊）、`flow-store.js`（Flow 流式纯数据唯一属主，**按 taskId 分仓** `flowStore.for(taskId)`：作用域实例记忆化 + 白名单 `set` + `appendResponse`（同步 + bus.emit `flow:response` 必带 taskId）+ 空键哨兵归一；**阶段 7 批次 A 起接管全部 11 个纯数据字段**，`flow.*` 裸写度量断言 = 0）。**Store action 一律同步、禁 async/await、禁微任务调度**（阶段 2 铁律热区：同步探测不变量 / 前台门禁 taskId / Task 分仓）；
+- **`src/main.js`**：唯一编排入口。**不收集 DOM 引用（`ctx.el` 已彻底废除，各模块经 `src/lib/el-binder.js` 的 `bindAll` 按需自绑定）**，仅构建共享上下文（`ctx.*`：`flowDom` + `viewStore` / `settingsStore` / `attachmentsStore` / `flowStore` store 引用 + `ctx.flowView` 视图派生缓存 + `ctx.api`）并按依赖顺序初始化各模块；
+- **`src/lib/`**：跨模块共享基础件（`dom-utils.js` 文本转义、`icons.js` 手绘 SVG 图元、`markdown-renderer.js` Markdown 渲染引擎、`view-constants.js` 四态常量、`event-bus.js` 极简同步事件总线、`el-binder.js` DOM 按需绑定（`bindAll` 全局按 id / `bindEl` 容器内按 id）、`contracts.js` 事件通道契约表（bus / Store action / `pi:*` 内核桥接三类归口，含 `ui:workspace-changed` 与 `flow:response`（payload 必带 taskId））+ 跨模块显式 import 契约（flow-render 纯渲染接口、flow-state-view 视图层分层、el-binder）+ `ctx.api` 函数槽契约 @typedef 定型（全量槽位按属主模块分组登记 + 三类保留原因注解，新增槽位必须同步登记，严禁幽灵槽/兼容壳复发）。
+- **`src/modules/`**：按功能域拆分的 UI 业务模块（`view-mode.js`、`settings-navigation.js`、`model-panel.js`、`custom-provider-panel.js`、`kernel-panel.js`、`flow-ui.js`、`flow-stream.js`、`flow-pipeline.js`、`flow-file-changes.js`、`flow-rollback.js`、`task-panel.js`、`packages-panel.js`、`workspace-panel.js`、`sessions-panel.js`、`global-interactions.js`、`search-input.js`、`file-attachments.js`、`preferences.js`、`window-controls.js` 等；`flow-render.js` 纯渲染层、`flow-dom.js` Flow 域只读 DOM 引用层、`flow-state-view.js` Flow 视图派生缓存唯一属主）。跨模块调用通过 `ctx.api.<fn>()` 与显式 import；**纯渲染助手已迁至 `flow-render.js`（无副作用、无共享状态），其它模块直接 `import { ... } from './flow-render.js'`**；**Flow 视图分层铁律：流式「纯数据」（responseText / thinkingText / errorMessage / lastUserQuery / hasReceivedDelta / interruptSendTaskId / lastSentPrompt / lastSentAttachments / lastImagePayloads / thinkingStartTime 等 11 字段）一律经 `flowStore.for(taskId)` 分仓读写（分仓键经 `resolveStreamTaskId` 解析：显式 id 优先→前台活跃任务→事件帧 task_id→哨兵分仓），严禁 `flow.<纯数据>` 裸写（度量断言 = 0）；视图派生缓存（renderedToolCards / currentSteps / active*Step / 计时器 / activeTurnRefs / followBottom）一律归 `flow-state-view.js` 的 `flowView`（Object.seal 封口，严禁入 store）**；**Flow 域只读 DOM 引用由 `createFlowDom()` 产出挂到 `ctx.flowDom`（内部经 el-binder 自取），flow-* 模块改读 `flowDom.flow*`；其余模块 DOM 引用一律模块内 `bindAll({...})` 自绑定自己的 id 子集，严禁解构 `ctx.el`（已废除）**；横切通知（fire-and-forget，如 `ui:toast`）走 `event-bus.js` 的 `bus.on` / `bus.emit`（事件须在 `contracts.js` 契约表登记）；控制流 / 状态迁移走 Store action（如 `viewStore.morph(mode, opts)`）或显式 import；**共享可变状态一律归 `src/services/stores/` 的唯一属主（`viewStore` / `settingsStore` / `attachmentsStore` / `flowStore`），严禁跨模块直改 `view.x` / `settings.x` / `attachments.x`（含解构后裸名）**；
+- **`src/services/stores/`**：共享可变状态唯一属主（无 DOM、有状态、有行为）。`view-store.js`（四态界面状态机 `morph`/`set`，控制流命令禁上总线）、`settings-store.js`（通道抽屉/官方目录/认证缓存/激活工作区）、`attachments-store.js`（输入框附件胶囊）、`flow-store.js`（Flow 流式纯数据唯一属主，**按 taskId 分仓** `flowStore.for(taskId)`：作用域实例记忆化 + 白名单 `set` + `appendResponse`（同步 + bus.emit `flow:response` 必带 taskId）+ 空键哨兵归一；接管全部 11 个纯数据字段，`flow.*` 裸写度量断言 = 0）。**Store action 一律同步、禁 async/await、禁微任务调度**（同步探测不变量 / 前台门禁 taskId / Task 分仓）；
 - **`src/styles/`**：按功能域拆分的样式文件（`tokens.css`、`base.css`、`layout.css`、`flow.css`、`markdown.css`、`settings.css`、`packages.css`、`overlays.css` 等），`src/styles.css` 仅为 `@import` 聚合入口；
 - **`src/services/`**：与 UI 解耦的前端服务层（IPC 桥接、配置、流式客户端、任务/会话/工作区等），**严禁**在 service 中直接操作 UI DOM；其中 `src/services/stores/` 为共享可变状态唯一属主（见上）。
 
@@ -177,14 +175,19 @@
 
 ### 常用命令
 - **极速编译检查（首选，~1s）**：`npm run check`
+- **前端静态校验门禁（语法 + import 图 + 循环依赖，重构必做）**：`npm run check:fe`
+- **耦合度量基线检查（裸写断言 = 0 / 契约槽位监控）**：`npm run measure:coupling`
 - **桌面端开发调试**：`npm run dev`
 - **构建测试（生成二进制，不打包）**：`npm run build:check`
 - **正式发布构建（生成安装包）**：`npm run build`
 - **Rust 后端语法检查**：`cargo check`（位于 `src-tauri` 目录）
 
-> 🛡️ **后端命令层规范（阶段 5 落地）**：Tauri IPC 命令按领域拆至 `src-tauri/src/commands/`（`file` ↔ 前端文件操作、`window` ↔ 窗口/通知、`agent` ↔ Agent RPC/任务/模型/工作区、`session` ↔ 会话索引、`rollback` ↔ 回退/fork/文件撤回、`workspace_cmd` ↔ 多预设工作区与 code-area 路由、`skills` ↔ 运行态技能规则、`version` ↔ 内核版本检测）；`lib.rs` 仅保留 `invoke_handler!` 汇总与 `run()` 启动；`config_manager.rs` 拆为 `config_manager/{io,schema,migrate,validate}.rs`（`mod.rs` `pub use` 再导出，调用方 `use` 路径不变）。新增/修改 IPC 命令时，应落在对应领域子模块，而非 `lib.rs`。
+> 🛡️ **后端命令层规范**：Tauri IPC 命令按领域拆至 `src-tauri/src/commands/`（`file` ↔ 前端文件操作、`window` ↔ 窗口/通知、`agent` ↔ Agent RPC/任务/模型/工作区、`session` ↔ 会话索引、`rollback` ↔ 回退/fork/文件撤回、`workspace_cmd` ↔ 多预设工作区与 code-area 路由、`skills` ↔ 运行态技能规则、`version` ↔ 内核版本检测）；`lib.rs` 仅保留 `invoke_handler!` 汇总与 `run()` 启动；`config_manager.rs` 拆为 `config_manager/{io,schema,migrate,validate}.rs`（`mod.rs` `pub use` 再导出，调用方 `use` 路径不变）。新增/修改 IPC 命令时，应落在对应领域子模块，而非 `lib.rs`。
 
-### 多预设工作区与分层原则
+### 多预设工作区与路由调度中枢
 - **IPC 指令**：`pi_list_workspaces`（列出预设与运行时状态）、`pi_get_active_workspace`（获取当前生效工作区）、`pi_set_active_workspace(id)`（物化副本 ➔ 持久化 ➔ 切换 ➔ 空闲重启重锚 CWD）；
-- **公共预设 (`workspaces/`)**：`default-area`、`code-area`、`research-area`，随安装包公开发布，注册于 `tauri.conf.json` 的 `bundle.resources`；
-- **私人定制工作区 (`custom-workspaces/`)**：专有 Agent 解决方案，作为私有资产物理隔离（`.gitignore` 保护），严禁随安装包打包，由开发者线下加密定向分发交付。
+- **公共预设 (`workspaces/`)**：
+  - `default-area`：默认工作区；
+  - `code-area`：**全局编码技能集与路由调度中枢**（物理 CWD 驻留 `code-area`，经 `rfd` 原生选择器路由外部目标项目，透明注入目标项目 `AGENTS.md` / `README.md`，免污染目标项目）；
+  - `research-area`：深度研究与探索预设；
+- **随安装包分发**：注册于 `tauri.conf.json` 的 `bundle.resources`，首次选中整目录物化复制至 `~/.pi-dl/workspaces/<id>/` 作为运行时副本。

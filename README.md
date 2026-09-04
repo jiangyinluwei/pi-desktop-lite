@@ -89,16 +89,16 @@ pi-desktop-lite/
 ├── .mytools/pi-body/           # 最新 Pi Agent Release 引擎包 (含 pi-windows-x64.7z 压缩包，开发前需解压为 pi-windows-x64 目录)
 ├── default-area/               # Pi 默认工作区目录（打包与运行时隔离工作空间）
 ├── workspaces/                 # 公共预设工作区模板（code-area 代码工程中枢 / research-area 深度调研区）
-├── custom-workspaces/          # [私有化] 私人定制/专有交付工作区（.gitignore 物理隔离，不随安装包打包，定向分发）
-├── scripts/                    # 自动化与环境配置脚本 (tauri.js, check.js)
+├── scripts/                    # 自动化与环境配置脚本 (tauri.js, check.js, check-frontend.js, measure-coupling.js)
 ├── src/                        # 前端页面源码与运行时资源
 │   ├── assets/                 # 静态资源 (logo.svg, logo.ico, 手绘 SVG 图标)
-│   ├── lib/                    # 跨模块共享基础件 (dom-utils, icons, markdown-renderer, view-constants, event-bus 同步事件总线, el-binder DOM 按需绑定, contracts 事件通道契约表 + api 槽契约定型)
+│   ├── lib/                    # 跨模块共享基础件 (dom-utils, icons, markdown-renderer, view-constants, event-bus 同步事件总线, el-binder DOM 按需自绑定, contracts 事件通道契约表 + api 槽契约定型)
 │   ├── modules/                # 按功能域拆分的 UI 业务模块（由 main.js 统一编排；flow-render 纯渲染 / flow-dom 只读 DOM 引用 / flow-state-view 视图派生缓存属主）
 │   │   ├── view-mode.js        # 四态状态机与设置页路由
 │   │   ├── flow-ui.js          # Flow 渲染核心：Markdown、轮次 DOM、悬浮提问、上下定位导航
 │   │   ├── flow-render.js      # Flow 纯渲染层：工具/思维/阶段卡片创建、入参/结果 HTML 格式化（无副作用，显式 import）
-│   │   ├── flow-dom.js         # Flow 域只读 DOM 引用层：createFlowDom(el) → ctx.flowDom，flow-* 改读 flowDom.flow*（阶段 3b）
+│   │   ├── flow-dom.js         # Flow 域只读 DOM 引用层：createFlowDom() → ctx.flowDom，flow-* 模块只读引用
+│   │   ├── flow-state-view.js  # Flow 视图派生缓存唯一属主：flowView 密封对象（密封隔离，严禁入 store）
 │   │   ├── flow-stream.js      # 流式状态机、错误卡渲染与自动重连胶囊
 │   │   ├── flow-pipeline.js    # 提问下发、工具调用事件、自愈引擎与发送拦截
 │   │   ├── flow-file-changes.js # 会话文件变更收纳框（新增/修改/删除文件汇总，点击打开所在文件夹；按 Task 会话流缓存，回入 Flow 一致恢复；含逐条变更日志供回退预览/剪枝）

@@ -59,7 +59,7 @@ graph TD
 
 ### 4. 会话记录 (`pane-sessions`)
 - **前端内存过滤**：硬过滤仅保留 `has_complete_turn = true` 的有效会话，支持 200ms 防抖搜索与时间档位筛选；
-- **进入 Flow 管线 (`enterKernelSessionFlow`)**：原生深度剥离注入信封与附件绝对路径尾注，还原多轮对话并直通 Flow（置 `viewStore.set({ flowFromSettings: true })`（阶段 2 起 `view.flowFromSettings` 已收敛为 `viewStore` 唯一属主），空闲态右键/Esc 定向回退设置页会话 Tab）；
+- **进入 Flow 管线 (`enterKernelSessionFlow`)**：原生深度剥离注入信封与附件绝对路径尾注，还原多轮对话并直通 Flow（置 `viewStore.set({ flowFromSettings: true })`，空闲态右键/Esc 定向回退设置页会话 Tab）；
 - **清空规则**：「清空界面会话」经 `sketchConfirm` 二次确认后仅清空 UI 记录，**绝不删除磁盘内核 JSONL 文件**。
 
 ### 5. 工作区 (`pane-workspaces`)

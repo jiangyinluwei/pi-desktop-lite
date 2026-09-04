@@ -75,17 +75,27 @@ description: |
 
 ---
 
-## 🧩 前端模块化与降耦合架构
+## 🧩 前端模块化与降耦合架构 (Modular & Decoupled Architecture)
 
-- **功能域模块化**：`src/modules/` 按功能域拆分，`src/main.js` 唯一编排，跨模块协调收敛至 `ctx.*`；
-- **共享状态唯一属主 (阶段 2)**：`src/services/stores/` 下 `view-store.js` / `settings-store.js` / `attachments-store.js` / `flow-store.js` 为共享可变状态唯一属主（无 DOM、有状态、有行为），`ctx` 只留 store 引用；模块经解构取 `viewStore` / `settingsStore` / `attachmentsStore`，禁再解构裸对象 `ctx.view / ctx.settings / ctx.attachments`（阶段 2 已移除）。四态状态机落 `viewStore.morph(mode, opts)`（控制流命令禁上总线）；`view.*` / `settings.*` / `attachments.*` 裸写已清零；`flow.*` 纯数据字段按 taskId 分仓（`flowStore.for(taskId)`），视图派生缓存（`renderedToolCards` / `currentSteps` / `active*Step` / 计时器）属视图层暂留 `ctx.flow`（阶段 3 落地与阶段 3b 落地见下）；
-- **纯渲染层显式 import (阶段 3)**：`src/modules/flow-render.js` 收编 flow 簇「纯渲染」助手（工具/思维/阶段/伪运行卡创建、工具名/图标/摘要映射、入参/结果 HTML 格式化、ANSI 剥离、徽章刷新），调用方 `import { ... } from './flow-render.js'` 显式依赖，替代旧 `ctx.api` 字符串槽；阶段 3 已清退 `api.getFriendlyToolName` 等 13 个纯渲染槽（src 全量 `api.<slot>` 引用点 299→270、唯一槽 84→71、调用 151→142、模块 19→20、重复注册 0）。`flow.*` 纯数据字段迁 `flowStore.for(taskId)` 与视图缓存归位 `flow-state-view` 列入阶段 3b（需 taskId 穿透流式热路径，规避频闪/平台 bug）；
-- **Flow 域只读 DOM 引用层 (阶段 3b)**：`src/modules/flow-dom.js` 的 `createFlowDom(el)` 从 `ctx.el` 抽出 flow 子集挂 `ctx.flowDom`，flow-* 模块改读 `flowDom.flow*` 不再解构全量 `ctx.el`（阶段 3b 已落地，模块 20→21）；元素定位助手留待阶段 4 `el-binder` 接线。
-- **DOM 国产化（阶段 4，⚠️ 需 GUI 回归）**：`src/lib/el-binder.js` 的 `bindEl(scope, ids)`（+ 全局 `bindAll`）让模块只拿自己那棵 DOM、解绑 `ctx.el`，`main.js` 只留根 + 直接子容器。**涉铁律热区（流式 / 多任务直切 / 回退链），推迟到可运行 App 的 GUI 环境**；蓝图（`el-binder` 设计、Feature 作用域归属图 121 id→容器+属主、迁移顺序、组件级+7 项铁律回归矩阵）已备，见《GUI 回归专项》§4 / 《pi-desktop-lite-降耦合-第4阶段.md》。目标：「全量 `ctx` 解构」模块 19→0。
-- **事件总线降耦合 (阶段 1)**：`src/lib/event-bus.js` 极简同步 bus 收编「fire-and-forget」横切通知（`ui:*` / `flow:*`），`src/lib/contracts.js` 事件通道契约表统一登记（bus / Store action / `pi:*` 内核桥接三类归口）。横切通知（如 `ui:toast`、`ui:workspace-changed`）迁移为 `bus.emit` / `bus.on`；控制流 / 状态迁移仍走 Store action 或显式 import；
-- **函数槽契约定型 (阶段 6)**：`src/lib/contracts.js` 以 @typedef 登记全部保留的 ctx 函数槽（按属主模块分组 + 保留原因：流式热区 / 拦截语义 / 初始化顺序依赖），新增槽位必须同步登记；幽灵槽（注册零调用）与兼容壳已清退（`setViewMode` 壳等 5 项），`pi:view-change` / `pi:step-back` 经阶段 7 批次 C 评估**最终保留原通道**（铁律 3 热区，结论登记于 contracts.js）；
-- **Flow 视图分层与 DOM 自绑定 (阶段 7)**：流式「纯数据」一律经 `flowStore.for(taskId)` 分仓（`resolveStreamTaskId` 显式 id 优先解析），视图派生缓存归 `flow-state-view.js` 的 `flowView`（sealed），`flow.*` 裸写=0；各模块 DOM 引用经 `src/lib/el-binder.js` 的 `bindAll` 按需自绑定，`ctx.el` 已废除；剩余 61 个 api 槽按保留原因三类登记于 contracts.js（flow 簇约 40 槽显式化列阶段 8 候选）；
-- **构建与度量门禁**：`npm run check:fe`（全量前端语法 + import 图 + 循环依赖）与 `npm run measure:coupling`（耦合度量基线）支撑降耦合重构闭环。
+- **功能域模块化编排**：`src/modules/` 按功能域拆分（22 个模块），`src/main.js` 作为轻量唯一编排入口（约 100 行），仅构建共享上下文并按依赖顺序初始化各模块；
+- **共享可变状态唯一属主 (`src/services/stores/`)**：
+  - `viewStore`：四态界面状态机（`morph`/`set`），控制流命令禁上总线；
+  - `settingsStore`：通道抽屉、官方目录、认证缓存与工作区状态；
+  - `attachmentsStore`：输入框附件胶囊与多模态载荷；
+  - `flowStore`：Flow 流式 11 项纯数据唯一属主，**按 `flowStore.for(taskId)` 分仓**；严格遵循 **Store action 一律同步、严禁 async/await/微任务调度**，裸写完全清零（断言 = 0）；
+- **Flow 视图三层解耦与自绑定**：
+  - **纯渲染层 (`src/modules/flow-render.js`)**：无副作用、不读共享状态、不碰视图缓存的纯函数（卡片创建、映射、HTML 格式化等），调用方显式 `import`，彻底清退旧 `ctx.api` 纯渲染槽；
+  - **只读 DOM 引用层 (`src/modules/flow-dom.js`)**：`createFlowDom()` 产出挂载于 `ctx.flowDom`，flow 模块统一只读此引用；
+  - **视图派生缓存唯一属主 (`src/modules/flow-state-view.js`)**：`flowView` 密封对象（`renderedToolCards`、`currentSteps`、读秒计时器、`activeTurnRefs`、`followBottom`），严禁入 store；
+  - **DOM 按需自绑定 (`src/lib/el-binder.js`)**：各业务模块通过 `bindAll` / `bindEl` 按需自绑定自己的 DOM id 子集，**`ctx.el` 已彻底废除**；
+- **契约化通信与事件通道 (`src/lib/contracts.js`)**：
+  - 横切通知（fire-and-forget，如 `ui:toast`、`ui:workspace-changed`、`flow:response`）统一由 `src/lib/event-bus.js` 同步分发；
+  - 控制流与状态迁移走 Store action 或显式 import；
+  - `ctx.api` 函数槽以 JSDoc `@typedef` 全量契约定型（按属主分组登记 + 三类保留原因注解），杜绝幽灵槽与兼容壳复发；
+- **构建与质量度量门禁**：
+  - `npm run check:fe`：前端静态校验门禁（50 个 .js 模块语法 + import 图可解析 + 循环依赖检测）；
+  - `npm run check`：Rust 极速语法与类型校验（~1s）；
+  - `npm run measure:coupling`：耦合度量基线监控（确保共享状态裸写为 0、无超额重复注册）。
 
 ---
 

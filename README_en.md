@@ -81,14 +81,16 @@ pi-desktop-lite/
 ├── .mytools/pi-body/           # Bundled Pi Agent Release engine (contains pi-windows-x64.7z, extract to pi-windows-x64 before development)
 ├── default-area/               # Default workspace template & runtime isolation sandbox
 ├── workspaces/                 # Public preset workspace templates (code-area hub / research-area)
-├── custom-workspaces/          # [Private] Custom enterprise workspaces (.gitignore isolated, distributed offline)
-├── scripts/                    # Automation and build scripts (tauri.js, check.js)
+├── scripts/                    # Automation and build scripts (tauri.js, check.js, check-frontend.js, measure-coupling.js)
 ├── src/                        # Frontend source code and assets
 │   ├── assets/                 # Static assets (logo.svg, logo.ico, hand-drawn SVG icons)
 │   ├── lib/                    # Shared foundational utilities (dom-utils, icons, markdown-renderer, view-constants, event-bus sync event bus, el-binder on-demand DOM binding, contracts event-channel + api-slot contracts)
 │   ├── modules/                # Feature-scoped UI modules orchestrated by main.js (flow-render pure rendering / flow-dom read-only DOM refs / flow-state-view view-cache owner)
 │   │   ├── view-mode.js        # Four-state state machine & settings routing
 │   │   ├── flow-ui.js          # Flow rendering: Markdown, turns DOM, floating tip, turn navigation
+│   │   ├── flow-render.js      # Flow pure rendering: card factories, argument/result HTML formatting (side-effect free)
+│   │   ├── flow-dom.js         # Flow read-only DOM references: createFlowDom() -> ctx.flowDom
+│   │   ├── flow-state-view.js  # Flow view-derived cache owner: flowView sealed cache object
 │   │   ├── flow-stream.js      # Stream state machine, error cards, and auto-failover capsules
 │   │   ├── flow-pipeline.js    # Prompt dispatch, tool call events, self-healing pipeline
 │   │   ├── task-panel.js       # Background task capsule, sidebar, history restore

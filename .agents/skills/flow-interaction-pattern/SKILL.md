@@ -1,12 +1,12 @@
 ---
 name: flow-interaction-pattern
 description: |
-  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/阶段性输出 Point 切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-Point1-工具1-Point2-工具2...」真实因果链条一段一段拼接；③伪框占位机制（首 token 延迟期「Thinking (0.0s)...」伪思考框；工具参数流式期「工具调用(edit)... + 读秒 + running」伪工具运行框，真实卡就位即移除）；④Flow 界面任意区域滚轮事件委托至最外层滚动容器；⑤多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑥多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑦模型自动重连切换自愈流水线 (ModelFailoverEngine)；⑧输出卡底部手绘风格的保存操作栏；⑨会话完成后「文件变更」收纳框（flow-file-changes，收集新增/修改/删除的文件、点击条目在资源管理器中定位其所在文件夹；按 Task 会话流缓存至程序生命周期结束，右键退出再经历史/Task 记录回入 Flow 一致恢复）；⑩用户提问卡右侧一键复制提问按钮（prompt-copy-btn：常态透明无边框、悬浮显手绘边框，点击复制净化后原始提问并短暂变绿反馈，静态初始模板与动态历史轮次均生效）；⑪多任务直切自动挂起、历史记录智能重定向与状态隔离（任务直切原活跃任务无缝转入后台挂起、历史进入智能重定向至 restoreTaskToFlow 杜绝静态快照覆写实时 live turns、Flow DOM 防重入与工具切片引用自愈回填）；⑫会话回退与文件撤回（flow-rollback：轮次提问卡悬浮「回退到此处」→ SketchModal 确认 → 工具执行前快照还原「已修改/已删除」文件（新增文件永不撤回）→ 内核原生 RPC fork 历史节点回退 → 本地剪枝重渲 + 提问回填输入框 + 顶部浮窗 3 秒提醒结果）。当用户提出"flow界面交互"、"思维链流式展示"、"阶段性输出"、"Point卡"、"工具调用简略"、"单行思维"、"步骤切片"、"伪思考框"、"伪运行框"、"工具调用读秒"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"、"文件变更"、"修改了哪些文件"、"多任务直切"、"任务切换"、"自动挂起"、"历史记录重定向"、"防重入"、"会话回退"、"对话回退"、"回退到此处"、"文件撤回"、"撤销修改"时使用此技能。
+  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/阶段性输出 Point 切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-Point1-工具1-Point2-工具2...」真实因果链条一段一段拼接；③伪框占位机制（首 token 延迟期「Thinking (0.0s)...」伪思考框；工具参数流式期「工具调用(edit)... + 读秒 + running」伪工具运行框，真实卡就位即移除）；④Flow 界面任意区域滚轮事件委托至最外层滚动容器；⑤多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑥多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑦模型自动重连切换自愈流水线 (ModelFailoverEngine)；⑧输出卡底部手绘风格的保存操作栏；⑨会话完成后「文件变更」收纳框（flow-file-changes，收集新增/修改/删除的文件、点击条目在资源管理器中定位其所在文件夹；按 Task 会话流缓存至程序生命周期结束，右键退出再经历史/Task 记录回入 Flow 一致恢复）；⑩用户提问卡右侧一键复制提问按钮（prompt-copy-btn：常态透明无边框、悬浮显手绘边框，点击复制净化后原始提问并短暂变绿反馈，静态初始模板与动态历史轮次均生效）；⑪多任务直切自动挂起、历史记录智能重定向与状态隔离（任务直切原活跃任务无缝转入后台挂起、历史进入智能重定向至 restoreTaskToFlow 杜绝静态快照覆写实时 live turns、Flow DOM 防重入与工具切片引用自愈回填）；⑫会话回退与文件撤回（flow-rollback：轮次提问卡悬浮「回退到此处」→ SketchModal 确认 → 工具执行前快照还原「已修改/已删除」文件（新增文件永不撤回）→ 内核原生 RPC fork 历史节点回退 → 本地剪枝重渲 + 提问回填输入框 + 顶部浮窗 3 秒提醒结果）；⑬前端解耦分层架构（flowStore.for(taskId) 纯数据分仓、flowView 视图密封缓存、flow-render 纯渲染显式依赖、flow-dom 只读 DOM 引用与 el-binder 按需自绑定，严禁解构已废除的 ctx.el）。当用户提出"flow界面交互"、"思维链流式展示"、"阶段性输出"、"Point卡"、"工具调用简略"、"单行思维"、"步骤切片"、"伪思考框"、"伪运行框"、"工具调用读秒"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"、"文件变更"、"修改了哪些文件"、"多任务直切"、"任务切换"、"自动挂起"、"历史记录重定向"、"防重入"、"会话回退"、"对话回退"、"回退到此处"、"文件撤回"、"撤销修改"时使用此技能。
 ---
 
 # Flow 交互界面规范 (Flow Interaction Pattern)
 
-本技能定义 Flow 流式交互界面（`界面3 / data-view="flow"`）的架构分层、切片流水线、滚轮委托、轮次导航、模型自愈与会话净化规范。
+本技能定义 Flow 流式交互界面（`界面3 / data-view="flow"`）的前端分层架构、步骤切片流水线、滚轮委托、轮次导航、模型自愈、文件收纳、状态隔离与会话回退规范。
 
 ---
 
@@ -36,7 +36,13 @@ description: |
 ### 核心铁律
 1. **最终输出卡永不折叠**：`flow-response-card` 始终完全展开渲染 Markdown；
 2. **过程框体单行紧凑折叠**：思维切片、Point 阶段切片与工具切片在任何阶段（启动、流式、完成）**绝不自动展开**，支持手动点击 Header 展开详情；
-3. **真实 ReAct 时序交织**：步骤按 `思维1 ➔ 工具1 ➔ 思维2 ➔ 工具2 ➔ ...` 一段一段流式拼接。
+3. **真实 ReAct 时序交织**：步骤按 `思维1 ➔ 工具1 ➔ 思维2 ➔ 工具2 ➔ ...` 一段一段流式拼接；
+4. **前端解耦分层硬约束**：
+   - **流式纯数据归仓**：`responseText`、`thinkingText`、`errorMessage`、`lastUserQuery`、`hasReceivedDelta`、`interruptSendTaskId`、`lastSentPrompt`、`lastSentAttachments`、`lastImagePayloads`、`thinkingStartTime` 等 11 个纯数据字段一律通过 `flowStore.for(taskId)` 分仓读写（分仓键经 `resolveStreamTaskId` 解析），严格禁止 `flow.*` 纯数据裸写（度量断言 = 0）；Store action 一律同步执行，禁止 async/await/微任务挂起；
+   - **视图派生缓存密封**：`renderedToolCards`、`currentSteps`、`active*Step`、读秒计时器（`toolPseudoTimerInterval`、`toolRunTimerInterval`）、`activeTurnRefs`、`followBottom` 统一定义于 `src/modules/flow-state-view.js` 的 `flowView` 密封对象（`Object.seal` 封口保护，严禁入 Store）；
+   - **纯渲染助手显式 import**：工具/思维/阶段卡创建、工具名/图标/摘要映射、入参/结果 HTML 格式化、ANSI 剥离、徽章刷新等无副作用纯渲染函数统一定义于 `src/modules/flow-render.js`，各模块直接 `import { ... } from './flow-render.js'` 显式依赖，杜绝旧 `ctx.api` 纯渲染槽；
+   - **Flow 域 DOM 引用隔离与按需自绑定**：只读 DOM 引用由 `src/modules/flow-dom.js`（`createFlowDom`）产出挂载到 `ctx.flowDom`，flow-* 模块改读 `flowDom.flow*`；各模块通过 `src/lib/el-binder.js` 的 `bindAll` 按需自绑定自己的 DOM id 子集，**严禁解构已废除的 `ctx.el`**；
+   - **契约化事件派发**：横切通知经 `event-bus.js` 同步派发（`flow:response` 携带 taskId，`ui:toast` 等），事件通道在 `src/lib/contracts.js` 严格登记；控制流走 Store action 或显式 import。
 
 ---
 
@@ -54,11 +60,9 @@ description: |
 对齐「伪思考框」首 token 延迟显示机制，工具调用同样存在两段空窗延迟，均需即时视觉反馈：
 
 1. **伪思考框**：`thinking-start` 即插入 `Thinking (0.0s)...` 占位思维切片，100ms 读秒；真正捕捉到思维链 delta 后流式刷新首行预览，封口时若从未收到任何思维内容则直接移除；
-> **纯渲染层注记**：上述工具的占位/真实卡、思维切片、阶段(Point)卡与工具名/图标/摘要映射、入参/结果 HTML 格式化、徽章刷新等「无副作用」纯渲染助手统一定义于 `src/modules/flow-render.js`，调用方经显式 `import { ... } from './flow-render.js'` 使用（阶段 3 已把 13 个纯渲染槽从 `ctx.api` 清退）。卡片读秒/占位/清理仍由 `flow-pipeline.js`/`flow-stream.js` 编排，`flow.activeToolPseudoStep` / `flow.toolPseudoTimerInterval` / `flow.toolRunTimerInterval` 等视图缓存仍留 `ctx.flow`（阶段 3b 再归位）。
-> **Flow 域只读 DOM 引用层**：Flow 相关元素 id 由 `src/modules/flow-dom.js` 的 `createFlowDom(el)` 抽出挂到 `ctx.flowDom`，所有 Flow 模块改读 `flowDom.flowScrollArea` / `flowDom.flowConversation` 等（阶段 3b 落地，替代直接解构全量 `ctx.el`）；元素定位助手留待阶段 4 `el-binder` 接线。
 2. **伪工具运行框**：`toolcall-delta-start`（工具参数流式开始）即插入 `工具调用... + running + (0.0s)...` 占位卡（`flow-pipeline.js` 的 `ensureActiveToolPseudoStep`），100ms 读秒；参数流式结束（`toolcall-delta-end` 携带 `toolCall.name`）回填真实工具名；真实工具卡创建（`tool-start`）时移除占位卡，避免双卡重叠；
-3. **真实工具卡读秒**：`tool-start` 创建卡片时携带 `durationText: "(0.0s)..."` 与 `startTime`，`startToolRunTimer` 每 100ms 刷新读秒；`tool-end` 定格为 `(Xs)` 并清空 `flow.toolRunTimerInterval`；
-4. **状态清理铁律**：伪框与读秒计时器（`flow.activeToolPseudoStep` / `flow.toolPseudoTimerInterval` / `flow.toolRunTimerInterval`）必须在 `resetStreamState`、`resetCurrentTurnForResend`、`finalizeStream`、`thinking-start`、`text-start` 全部边界兜底清理，杜绝幽灵计时器与残留占位卡；伪卡不写入 `flow.currentSteps`，不污染历史快照。
+3. **真实工具卡读秒**：`tool-start` 创建卡片时携带 `durationText: "(0.0s)..."` 与 `startTime`，`startToolRunTimer` 每 100ms 刷新读秒；`tool-end` 定格为 `(Xs)` 并清空 `flowView.toolRunTimerInterval`；
+4. **状态清理铁律**：伪框与读秒计时器（`flowView.activeToolPseudoStep` / `flowView.toolPseudoTimerInterval` / `flowView.toolRunTimerInterval`）必须在 `resetStreamState`、`resetCurrentTurnForResend`、`finalizeStream`、`thinking-start`、`text-start` 全部边界兜底清理，杜绝幽灵计时器与残留占位卡；伪卡不写入 `flowView.currentSteps`，不污染历史快照。
 
 ### 历史快照卡片重绑铁律 (Snapshot Card Rebinding)
 
@@ -76,7 +80,7 @@ description: |
 ```javascript
 // 在 window 捕获阶段拦截，防止子元素消费后无法滚动外层
 window.addEventListener("wheel", (e) => {
-  if (currentView !== VIEW_FLOW || !flowScrollArea) return;
+  if (viewStore.mode !== VIEW_FLOW || !flowDom.flowScrollArea) return;
   const inner = e.target.closest(".thinking-body, .tool-body");
   if (inner) {
     const canUp = e.deltaY < 0 && inner.scrollTop > 0;
@@ -84,13 +88,13 @@ window.addEventListener("wheel", (e) => {
     if (canUp || canDown) return; // 子区域还有滚动空间时放行
   }
   e.preventDefault();
-  flowScrollArea.scrollTop += e.deltaY;
+  flowDom.flowScrollArea.scrollTop += e.deltaY;
 }, { passive: false, capture: true });
 ```
 
 ### 3.2 吸底跟随 (Sticky Bottom Follow)
-- **跟随开启**：滚动到底部（距底 ≤ 32px）置 `flow.followBottom = true`；
-- **跟随终止**：用户主动向上滚动时置 `flow.followBottom = false`，流式事件不再拉扯视口；
+- **跟随开启**：滚动到底部（距底 ≤ 32px）置 `flowView.followBottom = true`；
+- **跟随终止**：用户主动向上滚动时置 `flowView.followBottom = false`，流式事件不再拉扯视口；
 - **单次定位**：提交新提问、流式完成（`finalizeStream`）及终止提示追加后强制定位到底部。
 
 ---
@@ -201,23 +205,21 @@ flowchart TD
    - 从右上角任务抽屉、会话记录或系统通知中点击直接进入目标 Task 时，原前台活跃任务必须由 `TaskManager.setActiveTask` / `createTask` 自动转入后台挂起（`prevTask.isSuspended = true`）；
    - 切换前由 `archiveCurrentFlowToHistory()` 将前台 DOM 当前进度完整同步回原任务内存 `currentActive.turns`；**但若原任务仍在运行中（thinking / streaming / tool_exec / paused），绝对不调用 `conversationHistoryService.recordConversation()` 写入静态历史**，确立“完全终止才归档”铁律；
 2. **跨会话状态彻底重置与工具引用自愈回填**：
-   - 共享渲染管线 `renderTurnsIntoFlow` 在渲染新任务前，必须执行：
+   - 共享渲染管线 `renderTurnsIntoFlow`（`task-panel.js`）在渲染新任务前，必须执行：
      - `api.resetFileChanges()`：清空文件变更收纳框的 DOM 引用，防止旧任务的节点在清空 DOM 后残留；
-     - `flow.renderedToolCards.clear()`：清空旧任务工具卡片引用；
-     - `flow.activeThinkingStep = null`：重置活跃思考步骤；
-     - `flow.currentSteps = Array.isArray(turn.steps) ? [...turn.steps] : []`：对齐新任务当前轮次步骤快照；
-   - **末轮工具卡自愈回填**：`renderTurnsIntoFlow` 在创建末轮 DOM 后，遍历其中的 `.flow-step-tool` 节点回填至 `flow.renderedToolCards`，并在 `flow-pipeline.js` 的 `tool-update` / `tool-end` 中结合 DOM ID 动态检索与读秒更新兜底，保证切回运行中任务后工具卡绝不永久卡死在 `running`；
+     - `flowView.renderedToolCards.clear()`：清空旧任务工具卡片引用；
+     - `flowView.activeThinkingStep = null`：重置活跃思考步骤；
+     - `flowView.currentSteps = []`：重置步骤快照，杜绝跨会话残留；
+   - **末轮工具卡自愈回填**：`renderTurnsIntoFlow` 在创建末轮 DOM 后，遍历其中的 `.flow-step-tool` 节点回填至 `flowView.renderedToolCards`，并在 `flow-pipeline.js` 的 `tool-update` / `tool-end` 中结合 DOM ID 动态检索与读秒更新兜底，保证切回运行中任务后工具卡绝不永久卡死在 `running`；末轮纯数据回填写入当前任务分仓（`flowStore.for(task.id).set(...)`）；
 3. **Flow DOM 防重入与历史记录智能重定向**：
-   - **防重入铁律**：`restoreTaskToFlow` 与 `restoreConversationToFlow` 在首行校验 `if (viewStore.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id === targetId) return;`（阶段 2 起 `view.mode` 已收敛为 `viewStore` 唯一属主），已在 Flow 查看当前任务时绝不重复清空 DOM，防止流式截断与界面闪烁；
+   - **防重入铁律**：`restoreTaskToFlow` 与 `restoreConversationToFlow` 在首行校验 `if (viewStore.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id === targetId) return;`，已在 Flow 查看当前任务时绝不重复清空 DOM，防止流式截断与界面闪烁；
    - **历史入口智能重定向**：用户从界面1历史讯息抽屉点击卡片时，优先探测该会话是否在 `TaskManager` 中作为活跃/挂起任务存在。若存在，全链路直接重定向至 `restoreTaskToFlow`，严禁用静态历史旧 turns 覆写实时 live turns，严禁强行覆盖 `task.status = "completed"`；
    - **视觉标识互斥**：历史抽屉卡片探测后台运行态，当会话处于运行中时在 meta 区呈现手绘脉冲「运行中」微动效徽章；
 4. **收纳框与 Mini 胶囊自愈更新**：
    - 由 `api.restoreFileChangesFor(task.id)` 恢复目标任务在生命周期内累积的文件变更；
    - 切换完成后即时调用 `updateMiniTaskCapsuleUI()`，确保右上角 Mini 胶囊数字与后台挂起任务数量 100% 精确吻合。
 
-
-
-
+---
 
 ## 📌 11. 会话回退与文件撤回 (Flow Rollback: Session Rewind & File Restoration)
 
@@ -234,14 +236,14 @@ Flow 支持回退到任意一次历史对话（配合 pi 内核原生历史节�
 ### 11.2 Rust 还原与 RPC 路由
 - **`src-tauri/src/rollback.rs`**：`rollback_files(session_id, targets, dry_run)` 按 `(path, toolCallId)` 精确匹配**最早**快照（还原内容 = 回退点之后第一次变更前的状态）；采用**两阶段事务性保证（Phase 1 预检与内存解码，存在任何缺失/超限/解码失败立即中止且不触碰磁盘，彻底杜绝半撤回；`dry_run: true` 模式在 Phase 1 后无副作用直接返回；Phase 2 全部就绪后原子落盘写入）**；原生支持 0 字节空文件 base64 解码与空目录恢复；返回 `{ restored, restoredCount, missing, dryRun }`；路径键归一化（`\`→`/` + Windows 小写不敏感）；
 - **新 RPC 指令**（`src-tauri/src/commands/rollback.rs`）：`pi_get_fork_messages(task_id?)` / `pi_fork_session(task_id?, entry_id)` / `pi_rollback_files(task_id?, targets, dry_run?)`；task_id 为空路由主会话 Supervisor，否则经 `PiHostPool::send_command_to_task_with_response` 路由该 Task 专属内核进程；
-- **响应帧隔离铁律 (P2-2)**：`pending_responses` 等待表 + stdout 事件环中 `type=="response"` 帧按 id 唤醒 oneshot 等待者；无论有无等待者（如超时后响应姗姗来迟）统一 `continue` 丢弃，绝不落入前端广播通道产生杂散 IPC 帧。
+- **响应帧隔离铁律**：`pending_responses` 等待表 + stdout 事件环中 `type=="response"` 帧按 id 唤醒 oneshot 等待者；无论有无等待者（如超时后响应姗姗来迟）统一 `continue` 丢弃，绝不落入前端广播通道产生杂散 IPC 帧。
 
 ### 11.3 前端编排 (`src/modules/flow-rollback.js`)
 - **入口**：轮次提问卡右侧「回退到此处」按钮（`.flow-rollback-btn`，复用手绘 rewind 图元；常态隐藏、悬浮提问卡显现、常态透明无边框悬浮显手绘边框）；`flowConversation` 事件委托，按 `.flow-message-group` DOM 顺序定位轮次下标（历史轮次与当前轮次统一入口）；
 - **守卫**：任务生成中（thinking / streaming / tool_exec）禁止回退；轮次下标越界拦截；
 - **预览**：`api.collectRollbackPreview(taskId, fromIndex, turns)`（`flow-file-changes.js`）——汇总回退点之后全部变更日志，按路径取最早动作：`add` → keepAddList（保留不撤回）；`modify/delete` → restoreList（携 toolCallId 供快照精确匹配）；
-- **确认与大文件明示提醒 (P3-1)**：弹窗前执行 `pi_rollback_files(dry_run: true)` 预检；`SketchModal`（`detailHtml` 富文本详情）列出将恢复的修改/删除文件与保留的新增文件；若检测到超过 8MB 快照上限的大文件，顶部渲染醒目手绘警告横幅（`.rollback-warning-banner`），条目标记朱红 `超限 >8MB` 徽标，弹窗转为只读警示模式，明确告知已被保守阻止且 0 写入磁盘；
-- **执行执行链路 (P2-1 原子性重构)**：
+- **确认与大文件明示提醒**：弹窗前执行 `pi_rollback_files(dry_run: true)` 预检；`SketchModal`（`detailHtml` 富文本详情）列出将恢复的修改/删除文件与保留的新增文件；若检测到超过 8MB 快照上限的大文件，顶部渲染醒目手绘警告横幅（`.rollback-warning-banner`），条目标记朱红 `超限 >8MB` 徽标，弹窗转为只读警示模式，明确告知已被保守阻止且 0 写入磁盘；
+- **执行执行链路 (两阶段原子性)**：
   ① **回退点预解析**：`pi_get_fork_messages` 定位内核历史节点；
   ② **快照预检**：`pi_rollback_files(dry_run: true)`，存在任何缺失或超限立即保守中止，磁盘与内核 0 变更；
   ③ **内核 fork 先行**：`pi_fork_session` 创建新分支；若失败，此时磁盘 0 写入，环境完全干净；
