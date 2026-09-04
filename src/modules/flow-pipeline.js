@@ -902,8 +902,19 @@ export function initFlowPipeline(ctx) {
       // 同一个 Flow 使用同一个 currentTask.id 保持会话上下文
       // 缓存构造后的 Prompt 与图片 Payload 至本任务分仓，供自动重连切换引擎同 Turn 复用重发
       flowStore.for(currentTask?.id).set({ lastSentPrompt: promptToSend, lastImagePayloads: imagePayloads });
+
+      // 发送前预检：若在图片准备或排队期间用户已点击终止，直接短路退出
+      if (currentTask && (currentTask.isAborted || currentTask.status === "aborted")) {
+        console.warn(`[FlowPipeline] Task ${currentTask.id} was aborted before sendPrompt, skipping.`);
+        return;
+      }
+
       await piClient.sendPrompt(promptToSend, imagePayloads, null, currentTask.id);
     } catch (err) {
+      // 若任务已被用户手动终止，静默忽略异常，严禁复活为 error 态或渲染错误卡片
+      if (currentTask && (currentTask.isAborted || currentTask.status === "aborted")) {
+        return;
+      }
       console.error("Failed to send prompt to Pi:", err);
       piClient.isStreaming = false;
       if (currentTask) {

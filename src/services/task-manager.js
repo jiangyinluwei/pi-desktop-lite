@@ -316,9 +316,10 @@ export class TaskManager extends EventTarget {
    */
   suspendCurrentFlow() {
     const current = this.getCurrentActiveTask();
-    if (current) {
-      current.isSuspended = true;
+    if (!current || current.isAborted || current.status === "aborted") {
+      return null;
     }
+    current.isSuspended = true;
     this.currentActiveTaskId = null;
     this.dispatchEvent(new CustomEvent("flow-suspended", { detail: current }));
     this.dispatchEvent(new CustomEvent("tasks-changed", { detail: { tasks: this.getAllTasks() } }));
@@ -452,6 +453,11 @@ export class TaskManager extends EventTarget {
   handleTaskEvent(taskId, data) {
     const task = this.tasks.get(taskId);
     if (!task) return;
+
+    // 铁律：已显式手动终止 (isAborted / aborted) 的任务，绝对禁止被任何迟到的内核事件复活或覆盖状态！
+    if (task.isAborted || task.status === "aborted") {
+      return;
+    }
 
     // 压入事件缓冲区
     task.events.push(data);

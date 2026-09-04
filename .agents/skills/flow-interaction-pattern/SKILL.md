@@ -121,9 +121,14 @@ window.addEventListener("wheel", (e) => {
 
 ## 📌 5. 后台任务、双通道解耦与中断发送
 
-### 5.1 挂起与终止双通道
-- **通道 1：后台挂起 (Esc / 右键)**：`isSuspended = true` 转入后台 `TaskManager`，界面回退至 Focus 专注版，绝不调用 `abort`；
-- **通道 2：显式中止 (⏹ 按钮)**：彻底杀死 Agent 生成，追加手绘草图风格「刚刚会话已手动终止」提示（`.flow-abort-callout`）。
+### 5.1 挂起与终止双通道与强制终止铁律 (Decoupled Suspend & Force Termination Invariance)
+- **通道 1：后台挂起 (Esc / 右键)**：仅在运行态 (`status === "thinking" | "streaming" | "tool_exec"`) 或暂停态 (`paused`) 触发，`isSuspended = true` 转入后台 `TaskManager`，界面回退至 Focus 专注版，绝不调用 `abort`；
+- **通道 2：显式强制终止 (⏹ 按钮)**：
+  1. **Rust 后端物理强杀**：`SessionHost` 立即设置 `is_aborted = true`，阻断后续未决 prompt 下发并直接强杀子进程 (`child.kill()`)，从底层 100% 杜绝 Token 消耗与后台残留；
+  2. **事件流派发拦截**：`PiClient` 登记 `abortedTaskIds`，迟到的流式事件全量过滤，禁止将 `isStreaming` 重置为 true；
+  3. **任务状态防复活**：`TaskManager.handleTaskEvent` 严禁任何迟到事件修改已终止任务的状态（禁止复活为 thinking / streaming / completed）；
+  4. **已终止任务防后台挂起**：终止后的任务按 Esc / 右键回退时，`handleGlobalStepBack` 判定 `isRunning = false`，绝不走挂起通道，直接归档至历史并调用 `removeTask` 彻底释放内存与胶囊计数；
+  5. **追加提示**：追加手绘草图风格「刚刚会话已手动终止」提示（`.flow-abort-callout`）。
 
 ### 5.2 手动终止绝对禁止触发重连铁律
 用户点击「⏹ 终止」时，系统立即执行 `modelFailoverEngine.markTaskAborted(taskId)` 与 `cancel()`，**全链路严禁触发任何自动重连或模型切换**。

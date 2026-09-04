@@ -25,7 +25,7 @@ A desktop research and reasoning application with minimalist hand-drawn sketch &
 ## ✨ Core Features
 
 - **Four-State Interface & Flow Streaming**: Detailed, Focus, Flow stream, and full-page Settings modes with single-line thinking chains and Typedown-grade Markdown rendering;
-- **Background Tasks & Routed Workspaces**: Seamless task background suspension, historical turn restoration, `code-area` non-polluting routing hub, and multi-preset switching;
+- **Background Tasks & Routed Workspaces**: Seamless task background suspension, explicit termination with process hard-kill and anti-resurrection guards, historical turn restoration, `code-area` non-polluting routing hub, and multi-preset switching;
 - **Hand-Drawn Sketch Aesthetics**: Universal hand-drawn SVG vector icons, paper-texture dual-mode themes, and custom `SketchSelect` / `SketchAutoFill` / `SketchModal` components;
 - **Rust Performance & Self-Healing Core**: Kernel-level orphan process harvesting, smooth auto-reconnect insurance on crashes, Node.js preflight checks, and native desktop integration.
 

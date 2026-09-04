@@ -29,6 +29,8 @@ pub struct SessionHost {
     provider: Arc<RwLock<Option<String>>>,
     model_id: Arc<RwLock<Option<String>>>,
     child_handle: Arc<Mutex<Option<tokio::process::Child>>>,
+    /// 是否已被显式手动终止（阻断后续任何 prompt 发送与迟到指令）
+    is_aborted: Arc<RwLock<bool>>,
     /// 带响应 RPC 指令等待表 (请求 id → 响应通道)，供 fork / get_fork_messages 等需回读内核的指令使用
     pending_responses: Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>>,
 }
@@ -47,6 +49,7 @@ impl SessionHost {
             job_object,
             stdin_tx: Arc::new(Mutex::new(None)),
             is_active: Arc::new(RwLock::new(false)),
+            is_aborted: Arc::new(RwLock::new(false)),
             started_at: Instant::now(),
             provider: Arc::new(RwLock::new(None)),
             model_id: Arc::new(RwLock::new(None)),
@@ -56,7 +59,17 @@ impl SessionHost {
     }
 
     pub async fn is_running(&self) -> bool {
-        *self.is_active.read().await
+        *self.is_active.read().await && !*self.is_aborted.read().await
+    }
+
+    pub async fn is_aborted(&self) -> bool {
+        *self.is_aborted.read().await
+    }
+
+    pub async fn is_alive(&self) -> bool {
+        let handle_guard = self.child_handle.lock().await;
+        let stdin_guard = self.stdin_tx.lock().await;
+        handle_guard.is_some() && stdin_guard.is_some() && !*self.is_aborted.read().await
     }
 
     pub fn started_at(&self) -> Instant {
@@ -284,6 +297,11 @@ impl SessionHost {
 
     /// 向该 Task 子进程发送 JSON RPC 指令
     pub async fn send_command(&self, command_val: Value) -> Result<(), String> {
+        let is_abort_cmd = command_val.get("type").and_then(|v| v.as_str()) == Some("abort");
+        if *self.is_aborted.read().await && !is_abort_cmd {
+            return Err(format!("Task {} has been aborted; command rejected", self.task_id));
+        }
+
         let sender = {
             let guard = self.stdin_tx.lock().await;
             guard.clone()
@@ -366,19 +384,10 @@ impl SessionHost {
         }
     }
 
-    /// 中止该 Task 的当前生成
-    pub async fn abort(&self) -> Result<(), String> {
+    /// 强制杀死该 Task 子进程并关闭输入通道
+    pub async fn stop_process(&self) {
+        *self.is_aborted.write().await = true;
         *self.is_active.write().await = false;
-        self.send_command(serde_json::json!({
-            "type": "abort"
-        }))
-        .await
-    }
-
-    /// 彻底终止并清理该 Task 子进程
-    pub async fn stop(&self) {
-        *self.is_active.write().await = false;
-        let _ = self.abort().await;
         {
             let mut w = self.stdin_tx.lock().await;
             *w = None;
@@ -387,6 +396,23 @@ impl SessionHost {
         if let Some(mut child) = handle_guard.take() {
             let _ = child.kill().await;
         }
+    }
+
+    /// 中止该 Task 的当前生成（先发 abort 指令再强杀子进程，彻底断绝后台残留）
+    pub async fn abort(&self) -> Result<(), String> {
+        *self.is_aborted.write().await = true;
+        *self.is_active.write().await = false;
+        let _ = self.send_command(serde_json::json!({
+            "type": "abort"
+        }))
+        .await;
+        self.stop_process().await;
+        Ok(())
+    }
+
+    /// 彻底终止并清理该 Task 子进程
+    pub async fn stop(&self) {
+        self.stop_process().await;
     }
 }
 
@@ -525,12 +551,17 @@ impl PiHostPool {
         initial_model: Option<(String, String)>,
         initial_thinking_level: Option<String>,
     ) -> Result<Arc<SessionHost>, String> {
-        {
+        let existing_session_id = {
             let hosts = self.hosts.read().await;
             if let Some(host) = hosts.get(task_id) {
-                return Ok(host.clone());
+                if host.is_alive().await {
+                    return Ok(host.clone());
+                }
+                Some(host.session_id.clone())
+            } else {
+                None
             }
-        }
+        };
 
         // 并发上限保护
         let active_count = self.get_active_tasks_count().await;
@@ -541,8 +572,8 @@ impl PiHostPool {
             ));
         }
 
-        // 会话 ID 与任务 ID 解耦：session_id 采用独立 UUID，避免桌面端会话在记录列表中因 task_ 前缀时间戳导致 ID 徽标同质化（如全部显示 task_178）
-        let session_id = uuid::Uuid::new_v4().to_string();
+        // 会话 ID 与任务 ID 解耦：session_id 复用已有 UUID（若已有），避免重启后历史断开
+        let session_id = existing_session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let host = Arc::new(SessionHost::new(
             task_id.to_string(),
             session_id,
@@ -584,10 +615,22 @@ impl PiHostPool {
             .get_or_create_host(&task_id, effective_model.clone(), effective_thinking.clone())
             .await?;
 
+        // 门禁 1：检查任务在拉起阶段是否已被用户取消
+        if host.is_aborted().await {
+            log::warn!("[SessionHost:{}] Prompt cancelled: task was aborted during host setup", task_id);
+            return Err(format!("Task {} was aborted", task_id));
+        }
+
         // 确保子进程运行的模型与用户指定的模型保持 100% 严格一致
         if let Some((ref provider, ref model_id)) = effective_model {
             host.ensure_model_and_thinking(provider, model_id, effective_thinking.as_deref())
                 .await?;
+        }
+
+        // 门禁 2：检查在模型配置同步阶段任务是否已被用户取消
+        if host.is_aborted().await {
+            log::warn!("[SessionHost:{}] Prompt cancelled: task was aborted during model sync", task_id);
+            return Err(format!("Task {} was aborted", task_id));
         }
 
         let (processed_message, _info) = self.primary_supervisor.inject_prompt(&request.message);
@@ -675,15 +718,22 @@ impl PiHostPool {
     /// 中止指定 Task 或中止全部
     pub async fn abort_task(&self, task_id: Option<String>) -> Result<(), String> {
         if let Some(ref id) = task_id {
-            let hosts = self.hosts.read().await;
-            if let Some(host) = hosts.get(id) {
+            let host = {
+                let hosts = self.hosts.read().await;
+                hosts.get(id).cloned()
+            };
+            if let Some(host) = host {
                 return host.abort().await;
             }
+            return Ok(());
         }
 
         // 若未指定 task_id，中止所有活跃子进程与主 supervisor
-        let hosts = self.hosts.read().await;
-        for host in hosts.values() {
+        let hosts = {
+            let hosts = self.hosts.read().await;
+            hosts.values().cloned().collect::<Vec<_>>()
+        };
+        for host in hosts {
             let _ = host.abort().await;
         }
         self.primary_supervisor.abort().await
