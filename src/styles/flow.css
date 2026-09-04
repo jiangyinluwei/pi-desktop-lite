@@ -355,6 +355,164 @@
   color: #34d399;
 }
 
+/* 提问「回退到此处」按钮：常态隐藏，悬浮提问卡时显现；常态透明无边框（1px 透明占位防抖），悬浮/聚焦显现手绘边框 */
+.flow-user-prompt-card .flow-rollback-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 3px;
+  margin-left: 2px;
+  padding: 3px;
+  font-family: inherit;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.15s ease;
+}
+
+.flow-user-prompt-card:hover .flow-rollback-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.flow-user-prompt-card .flow-rollback-btn:hover,
+.flow-user-prompt-card .flow-rollback-btn:focus-visible {
+  outline: none;
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  background: var(--sketch-box-bg);
+}
+
+/* 会话回退确认弹窗：文件清单（SketchModal detailHtml 富文本详情） */
+.sketch-modal-detail-html .rollback-section {
+  margin: 6px 0 2px;
+}
+
+.sketch-modal-detail-html .rollback-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  margin-bottom: 5px;
+}
+
+.sketch-modal-detail-html .rollback-file-list {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  max-height: 168px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sketch-modal-detail-html .rollback-file-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sketch-modal-detail-html .rollback-kind {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 5px;
+  border: 1px solid var(--sketch-border);
+  border-radius: 3px;
+  color: var(--ink-muted);
+}
+
+.sketch-modal-detail-html .rollback-kind.kind-delete {
+  color: #b91c1c;
+}
+
+.sketch-modal-detail-html .rollback-kind.kind-modify {
+  color: #92400e;
+}
+
+.sketch-modal-detail-html .rollback-kind.kind-add {
+  color: #047857;
+}
+
+.sketch-modal-detail-html .rollback-kind.kind-too-large {
+  color: #b91c1c;
+  border-color: rgba(185, 28, 28, 0.45);
+  background: rgba(185, 28, 28, 0.08);
+  font-weight: 600;
+}
+
+:root[data-theme="dark"] .sketch-modal-detail-html .rollback-kind.kind-delete {
+  color: #f87171;
+}
+
+:root[data-theme="dark"] .sketch-modal-detail-html .rollback-kind.kind-modify {
+  color: #fbbf24;
+}
+
+:root[data-theme="dark"] .sketch-modal-detail-html .rollback-kind.kind-add {
+  color: #34d399;
+}
+
+:root[data-theme="dark"] .sketch-modal-detail-html .rollback-kind.kind-too-large {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.sketch-modal-detail-html .rollback-path {
+  font-size: 11px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+/* 回退弹窗大文件超限警示横幅 (P3-1 明示提醒) */
+.sketch-modal-detail-html .rollback-warning-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #b91c1c;
+  background: rgba(185, 28, 28, 0.07);
+  border: 1.2px solid rgba(185, 28, 28, 0.35);
+  border-radius: 4px 6px 3px 5px;
+  box-sizing: border-box;
+}
+
+:root[data-theme="dark"] .sketch-modal-detail-html .rollback-warning-banner {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.sketch-modal-detail-html .rollback-warning-banner strong {
+  font-weight: 600;
+}
+
+.sketch-modal-detail-html .rollback-note {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+  padding: 6px 8px;
+  background: var(--sketch-tag-bg);
+  border: 1px dashed var(--sketch-border-subtle);
+  border-radius: 4px;
+}
+
 /* 会话流「注入提示」信息框：位于路由目标项目胶囊下方，集中展示所有调用模型前注入的上下文条目
    （Inner-Skill 运行态技能 / 路由 AGENTS.md / README.md / 命中技能 / 路由信封），
    随会话动态累积；直角矩形简洁风（非手绘），默认收起显示「注入提示」与注入数量，点击头部展开清单 */

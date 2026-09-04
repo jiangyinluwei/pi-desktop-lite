@@ -776,6 +776,7 @@ export function initFlowUi(ctx) {
         <p class="prompt-content">${escapeHtml(cleanQuery || (attachments.length > 0 ? `[附带 ${attachments.length} 个文件/图片]` : ""))}</p>
       </div>
       <button class="prompt-copy-btn" type="button" title="复制提问" aria-label="复制提问">${ICONS.copy}</button>
+      <button class="flow-rollback-btn" type="button" title="回退到此处（撤回此轮及之后的文件变更）" aria-label="回退到此处">${ICONS.rewind}</button>
     `;
     groupEl.appendChild(userPromptCard);
 

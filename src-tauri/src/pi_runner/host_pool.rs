@@ -12,6 +12,8 @@ use tauri::{AppHandle, Emitter};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::oneshot;
+use std::time::Duration;
 
 pub const MAX_CONCURRENT_TASKS: usize = 3;
 
@@ -27,6 +29,8 @@ pub struct SessionHost {
     provider: Arc<RwLock<Option<String>>>,
     model_id: Arc<RwLock<Option<String>>>,
     child_handle: Arc<Mutex<Option<tokio::process::Child>>>,
+    /// 带响应 RPC 指令等待表 (请求 id → 响应通道)，供 fork / get_fork_messages 等需回读内核的指令使用
+    pending_responses: Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>>,
 }
 
 impl SessionHost {
@@ -47,6 +51,7 @@ impl SessionHost {
             provider: Arc::new(RwLock::new(None)),
             model_id: Arc::new(RwLock::new(None)),
             child_handle: Arc::new(Mutex::new(None)),
+            pending_responses: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -91,6 +96,9 @@ impl SessionHost {
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+
+        // 会话回退快照守卫开关：仅桌面端拉起的内核进程启用内置扩展
+        cmd.env(crate::rollback::ROLLBACK_ENV_KEY, "1");
 
         #[cfg(windows)]
         {
@@ -147,9 +155,22 @@ impl SessionHost {
         let app_handle_for_events = self.app_handle.clone();
         let task_id_clone = self.task_id.clone();
         let is_active_clone = self.is_active.clone();
+        let pending_responses_clone = self.pending_responses.clone();
 
         tokio::spawn(async move {
             while let Some(mut event_val) = event_rx.recv().await {
+                // response 响应帧优先唤醒本地等待者（fork / get_fork_messages 等）；
+                // 无等待者（如超时后响应姗姗来迟）直接丢弃，绝不落入广播路径产生杂散 IPC 帧
+                if event_val.get("type").and_then(|v| v.as_str()) == Some("response") {
+                    if let Some(id) = event_val.get("id").and_then(|v| v.as_str()) {
+                        let mut guard = pending_responses_clone.lock().await;
+                        if let Some(tx) = guard.remove(id) {
+                            let _ = tx.send(event_val.clone());
+                        }
+                    }
+                    continue; // 响应帧仅回填等待者，无论有无等待者均不向前端广播
+                }
+
                 // 注入 task_id 确保前端路由精准分发
                 if let Value::Object(ref mut map) = event_val {
                     if !map.contains_key("task_id") {
@@ -279,6 +300,69 @@ impl SessionHost {
             Ok(())
         } else {
             Err(format!("Task {} process is not running or stdin is closed", self.task_id))
+        }
+    }
+
+    /// 向该 Task 子进程发送带 ID 关联并同步等待结果响应的 RPC 指令
+    /// (供 fork / get_fork_messages 等需回读内核结果的会话回退链路使用)
+    pub async fn send_command_with_response(
+        &self,
+        mut command_val: Value,
+        timeout_dur: Duration,
+    ) -> Result<Value, String> {
+        let id = format!(
+            "req_{}_{}",
+            self.task_id,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        );
+
+        if let Some(obj) = command_val.as_object_mut() {
+            obj.insert("id".to_string(), Value::String(id.clone()));
+        } else {
+            return Err("Command must be a JSON object".to_string());
+        }
+
+        let (resp_tx, resp_rx) = oneshot::channel::<Value>();
+        {
+            let mut guard = self.pending_responses.lock().await;
+            guard.insert(id.clone(), resp_tx);
+        }
+
+        if let Err(e) = self.send_command(command_val).await {
+            let mut guard = self.pending_responses.lock().await;
+            guard.remove(&id);
+            return Err(e);
+        }
+
+        match tokio::time::timeout(timeout_dur, resp_rx).await {
+            Ok(Ok(response_val)) => {
+                let success = response_val
+                    .get("success")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                if success {
+                    Ok(response_val.get("data").cloned().unwrap_or(Value::Null))
+                } else {
+                    let err = response_val
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("RPC command returned failure");
+                    Err(err.to_string())
+                }
+            }
+            Ok(Err(_)) => {
+                let mut guard = self.pending_responses.lock().await;
+                guard.remove(&id);
+                Err("Response channel dropped before receiving response".to_string())
+            }
+            Err(_) => {
+                let mut guard = self.pending_responses.lock().await;
+                guard.remove(&id);
+                Err(format!("RPC command timed out after {:?}", timeout_dur))
+            }
         }
     }
 
@@ -521,6 +605,29 @@ impl PiHostPool {
 
         host.send_command(val).await?;
         Ok(task_id)
+    }
+
+    /// 获取指定 Task 的会话 ID（供回退快照定位）
+    pub async fn get_task_session_id(&self, task_id: &str) -> Option<String> {
+        let hosts = self.hosts.read().await;
+        hosts.get(task_id).map(|h| h.session_id.clone())
+    }
+
+    /// 向指定 Task 的内核子进程发送带响应 RPC 指令（会话回退链路）
+    pub async fn send_command_to_task_with_response(
+        &self,
+        task_id: &str,
+        command: Value,
+        timeout: Duration,
+    ) -> Result<Value, String> {
+        let host = {
+            let hosts = self.hosts.read().await;
+            hosts
+                .get(task_id)
+                .cloned()
+                .ok_or_else(|| format!("Task {} 不存在或已结束", task_id))?
+        };
+        host.send_command_with_response(command, timeout).await
     }
 
     /// 向指定 Task 发送 Steer 指令

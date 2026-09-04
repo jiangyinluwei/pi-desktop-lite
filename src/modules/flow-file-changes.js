@@ -19,6 +19,8 @@ const FILE_WRITE_TOOLS = new Set([
   "write_to_file",
   "create_file",
   "save_file",
+  "new_file",
+  "new_empty_editor",
 ]);
 
 /** 文件编辑类工具（原地修改） */
@@ -44,8 +46,20 @@ const FILE_DELETE_TOOLS = new Set([
   "move_to_trash",
 ]);
 
-/** Shell 类工具（删除操作通常内嵌在 rm / del / Remove-Item 命令中，需启发式解析） */
+/** Shell 类工具（删除操作通常内嵌在 rm / del / Remove-Item 命令中，需启发式解析） — 兼容 default.bash 等命名空间 */
 const SHELL_TOOLS = new Set(["bash", "powershell", "cmd", "shell", "terminal", "run_command", "execute_command"]);
+const stripQuotes = (s) => String(s || "").trim().replace(/^"|"$/g, "").replace(/^'|'$/g, "").trim();
+
+/** 兼容命名空间前缀的工具集匹配（如 default.write / pi:write_file） */
+const matchToolSet = (toolSet, name) => {
+  const n = String(name || "").trim().toLowerCase();
+  if (toolSet.has(n)) return true;
+  const base = n.split(".").pop() || n;
+  if (toolSet.has(base)) return true;
+  const colonBase = base.split(":").pop() || base;
+  return toolSet.has(colonBase);
+};
+const isShellToolName = (name) => matchToolSet(SHELL_TOOLS, name);
 
 const KIND_LABELS = {
   add: "新增",
@@ -90,8 +104,69 @@ const restoreHomePath = (p) => {
   return raw.split(REDACTED_HOME_TOKEN).join(realHomeDir);
 };
 
-/** 从工具入参中提取文件绝对路径（兼容对象 / JSON 字符串与多文件入参结构） */
-const extractFilePaths = (args) => {
+/** 展开 ~ 与 [USER_HOME] 占位符 */
+const expandHome = (p, homeDir = realHomeDir) => {
+  let s = restoreHomePath(String(p || "").trim());
+  if (!s) return s;
+  if (homeDir && (s === "~" || s.startsWith("~/") || s.startsWith("~\\"))) {
+    s = homeDir + s.slice(1);
+  }
+  return s;
+};
+
+/** MSYS / Git-Bash 风格路径转换：/c/Users/x → C:/Users/x（/mnt/c/ 同理） */
+const normalizeMsys = (p) => {
+  const m = String(p || "").match(/^\/(?:mnt\/)?([a-z])\/(.+)$/i);
+  if (!m) return p;
+  return `${m[1].toUpperCase()}:/${m[2]}`;
+};
+
+/** 是否类 Windows 绝对路径（盘符 / UNC / Unix 根路径） */
+const isAbsoluteLike = (p) => /^[a-z]:[\\/]/i.test(p) || p.startsWith("\\\\") || p.startsWith("/");
+
+/** 以 base 为基准拼接相对路径（消化 ./ 与 ../） */
+const joinWithBase = (base, rel) => {
+  const parts = `${base.replace(/\\/g, "/")}/${rel.replace(/\\/g, "/")}`.split("/");
+  const out = [];
+  for (const seg of parts) {
+    if (!seg || seg === ".") continue;
+    if (seg === "..") { out.pop(); continue; }
+    out.push(seg);
+  }
+  return out.join("/");
+};
+
+// 内核会话 CWD（路由工作区物理路径）内存同步缓存
+let sessionCwdDir = "";
+const refreshSessionCwd = () => {
+  try {
+    workspaceService.getActiveWorkspace()
+      .then((ws) => {
+        if (ws?.path) sessionCwdDir = String(ws.path);
+      })
+      .catch(() => {});
+  } catch {}
+};
+refreshSessionCwd();
+
+const getBaseDirsSync = () => {
+  if (!sessionCwdDir) refreshSessionCwd();
+  return { home: realHomeDir, sessionCwd: sessionCwdDir };
+};
+
+/** 将任意相对/绝对/MSYS/Home 路径统一转换为绝对路径 */
+const resolveFileToAbs = (raw, sessionCwd = sessionCwdDir) => {
+  let s = expandHome(raw);
+  if (!s) return "";
+  s = normalizeMsys(s);
+  if (isAbsoluteLike(s)) return s;
+  const effCwd = sessionCwd || sessionCwdDir || "";
+  if (!effCwd) return s;
+  return joinWithBase(normalizeMsys(expandHome(effCwd)), s);
+};
+
+/** 从工具入参中提取文件绝对路径（兼容对象 / JSON 字符串与多文件入参结构，支持相对路径自动定基） */
+const extractFilePaths = (args, baseDirs = getBaseDirsSync()) => {
   if (!args) return [];
   let argObj = args;
   if (typeof args === "string") {
@@ -101,9 +176,22 @@ const extractFilePaths = (args) => {
       return [];
     }
   }
-  if (typeof argObj !== "object" || !argObj) return [];
+  if (!argObj || typeof argObj !== "object") return [];
 
-  const PATH_KEYS = ["path", "file_path", "filePath", "TargetPath", "TargetFile", "AbsolutePath", "filename", "file"];
+  const PATH_KEYS = [
+    "path",
+    "file_path",
+    "filePath",
+    "TargetPath",
+    "TargetFile",
+    "target_path",
+    "target_file",
+    "AbsolutePath",
+    "filename",
+    "file",
+    "destination",
+    "dest",
+  ];
   const collectFrom = (obj) => {
     const found = [];
     if (!obj || typeof obj !== "object") return found;
@@ -115,15 +203,20 @@ const extractFilePaths = (args) => {
   };
 
   const paths = collectFrom(argObj);
-  // multi_replace_file_content / apply_patch 等多文件入参结构
+  // multi_replace_file_content / apply_patch 等多文件入参结构（兼容字符串数组与对象数组）
   for (const subKey of ["edits", "files", "changes"]) {
     if (Array.isArray(argObj[subKey])) {
       for (const sub of argObj[subKey]) {
-        paths.push(...collectFrom(sub));
+        if (typeof sub === "string" && sub.trim()) {
+          paths.push(sub.trim());
+        } else {
+          paths.push(...collectFrom(sub));
+        }
       }
     }
   }
-  return [...new Set(paths)].map(restoreHomePath);
+  const effCwd = baseDirs?.sessionCwd || sessionCwdDir || "";
+  return [...new Set(paths)].map((p) => resolveFileToAbs(p, effCwd)).filter(Boolean);
 };
 
 /** 从 Shell 类工具入参中提取命令文本（command / cmd / script） */
@@ -158,75 +251,47 @@ const extractCommandText = (args) => {
  * @param {{ home: string, sessionCwd: string }} [baseDirs] 基准目录（home = 真实主目录，sessionCwd = 内核会话 CWD）
  * @returns {string[]} 归一化后的删除目标候选路径（尽力而为，解析失败退化为原文）
  */
-const extractDeletedPathsFromCommand = (commandText, baseDirs = { home: realHomeDir, sessionCwd: sessionCwdDir }) => {
+const extractDeletedPathsFromCommand = (commandText, baseDirs = getBaseDirsSync()) => {
   const text = String(commandText || "");
   if (!text) return [];
   const found = [];
 
-  // —— 路径归一化工具 ——
-  /** 展开 ~ 与 [USER_HOME] 占位符 */
-  const expandHome = (p) => {
-    let s = restoreHomePath(String(p || "").trim());
-    if (!s) return s;
-    const home = baseDirs.home || "";
-    if (home && (s === "~" || s.startsWith("~/") || s.startsWith("~\\"))) {
-      s = home + s.slice(1);
-    }
-    return s;
-  };
-  /** MSYS / Git-Bash 风格路径转换：/c/Users/x → C:/Users/x（/mnt/c/ 同理） */
-  const normalizeMsys = (p) => {
-    const m = String(p || "").match(/^\/(?:mnt\/)?([a-z])\/(.+)$/i);
-    if (!m) return p;
-    return `${m[1].toUpperCase()}:/${m[2]}`;
-  };
-  /** 是否类 Windows 绝对路径（盘符 / UNC） */
-  const isAbsoluteLike = (p) => /^[a-z]:[\\/]/i.test(p) || p.startsWith("\\\\");
-  /** 以 base 为基准拼接相对路径（消化 ./ 与 ../） */
-  const joinWithBase = (base, rel) => {
-    const parts = `${base.replace(/\\/g, "/")}/${rel.replace(/\\/g, "/")}`.split("/");
-    const out = [];
-    for (const seg of parts) {
-      if (!seg || seg === ".") continue;
-      if (seg === "..") { out.pop(); continue; }
-      out.push(seg);
-    }
-    return out.join("/");
-  };
-  /** 单个删除目标归一化：绝对路径原样归一；相对路径按 base（cd 链或会话 CWD）拼接；
-   *  无法定基时返回原文（存在性探测自然失败，退化为既有行为，绝不虚报） */
+  /** 单个删除目标归一化：绝对路径原样归一；相对路径按 base（cd 链或会话 CWD）拼接 */
   const resolveTarget = (raw, base) => {
-    let s = expandHome(raw);
+    let s = expandHome(raw, baseDirs?.home || realHomeDir);
     if (!s) return "";
     s = normalizeMsys(s);
     if (isAbsoluteLike(s)) return s;
-    const effBase = base || baseDirs.sessionCwd || "";
+    const effBase = base || baseDirs?.sessionCwd || sessionCwdDir || "";
     if (!effBase) return s;
-    return joinWithBase(normalizeMsys(expandHome(effBase)), s);
+    return joinWithBase(normalizeMsys(expandHome(effBase, baseDirs?.home || realHomeDir)), s);
   };
   /** cd 目标归一化（供链路继承）：支持绝对 / 相对 / ~；空 cd 视为回主目录 */
   const resolveCdTarget = (raw, prevBase) => {
     let s = String(raw || "").trim();
     // cmd 风格 `cd /d X` 开关
     s = s.replace(/^\/d\s+/i, "");
-    if (!s || s === "~") return expandHome("~");
-    s = normalizeMsys(expandHome(s));
+    s = stripQuotes(s);
+    if (!s || s === "~") return expandHome("~", baseDirs?.home || realHomeDir);
+    s = normalizeMsys(expandHome(s, baseDirs?.home || realHomeDir));
     if (isAbsoluteLike(s)) return s;
-    const effBase = prevBase || baseDirs.sessionCwd || "";
+    const effBase = prevBase || baseDirs?.sessionCwd || sessionCwdDir || "";
     return effBase ? joinWithBase(effBase, s) : s;
   };
 
   const pushTarget = (raw, base) => {
-    const target = String(raw || "").trim().replace(/^"|"$/g, "").replace(/^'|'$/g, "");
-    // 过滤选项、通配裸用与过短片段，避免误报
-    if (!target || target.length < 2 || target.startsWith("-") || target === "." || target === "..") return;
+    const target = String(raw || "").trim().replace(/^"|"$/g, "").replace(/^'|'$/g, "").replace(/^,+|,+$/g, "").trim();
+    // 过滤选项、通配裸用与过短片段，避免误报（单字符文件名如 `a` 需保留，阈值降至 1）
+    if (!target || target.length < 1 || target.startsWith("-") || target === "." || target === "..") return;
     if (/^\/[a-z]$/i.test(target)) return; // Windows 开关如 /f /q /s
+    if (/^[<>|]+$/.test(target)) return; // 重定向符号残片
     const resolved = resolveTarget(target, base);
     if (resolved) found.push(resolved);
   };
-  // 逐 token 解析参数列表：跳过 -x / --xx 选项与 /f 开关，支持引号路径与多目标
+  // 逐 token 解析参数列表：跳过 -x / --xx 选项与 /f 开关，支持引号路径与多目标（逗号分隔兼容 PowerShell）
   const parseTargets = (argText, base) => {
-    const tokens = String(argText || "").match(/"[^"]*"|'[^']*'|\S+/g) || [];
+    const sanitized = String(argText || "").replace(/,/g, " ");
+    const tokens = sanitized.match(/"[^"]*"|'[^']*'|\S+/g) || [];
     for (const token of tokens) {
       // 跳过 -x / --xx 选项；-Path / -LiteralPath 的值按普通目标正常提取
       if (/^-{1,2}[A-Za-z][A-Za-z-]*$/.test(token)) continue;
@@ -247,40 +312,14 @@ const extractDeletedPathsFromCommand = (commandText, baseDirs = { home: realHome
       continue;
     }
     for (const m of seg.matchAll(/\brm\s+(.+)$/gi)) parseTargets(m[1], currentBase);
+    for (const m of seg.matchAll(/\brmdir\s+(.+)$/gi)) parseTargets(m[1], currentBase);
+    for (const m of seg.matchAll(/\bunlink\s+(.+)$/gi)) parseTargets(m[1], currentBase);
+    for (const m of seg.matchAll(/\berase\s+(.+)$/gi)) parseTargets(m[1], currentBase);
+    for (const m of seg.matchAll(/\brd\s+(.+)$/gi)) parseTargets(m[1], currentBase);
     for (const m of seg.matchAll(/Remove-Item\s+(.+)$/gi)) parseTargets(m[1], currentBase);
     for (const m of seg.matchAll(/\bdel\s+(.+)$/gi)) parseTargets(m[1], currentBase);
   }
   return [...new Set(found)];
-};
-
-// 内核会话 CWD（路由工作区物理路径）缓存：Shell 相对路径兜底基准。
-// 与 realHomeDir 一致采用惰性加载 + 空值重试；tool-start / tool-end 双侧
-// 统一经 loadBaseDirs() 等待取值，保证两侧候选解析结果完全一致（杜绝探测配对错位）
-let sessionCwdDir = "";
-let sessionCwdLoading = null;
-const loadBaseDirs = async () => {
-  if (!realHomeDir) {
-    try {
-      const home = await invokeTauri("pi_get_home_dir", {});
-      realHomeDir = String(home || "");
-    } catch { /* 保持空，restoreHomePath 退化为原样 */ }
-  }
-  if (!sessionCwdDir) {
-    if (!sessionCwdLoading) {
-      sessionCwdLoading = workspaceService.getActiveWorkspace()
-        .then((ws) => {
-          sessionCwdDir = String(ws?.path || "");
-        })
-        .catch(() => {
-          sessionCwdDir = "";
-        })
-        .finally(() => {
-          sessionCwdLoading = null;
-        });
-    }
-    await sessionCwdLoading;
-  }
-  return { home: realHomeDir, sessionCwd: sessionCwdDir };
 };
 const splitPath = (p) => {
   const normalized = String(p || "").replace(/\//g, "\\");
@@ -321,9 +360,16 @@ export function initFileChanges(ctx) {
 
   const ensureStore = (key) => {
     if (!sessionStores.has(key)) {
-      sessionStores.set(key, { items: new Map(), collapsed: false });
+      sessionStores.set(key, { items: new Map(), collapsed: false, log: [] });
     }
     return sessionStores.get(key);
+  };
+
+  /** 变更类型合并策略（与 recordFileChange 一致，供回退剪枝后重放重建复用）：删除为终态永远胜出；已录入「新增」不降级；否则取最新动作 */
+  const mergeKinds = (prevKind, newKind) => {
+    if (newKind === "delete" || prevKind === "delete") return "delete";
+    if (prevKind === "add" || newKind === "add") return "add";
+    return newKind;
   };
 
   // 事件归属会话键：优先事件帧携带的 task_id，缺省回落当前前台任务（兼容无任务主会话）
@@ -340,33 +386,40 @@ export function initFileChanges(ctx) {
 
   const classifyKind = (toolName, existedBefore) => {
     const raw = String(toolName || "").trim().toLowerCase();
-    if (FILE_EDIT_TOOLS.has(raw)) return "modify";
-    if (FILE_WRITE_TOOLS.has(raw)) {
+    if (matchToolSet(FILE_EDIT_TOOLS, raw)) return "modify";
+    if (matchToolSet(FILE_WRITE_TOOLS, raw)) {
       if (existedBefore === true) return "modify";
       if (existedBefore === false) return "add";
-      return "modify"; // 探测失败时按修改兜底，不虚报新增
+      // 显式新建语义工具（create_file / new_file）兜底识别为新增
+      const base = raw.split(".").pop() || raw;
+      if (base.includes("create") || base.includes("new")) return "add";
+      return "modify"; // 其余探测失败时按修改兜底，不虚报新增
     }
     return "modify";
   };
 
-  /** 记录一条文件变更至指定会话缓存仓（按路径去重；同一文件保留最新动作，删除为终态优先） */
-  const recordFileChange = (sessionKey, toolName, path, existedBefore, forcedKind) => {
+  /**
+   * 记录一条文件变更至指定会话缓存仓（按路径去重；同一文件保留最新动作，删除为终态优先）。
+   * 同步追加逐条变更日志 (store.log, 含 toolCallId / ts)，供「会话回退」精确剪枝与预览。
+   */
+  const recordFileChange = (sessionKey, toolName, path, existedBefore, forcedKind, toolCallId) => {
     const restored = restoreHomePath(path);
     const key = normalizePathKey(restored);
     if (!key) return;
     const store = ensureStore(sessionKey);
     const { name, dir } = splitPath(restored);
     const kind = forcedKind || classifyKind(toolName, existedBefore);
+    // 逐条变更日志（回退预览与剪枝依据，永不合并）
+    if (!Array.isArray(store.log)) store.log = [];
+    store.log.push({
+      key,
+      kind,
+      toolCallId: toolCallId || "",
+      ts: Date.now(),
+      path: restored,
+    });
     const prev = store.items.get(key);
-    // 合并策略：删除为终态永远胜出；已录入「新增」则保持新增（后续覆盖/编辑不降级）；否则取最新动作
-    let mergedKind;
-    if (kind === "delete" || (prev && prev.kind === "delete")) {
-      mergedKind = "delete";
-    } else if ((prev && prev.kind === "add") || kind === "add") {
-      mergedKind = "add";
-    } else {
-      mergedKind = kind;
-    }
+    const mergedKind = mergeKinds(prev?.kind, kind);
     store.items.set(key, {
       path: restored,
       name: name || restored,
@@ -524,20 +577,22 @@ export function initFileChanges(ctx) {
   // 用于在会话完成时精确区分「新增」与「修改」；②对 Shell 类工具预解析
   // 删除目标候选并探测执行前存在性，与执行后复核配对去伪。
   // 前后台任务均收集（纯 IPC 探测，不触碰前台 DOM），后台事件按 task_id 归入各自缓存仓
-  piClient.addEventListener("tool-start", async (e) => {
+  piClient.addEventListener("tool-start", (e) => {
     const data = e.detail || {};
     const toolName = String(data.toolName || "").trim().toLowerCase();
-    const isWriteTool = FILE_WRITE_TOOLS.has(toolName);
-    const isShellTool = SHELL_TOOLS.has(toolName);
+    const isWriteTool = matchToolSet(FILE_WRITE_TOOLS, toolName);
+    const isShellTool = isShellToolName(toolName);
     if (!isWriteTool && !isShellTool) return;
+    if (!data.toolCallId) return;
 
-    // 统一等待基准目录（真实主目录 + 内核会话 CWD）就绪后再解析候选，
-    // 保证 tool-start 探测与 tool-end 复核的路径归一化结果完全一致
-    const baseDirs = await loadBaseDirs();
+    // 核心铁律：tool-start 必须纯同步执行并立即向 existenceProbes 登记 Promise，
+    // 严禁在此处引入任何 await 导致微任务挂起，杜绝写文件瞬时完成后 tool-end 抢先到达引发竞态！
+    const baseDirs = getBaseDirsSync();
     const candidates = isShellTool
       ? extractDeletedPathsFromCommand(extractCommandText(data.args), baseDirs)
-      : extractFilePaths(data.args);
+      : extractFilePaths(data.args, baseDirs);
     if (candidates.length === 0) return;
+
     // 存储为 Promise：tool-end 时 await 取回「执行前存在性」结果，
     // 消除「探测 IPC 尚未返回而 tool-end 已到」导致的竞态（否则新增文件被误判为修改）
     fileChanges.existenceProbes.set(
@@ -562,10 +617,10 @@ export function initFileChanges(ctx) {
     if (data.isError) return;
     const sessionKey = resolveEventKey();
     const toolName = String(data.toolName || "").trim().toLowerCase();
-    const isWriteTool = FILE_WRITE_TOOLS.has(toolName);
-    const isEditTool = FILE_EDIT_TOOLS.has(toolName);
-    const isDeleteTool = FILE_DELETE_TOOLS.has(toolName);
-    const isShellTool = SHELL_TOOLS.has(toolName);
+    const isWriteTool = matchToolSet(FILE_WRITE_TOOLS, toolName);
+    const isEditTool = matchToolSet(FILE_EDIT_TOOLS, toolName);
+    const isDeleteTool = matchToolSet(FILE_DELETE_TOOLS, toolName);
+    const isShellTool = isShellToolName(toolName);
     if (!isWriteTool && !isEditTool && !isDeleteTool && !isShellTool) return;
 
     // 等待「执行前存在性」探测结果（Promise），避免竞态导致新增被误判为修改
@@ -578,10 +633,12 @@ export function initFileChanges(ctx) {
       probeEntries = null;
     }
 
+    const baseDirs = getBaseDirsSync();
+
     // 显式删除类工具：执行成功即记为删除
     if (isDeleteTool) {
-      for (const path of extractFilePaths(data.args)) {
-        recordFileChange(sessionKey, toolName, path, null, "delete");
+      for (const path of extractFilePaths(data.args, baseDirs)) {
+        recordFileChange(sessionKey, toolName, path, null, "delete", data.toolCallId);
       }
       return;
     }
@@ -590,32 +647,34 @@ export function initFileChanges(ctx) {
     // 仅当「执行前已存在且执行后消失」（或执行前探测失败但执行后消失）
     // 才记为删除，杜绝从未存在路径与未实际执行删除的误报
     if (isShellTool) {
-      // 与 tool-start 探测同一基准目录解析，保证两侧候选路径一一配对
-      const baseDirs = await loadBaseDirs();
       const candidates = extractDeletedPathsFromCommand(extractCommandText(data.args), baseDirs);
       if (candidates.length === 0) return;
       for (const path of candidates) {
+        const normKey = normalizePathKey(path);
         const existedBefore = Array.isArray(probeEntries)
-          ? (probeEntries.find((entry) => entry?.path === path)?.existed ?? null)
+          ? (probeEntries.find((entry) => normalizePathKey(entry?.path) === normKey)?.existed ?? null)
           : null;
+        const isGlob = /[*?\[\]]/.test(path);
         invokeTauri("pi_path_exists", { path })
           .then((existsAfter) => {
             if (existsAfter) return;
-            if (existedBefore === false) return; // 执行前就不存在，非本次删除
-            recordFileChange(sessionKey, toolName, path, null, "delete");
+            // glob 模式字面路径本身不存在属正常，跳过 existedBefore 误杀（由 Rust 侧按通配匹配恢复）
+            if (existedBefore === false && !isGlob) return; // 执行前就不存在，非本次删除
+            recordFileChange(sessionKey, toolName, path, null, "delete", data.toolCallId);
           })
           .catch(() => {});
       }
       return;
     }
 
-    const paths = extractFilePaths(data.args);
+    const paths = extractFilePaths(data.args, baseDirs);
     if (paths.length === 0) return;
     for (const path of paths) {
+      const normKey = normalizePathKey(path);
       const existedBefore = Array.isArray(probeEntries)
-        ? (probeEntries.find((entry) => entry?.path === path)?.existed ?? null)
+        ? (probeEntries.find((entry) => normalizePathKey(entry?.path) === normKey)?.existed ?? null)
         : null;
-      recordFileChange(sessionKey, toolName, path, existedBefore);
+      recordFileChange(sessionKey, toolName, path, existedBefore, null, data.toolCallId);
     }
   });
 
@@ -652,6 +711,89 @@ export function initFileChanges(ctx) {
     syncViewToStore(key);
     if (fileChanges.items.size === 0) return false;
     renderFileChangesBox();
+    return true;
+  };
+
+  // ==========================================================================
+  // 会话回退：文件撤回预览与剪枝 (与 flow-rollback.js 配套)
+  // ==========================================================================
+
+  /**
+   * 回退预览：汇总自第 fromIndex 轮（含）之后的全部文件变更，按路径取最早动作分类。
+   * 修改/删除 → 待撤回 (携 toolCallId 供快照精确匹配)；新增 → 不可撤回 (防误删铁律)。
+   * @param {string} sessionKey 会话键 (Task ID)
+   * @param {number} fromIndex 回退目标轮次 (0-based，含该轮)
+   * @param {Array<Object>} turns 该会话完整轮次数组
+   * @returns {{ restoreList: Array<{path,kind,toolCallId}>, keepAddList: string[] }}
+   */
+  api.collectRollbackPreview = (sessionKey, fromIndex, turns) => {
+    const store = sessionStores.get(sessionKey);
+    const restoreList = [];
+    const keepAddList = [];
+    if (!store || !Array.isArray(store.log) || !Array.isArray(turns)) {
+      return { restoreList, keepAddList };
+    }
+    // 自第 fromIndex 轮（含）起涉及的全部 toolCallId 集合（轮次与事件同源，可精确映射）
+    const affectedCallIds = new Set();
+    for (let i = Math.max(0, fromIndex); i < turns.length; i++) {
+      for (const tool of turns[i]?.toolCalls || []) {
+        if (tool?.id) affectedCallIds.add(tool.id);
+      }
+    }
+    // 按路径取最早一条日志（还原内容 = 回退点之后第一次变更前的状态）
+    const earliestByKey = new Map();
+    for (const entry of store.log) {
+      const inRange =
+        (entry.toolCallId && affectedCallIds.has(entry.toolCallId)) ||
+        (fromIndex >= turns.length) ||
+        (turns[fromIndex]?.startedAt != null && entry.ts >= turns[fromIndex].startedAt);
+      if (!inRange) continue;
+      const prev = earliestByKey.get(entry.key);
+      if (!prev || entry.ts < prev.ts) earliestByKey.set(entry.key, entry);
+    }
+    for (const entry of earliestByKey.values()) {
+      if (entry.kind === "add") {
+        keepAddList.push(entry.path);
+      } else {
+        restoreList.push({ path: entry.path, kind: entry.kind, toolCallId: entry.toolCallId });
+      }
+    }
+    restoreList.sort((a, b) => a.path.localeCompare(b.path));
+    keepAddList.sort((a, b) => a.localeCompare(b));
+    return { restoreList, keepAddList };
+  };
+
+  /**
+   * 回退剪枝：丢弃指定轮次（含）之后的变更日志，并用剩余日志重放重建合并视图仓。
+   * @param {string} sessionKey 会话键
+   * @param {number} fromIndex 回退目标轮次 (0-based)
+   * @param {Array<Object>} turns 原完整轮次数组 (剪枝前)
+   * @returns {boolean} 是否发生剪枝
+   */
+  api.pruneFileChangesFor = (sessionKey, fromIndex, turns) => {
+    const store = sessionStores.get(sessionKey);
+    if (!store || !Array.isArray(store.log) || !Array.isArray(turns)) return false;
+    const cutoffTs = turns[fromIndex]?.startedAt ?? Date.now() + 1;
+    const keptLog = store.log.filter((entry) => entry.ts < cutoffTs);
+    if (keptLog.length === store.log.length) return false;
+    store.log = keptLog;
+    // 重放重建合并视图 (与 recordFileChange 合并策略一致)
+    const rebuilt = new Map();
+    for (const entry of keptLog) {
+      const { name, dir } = splitPath(entry.path);
+      const prev = rebuilt.get(entry.key);
+      rebuilt.set(entry.key, {
+        path: entry.path,
+        name: name || entry.path,
+        dir,
+        kind: mergeKinds(prev?.kind, entry.kind),
+      });
+    }
+    store.items = rebuilt;
+    // 当前视图正指向该仓时同步刷新视图态引用
+    if (viewKey === sessionKey) {
+      fileChanges.items = rebuilt;
+    }
     return true;
   };
 }

@@ -21,6 +21,7 @@ import { initFlowUi } from "./modules/flow-ui.js";
 import { initFlowStream } from "./modules/flow-stream.js";
 import { initFlowPipeline } from "./modules/flow-pipeline.js";
 import { initFileChanges } from "./modules/flow-file-changes.js";
+import { initFlowRollback } from "./modules/flow-rollback.js";
 import { initTaskPanel } from "./modules/task-panel.js";
 import { initFileAttachments } from "./modules/file-attachments.js";
 import { initSearchInput } from "./modules/search-input.js";
@@ -210,6 +211,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initFlowPipeline(ctx);
   initFileChanges(ctx);
   initTaskPanel(ctx);
+  initFlowRollback(ctx);
   initFileAttachments(ctx);
   initSearchInput(ctx);
   initPackagesPanel(ctx);

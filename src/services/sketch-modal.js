@@ -180,6 +180,14 @@ export class SketchModal {
       body.appendChild(detailEl);
     }
 
+    if (this.options.detailHtml) {
+      // 富文本详情（调用方负责转义），用于回退文件清单等结构化展示
+      const richEl = document.createElement("div");
+      richEl.className = "sketch-modal-detail-html";
+      richEl.innerHTML = this.options.detailHtml;
+      body.appendChild(richEl);
+    }
+
     if (isPrompt) {
       const input = document.createElement("input");
       input.type = "text";

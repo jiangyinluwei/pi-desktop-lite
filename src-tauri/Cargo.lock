@@ -2892,6 +2892,7 @@ dependencies = [
 name = "pi-dl"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "dashmap",
  "dirs 5.0.1",

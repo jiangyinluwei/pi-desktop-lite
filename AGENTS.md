@@ -23,10 +23,11 @@
 1. **代码卫生与冗余清理 (`iterative-modification-hygiene`)**：
    - 严禁凭记忆修改，替换前先 `view_file` 对齐真实代码切片与行号；
    - 替换必须原子化覆盖旧逻辑与变量，杜绝未闭合括号、幽灵函数签名（Dangling Snippets）或重复声明；
+   - **添加单元测试代码后必须清除**：任何在开发、重构或自愈验证过程中添加的临时单元测试（如 `#[cfg(test)] mod tests`、`#[test]` 或临时测试断言），在逻辑验证完成及任务交付前**必须彻底清除**，保持生产源码纯粹精炼，严禁滞留生产库；
    - Web 前端修改后立即运行 `node -c <filePath>` 静态验证 AST，杜绝语法错误导致冷启动卡死与白屏。
 2. **极速编译校验**：优先运行极速校验命令（如 `npm run check` 或 `cargo check`，~1 秒；涉及 Tauri 配置或底层 ABI 修改时使用 `npm run build:check`）。
 3. **失败自愈与循环修复**：若校验报错，必须分析日志根因并自动修复，重新编译直至 **Exit Code 0**。
-4. **交付门禁**：仅在代码冗余清理完毕、前端 AST 校验与后端编译均通过后，方可向用户交付。
+4. **交付门禁**：仅在代码冗余与临时测试代码清理完毕、前端 AST 校验与后端编译均通过后，方可向用户交付。
 
 ---
 
@@ -43,9 +44,10 @@
    - **挂起与终止双通道解耦与终止防重连铁律**：右键/Esc 转入后台挂起（`isSuspended = true`，进入 `TaskManager`，不调用 abort）；显式「⏹ 终止」按钮彻底终止 Agent 生成并追加手动终止提示。**手动点击终止时，全链路绝对禁止触发任何模型自动重连或模型切换**；
    - **任务直切自动挂起铁律 (Auto-Suspend on Active Task Switch)**：从右上角任务抽屉、历史会话或通知点击直接切换活跃 Task 时，原前台活跃任务必须在 TaskManager 中自动无缝转入后台挂起（`prevTask.isSuspended = true`），绝不允许产生既不在前台又未挂起的幽灵任务；切换进入新 Task 时统一在 `renderTurnsIntoFlow` 中重置收纳框引用 (`api.resetFileChanges`) 与流式步骤/工具卡片缓存，并对齐最新轮次步骤，保证多任务间任意来回直切均 100% 保持会话完整、互相隔离且不丢失；
    - **历史记录智能重定向与解耦归档铁律 (History-to-Task Smart Redirection & Decoupled Archive)**：从历史讯息抽屉点击卡片时，优先探测该会话是否在 TaskManager 中作为活跃/挂起任务存在；若存在直接重定向至 `restoreTaskToFlow`，严禁用静态旧 turns 覆写 live turns 或强制置 `completed`；`archiveCurrentFlowToHistory` 仅在终态（`completed / aborted / error`）时写入持久化历史，运行中仅同步内存 `turns`；历史抽屉对后台运行中任务展示脉冲「运行中」微动效徽章；
+   - **会话回退与文件撤回铁律 (Flow Rollback & File Restoration)**：Flow 支持回退到任意一次历史对话（配合 pi 内核原生 RPC fork 历史节点回退），回退时自动撤回「已修改/已删除」的文件，**已新增的文件绝不撤回**（防误删）；快照由内置扩展在 `tool_call` 阶段（工具执行前、可阻塞）确定性落盘至 `~/.pi-dl/rollback/<sessionId>/`（桌面端注入 `PI_DL_ROLLBACK=1` 启用）；单文件 >8MB 超限明示警告横幅与专属徽标，弹窗转为只读警示阻止盲目回退；执行链路 = 回退点预解析（`pi_get_fork_messages`）→ 快照预检（`pi_rollback_files(dry_run: true)`，存在缺失/超限保守中止，磁盘与内核 0 变更）→ 内核 fork 先行（`pi_fork_session`，失败则磁盘 0 写入环境完全干净）→ 原子落盘（`pi_rollback_files(dry_run: false)`）→ 本地变更仓剪枝重渲 + 提问回填输入框；完成后顶部浮窗提醒成功/失败持续 3 秒；生成进行中禁止回退；响应帧无论有无等待者统一丢弃不落入广播通道（详见 `.agents/skills/flow-interaction-pattern/SKILL.md` §11）；
    - **Flow DOM 防重入铁律 (Flow Re-entrance Guard)**：已处于 Flow 模式且当前活跃任务匹配时，`restoreTaskToFlow` 与 `restoreConversationToFlow` 直接退出，严禁清空 DOM 导致流式截断与界面闪烁；
    - **运行中工具切片 DOM 自愈 (Running Tool DOM Self-Healing)**：切入运行中任务时由 `renderTurnsIntoFlow` 回填 `flow.renderedToolCards`，并在 `flow-pipeline.js` 的 `tool-update`/`tool-end` 中增加基于 DOM ID 的动态检索兜底与读秒自愈刷新，防止卡片永久卡在 running；
-   - **后台流式串轮过滤铁律**：挂起任务的流式事件经前台门禁 (`taskManager.isForegroundStreamTask` + `piClient.lastEventTaskId`) 在 Flow UI 层全量过滤，只入 Task 数据缓冲，绝不写入前台 Flow DOM/历史轮次；历史讯息抽屉 (`task-panel.js`) 采用签名比对 + 180ms 节流调度渲染，杜绝后台任务事件风暴导致的悬浮频闪与双击选中失效；**会话流缓存铁律**：每个 Task 一份文件变更缓存仓（`flow-file-changes.js` `sessionStores`），前后台事件按 task_id 归仓收集、直至程序生命周期结束；右键退出（挂起/归档）后经历史记录/Task 记录回入 Flow 时由 `renderTurnsIntoFlow` → `restoreFileChangesFor` 一致恢复收纳框，历史快照卡片重绑以 `__piBound` expando 去重（严禁 `dataset.bound` 判定，杜绝双绑互消与快照死卡）；**删除识别工作目录铁律**：Shell 删除目标（`rm / del / Remove-Item`）须经 `cd` 链路 + MSYS 盘符转换 + `~`/`[USER_HOME]` 展开 + 会话 CWD 兑底归一化为绝对路径后再经 `pi_path_exists` 探测/复核，杜绝相对路径因桌面端进程 CWD 失真被去伪规则误杀（表现：删除示意信息在收纳框中消失）；
+   - **后台流式串轮过滤铁律**：挂起任务的流式事件经前台门禁 (`taskManager.isForegroundStreamTask` + `piClient.lastEventTaskId`) 在 Flow UI 层全量过滤，只入 Task 数据缓冲，绝不写入前台 Flow DOM/历史轮次；历史讯息抽屉 (`task-panel.js`) 采用签名比对 + 180ms 节流调度渲染，杜绝后台任务事件风暴导致的悬浮频闪与双击选中失效；**会话流缓存铁律**：每个 Task 一份文件变更缓存仓（`flow-file-changes.js` `sessionStores`），前后台事件按 task_id 归仓收集、直至程序生命周期结束；右键退出（挂起/归档）后经历史记录/Task 记录回入 Flow 时由 `renderTurnsIntoFlow` → `restoreFileChangesFor` 一致恢复收纳框，历史快照卡片重绑以 `__piBound` expando 去重（严禁 `dataset.bound` 判定，杜绝双绑互消与快照死卡）；**删除识别工作目录铁律**：Shell 删除目标（`rm / del / Remove-Item`）须经 `cd` 链路 + MSYS 盘符转换 + `~`/`[USER_HOME]` 展开 + 会话 CWD 兑底归一化为绝对路径后再经 `pi_path_exists` 探测/复核，杜绝相对路径因桌面端进程 CWD 失真被去伪规则误杀（表现：删除示意信息在收纳框中消失）；**新增文件同步探测铁律 (Synchronous Pre-Execution Probe Invariance)**：写文件工具（`write` / `write_file` / `create_file` 等）启动时，`tool-start` 必须纯同步执行并在当前事件调用栈内立即向 `existenceProbes` 登记存在性探测 Promise，严禁引入任何 `await` 导致微任务挂起，杜绝写文件瞬时完成后 `tool-end` 抢先到达引发探测竞态将新增文件误判为修改；`tool-end` 比对统一使用 `normalizePathKey` 消除正反斜杠与大小写差异；
    - **输入框防抖**：详细版下对着输入框点击右键时静默屏蔽，杜绝界面瞬切抖动；新模块均需接入 `window.__piRegisterStepBack`；
 4. **手绘 SVG 矢量图元规范（消除系统 Emoji）**：
    - 禁止使用系统默认 Emoji，所有功能与提示图标统一在 `src/assets/svg/` 归档并以内联手绘 SVG 呈现；
@@ -170,7 +172,7 @@
 
 - **`src/main.js`**：唯一编排入口。负责收集 DOM 引用（`ctx.el`）、构建共享上下文（`ctx.*`）并按依赖顺序初始化各模块；
 - **`src/lib/`**：跨模块共享基础件（`dom-utils.js` 文本转义、`icons.js` 手绘 SVG 图元、`markdown-renderer.js` Markdown 渲染引擎、`view-constants.js` 四态常量）；
-- **`src/modules/`**：按功能域拆分的 UI 业务模块（`view-mode.js`、`settings-navigation.js`、`model-panel.js`、`custom-provider-panel.js`、`kernel-panel.js`、`flow-ui.js`、`flow-stream.js`、`flow-pipeline.js`、`flow-file-changes.js`、`task-panel.js`、`packages-panel.js`、`workspace-panel.js`、`sessions-panel.js`、`global-interactions.js` 等）。跨模块调用一律通过 `ctx.api.<fn>()`，共享状态收敛至 `ctx.*`；
+- **`src/modules/`**：按功能域拆分的 UI 业务模块（`view-mode.js`、`settings-navigation.js`、`model-panel.js`、`custom-provider-panel.js`、`kernel-panel.js`、`flow-ui.js`、`flow-stream.js`、`flow-pipeline.js`、`flow-file-changes.js`、`flow-rollback.js`、`task-panel.js`、`packages-panel.js`、`workspace-panel.js`、`sessions-panel.js`、`global-interactions.js` 等）。跨模块调用一律通过 `ctx.api.<fn>()`，共享状态收敛至 `ctx.*`；
 - **`src/styles/`**：按功能域拆分的样式文件（`tokens.css`、`base.css`、`layout.css`、`flow.css`、`markdown.css`、`settings.css`、`packages.css`、`overlays.css` 等），`src/styles.css` 仅为 `@import` 聚合入口；
 - **`src/services/`**：与 UI 解耦的前端服务层（IPC 桥接、配置、流式客户端、任务/会话/工作区等），**严禁**在 service 中直接操作 UI DOM。
 

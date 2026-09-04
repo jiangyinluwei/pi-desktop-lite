@@ -222,6 +222,9 @@ impl PiSupervisor {
         cmd.arg("--mode")
             .arg("rpc");
 
+        // 会话回退快照守卫开关：仅桌面端拉起的内核进程启用内置扩展
+        cmd.env(crate::rollback::ROLLBACK_ENV_KEY, "1");
+
         // 从 ~/.pi-dl/config.json 预读选中的模型与思考等级
         let (saved_model, saved_thinking) = crate::config_manager::get_saved_model_and_thinking();
         if let Some((p, m)) = saved_model {
@@ -305,7 +308,8 @@ impl PiSupervisor {
                     supervisor_for_events.skill_injector.begin_turn();
                 }
 
-                // 如果是 response 响应帧且携带 id，尝试唤醒对应的 oneshot 等待者
+                // response 响应帧优先唤醒本地等待者（fork / get_fork_messages 等）；
+                // 无论有无等待者（如超时后响应姗姗来迟）直接丢弃，绝不落入广播路径产生杂散 IPC 帧
                 if event_type == "response" {
                     if let Some(id) = event_val.get("id").and_then(|v| v.as_str()) {
                         let mut guard = pending_responses_clone.lock().await;
@@ -313,6 +317,7 @@ impl PiSupervisor {
                             let _ = tx.send(event_val.clone());
                         }
                     }
+                    continue;
                 }
 
                 let _ = app_handle_for_events.emit("pi:event", event_val);

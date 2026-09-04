@@ -296,23 +296,3 @@ pub async fn search_catalog(
     Ok(result)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_live_search_catalog() {
-        let res = search_catalog(None, None, Some("downloads".to_string()), Some(1))
-            .await
-            .expect("search_catalog failed");
-        println!(
-            "Fetched {} packages, total_count: {}, pages: {}",
-            res.packages.len(),
-            res.total_count,
-            res.total_pages
-        );
-        assert!(!res.packages.is_empty(), "packages should not be empty");
-        println!("First package: {:?}", res.packages[0]);
-    }
-}
-

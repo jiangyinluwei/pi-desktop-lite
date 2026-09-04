@@ -25,6 +25,7 @@
 ## ✨ 核心特性
 
 - **四态界面与 Flow 流式交互**：涵盖详细版、专注版、Flow 流式交互版及设置页，支持单行紧凑思维链与 Typedown 质感 Markdown 预览；
+- **会话回退与文件撤回**：Flow 支持回退到任意一次历史对话（配合 pi 内核原生 fork 历史节点回退），基于工具执行前确定性快照自动还原「已修改/已删除」的文件（新增文件永不撤回），完成后顶部浮窗提醒成功/失败（持续 3 秒）；
 - **后台多任务管理与状态无缝挂起**：支持多任务并发、前后台活跃任务直接切换无感自动挂起（防幽灵任务丢失）、会话流与文件变更收纳框隔离恢复，右上角 Mini 任务胶囊与半透明抽屉实时联动；
 - **工作区路由调度中枢**：提供 `code-area` 免污染路由调度中枢、Windows 原生文件夹选择器与多预设工作区平滑切换；
 - **手绘草图美学与组件套件**：全域手绘 SVG 图元、明暗纸质双模自适应，配套 `SketchSelect` / `SketchAutoFill` / `SketchModal` 原生草图组件；
@@ -92,7 +93,8 @@ pi-desktop-lite/
 │   │   ├── flow-ui.js          # Flow 渲染核心：Markdown、轮次 DOM、悬浮提问、上下定位导航
 │   │   ├── flow-stream.js      # 流式状态机、错误卡渲染与自动重连胶囊
 │   │   ├── flow-pipeline.js    # 提问下发、工具调用事件、自愈引擎与发送拦截
-│   │   ├── flow-file-changes.js # 会话文件变更收纳框（新增/修改/删除文件汇总，点击打开所在文件夹；按 Task 会话流缓存，回入 Flow 一致恢复）
+│   │   ├── flow-file-changes.js # 会话文件变更收纳框（新增/修改/删除文件汇总，点击打开所在文件夹；按 Task 会话流缓存，回入 Flow 一致恢复；含逐条变更日志供回退预览/剪枝）
+│   │   ├── flow-rollback.js     # 会话回退编排（轮次「回退到此处」入口、SketchModal 确认、文件撤回还原 + 内核 fork + 剪枝重渲 + 3 秒浮窗提醒）
 │   │   ├── task-panel.js       # 后台任务胶囊、侧边栏、历史恢复与快照归档
 │   │   ├── sessions-panel.js   # 会话记录列表、搜索筛选、进入 Flow 管线与界面会话清空
 │   │   ├── workspace-panel.js  # 多预设工作区设置面板与路由绑定
@@ -103,6 +105,7 @@ pi-desktop-lite/
 │   ├── styles.css              # 样式聚合入口 (@import 各功能域子样式)
 │   └── main.js                 # 前端编排主入口
 ├── src-tauri/                  # Tauri (Rust) 高性能后端核心
+│   ├── extensions/             # 内置内核扩展 (pi-rollback-guard.ts 会话回退文件快照守卫，启动时物化至全局扩展目录)
 │   ├── inner-skills/           # 应用内置运行态约束技能与规则 (RULES.md, bash兼容, OCR文档解析, 多Agent, 联网搜索 等)
 │   └── src/                    # Rust 源码 (lib.rs, main.rs, config_manager, workspace, pi_runner, security, session)
 ├── AGENTS.md                   # 项目规则与代理行为准则

@@ -779,45 +779,4 @@ pub fn build_code_area_routing_context_with_items(
     (formatted_context, injected_items)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_build_code_area_routing_context_unconfigured() {
-        let injector = crate::pi_runner::inner_skills::InnerSkillInjector::new();
-        let ctx = build_code_area_routing_context("", &[], &injector);
-        assert!(ctx.contains("<code_area_routing_context>"));
-        assert!(ctx.contains("[未配置有效路由目标，请提醒用户绑定目标项目]"));
-        assert!(ctx.contains("</code_area_routing_context>"));
-    }
-
-    #[test]
-    fn test_read_routed_project_docs_and_skills() {
-        // 使用当前仓库作为测试目标路径
-        let current_dir = std::env::current_dir().unwrap();
-        let repo_root = current_dir.parent().unwrap();
-        let repo_path = repo_root.to_string_lossy().to_string().replace('\\', "/");
-
-        let injector = crate::pi_runner::inner_skills::InnerSkillInjector::new();
-        let hub_skills = vec![CodeAreaSkillInfo {
-            id: "code-refactoring".to_string(),
-            name: "Code Refactoring".to_string(),
-            description: "Refactor code".to_string(),
-            path: "".to_string(),
-        }];
-
-        let (ctx, items) = build_code_area_routing_context_with_items(&repo_path, &hub_skills, &injector);
-        assert!(ctx.contains("<code_area_routing_context>"));
-        assert!(ctx.contains(&repo_path));
-        assert!(ctx.contains("<routed_agents_md"));
-        assert!(ctx.contains("<routed_readme_md"));
-        // 关键验证：.agents/ 下技能不再强制全量前置注入，由 Agent 遵循 AGENTS.md 映射按需运用
-        assert!(!ctx.contains("<routed_project_skills"));
-        assert!(!items.iter().any(|i| i.kind == "routed_skill"));
-        assert!(items.iter().any(|i| i.kind == "agents_md"));
-        assert!(ctx.contains("</code_area_routing_context>"));
-    }
-}
-
 

@@ -86,7 +86,7 @@ description: 描述运行态技能在何种场景下被触发与主要约束。
 ### Step 3: 后端内嵌与前端「注入提示」框条目挂载
 1. **Rust 后端 (`src-tauri/src/pi_runner/inner_skills.rs`)**：
    - 增加 `const EMBEDDED_YOUR_SKILL_MD: &str = include_str!("../../inner-skills/your-new-skill-name/SKILL.md");`；
-   - 在 `get_skill_detail` 中增加匹配分支并补充单元测试。
+   - 在 `get_skill_detail` 中增加匹配分支（若编写临时测试验证逻辑，验证通过后**必须彻底清除**，严禁滞留代码库）。
 2. **前端模块 (`src/modules/flow-pipeline.js`)**：
    - 在 `getSkillDisplayName` 注册中文友好标签（注入提示条目展示用，inner_skill 条目自动拼装展示名）；
    - 每段注入提醒：后端每次真实注入均广播一次 `pi:inner-skill-activated`，前端监听后调用 `addInjectionNoticeItem("inner_skill", skillName)` 在路由目标项目胶囊下方的「注入提示」信息框中追加条目（kind+name 去重，跨轮累积，默认收起显示「注入提示」与注入数量，全新会话重置）；

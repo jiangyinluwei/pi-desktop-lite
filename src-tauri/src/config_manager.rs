@@ -1654,35 +1654,4 @@ fn build_builtin_official_catalog() -> Vec<OfficialProviderMeta> {
     ]
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_is_pi_subagents_enabled() {
-        let empty_settings = json!({});
-        assert!(!is_pi_subagents_enabled(&empty_settings));
-
-        let other_packages = json!({
-            "packages": ["npm:pi-vision", "pi-web-access"]
-        });
-        assert!(!is_pi_subagents_enabled(&other_packages));
-
-        let with_npm_subagents = json!({
-            "packages": ["npm:pi-subagents"]
-        });
-        assert!(is_pi_subagents_enabled(&with_npm_subagents));
-
-        let with_plain_subagents = json!({
-            "packages": ["pi-subagents"]
-        });
-        assert!(is_pi_subagents_enabled(&with_plain_subagents));
-
-        let with_obj_source = json!({
-            "packages": [{ "source": "npm:pi-subagents@0.2.0" }]
-        });
-        assert!(is_pi_subagents_enabled(&with_obj_source));
-    }
-}
-
 

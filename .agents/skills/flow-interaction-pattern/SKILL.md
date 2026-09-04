@@ -1,7 +1,7 @@
 ---
 name: flow-interaction-pattern
 description: |
-  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/阶段性输出 Point 切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-Point1-工具1-Point2-工具2...」真实因果链条一段一段拼接；③伪框占位机制（首 token 延迟期「Thinking (0.0s)...」伪思考框；工具参数流式期「工具调用(edit)... + 读秒 + running」伪工具运行框，真实卡就位即移除）；④Flow 界面任意区域滚轮事件委托至最外层滚动容器；⑤多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑥多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑦模型自动重连切换自愈流水线 (ModelFailoverEngine)；⑧输出卡底部手绘风格的保存操作栏；⑨会话完成后「文件变更」收纳框（flow-file-changes，收集新增/修改/删除的文件、点击条目在资源管理器中定位其所在文件夹；按 Task 会话流缓存至程序生命周期结束，右键退出再经历史/Task 记录回入 Flow 一致恢复）；⑩用户提问卡右侧一键复制提问按钮（prompt-copy-btn：常态透明无边框、悬浮显手绘边框，点击复制净化后原始提问并短暂变绿反馈，静态初始模板与动态历史轮次均生效）；⑪多任务直切自动挂起、历史记录智能重定向与状态隔离（任务直切原活跃任务无缝转入后台挂起、历史进入智能重定向至 restoreTaskToFlow 杜绝静态快照覆写实时 live turns、Flow DOM 防重入与工具切片引用自愈回填）。当用户提出"flow界面交互"、"思维链流式展示"、"阶段性输出"、"Point卡"、"工具调用简略"、"单行思维"、"步骤切片"、"伪思考框"、"伪运行框"、"工具调用读秒"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"、"文件变更"、"修改了哪些文件"、"多任务直切"、"任务切换"、"自动挂起"、"历史记录重定向"、"防重入"时使用此技能。
+  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/阶段性输出 Point 切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-Point1-工具1-Point2-工具2...」真实因果链条一段一段拼接；③伪框占位机制（首 token 延迟期「Thinking (0.0s)...」伪思考框；工具参数流式期「工具调用(edit)... + 读秒 + running」伪工具运行框，真实卡就位即移除）；④Flow 界面任意区域滚轮事件委托至最外层滚动容器；⑤多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑥多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑦模型自动重连切换自愈流水线 (ModelFailoverEngine)；⑧输出卡底部手绘风格的保存操作栏；⑨会话完成后「文件变更」收纳框（flow-file-changes，收集新增/修改/删除的文件、点击条目在资源管理器中定位其所在文件夹；按 Task 会话流缓存至程序生命周期结束，右键退出再经历史/Task 记录回入 Flow 一致恢复）；⑩用户提问卡右侧一键复制提问按钮（prompt-copy-btn：常态透明无边框、悬浮显手绘边框，点击复制净化后原始提问并短暂变绿反馈，静态初始模板与动态历史轮次均生效）；⑪多任务直切自动挂起、历史记录智能重定向与状态隔离（任务直切原活跃任务无缝转入后台挂起、历史进入智能重定向至 restoreTaskToFlow 杜绝静态快照覆写实时 live turns、Flow DOM 防重入与工具切片引用自愈回填）；⑫会话回退与文件撤回（flow-rollback：轮次提问卡悬浮「回退到此处」→ SketchModal 确认 → 工具执行前快照还原「已修改/已删除」文件（新增文件永不撤回）→ 内核原生 RPC fork 历史节点回退 → 本地剪枝重渲 + 提问回填输入框 + 顶部浮窗 3 秒提醒结果）。当用户提出"flow界面交互"、"思维链流式展示"、"阶段性输出"、"Point卡"、"工具调用简略"、"单行思维"、"步骤切片"、"伪思考框"、"伪运行框"、"工具调用读秒"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"、"文件变更"、"修改了哪些文件"、"多任务直切"、"任务切换"、"自动挂起"、"历史记录重定向"、"防重入"、"会话回退"、"对话回退"、"回退到此处"、"文件撤回"、"撤销修改"时使用此技能。
 ---
 
 # Flow 交互界面规范 (Flow Interaction Pattern)
@@ -170,10 +170,10 @@ flowchart TD
 
 模型执行文件写入/编辑/删除类工具后，会话完成时在会话流末尾以轻盈通透的纯透明框体汇总呈现「新增 / 修改 / 删除」的文件清单：
 
-- **触发工具集合**：写入类 `write / write_file / write_to_file / create_file / save_file`；编辑类 `edit / edit_file / replace_file_content / multi_replace_file_content / apply_patch / apply_diff / str_replace_editor / insert_content`；删除类 `delete_file / remove_file / unlink` 等；Shell 类 `bash / powershell / cmd` 等（定义于 `src/modules/flow-file-changes.js`）；
-- **新增/修改判定**：`tool-start` 时对写入类工具经 Rust `pi_path_exists` 异步探测路径写入前是否存在，并以 **Promise 形式存起**（`tool-end` 时 `await` 取回，消除探测 IPC 未返回而 tool-end 已到的竞态 → 新增文件不再误判为修改）；工具成功 + 写前不存在 → 新增；其余 → 修改；探测失败按修改兑底；
+- **触发工具集合**：写入类 `write / write_file / write_to_file / create_file / save_file / new_file / new_empty_editor`（经 `matchToolSet` 自动剥离命名空间前缀如 `default.write` / `pi:write_file`）；编辑类 `edit / edit_file / replace_file_content / multi_replace_file_content / apply_patch / apply_diff / str_replace_editor / insert_content`；删除类 `delete_file / remove_file / unlink` 等；Shell 类 `bash / powershell / cmd` 等（定义于 `src/modules/flow-file-changes.js`）；
+- **新增/修改判定（同步探测铁律）**：`tool-start` 时对写入类工具在当前事件调用栈内**纯同步向 `existenceProbes` 登记 Promise**（严禁任何 `await` 导致微任务挂起，消除写文件瞬时完成后 `tool-end` 抢先到达引发的竞态）；`tool-end` 时 `await` 取回存在性结果，并经 `normalizePathKey` 归一化比对（消除正反斜杠与大小写差异）；工具成功 + 写前不存在 → 新增（工具名含 `create / new` 显式新建语义时兜底识别为新增）；其余 → 修改；探测失败按修改兑底；
 - **收集与去重**：`tool-end` 仅收集执行成功的工具调用（`isError` 跳过），路径从工具入参提取（兼容 JSON 字符串与 `edits/files/changes` 多文件入参结构），按规范化路径去重保留最新动作；
-- **会话流缓存铁律（程序生命周期级）**：每个 Task 一份独立文件变更缓存仓（`sessionStores: Map<taskId, { items, collapsed }>`，定义于 `flow-file-changes.js`），前后台任务均持续收集（事件按 `piClient.lastEventTaskId || taskManager.currentActiveTaskId` 归入各自缓存仓），直至应用退出才释放；右键退出 Flow（挂起/归档）后经历史记录 / Task 记录回入时，由共享渲染器 `renderTurnsIntoFlow`（`task-panel.js`）调用 `api.restoreFileChangesFor(task.id)` 恢复收纳框，呈现与退出前完全一致；后台任务变更事件仅写入缓存仓，绝不触发前台 DOM 渲染；
+- **会话流缓存铁律（程序生命周期级）**：每个 Task 一份独立文件变更缓存仓（`sessionStores: Map<taskId, { items, collapsed, log }>`，定义于 `flow-file-changes.js`；`log` 为逐条变更日志 `{ key, kind, toolCallId, ts, path }`，供会话回退精确剪枝与预览），前后台任务均持续收集（事件按 `piClient.lastEventTaskId || taskManager.currentActiveTaskId` 归入各自缓存仓），直至应用退出才释放；右键退出 Flow（挂起/归档）后经历史记录 / Task 记录回入时，由共享渲染器 `renderTurnsIntoFlow`（`task-panel.js`）调用 `api.restoreFileChangesFor(task.id)` 恢复收纳框，呈现与退出前完全一致；后台任务变更事件仅写入缓存仓，绝不触发前台 DOM 渲染；
 - **删除识别与去伪（工作目录感知）**：显式删除类工具执行成功即记为「删除」；Shell 类工具启发式解析命令文本中 `rm / del / Remove-Item` 目标路径，并在命令执行成功后经 `pi_path_exists` 复核（路径确实消失才记为删除，杜绝误报）；**候选路径必须先经工作目录归一化再探测**：内核 Shell 实际 CWD ≠ 桌面端进程 CWD，`cd <dir> && rm <相对路径>`、MSYS 风格 `/c/Users/...`、`~` 与 `[USER_HOME]` 直接探测全部失真 → `existedBefore=false` 被去伪规则误杀（历史缺陷根因：删除示意信息在收纳框中消失）；故 `extractDeletedPathsFromCommand(commandText, baseDirs)` 按 `&&/;/|/换行` 切段顺序扫描并维护 `cd` 链路工作目录，配合 `loadBaseDirs()`（真实主目录 + 路由工作区会话 CWD 兑底）把每个目标归一化为绝对路径，tool-start 探测与 tool-end 复核双侧统一取基准，保证配对一致；解析失败退化为原文，绝不虚报；删除为终态，同一文件多动作合并时永远胜出；
 - **展示时机**：`agent-end` 正常收尾后经 `api.showFileChangesBox()` 渲染于会话流末尾（渲染前先 `syncViewToStore` 对齐当前活跃任务缓存仓，跨轮置底累积，整条可折叠展开且折叠态回写缓存仓，平滑贝塞尔旋转过渡）；全新会话由 `api.resetFileChanges()` 清视图态（`flow-stream.js` resetStreamState 非 followUp 分支调用，会话缓存仓保留不释放）；
 - **头部统计指示 (Summary Pills)**：头部右侧展示直观的分类统计（`+N 新增` / `~N 修改` / `-N 删除`）以及总数 `N 个文件`，取消胶囊边框+背景色，纯透明背景，折叠态亦可一目了然；
@@ -216,3 +216,34 @@ flowchart TD
 
 
 
+
+## 📌 11. 会话回退与文件撤回 (Flow Rollback: Session Rewind & File Restoration)
+
+Flow 支持回退到任意一次历史对话（配合 pi 内核原生历史节点回退），并在回退时自动撤回「已修改 / 已删除」的文件（已新增的文件永不撤回，防误删铁律），完成后顶部浮窗提醒结果（成功/失败，持续 3 秒）。实现链路横跨三层：内核快照扩展 (`src-tauri/extensions/pi-rollback-guard.ts`) → Rust 还原与 RPC 路由 (`src-tauri/src/rollback.rs` + `lib.rs`) → 前端编排 (`src/modules/flow-rollback.js`)。
+
+### 11.1 内核侧确定性快照（工具执行前，杜绝竞态）
+- **启用开关**：桌面端拉起 pi 内核进程时注入环境变量 `PI_DL_ROLLBACK=1`（Supervisor 主进程与 SessionHost 任务进程双侧注入；扩展未检测到该变量时完全静默退出，不影响原生 pi 使用场景）；
+- **物化机制**：`rollback::materialize_extension()` 在应用启动时把编译期内嵌源码（`include_str!`）幂等写入 `~/.pi/agent/extensions/pi-rollback-guard.ts`（全局扩展目录，免项目信任门禁）；
+- **快照时机铁律**：扩展监听 `tool_call` 事件（pi 扩展体系中先于工具 `execute` 执行、可阻塞），在工具真正落盘前读取目标文件内容 → 保证快照一定是「执行前状态」，彻底消除前端 tool-start 事件与工具执行之间的竞态；
+- **路径提取**：与前端收纳框同源的 `PATH_KEYS` / `edits/files/changes` 多文件结构 + Shell `rm / del / Remove-Item` 家族启发式解析（`cd` 链路 + `~` 展开 + MSYS 盘符转换 + `ctx.cwd` 兑底归一化）；
+- **落盘格式**：JSONL 追加至 `~/.pi-dl/rollback/<sessionId>/snapshots.jsonl`，每行 `{ ts, sessionId, toolCallId, toolName, path, contentB64, tooLarge? }`；单文件 > 8MB 只记存在标记不落内容；单会话总量 64MB 封顶；文件不存在（新增场景）不写行；
+- **会话血缘**：fork/clone 产生新会话文件时，扩展在 `session_start` 将 `{ session, parent }` 追加写入 `~/.pi-dl/rollback/lineage.jsonl`，还原时沿链汇集祖先会话快照，跨 fork 回退依然可用。
+
+### 11.2 Rust 还原与 RPC 路由
+- **`src-tauri/src/rollback.rs`**：`rollback_files(session_id, targets, dry_run)` 按 `(path, toolCallId)` 精确匹配**最早**快照（还原内容 = 回退点之后第一次变更前的状态）；采用**两阶段事务性保证（Phase 1 预检与内存解码，存在任何缺失/超限/解码失败立即中止且不触碰磁盘，彻底杜绝半撤回；`dry_run: true` 模式在 Phase 1 后无副作用直接返回；Phase 2 全部就绪后原子落盘写入）**；原生支持 0 字节空文件 base64 解码与空目录恢复；返回 `{ restored, restoredCount, missing, dryRun }`；路径键归一化（`\`→`/` + Windows 小写不敏感）；
+- **新 RPC 指令**（`lib.rs`）：`pi_get_fork_messages(task_id?)` / `pi_fork_session(task_id?, entry_id)` / `pi_rollback_files(task_id?, targets, dry_run?)`；task_id 为空路由主会话 Supervisor，否则经 `PiHostPool::send_command_to_task_with_response` 路由该 Task 专属内核进程；
+- **响应帧隔离铁律 (P2-2)**：`pending_responses` 等待表 + stdout 事件环中 `type=="response"` 帧按 id 唤醒 oneshot 等待者；无论有无等待者（如超时后响应姗姗来迟）统一 `continue` 丢弃，绝不落入前端广播通道产生杂散 IPC 帧。
+
+### 11.3 前端编排 (`src/modules/flow-rollback.js`)
+- **入口**：轮次提问卡右侧「回退到此处」按钮（`.flow-rollback-btn`，复用手绘 rewind 图元；常态隐藏、悬浮提问卡显现、常态透明无边框悬浮显手绘边框）；`flowConversation` 事件委托，按 `.flow-message-group` DOM 顺序定位轮次下标（历史轮次与当前轮次统一入口）；
+- **守卫**：任务生成中（thinking / streaming / tool_exec）禁止回退；轮次下标越界拦截；
+- **预览**：`api.collectRollbackPreview(taskId, fromIndex, turns)`（`flow-file-changes.js`）——汇总回退点之后全部变更日志，按路径取最早动作：`add` → keepAddList（保留不撤回）；`modify/delete` → restoreList（携 toolCallId 供快照精确匹配）；
+- **确认与大文件明示提醒 (P3-1)**：弹窗前执行 `pi_rollback_files(dry_run: true)` 预检；`SketchModal`（`detailHtml` 富文本详情）列出将恢复的修改/删除文件与保留的新增文件；若检测到超过 8MB 快照上限的大文件，顶部渲染醒目手绘警告横幅（`.rollback-warning-banner`），条目标记朱红 `超限 >8MB` 徽标，弹窗转为只读警示模式，明确告知已被保守阻止且 0 写入磁盘；
+- **执行执行链路 (P2-1 原子性重构)**：
+  ① **回退点预解析**：`pi_get_fork_messages` 定位内核历史节点；
+  ② **快照预检**：`pi_rollback_files(dry_run: true)`，存在任何缺失或超限立即保守中止，磁盘与内核 0 变更；
+  ③ **内核 fork 先行**：`pi_fork_session` 创建新分支；若失败，此时磁盘 0 写入，环境完全干净；
+  ④ **原子落盘写入**：内核成功后执行 `pi_rollback_files(dry_run: false)` 写回磁盘；
+  ⑤ **本地剪枝与重渲**：`api.pruneFileChangesFor` 剪枝变更仓 + `renderTurnsIntoFlow` 重渲（回退至首轮前清空会话流）；
+- **回退语义**：fork 至第 k 轮用户消息 = 保留前 k-1 轮完整对话，第 k 轮提问回填输入框供编辑重发，第 k 轮回复及其后全部丢弃；文件状态还原至第 k 轮执行前；
+- **结果提醒**：顶部浮窗（`api.showGlobalToast`）持续 3 秒，成功/失败/部分失败文案精确到恢复文件数与原因。
