@@ -84,7 +84,10 @@ export function initGlobalInteractions(ctx) {
         return;
       } else {
         // 运行已结束 (Done / Completed / Aborted / Error / Idle 中断或正常结束) -> 右键/Esc 归档为历史记录并清除 Task
-        api.archiveCurrentFlowToHistory();
+        // 若当前任务已被回退为 0 轮草稿态，严禁触发归档，直接清理任务
+        if (!activeTask || !Array.isArray(activeTask.turns) || activeTask.turns.length > 0) {
+          api.archiveCurrentFlowToHistory();
+        }
         if (activeTask) {
           taskManager.removeTask(activeTask.id);
         }

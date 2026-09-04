@@ -2,6 +2,7 @@ import { escapeHtml } from "../lib/dom-utils.js";
 import { SketchModal } from "../services/sketch-modal.js";
 import { invokeTauri } from "../services/tauri-bridge.js";
 import { taskManager } from "../services/task-manager.js";
+import { conversationHistoryService } from "../services/conversation-history.js";
 
 /**
  * Flow 会话回退 (历史节点回退 + 文件撤回)
@@ -228,6 +229,8 @@ export function initFlowRollback(ctx) {
     // 5. 本地状态剪枝与重渲
     const draftQuery = targetTurn?.query || "";
     const originalTurns = task.turns;
+    const convIdToSync = task.conversationId || task.id;
+
     task.turns = task.turns.slice(0, turnIndex);
     task.toolCalls = task.turns.flatMap((t) => t.toolCalls || []);
     task.activeToolName = null;
@@ -236,6 +239,20 @@ export function initFlowRollback(ctx) {
     task.thinkingText = task.turns.length > 0 ? task.turns[task.turns.length - 1].thinkingText || "" : "";
     task.status = "completed";
     task.completedAt = Date.now();
+    task.__isRolledBack = true; // 显式标记已回退，防止 restoreTaskToFlow 误从历史记录中幽灵复活旧轮次
+
+    // 核心治理：历史记录服务 (conversationHistoryService) 双向同步
+    if (convIdToSync) {
+      if (task.turns.length === 0) {
+        // 首轮提问回退（会话轮次被剪枝为 0，退化为输入框未发送草稿）：
+        // 彻底从历史记录中移除该残留项并解绑，杜绝历史讯息抽屉展示已被撤回的死会话
+        conversationHistoryService.deleteConversation(convIdToSync);
+        task.conversationId = null;
+      } else {
+        // 多轮提问回退：同步剪枝历史记录中的轮次与最后回复快照
+        conversationHistoryService.pruneConversationTurns(convIdToSync, turnIndex);
+      }
+    }
 
     // 文件变更仓剪枝（丢弃回退点之后的日志并重放重建），随后重渲 Flow
     if (typeof api.pruneFileChangesFor === "function") {

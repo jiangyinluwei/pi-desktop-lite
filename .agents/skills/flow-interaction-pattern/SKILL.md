@@ -245,5 +245,8 @@ Flow 支持回退到任意一次历史对话（配合 pi 内核原生历史节�
   ③ **内核 fork 先行**：`pi_fork_session` 创建新分支；若失败，此时磁盘 0 写入，环境完全干净；
   ④ **原子落盘写入**：内核成功后执行 `pi_rollback_files(dry_run: false)` 写回磁盘；
   ⑤ **本地剪枝与重渲**：`api.pruneFileChangesFor` 剪枝变更仓 + `renderTurnsIntoFlow` 重渲（回退至首轮前清空会话流）；
+  ⑥ **历史记录同步与防幽灵恢复 (History Synchronization & Anti-Ghost Resurrection)**：
+     - **首轮回退（`turnIndex === 0`）**：会话轮次归零退化为草稿，调用 `conversationHistoryService.deleteConversation` 物理删除该历史记录并解绑 `task.conversationId = null`，通知抽屉重渲；打上 `task.__isRolledBack = true` 显式标记，彻底阻断 `restoreTaskToFlow` 从历史中盲目恢复旧轮次；`archiveCurrentFlowToHistory` 与 Step Back 增加 0 轮归档门禁防御；
+     - **多轮回退（`turnIndex > 0`）**：调用 `conversationHistoryService.pruneConversationTurns` 将历史快照同步截断至 `turnIndex` 轮并刷新最终回答与耗时快照，保持历史卡片与当前 Flow 100% 同步；
 - **回退语义**：fork 至第 k 轮用户消息 = 保留前 k-1 轮完整对话，第 k 轮提问回填输入框供编辑重发，第 k 轮回复及其后全部丢弃；文件状态还原至第 k 轮执行前；
 - **结果提醒**：顶部浮窗（`api.showGlobalToast`）持续 3 秒，成功/失败/部分失败文案精确到恢复文件数与原因。

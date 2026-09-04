@@ -491,7 +491,8 @@ export function initTaskPanel(ctx) {
       );
       if (existingConv) {
         task.conversationId = existingConv.id;
-        if ((!Array.isArray(task.turns) || task.turns.length === 0) && Array.isArray(existingConv.turns) && existingConv.turns.length > 0) {
+        // 防幽灵反向覆写门禁：若当前 task 已显式经历过回退剪枝 (__isRolledBack)，绝不允许使用旧历史 turns 重新回填！
+        if (!task.__isRolledBack && (!Array.isArray(task.turns) || task.turns.length === 0) && Array.isArray(existingConv.turns) && existingConv.turns.length > 0) {
           task.turns = JSON.parse(JSON.stringify(existingConv.turns));
         }
       }
@@ -594,6 +595,11 @@ export function initTaskPanel(ctx) {
 
   const archiveCurrentFlowToHistory = () => {
     const currentActive = taskManager.getCurrentActiveTask();
+    // 铁律：若当前活跃 Task 经历过回退且轮次归零 (turns.length === 0)，属于草稿态，严禁归档至历史记录
+    if (currentActive && Array.isArray(currentActive.turns) && currentActive.turns.length === 0) {
+      return;
+    }
+
     const isAborted = Boolean(
       (currentActive && currentActive.status === "aborted") ||
       flow.activeTurnRefs?.responseContentEl?.querySelector(".flow-abort-callout")
