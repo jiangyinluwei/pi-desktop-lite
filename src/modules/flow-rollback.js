@@ -44,7 +44,8 @@ export function initFlowRollback(ctx) {
   const api = ctx.api;
   const el = ctx.el;
   const flow = ctx.flow;
-  const flowConversation = el.flowConversation;
+  const flowDom = ctx.flowDom;
+  const flowConversation = flowDom.flowConversation;
   if (!flowConversation) return;
 
   const toast = (message, duration = 3000) => {

@@ -19,11 +19,12 @@ export function initViewMode(ctx) {
   const searchInput = el.searchInput;
   const settingsBtn = el.settingsBtn;
   const searchForm = el.searchForm;
-  const flowScrollArea = el.flowScrollArea;
-  const thinkingToggleBtn = el.thinkingToggleBtn;
-  const agentThinkingCard = el.agentThinkingCard;
-  const flowModelTag = el.flowModelTag;
-  const flowBtnAbort = el.flowBtnAbort;
+  const flowDom = ctx.flowDom;
+  const flowScrollArea = flowDom.flowScrollArea;
+  const thinkingToggleBtn = flowDom.thinkingToggleBtn;
+  const agentThinkingCard = flowDom.agentThinkingCard;
+  const flowModelTag = flowDom.flowModelTag;
+  const flowBtnAbort = flowDom.flowBtnAbort;
   const topbarHintBanner = el.topbarHintBanner;
 
   // ==========================================================================

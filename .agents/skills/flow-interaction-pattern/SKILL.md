@@ -55,6 +55,7 @@ description: |
 
 1. **伪思考框**：`thinking-start` 即插入 `Thinking (0.0s)...` 占位思维切片，100ms 读秒；真正捕捉到思维链 delta 后流式刷新首行预览，封口时若从未收到任何思维内容则直接移除；
 > **纯渲染层注记**：上述工具的占位/真实卡、思维切片、阶段(Point)卡与工具名/图标/摘要映射、入参/结果 HTML 格式化、徽章刷新等「无副作用」纯渲染助手统一定义于 `src/modules/flow-render.js`，调用方经显式 `import { ... } from './flow-render.js'` 使用（阶段 3 已把 13 个纯渲染槽从 `ctx.api` 清退）。卡片读秒/占位/清理仍由 `flow-pipeline.js`/`flow-stream.js` 编排，`flow.activeToolPseudoStep` / `flow.toolPseudoTimerInterval` / `flow.toolRunTimerInterval` 等视图缓存仍留 `ctx.flow`（阶段 3b 再归位）。
+> **Flow 域只读 DOM 引用层**：Flow 相关元素 id 由 `src/modules/flow-dom.js` 的 `createFlowDom(el)` 抽出挂到 `ctx.flowDom`，所有 Flow 模块改读 `flowDom.flowScrollArea` / `flowDom.flowConversation` 等（阶段 3b 落地，替代直接解构全量 `ctx.el`）；元素定位助手留待阶段 4 `el-binder` 接线。
 2. **伪工具运行框**：`toolcall-delta-start`（工具参数流式开始）即插入 `工具调用... + running + (0.0s)...` 占位卡（`flow-pipeline.js` 的 `ensureActiveToolPseudoStep`），100ms 读秒；参数流式结束（`toolcall-delta-end` 携带 `toolCall.name`）回填真实工具名；真实工具卡创建（`tool-start`）时移除占位卡，避免双卡重叠；
 3. **真实工具卡读秒**：`tool-start` 创建卡片时携带 `durationText: "(0.0s)..."` 与 `startTime`，`startToolRunTimer` 每 100ms 刷新读秒；`tool-end` 定格为 `(Xs)` 并清空 `flow.toolRunTimerInterval`；
 4. **状态清理铁律**：伪框与读秒计时器（`flow.activeToolPseudoStep` / `flow.toolPseudoTimerInterval` / `flow.toolRunTimerInterval`）必须在 `resetStreamState`、`resetCurrentTurnForResend`、`finalizeStream`、`thinking-start`、`text-start` 全部边界兜底清理，杜绝幽灵计时器与残留占位卡；伪卡不写入 `flow.currentSteps`，不污染历史快照。

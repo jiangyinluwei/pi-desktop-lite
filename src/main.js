@@ -22,6 +22,7 @@ import { settingsStore } from "./services/stores/settings-store.js";
 import { attachmentsStore } from "./services/stores/attachments-store.js";
 import { flowStore } from "./services/stores/flow-store.js";
 import { initFlowUi } from "./modules/flow-ui.js";
+import { createFlowDom } from "./modules/flow-dom.js";
 import { initFlowStream } from "./modules/flow-stream.js";
 import { initFlowPipeline } from "./modules/flow-pipeline.js";
 import { initFileChanges } from "./modules/flow-file-changes.js";
@@ -164,13 +165,16 @@ window.addEventListener("DOMContentLoaded", () => {
    * - settingsStore:  设置页跨模块共享状态唯一属主（通道抽屉/官方目录/认证缓存/激活工作区）
    * - attachmentsStore: 输入框附件胶囊状态唯一属主（addFiles/removeAt/clear）
    * - flowStore:      Flow 纯数据状态唯一属主（按 taskId 分仓；视图派生缓存不入 store）
-   * - flow:           Flow 视图层/重构过渡期缓存（renderedToolCards、activeTurnRefs、currentSteps、active*Step、计时器等）
+   * - flow:           Flow 视图层/重构过渡期缓存（renderedToolCards、activeTurnRefs、currentSteps、active*Step、跟随/计时器等）
    *                   —— 属视图派生缓存，按铁律热区清单留在视图层（阶段 3 已把纯渲染迁至 flow-render.js；
-   *                   视图缓存归位 flow-state-view 与 flow.* 纯数据迁入 flowStore.for(taskId) 列入阶段 3b 待办）
+   *                   阶段 3b 已落地 flow-dom.js 只读 DOM 引用层；flow-state-view 视图缓存归位 + flow.* 纯数据迁入 flowStore.for(taskId)
+   *                   因涉流式热路径（piClient.lastEventTaskId 与 currentActiveTaskId 不一致 resetStreamState taskId 未定等）且需运行态回归验证，列入后续阶段）
+   * - flowDom:        Flow 域只读 DOM 引用层（阶段 3b 落地，源自 createFlowDom(el)，见 flow-dom.js）
    * - api:            各模块按需注册的跨模块函数调用面（阶段 3 已把 flow-render 纯渲染槽清退为显式 import，其余阶段 6 再评估）
    */
   const ctx = {
     el,
+    flowDom: createFlowDom(el),
     viewStore,
     settingsStore,
     attachmentsStore,

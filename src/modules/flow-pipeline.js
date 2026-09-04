@@ -28,11 +28,12 @@ export function initFlowPipeline(ctx) {
   const settingsStore = ctx.settingsStore;
   const flow = ctx.flow;
   const attachmentsStore = ctx.attachmentsStore;
+  const flowDom = ctx.flowDom;
 
   const searchInput = el.searchInput;
   const searchForm = el.searchForm;
-  const flowScrollArea = el.flowScrollArea;
-  const flowBtnAbort = el.flowBtnAbort;
+  const flowScrollArea = flowDom.flowScrollArea;
+  const flowBtnAbort = flowDom.flowBtnAbort;
 
   const getSkillDisplayName = (skillName) => {
     switch (skillName) {
@@ -58,7 +59,7 @@ export function initFlowPipeline(ctx) {
 
   api.getSkillDisplayName = getSkillDisplayName;
 
-  const flowConversation = el.flowConversation;
+  const flowConversation = flowDom.flowConversation;
 
   /* ========== 「注入提示」信息框（路由目标项目胶囊下方，默认收起显示标题与注入数量） ==========
    * 展示所有在调用模型之前注入的上下文条目（Inner-Skill 运行态技能、

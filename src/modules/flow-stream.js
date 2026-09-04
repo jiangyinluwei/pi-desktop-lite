@@ -10,16 +10,16 @@ import { createThinkingStepCard, createPhaseStepCard } from "./flow-render.js";
  * 流式状态机、错误卡渲染与自动重连胶囊
  */
 export function initFlowStream(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
   const flow = ctx.flow;
+  const flowDom = ctx.flowDom;
 
-  const flowScrollArea = el.flowScrollArea;
-  const flowConversation = el.flowConversation;
-  const thinkingToggleBtn = el.thinkingToggleBtn;
-  const flowResponseContent = el.flowResponseContent;
-  const flowBtnAbort = el.flowBtnAbort;
-  const taskDetailsSidebar = el.taskDetailsSidebar;
+  const flowScrollArea = flowDom.flowScrollArea;
+  const flowConversation = flowDom.flowConversation;
+  const thinkingToggleBtn = flowDom.thinkingToggleBtn;
+  const flowResponseContent = flowDom.flowResponseContent;
+  const flowBtnAbort = flowDom.flowBtnAbort;
+  const taskDetailsSidebar = flowDom.taskDetailsSidebar;
 
   /**
    * 清理流式临时缓冲与定时器（在 resetStreamState 与 resetCurrentTurnForResend 中复用）

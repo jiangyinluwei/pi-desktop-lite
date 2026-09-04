@@ -160,11 +160,12 @@ fn show_and_focus_main_window(app: &tauri::AppHandle) {
 - **分层归位**：Store（无 DOM、有状态、有行为）→ `src/services/stores/`；ctx 只留 `el` + store 引用；模块经解构取 `const viewStore = ctx.viewStore`，禁再解构裸对象 `ctx.view / ctx.settings / ctx.attachments`（阶段 2 已移除）；
 - **四个 store**：`view-store.js`（四态状态机 `morph(mode, {previousMode, shouldFocusInput})` / `set`，**控制流命令禁上总线**）、`settings-store.js`（`setExpandedChannel` / `setOfficialCatalog` / `setCurrentOfficialAuth` / `setActiveWorkspace` / `updateActiveWorkspace(patch)`）、`attachments-store.js`（`addFiles` / `removeAt` / `clear` / `has` / `last`）、`flow-store.js`（纯数据，**按 taskId 分仓** `flowStore.for(taskId)`）；
 - **Store action 硬约束**：一律**同步**、禁 `async/await`、禁微任务调度（同步探测不变量 / 前台门禁 / Task 分仓三铁律）；`bus.emit` 保持同步派发；
-- **视图派生缓存不入 Store**：`renderedToolCards` / `currentSteps` / `active*Step` / `activeTurnRefs` / 计时器 / `followBottom` 属视图层，暂留 `ctx.flow` 过渡缓存（阶段 3 已把「纯渲染」拆到 `flow-render.js`；视图缓存归位 `flow-state-view` 与 `flow.*` 纯数据迁 `flowStore` 列入阶段 3b）；
+- **视图派生缓存不入 Store**：`renderedToolCards` / `currentSteps` / `active*Step` / `activeTurnRefs` / 计时器 / `followBottom` 属视图层，暂留 `ctx.flow` 过渡缓存（阶段 3 已把「纯渲染」拆到 `flow-render.js`；阶段 3b 已落地 `flow-dom.js` 只读 DOM 引用层；视图缓存归位 `flow-state-view` 与 `flow.*` 纯数据迁 `flowStore` 仍列入阶段 3b 后续批次，需运行态流式回归验证）；
 - **纯渲染层显式 import**：无副作用、不读共享状态、不碰视图缓存的纯函数（工具/思维/阶段/伪运行卡创建、工具名/图标/摘要映射、入参/结果 HTML 格式化、ANSI 剥离、徽章刷新）迁到 `src/modules/flow-render.js`，调用方 `import { ... } from './flow-render.js'` 显式依赖，**替代旧 `ctx.api` 字符串槽**（阶段 3 已清退 `api.getFriendlyToolName` 等 13 个纯渲染槽）；
+- **Flow 域只读 DOM 引用层**：`src/modules/flow-dom.js` 的 `createFlowDom(el)` 从 `ctx.el` 抽出 flow 子集挂 `ctx.flowDom`，flow-* 模块改读 `flowDom.flow*`（阶段 3b 落地，替代直接解构全量 `ctx.el`）；元素定位助手留待阶段 4 `el-binder` 接线。
 - **落地方式**：`view.mode === VIEW_FLOW` → `viewStore.mode === VIEW_FLOW`；`api.setViewMode(VIEW_FLOW, true)` → `viewStore.morph(VIEW_FLOW, { shouldFocusInput: true })`；`settings.activeWorkspace.routePath = x` → `settingsStore.updateActiveWorkspace({ routePath: x })`；`attachments.files.push(m)` → `attachmentsStore.addFiles([m])`。
 
-> **降耦合量化**：阶段 2 已把 `view.*` / `settings.*` / `attachments.*` 裸写清零（93→76，剩余全为 `flow.*`）。阶段 3 拆出 `flow-render.js`（20 模块），src 全量 `api.<slot>` 引用点 299→**270**、唯一槽 84→**71**、调用点 151→**142**、重复注册 0；剩余 `flow.*` 纯数据字段迁 `flowStore` 列入阶段 3b。
+> **降耦合量化**：阶段 2 已把 `view.*` / `settings.*` / `attachments.*` 裸写清零（93→76，剩余全为 `flow.*`）。阶段 3 拆出 `flow-render.js`（20 模块），src 全量 `api.<slot>` 引用点 299→**270**、唯一槽 84→**71**、调用点 151→**142**、重复注册 0；阶段 3b 落地 `flow-dom.js`（21 模块）。剩余 `flow.*` 纯数据字段迁 `flowStore` 与 `flow-state-view` 视图缓存归位仍列入阶段 3b 后续批次（需流式回归验证）。
 
 ---
 

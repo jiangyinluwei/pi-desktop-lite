@@ -92,3 +92,23 @@ export const EVENT_CHANNEL_TABLE_VERSION = 1;
 //   expandThinkingCard / autoCollapseThinkingOnNextPhase / createFlowTurnGroupElement /
 //   updateFlowQuestionTip / updateFlowTurnNav / attachResponseSaveButton /
 //   saveTurnOutputToDesktop / renderMarkdown
+
+// =====================================================================
+// 【跨模块显式 import 契约 · Flow 域只读 DOM 引用（阶段 3b 落地）】
+// =====================================================================
+// 自阶段 3b 起，flow 簇的「只读 DOM 引用」不再直接解构全量 ctx.el，
+// 改为由 main.js `createFlowDom(el)` 产出 flow 子集后挂到 ctx.flowDom，
+// flow 模块 `const flowDom = ctx.flowDom` 取用。见方案 §4 阶段 3b / 阶段 4 el-binder。
+//
+// flow-dom.js 导出：
+//   createFlowDom(el) —— 从 ctx.el 抽出 flow 子集（只读，无副作用，无 DOM 查询）
+//   FLOW_EL_IDS       —— flow 域元素 id 集中登记表
+//
+// ⚠️ 指定负责方：仅 main.js 调用 createFlowDom；其余模块一律只读 ctx.flowDom，严禁再自造 flow 引用。
+//
+// 未落地（仍留 ctx.flow）—— 阶段 3b 部分完成，下列按方案 §4 铁律⑤ 继续留在视图层：
+//   1. flow-state-view.js（renderedToolCards / currentSteps / active*Step / activeTurnRefs /
+//      跟随标记 / 计时器）视图缓存归位 —— 因涉流式热路径（lastEventTaskId 与 currentActiveTaskId
+//      不一致、resetStreamState 时 taskId 未定、数据字段与 DOM 绑定视图对象混排），且需运行态回归验证；
+//   2. flow.* 纯数据字段迁 flowStore.for(taskId) —— 同上，需 taskId 穿透流式热路径。
+//   二者列入后续阶段（需带运行 App 的流式回归验证后落地）。

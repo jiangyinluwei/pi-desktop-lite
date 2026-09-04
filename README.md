@@ -98,6 +98,7 @@ pi-desktop-lite/
 │   │   ├── view-mode.js        # 四态状态机与设置页路由
 │   │   ├── flow-ui.js          # Flow 渲染核心：Markdown、轮次 DOM、悬浮提问、上下定位导航
 │   │   ├── flow-render.js      # Flow 纯渲染层：工具/思维/阶段卡片创建、入参/结果 HTML 格式化（无副作用，显式 import）
+│   │   ├── flow-dom.js         # Flow 域只读 DOM 引用层：createFlowDom(el) → ctx.flowDom，flow-* 改读 flowDom.flow*（阶段 3b）
 │   │   ├── flow-stream.js      # 流式状态机、错误卡渲染与自动重连胶囊
 │   │   ├── flow-pipeline.js    # 提问下发、工具调用事件、自愈引擎与发送拦截
 │   │   ├── flow-file-changes.js # 会话文件变更收纳框（新增/修改/删除文件汇总，点击打开所在文件夹；按 Task 会话流缓存，回入 Flow 一致恢复；含逐条变更日志供回退预览/剪枝）

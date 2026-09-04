@@ -333,9 +333,10 @@ export function initFileChanges(ctx) {
   const api = ctx.api;
   const el = ctx.el;
   const flow = ctx.flow;
+  const flowDom = ctx.flowDom;
 
-  const flowConversation = el.flowConversation;
-  const flowScrollArea = el.flowScrollArea;
+  const flowConversation = flowDom.flowConversation;
+  const flowScrollArea = flowDom.flowScrollArea;
 
   const fileChanges = {
     boxEl: null,

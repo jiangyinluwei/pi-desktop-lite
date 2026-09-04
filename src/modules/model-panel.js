@@ -12,9 +12,10 @@ export function initModelPanel(ctx) {
   const el = ctx.el;
   const api = ctx.api;
   const settingsStore = ctx.settingsStore;
+  const flowDom = ctx.flowDom;
 
-  const flowModelName = el.flowModelName;
-  const flowModelTag = el.flowModelTag;
+  const flowModelName = flowDom.flowModelName;
+  const flowModelTag = flowDom.flowModelTag;
   const currentModelProvider = el.currentModelProvider;
   const currentModelName = el.currentModelName;
   const currentModelInfo = el.currentModelInfo;

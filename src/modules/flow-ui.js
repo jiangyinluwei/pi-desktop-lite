@@ -14,18 +14,19 @@ export function initFlowUi(ctx) {
   const viewStore = ctx.viewStore;
   const settingsStore = ctx.settingsStore;
   const flow = ctx.flow;
+  const flowDom = ctx.flowDom;
 
   const appContainer = el.appContainer;
-  const flowStage = el.flowStage;
-  const flowScrollArea = el.flowScrollArea;
-  const flowConversation = el.flowConversation;
-  const flowQuestionTip = el.flowQuestionTip;
-  const flowQuestionTipText = el.flowQuestionTipText;
-  const flowTurnNav = el.flowTurnNav;
-  const flowTurnNavUp = el.flowTurnNavUp;
-  const flowTurnNavDown = el.flowTurnNavDown;
-  const thinkingToggleBtn = el.thinkingToggleBtn;
-  const agentThinkingCard = el.agentThinkingCard;
+  const flowStage = flowDom.flowStage;
+  const flowScrollArea = flowDom.flowScrollArea;
+  const flowConversation = flowDom.flowConversation;
+  const flowQuestionTip = flowDom.flowQuestionTip;
+  const flowQuestionTipText = flowDom.flowQuestionTipText;
+  const flowTurnNav = flowDom.flowTurnNav;
+  const flowTurnNavUp = flowDom.flowTurnNavUp;
+  const flowTurnNavDown = flowDom.flowTurnNavDown;
+  const thinkingToggleBtn = flowDom.thinkingToggleBtn;
+  const agentThinkingCard = flowDom.agentThinkingCard;
 
   // 初始化代码块一键复制与 Markdown 内部交互委托
   initMarkdownInteractions(document);
