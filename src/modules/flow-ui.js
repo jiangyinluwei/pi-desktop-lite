@@ -91,15 +91,6 @@ export function initFlowUi(ctx) {
     }
   };
 
-  const expandThinkingCard = (cardEl = null, btnEl = null) => {
-    const targetCard = cardEl || flow.activeTurnRefs?.thinkingCardEl || agentThinkingCard;
-    const targetBtn = btnEl || flow.activeTurnRefs?.thinkingToggleBtn || thinkingToggleBtn;
-    if (targetCard && !targetCard.classList.contains("open")) {
-      targetCard.classList.add("open");
-      if (targetBtn) targetBtn.setAttribute("aria-expanded", "true");
-    }
-  };
-
   const autoCollapseThinkingOnNextPhase = () => {
     if (!flow.hasAutoCollapsedThinking) {
       flow.hasAutoCollapsedThinking = true;
@@ -833,11 +824,9 @@ export function initFlowUi(ctx) {
   api.collapseAllDoneToolCards = collapseAllDoneToolCards;
   api.collapseAllToolCards = collapseAllToolCards;
   api.collapseThinkingCard = collapseThinkingCard;
-  api.expandThinkingCard = expandThinkingCard;
   api.autoCollapseThinkingOnNextPhase = autoCollapseThinkingOnNextPhase;
   api.createFlowTurnGroupElement = createFlowTurnGroupElement;
   api.updateFlowQuestionTip = updateFlowQuestionTip;
   api.updateFlowTurnNav = updateFlowTurnNav;
   api.attachResponseSaveButton = attachResponseSaveButton;
-  api.saveTurnOutputToDesktop = saveTurnOutputToDesktop;
 }

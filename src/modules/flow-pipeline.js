@@ -57,8 +57,6 @@ export function initFlowPipeline(ctx) {
   };
 
 
-  api.getSkillDisplayName = getSkillDisplayName;
-
   const flowConversation = flowDom.flowConversation;
 
   /* ========== 「注入提示」信息框（路由目标项目胶囊下方，默认收起显示标题与注入数量） ==========

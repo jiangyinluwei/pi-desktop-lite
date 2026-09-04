@@ -780,7 +780,6 @@ export function initFlowStream(ctx) {
   api.finalizeStream = finalizeStream;
   api.sealActiveThinkingStep = sealActiveThinkingStep;
   api.ensureActiveThinkingStep = ensureActiveThinkingStep;
-  api.ensureActiveTextStep = ensureActiveTextStep;
   api.sealActivePhaseOutput = sealActivePhaseOutput;
   api.resetCurrentTurnForResend = resetCurrentTurnForResend;
   api.renderAbortNoticeHtml = renderAbortNoticeHtml;

@@ -417,8 +417,8 @@ export function initWorkspacePanel(ctx) {
       // 刷新当前卡片与列表
       await loadWorkspaces();
 
-      // 通知全局与输入框更新工作区状态
-      window.dispatchEvent(new CustomEvent("workspace-changed", { detail: { workspace: ws } }));
+      // 通知全局与输入框更新工作区状态（阶段 6：走同步事件总线契约 ui:workspace-changed）
+      bus.emit("ui:workspace-changed", { workspace: ws });
       if (typeof api.syncWorkspaceInputState === "function") {
         api.syncWorkspaceInputState();
       }
@@ -467,7 +467,7 @@ export function initWorkspacePanel(ctx) {
           if (typeof api.syncWorkspaceInputState === "function") {
             api.syncWorkspaceInputState();
           }
-          window.dispatchEvent(new CustomEvent("workspace-changed"));
+          bus.emit("ui:workspace-changed");
           showGlobalToast("已绑定目标项目目录", 1600);
         }
       } catch (err) {
@@ -494,7 +494,7 @@ export function initWorkspacePanel(ctx) {
         if (typeof api.syncWorkspaceInputState === "function") {
           api.syncWorkspaceInputState();
         }
-        window.dispatchEvent(new CustomEvent("workspace-changed"));
+        bus.emit("ui:workspace-changed");
         showGlobalToast("已保存目标项目路由绑定", 1800);
       } catch (err) {
         console.error("[WorkspacePanel] Save route failed:", err);
@@ -529,7 +529,7 @@ export function initWorkspacePanel(ctx) {
             if (typeof api.syncWorkspaceInputState === "function") {
               api.syncWorkspaceInputState();
             }
-            window.dispatchEvent(new CustomEvent("workspace-changed"));
+            bus.emit("ui:workspace-changed");
             showGlobalToast(`已切换路由目标为: ${path.split("/").pop() || path}`, 1800);
           } catch (err) {
             showGlobalToast(`切换历史项目失败: ${err.message || err}`, 2200);

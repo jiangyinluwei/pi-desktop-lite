@@ -85,7 +85,7 @@ pi-desktop-lite/
 ├── scripts/                    # Automation and build scripts (tauri.js, check.js)
 ├── src/                        # Frontend source code and assets
 │   ├── assets/                 # Static assets (logo.svg, logo.ico, hand-drawn SVG icons)
-│   ├── lib/                    # Shared foundational utilities (dom-utils, icons, markdown-renderer, view-constants)
+│   ├── lib/                    # Shared foundational utilities (dom-utils, icons, markdown-renderer, view-constants, event-bus sync event bus, contracts event-channel + api-slot contracts)
 │   ├── modules/                # Feature-scoped UI modules orchestrated by main.js
 │   │   ├── view-mode.js        # Four-state state machine & settings routing
 │   │   ├── flow-ui.js          # Flow rendering: Markdown, turns DOM, floating tip, turn navigation

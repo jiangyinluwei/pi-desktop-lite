@@ -224,7 +224,6 @@ export function initViewMode(ctx) {
     }
   });
 
-  api.setViewMode = setViewMode;
   api.openSettingsView = openSettingsView;
   api.closeSettingsView = closeSettingsView;
 }

@@ -175,7 +175,7 @@ export function initSearchInput(ctx) {
             routeName: chosen.split("/").pop() || chosen,
           });
           await syncWorkspaceInputState();
-          window.dispatchEvent(new CustomEvent("workspace-changed", { detail: { routePath: chosen } }));
+          bus.emit("ui:workspace-changed", { routePath: chosen });
           if (searchInput) {
             searchInput.focus();
           }
@@ -550,8 +550,8 @@ export function initSearchInput(ctx) {
     }
   });
 
-  // 监听工作区切换事件与应用加载
-  window.addEventListener("workspace-changed", () => {
+  // 监听工作区切换事件与应用加载（阶段 6：workspace-changed 已收编至同步事件总线）
+  bus.on("ui:workspace-changed", () => {
     syncWorkspaceInputState();
   });
 

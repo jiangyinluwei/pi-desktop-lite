@@ -93,7 +93,7 @@ pi-desktop-lite/
 ├── scripts/                    # 自动化与环境配置脚本 (tauri.js, check.js)
 ├── src/                        # 前端页面源码与运行时资源
 │   ├── assets/                 # 静态资源 (logo.svg, logo.ico, 手绘 SVG 图标)
-│   ├── lib/                    # 跨模块共享基础件 (dom-utils, icons, markdown-renderer, view-constants)
+│   ├── lib/                    # 跨模块共享基础件 (dom-utils, icons, markdown-renderer, view-constants, event-bus 同步事件总线, contracts 事件通道契约表 + api 槽契约定型)
 │   ├── modules/                # 按功能域拆分的 UI 业务模块（由 main.js 统一编排）
 │   │   ├── view-mode.js        # 四态状态机与设置页路由
 │   │   ├── flow-ui.js          # Flow 渲染核心：Markdown、轮次 DOM、悬浮提问、上下定位导航
