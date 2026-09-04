@@ -10,6 +10,11 @@
  *   C. 同一 api 函数被多模块重复注册数（>1 个模块注册同一槽）
  *   D. 跨模块 api.* 调用点数（调用方模块 ≠ 注册方模块）
  *   E. 共享状态裸写数（flow./view./settings./attachments. 赋值，含解构后裸名）
+ *
+ * ⚠️ 口径：api.<slot> 引用点/唯一槽/调用点按「原始文本」统计（含注释），因此 src 下任意文件
+ *  注释中若出现 `api.xxx` 字面量（如 contracts.js / flow-render.js 的说明文档）也会计入，
+ *  请勿在注释里书写 `api.<slot>` 样式，改用裸槽名描述。阶段 3 已把 flow 纯渲染槽清退为
+ *  显式 import，src 全量 api 引用点因此下降。
  *   F. 存量事件通道：pi:* CustomEvent 同步 dispatchEvent/监听数、window.__piRegisterStepBack 注册数
  *
  * 用法：node scripts/measure-coupling.js [--json]

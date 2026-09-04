@@ -57,3 +57,38 @@ export const EVENT_CHANNEL_TABLE_VERSION = 1;
 
 // 跨模块公开契约区（阶段 6 用 @typedef 填充，当前为空）
 // 例如：export const __contracts = {};  // 预留
+
+// =====================================================================
+// 【跨模块显式 import 契约 · Flow 渲染层（阶段 3 落地）】
+// =====================================================================
+// 自阶段 3 起，flow 簇的「纯渲染助手」不再经由 ctx 的 api 函数槽跨模块调用，
+// 改为直接 `import { ... } from "../modules/flow-render.js"`。见方案 §4 阶段 3。
+//
+// flow-render.js 导出的纯渲染函数（唯一依赖 src/lib 叶子模块，无循环依赖）：
+//   collapseToolCard(card)            —— 折叠单张步骤/工具卡
+//   expandToolCard(card)              —— 展开单张步骤/工具卡
+//   getFriendlyToolName(toolName)     —— 工具名友好化
+//   getToolIcon(toolName)             —— 工具 SVG 图标映射
+//   getToolShortSummary(toolName,args)—— 工具入参短视频摘要
+//   stripAnsiCodes(str)               —— 剥离 ANSI 控制字符
+//   formatToolArgumentsHtml(args)     —— 入参代码块 HTML
+//   formatToolResultHtml(result)      —— 结果代码块 HTML
+//   renderToolBodyInnerHtml(args,result,rawContent) —— 工具卡正文结构化 HTML
+//   updateToolBadge(badgeEl,status)   —— 工具状态徽章刷新
+//   createThinkingStepCard(opts)      —— 思维切片卡
+//   createPhaseStepCard(opts)         —— 阶段性输出(Point)卡
+//   createToolStepCard(opts)          —— 工具调用卡
+//   createToolPseudoRunningCard(opts) —— 伪工具运行框占位卡
+//
+// ⚠️ 已清退槽（原由 flow-ui 注册，现无外部消费者，见阶段 3 报告 §8）：
+//   getFriendlyToolName / getToolIcon / getToolShortSummary / formatToolArgumentsHtml /
+//   formatToolResultHtml / renderToolBodyInnerHtml / updateToolBadge /
+//   createThinkingStepCard / createPhaseStepCard / createToolStepCard /
+//   createToolPseudoRunningCard / collapseToolCard / expandToolCard
+//   以上均为纯渲染，已在阶段 3 迁移为 flow-render 显式 import。
+//
+// 仍在 ctx 的 api 函数槽（非纯渲染，涉及 flow 视图缓存/跨模块契约，阶段 6 再评估清退）：
+//   collapseAllDoneToolCards / collapseAllToolCards / collapseThinkingCard /
+//   expandThinkingCard / autoCollapseThinkingOnNextPhase / createFlowTurnGroupElement /
+//   updateFlowQuestionTip / updateFlowTurnNav / attachResponseSaveButton /
+//   saveTurnOutputToDesktop / renderMarkdown

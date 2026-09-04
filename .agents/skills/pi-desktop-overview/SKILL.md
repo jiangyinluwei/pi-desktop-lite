@@ -78,7 +78,8 @@ description: |
 ## 🧩 前端模块化与降耦合架构
 
 - **功能域模块化**：`src/modules/` 按功能域拆分，`src/main.js` 唯一编排，跨模块协调收敛至 `ctx.*`；
-- **共享状态唯一属主 (阶段 2)**：`src/services/stores/` 下 `view-store.js` / `settings-store.js` / `attachments-store.js` / `flow-store.js` 为共享可变状态唯一属主（无 DOM、有状态、有行为），`ctx` 只留 store 引用；模块经解构取 `viewStore` / `settingsStore` / `attachmentsStore`，禁再解构裸对象 `ctx.view / ctx.settings / ctx.attachments`（阶段 2 已移除）。四态状态机落 `viewStore.morph(mode, opts)`（控制流命令禁上总线）；`view.*` / `settings.*` / `attachments.*` 裸写已清零；`flow.*` 纯数据字段按 taskId 分仓（`flowStore.for(taskId)`），视图派生缓存（`renderedToolCards` / `currentSteps` / `active*Step` / 计时器）属视图层待阶段 3 拆 `flow-render` 迁出；
+- **共享状态唯一属主 (阶段 2)**：`src/services/stores/` 下 `view-store.js` / `settings-store.js` / `attachments-store.js` / `flow-store.js` 为共享可变状态唯一属主（无 DOM、有状态、有行为），`ctx` 只留 store 引用；模块经解构取 `viewStore` / `settingsStore` / `attachmentsStore`，禁再解构裸对象 `ctx.view / ctx.settings / ctx.attachments`（阶段 2 已移除）。四态状态机落 `viewStore.morph(mode, opts)`（控制流命令禁上总线）；`view.*` / `settings.*` / `attachments.*` 裸写已清零；`flow.*` 纯数据字段按 taskId 分仓（`flowStore.for(taskId)`），视图派生缓存（`renderedToolCards` / `currentSteps` / `active*Step` / 计时器）属视图层暂留 `ctx.flow`（阶段 3 落地与阶段 3b 待办见下）；
+- **纯渲染层显式 import (阶段 3)**：`src/modules/flow-render.js` 收编 flow 簇「纯渲染」助手（工具/思维/阶段/伪运行卡创建、工具名/图标/摘要映射、入参/结果 HTML 格式化、ANSI 剥离、徽章刷新），调用方 `import { ... } from './flow-render.js'` 显式依赖，替代旧 `ctx.api` 字符串槽；阶段 3 已清退 `api.getFriendlyToolName` 等 13 个纯渲染槽（src 全量 `api.<slot>` 引用点 299→270、唯一槽 84→71、调用 151→142、模块 19→20、重复注册 0）。`flow.*` 纯数据字段迁 `flowStore.for(taskId)` 与视图缓存归位 `flow-state-view` 列入阶段 3b（需 taskId 穿透流式热路径，规避频闪/平台 bug）；
 - **事件总线降耦合 (阶段 1)**：`src/lib/event-bus.js` 极简同步 bus 收编「fire-and-forget」横切通知（`ui:*` / `flow:*`），`src/lib/contracts.js` 事件通道契约表统一登记（bus / Store action / `pi:*` 内核桥接三类归口）。横切通知（如 `ui:toast`）迁移为 `bus.emit` / `bus.on`；控制流 / 状态迁移仍走 Store action 或显式 import；
 - **构建与度量门禁**：`npm run check:fe`（全量前端语法 + import 图 + 循环依赖）与 `npm run measure:coupling`（耦合度量基线）支撑降耦合重构闭环。
 

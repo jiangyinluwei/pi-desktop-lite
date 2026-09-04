@@ -4,6 +4,7 @@ import { piClient } from "../services/pi-client.js";
 import { notificationService } from "../services/notification-service.js";
 import { taskManager } from "../services/task-manager.js";
 import { modelFailoverEngine } from "../services/model-failover.js";
+import { createThinkingStepCard, createPhaseStepCard } from "./flow-render.js";
 
 /**
  * 流式状态机、错误卡渲染与自动重连胶囊
@@ -520,7 +521,7 @@ export function initFlowStream(ctx) {
   const ensureActiveThinkingStep = () => {
     if (flow.activeThinkingStep) return flow.activeThinkingStep;
 
-    const tStep = api.createThinkingStepCard({
+    const tStep = createThinkingStepCard({
       text: "",
       durationText: "(0.0s)...",
       isOpen: false, // 铁律：任何时候都不自动展开
@@ -576,7 +577,7 @@ export function initFlowStream(ctx) {
   const ensureActiveTextStep = () => {
     if (flow.activeTextStep) return flow.activeTextStep;
 
-    const pStep = api.createPhaseStepCard({
+    const pStep = createPhaseStepCard({
       text: "",
       durationText: "输出中 (0.0s)...",
       isOpen: false, // 铁律：任何时候都不自动展开

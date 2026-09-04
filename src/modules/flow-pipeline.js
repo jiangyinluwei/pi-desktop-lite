@@ -10,6 +10,13 @@ import { notificationService } from "../services/notification-service.js";
 import { taskManager } from "../services/task-manager.js";
 import { sketchAlert, sketchConfirm } from "../services/sketch-modal.js";
 import { modelFailoverEngine } from "../services/model-failover.js";
+import {
+  createToolPseudoRunningCard,
+  getFriendlyToolName,
+  createToolStepCard,
+  renderToolBodyInnerHtml,
+  updateToolBadge,
+} from "./flow-render.js";
 
 /**
  * 提问下发、工具调用事件、自愈引擎接入与发送拦截流水线
@@ -200,9 +207,8 @@ export function initFlowPipeline(ctx) {
    */
   const ensureActiveToolPseudoStep = () => {
     if (flow.activeToolPseudoStep) return flow.activeToolPseudoStep;
-    if (typeof api.createToolPseudoRunningCard !== "function") return null;
 
-    const pCard = api.createToolPseudoRunningCard({ durationText: "(0.0s)..." });
+    const pCard = createToolPseudoRunningCard({ durationText: "(0.0s)..." });
     if (flow.activeTurnRefs?.stepsContainerEl) {
       flow.activeTurnRefs.stepsContainerEl.appendChild(pCard.cardEl);
     }
@@ -234,9 +240,7 @@ export function initFlowPipeline(ctx) {
    */
   const updateToolPseudoName = (toolName) => {
     if (!flow.activeToolPseudoStep || !toolName) return;
-    const friendly = typeof api.getFriendlyToolName === "function"
-      ? api.getFriendlyToolName(toolName)
-      : toolName;
+    const friendly = getFriendlyToolName(toolName);
     if (flow.activeToolPseudoStep.titleEl) {
       flow.activeToolPseudoStep.titleEl.textContent = `工具调用(${friendly})`;
     }
@@ -313,16 +317,14 @@ export function initFlowPipeline(ctx) {
     removeActiveToolPseudoStep();
 
     // 创建单行极简工具卡片（默认折叠，任何时候不自动展开）
-    const toolStep = typeof api.createToolStepCard === "function"
-      ? api.createToolStepCard({
-          id: toolCallId,
-          name: toolName,
-          args: data.args,
-          status: "running",
-          durationText: "(0.0s)...",
-          isOpen: false,
-        })
-      : null;
+    const toolStep = createToolStepCard({
+      id: toolCallId,
+      name: toolName,
+      args: data.args,
+      status: "running",
+      durationText: "(0.0s)...",
+      isOpen: false,
+    });
 
     const card = toolStep?.cardEl || document.createElement("div");
     if (!toolStep) {
@@ -333,7 +335,7 @@ export function initFlowPipeline(ctx) {
         <div class="flow-step-header tool-header" role="button" tabindex="0" aria-expanded="false">
           <div class="flow-step-header-left">
             <span class="flow-step-icon tool-icon" aria-hidden="true">${ICONS.tool}</span>
-            <span class="flow-step-title tool-name">${escapeHtml(api.getFriendlyToolName ? api.getFriendlyToolName(toolName) : toolName)}</span>
+            <span class="flow-step-title tool-name">${escapeHtml(getFriendlyToolName(toolName))}</span>
           </div>
           <div class="flow-step-header-right tool-header-right">
             <span class="tool-status-badge running">running</span>
@@ -400,12 +402,7 @@ export function initFlowPipeline(ctx) {
     if (card) {
       const body = card.querySelector(".flow-step-body") || card.querySelector(".tool-body");
       if (body) {
-        if (typeof api.renderToolBodyInnerHtml === "function") {
-          body.innerHTML = api.renderToolBodyInnerHtml(matchingStep?.args, data.partialResult);
-        } else if (data.partialResult) {
-          const text = typeof data.partialResult === "string" ? data.partialResult : JSON.stringify(data.partialResult, null, 2);
-          body.textContent = text;
-        }
+        body.innerHTML = renderToolBodyInnerHtml(matchingStep?.args, data.partialResult);
       }
     }
   });
@@ -456,29 +453,12 @@ export function initFlowPipeline(ctx) {
 
       const badge = card.querySelector(".tool-status-badge");
       if (badge) {
-        if (typeof api.updateToolBadge === "function") {
-          api.updateToolBadge(badge, statusText);
-        } else {
-          badge.className = `tool-status-badge ${statusText}`;
-          badge.textContent = statusText;
-        }
+        updateToolBadge(badge, statusText);
       }
 
       const body = card.querySelector(".flow-step-body") || card.querySelector(".tool-body");
       if (body) {
-        if (typeof api.renderToolBodyInnerHtml === "function") {
-          body.innerHTML = api.renderToolBodyInnerHtml(matchingStep?.args, data.result);
-        } else {
-          let fullContent = "";
-          if (matchingStep?.args) {
-            fullContent += `[入参 / Arguments]\n${typeof matchingStep.args === "string" ? matchingStep.args : JSON.stringify(matchingStep.args, null, 2)}\n\n`;
-          }
-          if (data.result) {
-            const resText = typeof data.result === "string" ? data.result : JSON.stringify(data.result, null, 2);
-            fullContent += `[结果 / Result]\n${resText}`;
-          }
-          body.textContent = fullContent || (typeof data.result === "string" ? data.result : JSON.stringify(data.result || {}, null, 2));
-        }
+        body.innerHTML = renderToolBodyInnerHtml(matchingStep?.args, data.result);
       }
     }
 
