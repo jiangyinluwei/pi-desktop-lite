@@ -12,7 +12,7 @@ description: 指导 Pi Desktop Lite 桌面端作为 Pi Agent 宿主代理时，�
 ## 📌 核心开发铁律
 
 1. **`RULES.md` 仅为极简映射总纲**：体积严格控制在 `< 100` Tokens，纯英文书写，作为映射关系的唯一事实来源（Single Source of Truth），严禁堆砌具体长篇规则；
-2. **具体规则独立封装**：每个特定领域规则独立存放于 `src-tauri/inner-skills/<skill-name>/SKILL.md`；
+2. **具体规则独立封装**：每个特定领域规则独立存放于 `src-tauri/inner-skills/<skill-name>/SKILL.md`，全英文精炼编写（保证语义严谨与极简 Token 损耗，杜绝系统 Emoji）；
 3. **按需命中精准激活**：日常问答（如 `hello`）保持 100% 原始提问零注入零消耗；当且仅当底层 Agent 触发调用命中映射项的工具时，才动态激活对应 Skill。
 
 ---
