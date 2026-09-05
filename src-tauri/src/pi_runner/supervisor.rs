@@ -686,55 +686,58 @@ impl PiSupervisor {
             return;
         }
 
-        let Some(activation) = this.skill_injector.hook_tool_call(tool_name) else {
-            return;
-        };
-
-        // 当轮去重：同一 Skill 在同一轮次内只注入一次
-        if !this.skill_injector.mark_skill_activated(&activation.skill) {
+        let activations = this.skill_injector.hook_tool_calls(tool_name);
+        if activations.is_empty() {
             return;
         }
 
-        let Some(injection_text) = this
-            .skill_injector
-            .build_skill_injection_text(&activation.skill)
-        else {
-            return;
-        };
-
-        let steer_message = format!(
-            "[pi-desktop-lite Inner-Skill Hook] 工具 `{}` 触发运行态技能 `{}`，以下约束即时生效，调用该类工具时必须严格遵守：\n{}",
-            activation.tool_name, activation.skill, injection_text
-        );
-
-        // 通知前端更新「注入提示」信息框（以实际注入为准：steer 即时注入或兑底入队后随下一次 Prompt 注入）
-        let _ = this.app_handle.emit(
-            "pi:inner-skill-activated",
-            serde_json::json!({
-                "toolName": activation.tool_name,
-                "skill": activation.skill,
-                "mode": "steer",
-            }),
-        );
-
-        match this
-            .send_command(serde_json::json!({
-                "type": "steer",
-                "message": steer_message,
-            }))
-            .await
-        {
-            Ok(_) => {
-                // steer 动态注入成功，移除兑底队列避免重复注入
-                this.skill_injector.dequeue_skill(&activation.skill);
+        for activation in activations {
+            // 当轮去重：同一 Skill 在同一轮次内只注入一次
+            if !this.skill_injector.mark_skill_activated(&activation.skill) {
+                continue;
             }
-            Err(err) => {
-                log::warn!(
-                    "[Supervisor] Inner-Skill steer injection failed for tool `{}` (skill `{}`), fallback to next prompt queue: {}",
-                    activation.tool_name,
-                    activation.skill,
-                    err
-                );
+
+            let Some(injection_text) = this
+                .skill_injector
+                .build_skill_injection_text(&activation.skill)
+            else {
+                continue;
+            };
+
+            let steer_message = format!(
+                "[pi-desktop-lite Inner-Skill Hook] 工具 `{}` 触发运行态技能 `{}`，以下约束即时生效，调用该类工具时必须严格遵守：\n{}",
+                activation.tool_name, activation.skill, injection_text
+            );
+
+            // 通知前端更新「注入提示」信息框（以实际注入为准：steer 即时注入或兑底入队后随下一次 Prompt 注入）
+            let _ = this.app_handle.emit(
+                "pi:inner-skill-activated",
+                serde_json::json!({
+                    "toolName": activation.tool_name,
+                    "skill": activation.skill,
+                    "mode": "steer",
+                }),
+            );
+
+            match this
+                .send_command(serde_json::json!({
+                    "type": "steer",
+                    "message": steer_message,
+                }))
+                .await
+            {
+                Ok(_) => {
+                    // steer 动态注入成功，移除兑底队列避免重复注入
+                    this.skill_injector.dequeue_skill(&activation.skill);
+                }
+                Err(err) => {
+                    log::warn!(
+                        "[Supervisor] Inner-Skill steer injection failed for tool `{}` (skill `{}`), fallback to next prompt queue: {}",
+                        activation.tool_name,
+                        activation.skill,
+                        err
+                    );
+                }
             }
         }
     }

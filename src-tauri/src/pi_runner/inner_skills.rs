@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 /// 编译期内嵌默认规则清单（保障打包发布与离线环境下的可用性）
@@ -11,6 +12,23 @@ const EMBEDDED_WEB_SKILL_MD: &str = include_str!("../../inner-skills/web-search-
 const EMBEDDED_MEMORY_SKILL_MD: &str = include_str!("../../inner-skills/persistent-memory-retrieval/SKILL.md");
 const EMBEDDED_WORKFLOW_SKILL_MD: &str = include_str!("../../inner-skills/dynamic-workflows-orchestration/SKILL.md");
 const EMBEDDED_PRUNING_SKILL_MD: &str = include_str!("../../inner-skills/active-context-pruning/SKILL.md");
+const EMBEDDED_TEMP_HYGIENE_SKILL_MD: &str = include_str!("../../inner-skills/temp-file-hygiene/SKILL.md");
+
+/// 获取统一的运行时临时目录路径 (~/.pi-dl/temp)
+pub fn get_runtime_temp_dir() -> PathBuf {
+    dirs::home_dir()
+        .map(|h| h.join(".pi-dl").join("temp"))
+        .unwrap_or_else(|| PathBuf::from(".pi-dl/temp"))
+}
+
+/// 确保运行时临时目录存在
+pub fn ensure_runtime_temp_dir() -> std::io::Result<PathBuf> {
+    let temp_dir = get_runtime_temp_dir();
+    if !temp_dir.exists() {
+        std::fs::create_dir_all(&temp_dir)?;
+    }
+    Ok(temp_dir)
+}
 
 /// 规则映射定义项
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -53,7 +71,7 @@ pub struct ToolSkillActivation {
 #[derive(Debug)]
 pub struct InnerSkillInjector {
     mappings: Vec<SkillMapping>,
-    tool_to_skill_map: HashMap<String, String>,
+    tool_to_skill_map: HashMap<String, Vec<String>>,
     /// hook 命中后待随下一次出站 Prompt 注入的 Skill 队列（按激活顺序去重，兑底通道）
     pending_skills: Mutex<VecDeque<String>>,
     /// 当前轮次已动态注入过的 Skill（避免同轮重复注入）
@@ -62,11 +80,15 @@ pub struct InnerSkillInjector {
 
 impl InnerSkillInjector {
     pub fn new() -> Self {
+        let _ = ensure_runtime_temp_dir();
         let mappings = Self::parse_mappings_from_markdown(EMBEDDED_RULES_MD);
-        let mut tool_to_skill_map = HashMap::new();
+        let mut tool_to_skill_map: HashMap<String, Vec<String>> = HashMap::new();
         for m in &mappings {
             for tool in &m.tools {
-                tool_to_skill_map.insert(tool.to_lowercase(), m.skill_name.clone());
+                let entry = tool_to_skill_map.entry(tool.to_lowercase()).or_default();
+                if !entry.contains(&m.skill_name) {
+                    entry.push(m.skill_name.clone());
+                }
             }
         }
 
@@ -202,15 +224,42 @@ impl InnerSkillInjector {
                 skill_name: "active-context-pruning".to_string(),
                 enforcement: "Mandatory".to_string(),
             });
+            mappings.push(SkillMapping {
+                tools: vec![
+                    "write".to_string(),
+                    "write_file".to_string(),
+                    "create_file".to_string(),
+                    "temp_file".to_string(),
+                    "scratchpad".to_string(),
+                    "bash".to_string(),
+                    "terminal".to_string(),
+                    "powershell".to_string(),
+                    "cmd".to_string(),
+                    "execute_command".to_string(),
+                ],
+                skill_name: "temp-file-hygiene".to_string(),
+                enforcement: "Mandatory".to_string(),
+            });
         }
 
         mappings
     }
 
-    /// 查询某工具是否命中 RULES.md 中的 Inner-Skill 映射
+    /// 查询某工具是否命中 RULES.md 中的 Inner-Skill 映射（返回首个命中的技能）
     pub fn resolve_skill_for_tool(&self, tool_name: &str) -> Option<String> {
         let normalized = tool_name.trim().to_lowercase();
-        self.tool_to_skill_map.get(&normalized).cloned()
+        self.tool_to_skill_map
+            .get(&normalized)
+            .and_then(|list| list.first().cloned())
+    }
+
+    /// 查询某工具命中的全部 Inner-Skill 映射清单
+    pub fn resolve_skills_for_tool(&self, tool_name: &str) -> Vec<String> {
+        let normalized = tool_name.trim().to_lowercase();
+        self.tool_to_skill_map
+            .get(&normalized)
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// 获取具体 Inner-Skill 的详细 SKILL.md 内容
@@ -223,6 +272,7 @@ impl InnerSkillInjector {
             "persistent-memory-retrieval" => Some(EMBEDDED_MEMORY_SKILL_MD),
             "dynamic-workflows-orchestration" => Some(EMBEDDED_WORKFLOW_SKILL_MD),
             "active-context-pruning" => Some(EMBEDDED_PRUNING_SKILL_MD),
+            "temp-file-hygiene" => Some(EMBEDDED_TEMP_HYGIENE_SKILL_MD),
             _ => None,
         }
     }
@@ -244,15 +294,24 @@ impl InnerSkillInjector {
     }
 
     /// Tool call pre-processing hook：工具调用启动前由宿主调用。
-    /// 命中 RULES.md 映射时返回对应的 Inner-Skill 激活信息。
+    /// 命中 RULES.md 映射时返回所有命中的 Inner-Skill 激活信息。
+    pub fn hook_tool_calls(&self, tool_name: &str) -> Vec<ToolSkillActivation> {
+        let skills = self.resolve_skills_for_tool(tool_name);
+        let mut activations = Vec::new();
+        for skill in skills {
+            if self.get_skill_detail(&skill).is_some() {
+                activations.push(ToolSkillActivation {
+                    tool_name: tool_name.trim().to_string(),
+                    skill,
+                });
+            }
+        }
+        activations
+    }
+
+    /// 兼容方法：返回首个命中的 ToolSkillActivation
     pub fn hook_tool_call(&self, tool_name: &str) -> Option<ToolSkillActivation> {
-        let skill = self.resolve_skill_for_tool(tool_name)?;
-        // 确保对应 SKILL.md 内容可用
-        self.get_skill_detail(&skill)?;
-        Some(ToolSkillActivation {
-            tool_name: tool_name.trim().to_string(),
-            skill,
-        })
+        self.hook_tool_calls(tool_name).into_iter().next()
     }
 
     /// 标记 Skill 已激活：当轮去重 + 兑底入队（供下一次出站 Prompt 注入）。
@@ -276,13 +335,21 @@ impl InnerSkillInjector {
         self.pending_skills.lock().unwrap().retain(|s| s != skill);
     }
 
-    /// 构建单个 Skill 的动态注入文本块
+    /// 构建单个 Skill 的动态注入文本块（支持动态展开系统真实临时目录路径）
     pub fn build_skill_injection_text(&self, skill: &str) -> Option<String> {
         let detail = self.get_skill_detail(skill)?;
+        let content = if skill == "temp-file-hygiene" {
+            let temp_dir = get_runtime_temp_dir();
+            let _ = ensure_runtime_temp_dir();
+            let temp_dir_str = temp_dir.to_string_lossy().replace('\\', "/");
+            detail.replace("{{PI_DL_TEMP_DIR}}", &temp_dir_str)
+        } else {
+            detail.to_string()
+        };
         Some(format!(
             "<runtime_inner_skill name=\"{}\">\n{}\n</runtime_inner_skill>",
             skill,
-            detail.trim()
+            content.trim()
         ))
     }
 

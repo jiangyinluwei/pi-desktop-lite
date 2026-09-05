@@ -14,6 +14,7 @@
 | `memory_retrieve`, `memory_store`, `pi-memory`, `recall_memory`, `search_memory` | `persistent-memory-retrieval` | **Mandatory** |
 | `dynamic_workflows`, `execute_workflow`, `pipeline_step`, `run_workflow` | `dynamic-workflows-orchestration` | **Mandatory** |
 | `context_prune`, `prune_context`, `pai-acp`, `compress_context` | `active-context-pruning` | **Mandatory** |
+| `write`, `write_file`, `create_file`, `temp_file`, `scratchpad`, `bash`, `terminal`, `powershell`, `cmd`, `execute_command` | `temp-file-hygiene` | **Mandatory** |
 
 ---
 
@@ -41,3 +42,6 @@ When invoking tools or planning actions:
 
 7. **Active Context Pruning (`active-context-pruning`)**:
    - Progressively prune obsolete raw tool payloads; protect core goals and latest code snippets; maintain consistent context state.
+
+8. **Ephemeral Temp Hygiene (`temp-file-hygiene`)**:
+   - ALL temporary scripts, probe logs, and scratch files MUST strictly reside in `~/.pi-dl/temp/`; zero pollution in workspace or project root; clean up immediately upon task completion (`rm` / `Remove-Item`).

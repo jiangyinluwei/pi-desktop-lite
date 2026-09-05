@@ -63,6 +63,8 @@ export function initFlowPipeline(ctx) {
         return "dynamic-workflows-orchestration (动态工作流编排规范)";
       case "active-context-pruning":
         return "active-context-pruning (长会话主动上下文修剪规范)";
+      case "temp-file-hygiene":
+        return "temp-file-hygiene (临时文件沙盒与即用即删规范)";
       default:
         return `${skillName} (运行态约束)`;
     }

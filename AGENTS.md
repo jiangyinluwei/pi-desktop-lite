@@ -159,6 +159,7 @@
 | **`persistent-memory-retrieval`** | [`src-tauri/inner-skills/persistent-memory-retrieval/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/persistent-memory-retrieval/SKILL.md) | `memory_retrieve`, `memory_store`, `pi-memory` | 模糊跨会话查阅、语义相关性匹配、增量安全存储与敏感隔离。 |
 | **`dynamic-workflows-orchestration`** | [`src-tauri/inner-skills/dynamic-workflows-orchestration/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/dynamic-workflows-orchestration/SKILL.md) | `dynamic_workflows`, `execute_workflow` | 分阶段前置校验、单步自愈熔断、执行进度与里程碑追踪。 |
 | **`active-context-pruning`** | [`src-tauri/inner-skills/active-context-pruning/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/active-context-pruning/SKILL.md) | `context_prune`, `prune_context`, `pai-acp` | 渐进修剪冗余工具载荷、保护核心意图与最新代码锚点。 |
+| **`temp-file-hygiene`** | [`src-tauri/inner-skills/temp-file-hygiene/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/temp-file-hygiene/SKILL.md) | `write`, `create_file`, `bash`, `cmd` | 临时文件强制沙盒隔离至 `~/.pi-dl/temp/`，零污染项目与工作区，用后即删。 |
 
 ---
 

@@ -115,7 +115,7 @@ pi-desktop-lite/
 │   └── main.js                 # 前端编排主入口
 ├── src-tauri/                  # Tauri (Rust) 高性能后端核心
 │   ├── extensions/             # 内置内核扩展 (pi-rollback-guard.ts 会话回退文件快照守卫，启动时物化至全局扩展目录)
-│   ├── inner-skills/           # 应用内置运行态约束技能与规则 (RULES.md, bash兼容, OCR文档解析, 多Agent, 联网搜索 等)
+│   ├── inner-skills/           # 应用内置运行态约束技能与规则 (RULES.md, bash兼容, OCR文档解析, 多Agent, 联网搜索, 临时文件沙盒 等)
 │   └── src/                    # Rust 源码 (lib.rs, main.rs, commands/, config_manager/, workspace, pi_runner, security, session)
 ├── AGENTS.md                   # 项目规则与代理行为准则
 ├── README.md                   # 项目介绍与完整配置指南（中文）
