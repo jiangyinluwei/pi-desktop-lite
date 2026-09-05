@@ -59,6 +59,7 @@ graph TD
 
 ### 4. 会话记录 (`pane-sessions`)
 - **前端内存过滤**：硬过滤仅保留 `has_complete_turn = true` 的有效会话，支持 200ms 防抖搜索与时间档位筛选；
+- **实时同步与主动更新**：Rust 后端 `SessionWatcher` 注入全局生命周期常驻存活，实时监听 `~/.pi/agent/sessions` 文件落盘并通过 `pi:sessions-updated` 广播；前端切换激活 Tab 时显式调用 `api.loadSessions(true)`（触发 `pi_refresh_sessions` 强制扫描），任务完成时联动延迟刷新，确保提问完成后立即可见无需重启；
 - **进入 Flow 管线 (`enterKernelSessionFlow`)**：原生深度剥离注入信封与附件绝对路径尾注，还原多轮对话并直通 Flow（置 `viewStore.set({ flowFromSettings: true })`，空闲态右键/Esc 定向回退设置页会话 Tab）；
 - **清空规则**：「清空界面会话」经 `sketchConfirm` 二次确认后仅清空 UI 记录，**绝不删除磁盘内核 JSONL 文件**。
 

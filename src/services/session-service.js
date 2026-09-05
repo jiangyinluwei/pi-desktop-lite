@@ -37,6 +37,21 @@ class SessionService extends EventTarget {
   }
 
   /**
+   * 主动触发全量/增量磁盘扫描并同步更新会话列表
+   */
+  async refreshSessions() {
+    try {
+      const list = await invokeTauri("pi_refresh_sessions");
+      this.sessions = list || [];
+      this.dispatchEvent(new CustomEvent("sessions-change", { detail: this.sessions }));
+      return this.sessions;
+    } catch (err) {
+      console.error("[SessionService] Failed to refresh sessions:", err);
+      return await this.listSessions();
+    }
+  }
+
+  /**
    * 获取指定会话的分支条目树
    * @param {string} sessionPath
    */

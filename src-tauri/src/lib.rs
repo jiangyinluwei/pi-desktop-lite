@@ -77,6 +77,7 @@ pub fn run() {
             pi_set_code_area_route,
             pi_list_code_area_skills,
             pi_list_sessions,
+            pi_refresh_sessions,
             pi_get_prompt_history,
             pi_get_session_tree,
             pi_get_session_detail,
@@ -143,10 +144,11 @@ pub fn run() {
             app.manage(supervisor.clone());
             app.manage(host_pool);
 
-            // 2. 初始化 Session Cache 与 Watcher
+            // 2. 初始化 Session Cache 与 Watcher（注入全局状态，防止 setup 返回后被 RAII 析构）
             let session_cache = SessionIndexCache::new();
-            let _session_watcher = SessionWatcher::new(app.handle().clone(), session_cache.clone());
+            let session_watcher = Arc::new(SessionWatcher::new(app.handle().clone(), session_cache.clone()));
             app.manage(session_cache);
+            app.manage(session_watcher);
 
             // 2b. 物化会话回退快照守卫扩展至全局扩展目录（幂等，内容变更时覆盖）
             if let Err(e) = rollback::materialize_extension() {

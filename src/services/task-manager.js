@@ -6,6 +6,18 @@
 import { piClient, parseErrorMessage, isAbortError } from "./pi-client.js";
 import { notificationService } from "./notification-service.js";
 import { modelFailoverEngine } from "./model-failover.js";
+import { sessionService } from "./session-service.js";
+
+/**
+ * 会话记录增量同步（双保险）：任务进入任意终态（completed/error/aborted）后，
+ * 延时 400ms 避开内核文件刷盘微延迟，主动触发一次会话列表刷新。
+ * 与后端实时 SessionWatcher 联动，确保会话完成即刻进入记录，无需重启。
+ */
+const scheduleSessionRefresh = () => {
+  setTimeout(() => {
+    sessionService.refreshSessions().catch(() => {});
+  }, 400);
+};
 
 /**
  * @typedef {Object} TaskItem
@@ -663,6 +675,7 @@ export class TaskManager extends EventTarget {
             currentTurn.isAborted = true;
             currentTurn.completedAt = Date.now();
           }
+          scheduleSessionRefresh();
           break;
         }
         if (Array.isArray(data.messages)) {
@@ -680,6 +693,7 @@ export class TaskManager extends EventTarget {
               currentTurn.completedAt = Date.now();
               currentTurn.errorMessage = task.errorMessage;
             }
+            scheduleSessionRefresh();
             break;
           }
         }
@@ -688,6 +702,7 @@ export class TaskManager extends EventTarget {
             currentTurn.status = task.status;
             currentTurn.completedAt = Date.now();
           }
+          scheduleSessionRefresh();
           break; // 若已处于终态或异常状态则不重复覆盖
         }
         task.status = "completed";
@@ -705,6 +720,8 @@ export class TaskManager extends EventTarget {
           taskId,
           taskTitle: currentTurn?.query || task.title,
         });
+
+        scheduleSessionRefresh();
         break;
 
       default:

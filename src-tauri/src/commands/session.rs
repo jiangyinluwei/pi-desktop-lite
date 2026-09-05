@@ -3,15 +3,33 @@
 use crate::pi_runner::PiSupervisor;
 use crate::session::{
     extract_timestamped_prompts_from_session, parse_session_entries, parse_session_turns,
-    SessionEntrySummary, SessionIndexCache, SessionMetadata, SessionTurnDetail,
+    SessionEntrySummary, SessionIndexCache, SessionMetadata, SessionTurnDetail, SessionWatcher,
 };
 use std::path::Path;
-use tauri::State;
+use std::sync::Arc;
+use tauri::{AppHandle, State};
 
 /// 列出全部会话索引元数据
 #[tauri::command]
 pub fn pi_list_sessions(session_cache: State<'_, SessionIndexCache>) -> Result<Vec<SessionMetadata>, String> {
     Ok(session_cache.list_all())
+}
+
+/// 主动触发磁盘扫描、同步更新索引并向前端广播最新会话列表
+#[tauri::command]
+pub async fn pi_refresh_sessions(
+    app: AppHandle,
+    session_cache: State<'_, SessionIndexCache>,
+    session_watcher: State<'_, Arc<SessionWatcher>>,
+) -> Result<Vec<SessionMetadata>, String> {
+    // 全量磁盘扫描 + 逐个解析 JSONL 可能耗时（数百个会话），放行至阻塞线程池执行，
+    // 避免阻塞 async 运行时（Tauri 命令跑在其上），保证 IPC / UI 流畅不卡顿
+    let app = app.clone();
+    let cache = session_cache.inner().clone();
+    let watcher = session_watcher.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || watcher.scan_and_broadcast(&cache, &app))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 获取全局输入历史（严格时间序 + LIFO 去重保留最新）

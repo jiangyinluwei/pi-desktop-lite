@@ -403,10 +403,15 @@ export function initSessionsPanel(ctx) {
   };
 
   const loadSessions = async (forceFetch = false) => {
-    if (forceFetch || (!allSessions.length && !sessionService.sessions?.length)) {
-      const list = await sessionService.listSessions();
+    if (forceFetch) {
+      const list = await sessionService.refreshSessions();
       allSessions = Array.isArray(list) ? list : [];
-    } else if (!allSessions.length && sessionService.sessions?.length) {
+    } else if (!allSessions.length) {
+      const list = sessionService.sessions?.length
+        ? sessionService.sessions
+        : await sessionService.listSessions();
+      allSessions = Array.isArray(list) ? list : [];
+    } else if (sessionService.sessions?.length) {
       allSessions = [...sessionService.sessions];
     }
     renderSessions();

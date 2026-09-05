@@ -1,7 +1,9 @@
 use crate::session::index_cache::SessionIndexCache;
+use crate::session::parser::SessionMetadata;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
@@ -11,25 +13,17 @@ enum SessionFileEvent {
     Remove(PathBuf),
 }
 
+#[derive(Clone)]
 pub struct SessionWatcher {
-    _watcher: Option<RecommendedWatcher>,
+    _watcher: Arc<Mutex<Option<RecommendedWatcher>>>,
     pub sessions_dir: PathBuf,
 }
 
 impl SessionWatcher {
     pub fn get_default_sessions_dir() -> PathBuf {
         dirs::home_dir()
-            .map(|h| {
-                // Pi 内核真实会话根目录为 ~/.pi/agent/sessions（内含按 CWD 命名的子目录）；
-                // 仅当其不存在时回退旧路径 ~/.pi/sessions
-                let agent_sessions = h.join(".pi").join("agent").join("sessions");
-                if agent_sessions.exists() {
-                    agent_sessions
-                } else {
-                    h.join(".pi").join("sessions")
-                }
-            })
-            .unwrap_or_else(|| PathBuf::from(".pi/sessions"))
+            .map(|h| h.join(".pi").join("agent").join("sessions"))
+            .unwrap_or_else(|| PathBuf::from(".pi/agent/sessions"))
     }
 
     pub fn new(app_handle: AppHandle, cache: SessionIndexCache) -> Self {
@@ -50,6 +44,13 @@ impl SessionWatcher {
             .name("session-initial-scan".to_string())
             .spawn(move || {
                 scan_cache.scan_directory(&scan_dir);
+                // 兼容扫描：若用户仍留存旧版 ~/.pi/sessions 目录，一并补充扫描
+                if let Some(h) = dirs::home_dir() {
+                    let legacy_dir = h.join(".pi").join("sessions");
+                    if legacy_dir.is_dir() && legacy_dir != scan_dir {
+                        scan_cache.scan_directory(&legacy_dir);
+                    }
+                }
                 let list = scan_cache.list_all();
                 let _ = scan_app_handle.emit("pi:sessions-updated", &list);
                 log::info!(
@@ -140,17 +141,20 @@ impl SessionWatcher {
             move |res: Result<Event, notify::Error>| {
                 if let Ok(event) = res {
                     match event.kind {
-                        EventKind::Create(_) | EventKind::Modify(_) => {
-                            for p in event.paths {
-                                let _ = watcher_tx.send(SessionFileEvent::Upsert(p));
-                            }
-                        }
                         EventKind::Remove(_) => {
                             for p in event.paths {
                                 let _ = watcher_tx.send(SessionFileEvent::Remove(p));
                             }
                         }
-                        _ => {}
+                        EventKind::Access(_) => {
+                            // 纯读取事件忽略
+                        }
+                        _ => {
+                            // 包含 Create, Modify, Any, Other 等全部产生或变更文件的事件
+                            for p in event.paths {
+                                let _ = watcher_tx.send(SessionFileEvent::Upsert(p));
+                            }
+                        }
                     }
                 }
             },
@@ -168,8 +172,16 @@ impl SessionWatcher {
         }
 
         Self {
-            _watcher: watcher,
+            _watcher: Arc::new(Mutex::new(watcher)),
             sessions_dir,
         }
+    }
+
+    /// 主动扫描会话目录并广播更新，返回最新元数据列表
+    pub fn scan_and_broadcast(&self, cache: &SessionIndexCache, app_handle: &AppHandle) -> Vec<SessionMetadata> {
+        cache.scan_directory(&self.sessions_dir);
+        let list = cache.list_all();
+        let _ = app_handle.emit("pi:sessions-updated", &list);
+        list
     }
 }

@@ -146,7 +146,7 @@ export function initSettingsNavigation(ctx) {
           if (typeof api.loadWorkspaces === "function") api.loadWorkspaces();
         }
         if (targetTab === "tab-sessions") {
-          if (typeof api.loadSessions === "function") api.loadSessions();
+          if (typeof api.loadSessions === "function") api.loadSessions(true);
         }
       } else {
         pane.classList.remove("active");
