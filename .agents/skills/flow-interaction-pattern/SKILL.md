@@ -50,7 +50,7 @@ description: |
 
 | 切片类型 | 视觉语义与展示规范 | 展开正文与交互细节 | 触发与封口时机 |
 |---|---|---|---|
-| **思维链切片 (`flow-step-thinking`)** | **石墨幽兰冷灰调**（`#f7f6fb` / `#1b1a21`），`Thinking` 手绘胶囊 + 星芒自旋呼吸，动态读秒 `(1.2s)...` ➔ 定格 `(3.2s)`，单行流式预览；默认折叠。 | 细致思考日志流（字号 12px，行高 1.68，石墨淡墨色 `--ink-muted`），柔和内边距与虚线分割。 | `thinking-start` 创建；`tool-start` 或 `text-start` 时封口。 |
+| **思维链切片 (`flow-step-thinking`)** | **石墨幽兰冷灰调**（`#f7f6fb` / `#1b1a21`），`Thinking` 手绘胶囊 + 星芒自旋呼吸，动态读秒 `(1.2s)...` ➔ 定格 `(3.2s)`，单行实时从右向左流动输出流预览（跟踪最新输出，输出越快流动越快）；默认折叠。 | 细致思考日志流（字号 12px，行高 1.68，石墨淡墨色 `--ink-muted`），柔和内边距与虚线分割。 | `thinking-start` 创建；`tool-start` 或 `text-start` 时封口。 |
 | **阶段性输出切片 (`flow-step-phase`)** | **温润羊皮纸金调**（`#fdfbf5` / `#201d17`），`Point` 手绘暖调胶囊 + 铅笔图标 + 读秒 `已输出 1.2s`；默认折叠。 | 阶段 Markdown 完整渲染（富文本、代码块、列表、引用），内嵌暖调微衬边。 | 首个 `text-delta` 创建；文本段之后再次进入 Thinking（`thinking-start`）或进入工具调用（`toolcall-delta-start` / `tool-start`）时封口；新轮 `text-start` 封口上一段；最终段保留在输出卡。 |
 | **工具调用切片 (`flow-step-tool`)** | **蓝图终端工程调**（`#f2f6fa` / `#141920`），按工具智能映射矢量图标（CLI/文件/搜索/OCR等）+ 中文友好名 + 参数预览 + 三态状态徽章 (`running` 琥珀黄 / `done` 翡翠绿 / `failure` 朱红) + 运行期递增读秒 `(1.2s)...` ➔ 封口定格 `(3.2s)`；默认折叠。 | 结构化拆分 `入参 · Parameters` 与 `执行结果 · Result`，仿终端代码块包装，右上角提供手绘一键复制与复制成功即时微反馈。 | `tool-start` 创建；`tool-end` 封口并更新状态与定格读秒。 |
 | **伪工具运行框 (`tool-pseudo-card`)** | **蓝图虚线占位调**（复用工具卡配色 + 虚线边框 + 降不透明度），通用「工具调用...」标题 + running 徽章 + 100ms 递增读秒，工具图标轻微呼吸摆动；无展开正文。 | 无（纯占位单行卡）。 | `toolcall-delta-start` 创建（覆盖工具参数流式期空窗延迟）；`toolcall-delta-end` 回填真实工具名（如「工具调用(edit)」）；`tool-start` 真实卡创建时移除；`thinking-start` / `text-start` / `finalizeStream` 兜底清理。 |
@@ -59,7 +59,7 @@ description: |
 
 对齐「伪思考框」首 token 延迟显示机制，工具调用同样存在两段空窗延迟，均需即时视觉反馈：
 
-1. **伪思考框与无显式文本完成机制**：`thinking-start` 或新轮次启动时即插入 `Thinking (0.0s)...` 占位思维切片，100ms 读秒；若捕捉到思维链 delta 则流式刷新首行预览与收起态跑马灯；若模型未输出显式思考文本而直接进入工具调用（`toolcall-delta-start` / `tool-start`），或显式 `thinking-start` 后结束，封口时保留该切片并定格显示为「Thinking (X.Xs) 已完成思考」，绝不物理移除；仅在模型直接输出正文（`text-start`）且无显式思考/工具边界时，作为纯正文首 token 延迟占位卡静默移除；
+1. **伪思考框与无显式文本完成机制**：`thinking-start` 或新轮次启动时即插入 `Thinking (0.0s)...` 占位思维切片，100ms 读秒；若捕捉到思维链 delta 则流式刷新收起态流动预览（实时展示从右向左流动输出流，紧跟最新输出内容，输出越快流动越快）与展开态正文；若模型未输出显式思考文本而直接进入工具调用（`toolcall-delta-start` / `tool-start`），或显式 `thinking-start` 后结束，封口时保留该切片并定格显示为「Thinking (X.Xs) 已完成思考」，绝不物理移除；仅在模型直接输出正文（`text-start`）且无显式思考/工具边界时，作为纯正文首 token 延迟占位卡静默移除；
 2. **伪工具运行框**：`toolcall-delta-start`（工具参数流式开始）即插入 `工具调用... + running + (0.0s)...` 占位卡（`flow-pipeline.js` 的 `ensureActiveToolPseudoStep`），100ms 读秒；参数流式结束（`toolcall-delta-end` 携带 `toolCall.name`）回填真实工具名；
 3. **真实工具卡读秒与累计延时铁律**：`tool-start` 创建真实卡片时继承伪工具运行框的 `startTime`，将大模型生成工具参数的延时与工具执行耗时累计显示（初始携带 `(${initialElapsed}s)...`），移除占位卡；`startToolRunTimer` 持续以 100ms 刷新累计读秒；`tool-end` 定格为累计总时长 `(Xs)` 并清空 `flowView.toolRunTimerInterval`，杜绝真实工具执行完成后耗时跳回 0.0s/0.1s 导致前期生成延时丢失；
 4. **状态清理铁律**：伪框与读秒计时器（`flowView.activeToolPseudoStep` / `flowView.toolPseudoTimerInterval` / `flowView.toolRunTimerInterval`）必须在 `resetStreamState`、`resetCurrentTurnForResend`、`finalizeStream`、`thinking-start`、`text-start` 全部边界兜底清理，杜绝幽灵计时器与残留占位卡；伪卡不写入 `flowView.currentSteps`，不污染历史快照。

@@ -591,10 +591,8 @@ export function initFlowStream(ctx) {
       headerEl: tStep.headerEl,
       durationEl: tStep.durationEl,
       previewEl: tStep.previewEl,
-      previewStaticEl: tStep.previewStaticEl,
-      previewMarqueeEl: tStep.previewMarqueeEl,
-      previewTrackEl: tStep.previewTrackEl,
-      previewTextEl: tStep.previewTextEl,
+      previewStreamEl: tStep.previewStreamEl,
+      previewTextEl: tStep.previewStreamEl,
       bodyEl: tStep.bodyEl,
       textStreamEl: tStep.textStreamEl,
     };
@@ -771,7 +769,7 @@ export function initFlowStream(ctx) {
     step.hasRealThinking = true;
     step.text += delta;
 
-    // 真正捕捉到思维链时，流式刷新收起态跑马灯 + 展开态正文；收起态为从右向左流动字符串
+    // 真正捕捉到思维链时，流式刷新收起态流动预览（实时跟踪最新输出流，从右向左流动）+ 展开态正文
     if (step.cardEl) {
       syncThinkingPreview(step.cardEl, step.text, step);
     } else if (step.previewEl) {

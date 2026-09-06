@@ -381,12 +381,7 @@ export const createThinkingStepCard = ({
           <span class="flow-step-badge thinking-badge">Thinking</span>
           <span class="flow-step-duration thinking-duration">${escapeHtml(durationText)}</span>
           <span class="flow-step-preview thinking-preview">
-            <span class="thinking-preview-static">${escapeHtml(previewText)}</span>
-            <span class="thinking-preview-marquee" aria-hidden="true">
-              <span class="thinking-preview-track">
-                <span class="thinking-preview-text">${escapeHtml(previewText)}</span>
-              </span>
-            </span>
+            <span class="thinking-preview-stream">${escapeHtml(previewText)}</span>
           </span>
         </div>
         <div class="flow-step-header-right">
@@ -401,26 +396,28 @@ export const createThinkingStepCard = ({
   const headerEl = cardEl.querySelector(".flow-step-header");
   const durationEl = cardEl.querySelector(".flow-step-duration");
   const previewEl = cardEl.querySelector(".flow-step-preview");
-  const previewStaticEl = cardEl.querySelector(".thinking-preview-static");
-  const previewMarqueeEl = cardEl.querySelector(".thinking-preview-marquee");
-  const previewTrackEl = cardEl.querySelector(".thinking-preview-track");
-  const previewTextEl = cardEl.querySelector(".thinking-preview-text");
+  const previewStreamEl = cardEl.querySelector(".thinking-preview-stream");
   const bodyEl = cardEl.querySelector(".flow-step-body");
   const textStreamEl = cardEl.querySelector(".thinking-text-stream");
 
   if (headerEl) {
-    headerEl.addEventListener("click", (e) => {
-      e.stopPropagation();
+    const toggleCollapse = () => {
       const open = cardEl.classList.toggle("open");
       cardEl.classList.toggle("collapsed", !open);
       headerEl.setAttribute("aria-expanded", open ? "true" : "false");
+      if (!open && previewEl) {
+        // 收起时确保滚动对齐至最右侧，紧跟最新输出流
+        previewEl.scrollLeft = previewEl.scrollWidth;
+      }
+    };
+    headerEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleCollapse();
     });
     headerEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        const open = cardEl.classList.toggle("open");
-        cardEl.classList.toggle("collapsed", !open);
-        headerEl.setAttribute("aria-expanded", open ? "true" : "false");
+        toggleCollapse();
       }
     });
     // 标记工厂卡已绑定（expando 不随 outerHTML 序列化），供历史快照重绑循环去重
@@ -432,18 +429,16 @@ export const createThinkingStepCard = ({
     headerEl,
     durationEl,
     previewEl,
-    previewStaticEl,
-    previewMarqueeEl,
-    previewTrackEl,
-    previewTextEl,
+    previewStreamEl,
+    previewTextEl: previewStreamEl, // 兼容历史/旧调用命名
     bodyEl,
     textStreamEl,
   };
 };
 
 /**
- * 同步 Thinking 卡片收起态预览文本（静态 + 跑马灯单扫掠）
- * 采用固定 5s 线性扫掠；视觉速度随字符长度自然变化，长句稍快、短句稍慢但始终保持可读。
+ * 同步 Thinking 卡片收起态预览文本（从右向左实时流动输出流）
+ * 收起态实时跟踪最新输出内容，输出速度越快，流动速度越快；
  * 优先直接使用传入的缓存引用，消除高频流式热路径下的 DOM 查询开销。
  * @param {HTMLElement|Object} cardOrRefs Thinking 卡片根节点或包含缓存引用的对象
  * @param {string} text 原始思考文本
@@ -453,18 +448,27 @@ export const syncThinkingPreview = (cardOrRefs, text, stepItem = null) => {
   if (!cardOrRefs) return;
   const normalized = String(text || "").replace(/[\r\n\t]+/g, " ").trim();
 
-  let staticEl = stepItem?.previewStaticEl || cardOrRefs.previewStaticEl;
-  let textEl = stepItem?.previewTextEl || cardOrRefs.previewTextEl;
+  let previewEl = stepItem?.previewEl || cardOrRefs.previewEl;
+  let streamEl = stepItem?.previewStreamEl || stepItem?.previewTextEl || cardOrRefs.previewStreamEl || cardOrRefs.previewTextEl;
 
-  if (!staticEl && typeof cardOrRefs.querySelector === "function") {
-    staticEl = cardOrRefs.querySelector(".thinking-preview-static");
+  if (!previewEl && typeof cardOrRefs.querySelector === "function") {
+    previewEl = cardOrRefs.querySelector(".thinking-preview");
   }
-  if (!textEl && typeof cardOrRefs.querySelector === "function") {
-    textEl = cardOrRefs.querySelector(".thinking-preview-text");
+  if (!streamEl && typeof cardOrRefs.querySelector === "function") {
+    streamEl = cardOrRefs.querySelector(".thinking-preview-stream") || cardOrRefs.querySelector(".thinking-preview-text");
   }
 
-  if (staticEl) staticEl.textContent = normalized;
-  if (textEl) textEl.textContent = normalized;
+  if (streamEl) {
+    streamEl.textContent = normalized;
+  } else if (previewEl) {
+    previewEl.textContent = normalized;
+  }
+
+  // 核心：若文本超出单行视口宽度，始终将滚动位置推至最右端，
+  // 呈现“从右向左流动、左侧滑出隐退、右侧实时紧跟最新输出流”的效果
+  if (previewEl) {
+    previewEl.scrollLeft = previewEl.scrollWidth;
+  }
 };
 
 /**

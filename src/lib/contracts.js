@@ -166,7 +166,7 @@ export const EVENT_CHANNEL_TABLE_VERSION = 2;
 //   renderToolBodyInnerHtml(args,result,rawContent) —— 工具卡正文结构化 HTML
 //   updateToolBadge(badgeEl,status)   —— 工具状态徽章刷新
 //   createThinkingStepCard(opts)      —— 思维切片卡
-//   syncThinkingPreview(cardOrRefs, text, stepItem) —— 同步思维预览（静态+单扫掠）
+//   syncThinkingPreview(cardOrRefs, text, stepItem) —— 同步思维收起态流动预览（实时跟踪最新输出流，从右向左流动）
 //   createPhaseStepCard(opts)         —— 阶段性输出(Point)卡
 //   createToolStepCard(opts)          —— 工具调用卡
 //   createToolPseudoRunningCard(opts) —— 伪工具运行框占位卡

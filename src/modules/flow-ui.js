@@ -276,20 +276,27 @@ export function initFlowUi(ctx) {
     stepsContainerEl.querySelectorAll(".tool-card, .flow-step-card").forEach((card) => {
       const header = card.querySelector(".flow-step-header") || card.querySelector(".tool-header");
       if (!header || header.__piBound) return;
-      header.__piBound = true;
-      header.addEventListener("click", () => {
+      const toggleCardCollapse = () => {
         const open = card.classList.toggle("open");
         card.classList.toggle("collapsed", !open);
         header.setAttribute("aria-expanded", open ? "true" : "false");
-      });
+        if (!open) {
+          const previewEl = card.querySelector(".thinking-preview");
+          if (previewEl) previewEl.scrollLeft = previewEl.scrollWidth;
+        }
+      };
+      header.addEventListener("click", toggleCardCollapse);
       header.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          const open = card.classList.toggle("open");
-          card.classList.toggle("collapsed", !open);
-          header.setAttribute("aria-expanded", open ? "true" : "false");
+          toggleCardCollapse();
         }
       });
+    });
+
+    // 确保收起态的思维切片预览滚动对齐至最右侧（跟踪最新思考内容）
+    stepsContainerEl.querySelectorAll(".flow-step-thinking:not(.open) .thinking-preview").forEach((prevEl) => {
+      prevEl.scrollLeft = prevEl.scrollWidth;
     });
 
     // 历史步骤卡片一键复制委托
