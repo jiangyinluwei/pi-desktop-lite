@@ -1303,7 +1303,96 @@
 }
 
 .flow-step-card.flow-step-thinking .thinking-preview {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  position: relative;
+}
+
+/* 收起态静态预览：单行省略 */
+.thinking-preview-static {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   color: var(--ink-muted);
+  opacity: 0.85;
+}
+
+/* 收起态跑马灯：右→左流动字符串，默认隐藏 */
+.thinking-preview-marquee {
+  flex: 1;
+  min-width: 0;
+  display: none;
+  overflow: hidden;
+  position: relative;
+  /* 左右边缘羽化，流动进出更柔和 */
+  mask-image: linear-gradient(to right, transparent 0, black 10px, black calc(100% - 10px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, black 10px, black calc(100% - 10px), transparent 100%);
+}
+
+.thinking-preview-track {
+  display: inline-block;
+  white-space: nowrap;
+  will-change: transform;
+  font-size: 11.5px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  color: var(--ink-muted);
+  opacity: 0.92;
+  /* 单文本从右向左扫掠：padding-left 将文本初始推至视口右侧外 */
+  padding-left: 100%;
+  padding-right: 24px;
+}
+
+.thinking-preview-text {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.thinking-preview-gap,
+.thinking-preview-text--clone {
+  /* 单文本扫掠模式下隐藏克隆与分隔，避免双倍宽度干扰扫掠距离 */
+  display: none !important;
+}
+
+/* 仅在收起 + 运行态展示流动；展开或已完成则展示静态省略 */
+.flow-step-card.flow-step-thinking.collapsed.running .thinking-preview-static {
+  display: none;
+}
+
+.flow-step-card.flow-step-thinking.collapsed.running .thinking-preview-marquee {
+  display: block;
+}
+
+.flow-step-card.flow-step-thinking.collapsed.running .thinking-preview-track {
+  animation: thinkingMarqueeFlow linear infinite;
+  animation-duration: 14s;
+}
+
+@keyframes thinkingMarqueeFlow {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-step-card.flow-step-thinking.collapsed.running .thinking-preview-track {
+    animation: none !important;
+    transform: none !important;
+  }
+  .thinking-preview-marquee {
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
 }
 
 .flow-step-body.thinking-body {

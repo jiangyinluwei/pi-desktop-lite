@@ -519,8 +519,10 @@ class PiClient extends EventTarget {
    * @param {Array<any>} [images]
    * @param {string} [streamingBehavior]
    * @param {string} [taskId]
+   * @param {string} [sessionPath]
+   * @param {string} [sessionId]
    */
-  async sendPrompt(message, images = null, streamingBehavior = null, taskId = null) {
+  async sendPrompt(message, images = null, streamingBehavior = null, taskId = null, sessionPath = null, sessionId = null) {
     const activeModel = this.currentModel;
     const provider = activeModel?.provider;
     const modelId = activeModel?.id || activeModel?.modelId || activeModel?.name;
@@ -535,6 +537,8 @@ class PiClient extends EventTarget {
         provider: provider || undefined,
         modelId: modelId || undefined,
         thinkingLevel: thinkingLevel || undefined,
+        sessionPath: sessionPath || undefined,
+        sessionId: sessionId || undefined,
       },
     });
   }

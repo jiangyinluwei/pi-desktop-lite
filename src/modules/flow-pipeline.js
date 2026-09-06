@@ -7,7 +7,7 @@ import { configService } from "../services/config-service.js";
 import { promptHistoryNavigator } from "../services/prompt-history.js";
 import { invokeTauri } from "../services/tauri-bridge.js";
 import { notificationService } from "../services/notification-service.js";
-import { taskManager } from "../services/task-manager.js";
+import { taskManager, resolveTaskSessionIdentity } from "../services/task-manager.js";
 import { sketchAlert, sketchConfirm } from "../services/sketch-modal.js";
 import { modelFailoverEngine } from "../services/model-failover.js";
 import { flowStore } from "../services/stores/flow-store.js";
@@ -565,7 +565,8 @@ export function initFlowPipeline(ctx) {
       api.resetCurrentTurnForResend(taskId);
       // 自愈重发使用「该任务自己分仓」缓存的 Prompt 与图片载荷（按 Task 隔离）
       const fs = flowStore.for(taskId);
-      return piClient.sendPrompt(fs.lastSentPrompt, fs.lastImagePayloads, null, taskId);
+      const { sessionPath, sessionId } = resolveTaskSessionIdentity(taskManager.getTask(taskId));
+      return piClient.sendPrompt(fs.lastSentPrompt, fs.lastImagePayloads, null, taskId, sessionPath, sessionId);
     },
     // 全部失败兜底：复用既有错误卡并追加自愈摘要
     onGiveUp: (errDetail, summary) => {
@@ -924,7 +925,15 @@ export function initFlowPipeline(ctx) {
         return;
       }
 
-      await piClient.sendPrompt(promptToSend, imagePayloads, null, currentTask.id);
+      const sessionIdentity = resolveTaskSessionIdentity(currentTask);
+      await piClient.sendPrompt(
+        promptToSend,
+        imagePayloads,
+        null,
+        currentTask.id,
+        sessionIdentity.sessionPath,
+        sessionIdentity.sessionId
+      );
     } catch (err) {
       // 若任务已被用户手动终止，静默忽略异常，严禁复活为 error 态或渲染错误卡片
       if (currentTask && (currentTask.isAborted || currentTask.status === "aborted")) {

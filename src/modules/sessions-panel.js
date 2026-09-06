@@ -233,6 +233,8 @@ export function initSessionsPanel(ctx) {
       task.turns = JSON.parse(JSON.stringify(turns));
       task.conversationId = convId;
       task.status = "completed";
+      task.sessionPath = s.file_path;
+      task.sessionId = s.session_id;
       task.thinkingText = lastTurn.thinkingText || "";
       task.responseText = lastTurn.responseText || "";
       task.toolCalls = lastTurn.toolCalls || [];
@@ -240,7 +242,7 @@ export function initSessionsPanel(ctx) {
       task.thinkingDurationText = lastTurn.thinkingDurationText || "已完成思考";
 
       // 直接切 Flow，不调用 closeSettingsView（避免先跳回 previous 的中间态抖动）
-      api.renderTurnsIntoFlow(task, turns, { sessionPath: s.file_path });
+      api.renderTurnsIntoFlow(task, turns, { sessionPath: s.file_path, sessionId: s.session_id });
       viewStore.set({ flowFromSettings: true });
 
       api.renderConversationMessages();

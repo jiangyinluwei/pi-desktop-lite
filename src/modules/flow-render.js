@@ -380,7 +380,16 @@ export const createThinkingStepCard = ({
           <span class="flow-step-icon thinking-icon" aria-hidden="true">${ICONS.sparkle}</span>
           <span class="flow-step-badge thinking-badge">Thinking</span>
           <span class="flow-step-duration thinking-duration">${escapeHtml(durationText)}</span>
-          <span class="flow-step-preview thinking-preview">${escapeHtml(previewText)}</span>
+          <span class="flow-step-preview thinking-preview">
+            <span class="thinking-preview-static">${escapeHtml(previewText)}</span>
+            <span class="thinking-preview-marquee" aria-hidden="true">
+              <span class="thinking-preview-track">
+                <span class="thinking-preview-text">${escapeHtml(previewText)}</span>
+                <span class="thinking-preview-gap"> &nbsp;&nbsp;•&nbsp;&nbsp; </span>
+                <span class="thinking-preview-text thinking-preview-text--clone" aria-hidden="true">${escapeHtml(previewText)}</span>
+              </span>
+            </span>
+          </span>
         </div>
         <div class="flow-step-header-right">
           <span class="flow-step-arrow" aria-hidden="true">${ICONS.chevronDown}</span>
@@ -394,6 +403,10 @@ export const createThinkingStepCard = ({
   const headerEl = cardEl.querySelector(".flow-step-header");
   const durationEl = cardEl.querySelector(".flow-step-duration");
   const previewEl = cardEl.querySelector(".flow-step-preview");
+  const previewStaticEl = cardEl.querySelector(".thinking-preview-static");
+  const previewMarqueeEl = cardEl.querySelector(".thinking-preview-marquee");
+  const previewTrackEl = cardEl.querySelector(".thinking-preview-track");
+  const previewTextEls = cardEl.querySelectorAll(".thinking-preview-text");
   const bodyEl = cardEl.querySelector(".flow-step-body");
   const textStreamEl = cardEl.querySelector(".thinking-text-stream");
 
@@ -421,9 +434,29 @@ export const createThinkingStepCard = ({
     headerEl,
     durationEl,
     previewEl,
+    previewStaticEl,
+    previewMarqueeEl,
+    previewTrackEl,
+    previewTextEls,
     bodyEl,
     textStreamEl,
   };
+};
+
+/**
+ * 同步 Thinking 卡片收起态预览文本（静态 + 跑马灯单扫掠）
+ * 采用固定 14s 线性扫掠避免频繁改 duration 导致动画重启闪烁；
+ * 视觉速度随字符长度自然变化，长句稍快、短句稍慢但始终保持可读。
+ * @param {HTMLElement} cardEl Thinking 卡片根节点
+ * @param {string} text 原始思考文本
+ */
+export const syncThinkingPreview = (cardEl, text) => {
+  if (!cardEl) return;
+  const normalized = String(text || "").replace(/[\r\n\t]+/g, " ").trim();
+  const staticEl = cardEl.querySelector(".thinking-preview-static");
+  const textEls = cardEl.querySelectorAll(".thinking-preview-text");
+  if (staticEl) staticEl.textContent = normalized;
+  textEls.forEach((el) => { el.textContent = normalized; });
 };
 
 /**

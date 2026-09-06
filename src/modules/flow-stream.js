@@ -6,7 +6,7 @@ import { taskManager } from "../services/task-manager.js";
 import { modelFailoverEngine } from "../services/model-failover.js";
 import { flowStore } from "../services/stores/flow-store.js";
 import { flowView, resolveStreamTaskId } from "./flow-state-view.js";
-import { createThinkingStepCard, createPhaseStepCard } from "./flow-render.js";
+import { createThinkingStepCard, createPhaseStepCard, syncThinkingPreview } from "./flow-render.js";
 
 /**
  * 流式状态机、错误卡渲染与自动重连胶囊
@@ -570,6 +570,9 @@ export function initFlowStream(ctx) {
       headerEl: tStep.headerEl,
       durationEl: tStep.durationEl,
       previewEl: tStep.previewEl,
+      previewStaticEl: tStep.previewStaticEl,
+      previewTrackEl: tStep.previewTrackEl,
+      previewTextEls: tStep.previewTextEls,
       bodyEl: tStep.bodyEl,
       textStreamEl: tStep.textStreamEl,
     };
@@ -745,8 +748,11 @@ export function initFlowStream(ctx) {
     step.hasRealThinking = true;
     step.text += delta;
 
-    // 真正捕捉到思维链时，流式刷新第一行的思维链文本
-    if (step.previewEl) {
+    // 真正捕捉到思维链时，流式刷新收起态跑马灯 + 展开态正文；收起态为从右向左流动字符串
+    if (step.cardEl) {
+      syncThinkingPreview(step.cardEl, step.text);
+    } else if (step.previewEl) {
+      // 兜底：旧卡结构（历史快照）
       step.previewEl.textContent = step.text.replace(/[\r\n\t]+/g, " ").trim();
     }
     if (step.textStreamEl) {

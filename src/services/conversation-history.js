@@ -156,7 +156,12 @@ class ConversationHistoryService extends EventTarget {
       conv.thinkingDuration = data.thinkingDuration || conv.thinkingDuration || "";
       conv.lastViewedAt = now;
       conv.modelId = data.modelId || conv.modelId;
-      conv.sessionPath = data.sessionPath || conv.sessionPath;
+      if (data.sessionPath) {
+        conv.sessionPath = data.sessionPath;
+      }
+      if (data.sessionId) {
+        conv.sessionId = data.sessionId;
+      }
       if (data.taskId) {
         conv.taskId = data.taskId;
       }
@@ -180,6 +185,7 @@ class ConversationHistoryService extends EventTarget {
         thinkingDuration: data.thinkingDuration || "",
         modelId: data.modelId || "",
         sessionPath: data.sessionPath || "",
+        sessionId: data.sessionId || undefined,
         isAborted: Boolean(data.isAborted),
         turns: cleanedTurns,
         createdAt: now,

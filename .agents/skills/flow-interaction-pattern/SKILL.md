@@ -209,6 +209,8 @@ flowchart TD
 
 1. **自动挂起旧任务与解耦归档（杜绝幽灵任务与半死快照）**：
    - 从右上角任务抽屉、会话记录或系统通知中点击直接进入目标 Task 时，原前台活跃任务必须由 `TaskManager.setActiveTask` / `createTask` 自动转入后台挂起（`prevTask.isSuspended = true`）；
+   - **终态任务严禁后台挂起（防幽灵已完成胶囊）**：仅当前台原活跃任务处于运行态或待确认态（`thinking / streaming / tool_exec / paused`）时才转入后台挂起（`prevTask.isSuspended = true`）；若原任务已处于终态（`completed / aborted / error`），严禁赋予 `isSuspended = true`，直接从 `TaskManager` 清理，彻底杜绝从历史记录/会话记录切换进入其他会话时右上角瞬间冒出前一会话「已完成 (1/1 Task)」幽灵绿色徽标；
+   - **会话延续与多轮归属唯一性**：无论是全新会话、还是从「会话记录」或「历史记录」抽屉还原继续提问，后续追问统一透传底层会话文件路径（`sessionPath`）与会话 ID（`sessionId`）；Rust 后端 `PiHostPool` / `SessionHost` 在拉起内核子进程时，若存在已有会话路径（或经 `SessionIndexCache` 反查命中），严格采用 `pi --mode rpc --session <path>` 续写同一 `.jsonl` 文件，严禁使用盲目生成新 UUID 的 `--session-id` 导致多轮对话在重启或直接退出后被割裂为独立碎片记录；`ConversationHistoryService` 归档时严禁用空字符串覆写已有 `sessionPath`，保证历史记录与磁盘会话 100% 对应且多轮聚合完整；
    - 切换前由 `archiveCurrentFlowToHistory()` 将前台 DOM 当前进度完整同步回原任务内存 `currentActive.turns`；**但若原任务仍在运行中（thinking / streaming / tool_exec / paused），绝对不调用 `conversationHistoryService.recordConversation()` 写入静态历史**，确立“完全终止才归档”铁律；
 2. **跨会话状态彻底重置与工具引用自愈回填**：
    - 共享渲染管线 `renderTurnsIntoFlow`（`task-panel.js`）在渲染新任务前，必须执行：

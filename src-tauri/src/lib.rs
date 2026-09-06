@@ -137,18 +137,18 @@ pub fn run() {
             #[cfg(windows)]
             init_windows_notification_identity();
 
-            // 1. 初始化 Pi Supervisor 与 PiHostPool 多进程任务池
-            let supervisor = PiSupervisor::new(app.handle().clone());
-            let supervisor_arc = Arc::new(supervisor.clone());
-            let host_pool = PiHostPool::new(app.handle().clone(), supervisor_arc.clone());
-            app.manage(supervisor.clone());
-            app.manage(host_pool);
-
-            // 2. 初始化 Session Cache 与 Watcher（注入全局状态，防止 setup 返回后被 RAII 析构）
+            // 1. 初始化 Session Cache 与 Watcher（注入全局状态，防止 setup 返回后被 RAII 析构）
             let session_cache = SessionIndexCache::new();
             let session_watcher = Arc::new(SessionWatcher::new(app.handle().clone(), session_cache.clone()));
-            app.manage(session_cache);
+            app.manage(session_cache.clone());
             app.manage(session_watcher);
+
+            // 2. 初始化 Pi Supervisor 与 PiHostPool 多进程任务池
+            let supervisor = PiSupervisor::new(app.handle().clone());
+            let supervisor_arc = Arc::new(supervisor.clone());
+            let host_pool = PiHostPool::new(app.handle().clone(), supervisor_arc.clone(), session_cache);
+            app.manage(supervisor.clone());
+            app.manage(host_pool);
 
             // 2b. 物化会话回退快照守卫扩展至全局扩展目录（幂等，内容变更时覆盖）
             if let Err(e) = rollback::materialize_extension() {

@@ -20,6 +20,23 @@ const scheduleSessionRefresh = () => {
 };
 
 /**
+ * 解析 Task 的底层会话身份（sessionPath + sessionId），供下发 Prompt 时续写同一 .jsonl 文件（会话延续铁律）
+ * 回退规则：显式字段优先 → task_id 形如 kernel_<sessionId> 时剥离前缀兜底
+ * @param {{ id?: string, sessionPath?: string|null, sessionId?: string|null } | null | undefined} task
+ * @returns {{ sessionPath: string | null, sessionId: string | null }}
+ */
+export function resolveTaskSessionIdentity(task) {
+  if (!task) return { sessionPath: null, sessionId: null };
+  const sessionId =
+    task.sessionId ||
+    (typeof task.id === "string" && task.id.startsWith("kernel_") ? task.id.replace(/^kernel_/, "") : null);
+  return {
+    sessionPath: task.sessionPath || null,
+    sessionId: sessionId || null,
+  };
+}
+
+/**
  * @typedef {Object} TaskItem
  * @property {string} id 任务唯一 ID (如 task_1700000000000)
  * @property {string} title 提问文本截断摘要 (最多 24 字符)
@@ -120,11 +137,11 @@ export class TaskManager extends EventTarget {
       ],
     };
 
-    // 切换活跃任务铁律：原前台任务无缝转入后台挂起 (isSuspended = true)，杜绝幽灵任务
+    // 切换活跃任务铁律：原前台任务无缝转入后台挂起，杜绝幽灵任务；终态任务直接清理避免残留幽灵已完成任务
     if (this.currentActiveTaskId && this.currentActiveTaskId !== taskId) {
       const prevTask = this.tasks.get(this.currentActiveTaskId);
       if (prevTask) {
-        prevTask.isSuspended = true;
+        this._settlePrevTaskOnSwitch(prevTask);
       }
     }
 
@@ -214,6 +231,29 @@ export class TaskManager extends EventTarget {
   }
 
   /**
+   * 切换活跃任务时结算原前台任务（终态任务严禁后台挂起与幽灵已完成胶囊防范铁律）：
+   * - 运行/待确认态（thinking / streaming / tool_exec / paused）→ 转入后台挂起 (isSuspended = true)；
+   * - 终态（completed / aborted / error）→ 直接从 TaskManager 清理，杜绝幽灵已完成绿色徽标；
+   *   清理走轻量通道：注销系统通知注册并广播 task-removed（不销毁内核宿主，由池按活跃数自管理）；
+   * - 其余未知/草稿态 → 保守挂起，绝不允许产生既不在前台又未挂起的幽灵任务。
+   * @param {TaskItem} prevTask
+   */
+  _settlePrevTaskOnSwitch(prevTask) {
+    const isRunningOrPaused =
+      prevTask.status === "thinking" ||
+      prevTask.status === "streaming" ||
+      prevTask.status === "tool_exec" ||
+      prevTask.status === "paused";
+    if (isRunningOrPaused || !["completed", "aborted", "error"].includes(prevTask.status)) {
+      prevTask.isSuspended = true; // 原前台活跃任务自动转入后台挂起
+      return;
+    }
+    notificationService.unregisterTask(prevTask.id);
+    this.tasks.delete(prevTask.id);
+    this.dispatchEvent(new CustomEvent("task-removed", { detail: { taskId: prevTask.id } }));
+  }
+
+  /**
    * 设置当前前台活跃 Task
    * 切换活跃任务铁律：原前台活跃任务自动转入后台挂起 (isSuspended = true)，
    * 新任务进入前台 (isSuspended = false)，杜绝多任务直接切换导致旧会话丢失
@@ -223,7 +263,7 @@ export class TaskManager extends EventTarget {
     if (this.currentActiveTaskId && this.currentActiveTaskId !== taskId) {
       const prevTask = this.tasks.get(this.currentActiveTaskId);
       if (prevTask) {
-        prevTask.isSuspended = true; // 原前台活跃任务自动转入后台挂起
+        this._settlePrevTaskOnSwitch(prevTask);
       }
     }
 
@@ -465,6 +505,13 @@ export class TaskManager extends EventTarget {
   handleTaskEvent(taskId, data) {
     const task = this.tasks.get(taskId);
     if (!task) return;
+
+    if (data.sessionId || data.session_id) {
+      task.sessionId = data.sessionId || data.session_id;
+    }
+    if (data.sessionPath || data.session_path) {
+      task.sessionPath = data.sessionPath || data.session_path;
+    }
 
     // 铁律：已显式手动终止 (isAborted / aborted) 的任务，绝对禁止被任何迟到的内核事件复活或覆盖状态！
     if (task.isAborted || task.status === "aborted") {

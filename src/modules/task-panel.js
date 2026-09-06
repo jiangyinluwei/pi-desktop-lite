@@ -5,7 +5,7 @@ import { bus } from "../lib/event-bus.js";
 import { piClient } from "../services/pi-client.js";
 import { sessionService } from "../services/session-service.js";
 import { conversationHistoryService } from "../services/conversation-history.js";
-import { taskManager } from "../services/task-manager.js";
+import { taskManager, resolveTaskSessionIdentity } from "../services/task-manager.js";
 import { modelFailoverEngine } from "../services/model-failover.js";
 import { flowStore } from "../services/stores/flow-store.js";
 import { bindAll } from "../lib/el-binder.js";
@@ -381,7 +381,15 @@ export function initTaskPanel(ctx) {
       isRunning = false,
       syncModelName = false,
       sessionPath = null,
+      sessionId = null,
     } = options;
+
+    if (sessionPath && !task.sessionPath) {
+      task.sessionPath = sessionPath;
+    }
+    if (sessionId && !task.sessionId) {
+      task.sessionId = sessionId;
+    }
 
     taskManager.setActiveTask(task.id);
 
@@ -603,13 +611,18 @@ export function initTaskPanel(ctx) {
     task.conversationId = conv.id;
     // H27 治理：精准保留已中止/异常状态，非中止则赋予 completed 终态
     task.status = conv.isAborted ? "aborted" : "completed";
+    task.sessionPath = conv.sessionPath || null;
+    task.sessionId = resolveTaskSessionIdentity({ id: taskIdToUse, sessionId: conv.sessionId }).sessionId;
     const lastTurn = turns[turns.length - 1];
     task.thinkingText = lastTurn?.thinkingText || conv.thinkingText || "";
     task.responseText = lastTurn?.responseText || conv.responseText || "";
     task.toolCalls = lastTurn?.toolCalls || conv.toolCalls || [];
     task.thinkingDurationText = lastTurn?.thinkingDurationText || conv.thinkingDuration || "已完成思考";
 
-    renderTurnsIntoFlow(task, turns, { sessionPath: conv.sessionPath || null });
+    renderTurnsIntoFlow(task, turns, {
+      sessionPath: task.sessionPath,
+      sessionId: task.sessionId,
+    });
   };
 
   const archiveCurrentFlowToHistory = () => {
@@ -700,7 +713,8 @@ export function initTaskPanel(ctx) {
         toolCalls: lastTurn?.toolCalls || toolCallsSnapshot,
         thinkingDuration: lastTurn?.thinkingDurationText || (flowView.activeTurnRefs?.thinkingDurationEl ? flowView.activeTurnRefs.thinkingDurationEl.textContent : null),
         modelId: currentActive.model || piClient.currentModel?.id || "",
-        sessionPath: "",
+        sessionPath: resolveTaskSessionIdentity(currentActive).sessionPath || "",
+        sessionId: resolveTaskSessionIdentity(currentActive).sessionId || undefined,
         isAborted: turnsToSave.some((t) => t.isAborted),
       });
 
@@ -717,7 +731,8 @@ export function initTaskPanel(ctx) {
         toolCalls: toolCallsSnapshot,
         thinkingDuration: flowView.activeTurnRefs?.thinkingDurationEl ? flowView.activeTurnRefs.thinkingDurationEl.textContent : null,
         modelId: piClient.currentModel?.id || "",
-        sessionPath: "",
+        sessionPath: resolveTaskSessionIdentity(currentActive).sessionPath || "",
+        sessionId: resolveTaskSessionIdentity(currentActive).sessionId || undefined,
         isAborted,
       });
 

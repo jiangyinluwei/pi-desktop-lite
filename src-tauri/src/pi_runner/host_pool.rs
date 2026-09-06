@@ -2,6 +2,7 @@ use crate::pi_runner::framer::{run_stderr_logger, run_stdout_framer};
 use crate::pi_runner::job_object::JobObjectManager;
 use crate::pi_runner::protocol::{FollowUpRequest, PromptRequest, SteerRequest};
 use crate::pi_runner::supervisor::PiSupervisor;
+use crate::session::SessionIndexCache;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -21,6 +22,7 @@ pub const MAX_CONCURRENT_TASKS: usize = 3;
 pub struct SessionHost {
     pub task_id: String,
     pub session_id: String,
+    pub session_path: Arc<RwLock<Option<PathBuf>>>,
     app_handle: AppHandle,
     job_object: Arc<JobObjectManager>,
     stdin_tx: Arc<Mutex<Option<mpsc::Sender<String>>>>,
@@ -39,12 +41,14 @@ impl SessionHost {
     pub fn new(
         task_id: String,
         session_id: String,
+        session_path: Option<PathBuf>,
         app_handle: AppHandle,
         job_object: Arc<JobObjectManager>,
     ) -> Self {
         Self {
             task_id,
             session_id,
+            session_path: Arc::new(RwLock::new(session_path)),
             app_handle,
             job_object,
             stdin_tx: Arc::new(Mutex::new(None)),
@@ -94,10 +98,27 @@ impl SessionHost {
         }
 
         let mut cmd = Command::new(&binary_path);
-        cmd.arg("--mode")
-            .arg("rpc")
-            .arg("--session-id")
-            .arg(&self.session_id);
+        cmd.arg("--mode").arg("rpc");
+
+        let resolved_session_path = {
+            let guard = self.session_path.read().await;
+            guard.clone()
+        };
+
+        if let Some(ref path) = resolved_session_path {
+            if path.exists() {
+                log::info!(
+                    "[SessionHost:{}] Resuming existing session file via --session {:?}",
+                    self.task_id,
+                    path
+                );
+                cmd.arg("--session").arg(path);
+            } else {
+                cmd.arg("--session-id").arg(&self.session_id);
+            }
+        } else {
+            cmd.arg("--session-id").arg(&self.session_id);
+        }
 
         if let Some((ref provider, ref model_id)) = initial_model {
             cmd.arg("--provider").arg(provider).arg("--model").arg(model_id);
@@ -163,10 +184,12 @@ impl SessionHost {
             }
         });
 
-        // 启动 Stdout 分帧并在事件中注入 task_id
+        // 启动 Stdout 分帧并在事件中注入 task_id 与 session 信息
         let (event_tx, mut event_rx) = mpsc::channel::<Value>(256);
         let app_handle_for_events = self.app_handle.clone();
         let task_id_clone = self.task_id.clone();
+        let session_id_clone = self.session_id.clone();
+        let session_path_clone = self.session_path.clone();
         let is_active_clone = self.is_active.clone();
         let pending_responses_clone = self.pending_responses.clone();
 
@@ -184,13 +207,26 @@ impl SessionHost {
                     continue; // 响应帧仅回填等待者，无论有无等待者均不向前端广播
                 }
 
-                // 注入 task_id 确保前端路由精准分发
+                // 注入 task_id 与 session 信息确保前端路由精准分发
                 if let Value::Object(ref mut map) = event_val {
                     if !map.contains_key("task_id") {
                         map.insert("task_id".to_string(), Value::String(task_id_clone.clone()));
                     }
                     if !map.contains_key("taskId") {
                         map.insert("taskId".to_string(), Value::String(task_id_clone.clone()));
+                    }
+                    if !map.contains_key("session_id") {
+                        map.insert("session_id".to_string(), Value::String(session_id_clone.clone()));
+                    }
+                    if !map.contains_key("sessionId") {
+                        map.insert("sessionId".to_string(), Value::String(session_id_clone.clone()));
+                    }
+                    if !map.contains_key("sessionPath") {
+                        if let Some(ref path) = *session_path_clone.read().await {
+                            let path_str = path.to_string_lossy().to_string();
+                            map.insert("sessionPath".to_string(), Value::String(path_str.clone()));
+                            map.insert("session_path".to_string(), Value::String(path_str));
+                        }
                     }
 
                     // 监听 agent 状态变化以更新 is_active
@@ -422,13 +458,18 @@ pub struct PiHostPool {
     app_handle: AppHandle,
     job_object: Arc<JobObjectManager>,
     primary_supervisor: Arc<PiSupervisor>,
+    session_cache: SessionIndexCache,
     hosts: Arc<RwLock<HashMap<String, Arc<SessionHost>>>>,
     active_model: Arc<RwLock<Option<(String, String)>>>,
     active_thinking_level: Arc<RwLock<Option<String>>>,
 }
 
 impl PiHostPool {
-    pub fn new(app_handle: AppHandle, primary_supervisor: Arc<PiSupervisor>) -> Self {
+    pub fn new(
+        app_handle: AppHandle,
+        primary_supervisor: Arc<PiSupervisor>,
+        session_cache: SessionIndexCache,
+    ) -> Self {
         let job_object = Arc::new(JobObjectManager::new().unwrap_or_else(|err| {
             log::warn!("[PiHostPool] JobObject init failed: {}", err);
             JobObjectManager::new().unwrap()
@@ -438,6 +479,7 @@ impl PiHostPool {
             app_handle,
             job_object,
             primary_supervisor,
+            session_cache,
             hosts: Arc::new(RwLock::new(HashMap::new())),
             active_model: Arc::new(RwLock::new(None)),
             active_thinking_level: Arc::new(RwLock::new(None)),
@@ -548,18 +590,21 @@ impl PiHostPool {
     pub async fn get_or_create_host(
         &self,
         task_id: &str,
+        session_path_opt: Option<&str>,
+        session_id_opt: Option<&str>,
         initial_model: Option<(String, String)>,
         initial_thinking_level: Option<String>,
     ) -> Result<Arc<SessionHost>, String> {
-        let existing_session_id = {
+        let (existing_session_id, existing_session_path) = {
             let hosts = self.hosts.read().await;
             if let Some(host) = hosts.get(task_id) {
                 if host.is_alive().await {
                     return Ok(host.clone());
                 }
-                Some(host.session_id.clone())
+                let sp = host.session_path.read().await.clone();
+                (Some(host.session_id.clone()), sp)
             } else {
-                None
+                (None, None)
             }
         };
 
@@ -572,11 +617,51 @@ impl PiHostPool {
             ));
         }
 
+        // 解析已有会话路径与 ID（多级查找：显式参数 -> SessionHost 历史 -> SessionIndexCache 查找）
+        let mut resolved_path: Option<PathBuf> = session_path_opt
+            .map(PathBuf::from)
+            .filter(|p| p.exists())
+            .or(existing_session_path)
+            .filter(|p| p.exists()); // 兼底分支同样校验磁盘存在性，防范死宿主遗留的已删除路径
+
+        let mut resolved_session_id = session_id_opt
+            .map(|s| s.to_string())
+            .or(existing_session_id);
+
+        // 若传入了 kernel_<sid> 形式的 task_id，去除前缀作为 session_id
+        if resolved_session_id.is_none() && task_id.starts_with("kernel_") {
+            resolved_session_id = Some(task_id.trim_start_matches("kernel_").to_string());
+        }
+
+        // 若已有 session_id 但无 session_path，尝试从 SessionIndexCache 查询真实文件路径
+        if resolved_path.is_none() {
+            if let Some(ref sid) = resolved_session_id {
+                if let Some(meta) = self.session_cache.get_by_id(sid) {
+                    let pb = PathBuf::from(&meta.file_path);
+                    if pb.exists() {
+                        resolved_path = Some(pb);
+                    }
+                }
+            }
+        }
+
+        // 若已有 session_path 但无 session_id，尝试从 SessionIndexCache 反查 session_id
+        if resolved_session_id.is_none() {
+            if let Some(ref path) = resolved_path {
+                let path_str = path.to_string_lossy();
+                let sessions = self.session_cache.list_all();
+                if let Some(meta) = sessions.iter().find(|s| s.file_path == path_str) {
+                    resolved_session_id = Some(meta.session_id.clone());
+                }
+            }
+        }
+
         // 会话 ID 与任务 ID 解耦：session_id 复用已有 UUID（若已有），避免重启后历史断开
-        let session_id = existing_session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let session_id = resolved_session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let host = Arc::new(SessionHost::new(
             task_id.to_string(),
             session_id,
+            resolved_path,
             self.app_handle.clone(),
             self.job_object.clone(),
         ));
@@ -612,7 +697,13 @@ impl PiHostPool {
         let effective_thinking = self.resolve_effective_thinking_level(&request).await;
 
         let host = self
-            .get_or_create_host(&task_id, effective_model.clone(), effective_thinking.clone())
+            .get_or_create_host(
+                &task_id,
+                request.session_path.as_deref(),
+                request.session_id.as_deref(),
+                effective_model.clone(),
+                effective_thinking.clone(),
+            )
             .await?;
 
         // 门禁 1：检查任务在拉起阶段是否已被用户取消
