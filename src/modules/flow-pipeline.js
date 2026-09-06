@@ -297,6 +297,11 @@ export function initFlowPipeline(ctx) {
     if (typeof api.sealActivePhaseOutput === "function") {
       api.sealActivePhaseOutput();
     }
+    // 工具参数流式开始说明思考阶段已正式结束：提前结算思维切片，避免参数生成期思维读秒继续空跑，
+    // 且保留无思考文本直接调用工具时的思维卡（展示为“已完成思考”）
+    if (typeof api.sealActiveThinkingStep === "function") {
+      api.sealActiveThinkingStep({ preserveForTool: true });
+    }
     api.autoCollapseThinkingOnNextPhase();
     // 伪工具运行框：参数流式期空窗即时呈现「工具调用... + 读秒 + running」
     ensureActiveToolPseudoStep();
@@ -315,9 +320,9 @@ export function initFlowPipeline(ctx) {
     const toolCallId = data.toolCallId;
     const toolName = data.toolName || "tool";
 
-    // 工具开始时，结算或清理当前活跃的思维切片
+    // 工具开始时，结算或清理当前活跃的思维切片（带有 preserveForTool: true 幂等兜底）
     if (typeof api.sealActiveThinkingStep === "function") {
-      api.sealActiveThinkingStep();
+      api.sealActiveThinkingStep({ preserveForTool: true });
     }
 
     // 工具开始前，封口当前活跃的阶段性输出切片 (Point 卡)：

@@ -1355,10 +1355,13 @@
   white-space: nowrap;
 }
 
-.thinking-preview-gap,
-.thinking-preview-text--clone {
-  /* 单文本扫掠模式下隐藏克隆与分隔，避免双倍宽度干扰扫掠距离 */
+/* 空文本状态下隐藏，消除初始阶段动画空转 */
+.thinking-preview-text:empty {
   display: none !important;
+}
+
+.flow-step-card.flow-step-thinking.collapsed.running .thinking-preview-track:has(.thinking-preview-text:empty) {
+  animation: none !important;
 }
 
 /* 仅在收起 + 运行态展示流动；展开或已完成则展示静态省略 */

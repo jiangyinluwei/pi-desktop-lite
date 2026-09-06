@@ -70,21 +70,41 @@ export function initFlowStream(ctx) {
 
   /**
    * 封口当前活跃的思维切片（Thinking Step）：
-   * 结算耗时并定格显示；若为无思维文本的空卡则予以移除
+   * 结算耗时并定格显示；若有真实文本或处于工具跃迁/显式思考则保留为“已完成思考”，若仅为首字占位伪框则移除
+   * @param {Object} [options]
+   * @param {boolean} [options.preserveForTool=false] 是否为进入工具调用时的结算
    */
-  const sealActiveThinkingStep = () => {
+  const sealActiveThinkingStep = (options = {}) => {
     if (flowView.activeThinkingStep) {
-      if (flowView.activeThinkingStep.hasRealThinking || flowView.activeThinkingStep.text?.trim()) {
-        const elapsed = ((Date.now() - flowView.activeThinkingStep.startTime) / 1000).toFixed(1);
-        flowView.activeThinkingStep.durationText = `(${elapsed}s)`;
-        if (flowView.activeThinkingStep.durationEl) {
-          flowView.activeThinkingStep.durationEl.textContent = flowView.activeThinkingStep.durationText;
+      const step = flowView.activeThinkingStep;
+      const isToolTransition = Boolean(options && options.preserveForTool);
+
+      // 铁律：只要产生过思考增量、或存在思考文本、或显式收到了 thinking-start 事件、或直接进入工具调用，
+      // 均视为有效的思维决策阶段，必须定格保留，绝不能物理移除导致界面示意框突兀消失
+      if (step.hasRealThinking || step.text?.trim() || step.isExplicitThinking || isToolTransition) {
+        const elapsed = ((Date.now() - step.startTime) / 1000).toFixed(1);
+        step.durationText = `(${elapsed}s)`;
+        if (step.durationEl) {
+          step.durationEl.textContent = step.durationText;
         }
-        flowView.activeThinkingStep.cardEl?.classList.remove("running");
+
+        // 若没有具体的思维链文本（直接调用工具或空思考块），友好展示“已完成思考”
+        if (!step.text?.trim()) {
+          step.text = "已完成思考";
+          if (step.cardEl) {
+            syncThinkingPreview(step.cardEl, step.text, step);
+          }
+          if (step.textStreamEl) {
+            step.textStreamEl.textContent = step.text;
+          }
+        }
+
+        step.cardEl?.classList.remove("running");
       } else {
-        flowView.activeThinkingStep.cardEl?.remove();
+        // 仅在纯正文直接输出（未调用工具且无显式思考事件）时，作为首字等待伪框静默移除
+        step.cardEl?.remove();
         if (Array.isArray(flowView.currentSteps)) {
-          flowView.currentSteps = flowView.currentSteps.filter((s) => s !== flowView.activeThinkingStep);
+          flowView.currentSteps = flowView.currentSteps.filter((s) => s !== step);
         }
       }
       flowView.activeThinkingStep = null;
@@ -566,12 +586,15 @@ export function initFlowStream(ctx) {
       durationText: "(0.0s)...",
       startTime: Date.now(),
       hasRealThinking: false,
+      isExplicitThinking: false,
       cardEl: tStep.cardEl,
       headerEl: tStep.headerEl,
       durationEl: tStep.durationEl,
       previewEl: tStep.previewEl,
       previewStaticEl: tStep.previewStaticEl,
+      previewMarqueeEl: tStep.previewMarqueeEl,
       previewTrackEl: tStep.previewTrackEl,
+      previewTextEl: tStep.previewTextEl,
       previewTextEls: tStep.previewTextEls,
       bodyEl: tStep.bodyEl,
       textStreamEl: tStep.textStreamEl,
@@ -733,7 +756,8 @@ export function initFlowStream(ctx) {
     if (typeof api.removeActiveToolPseudoStep === "function") {
       api.removeActiveToolPseudoStep();
     }
-    ensureActiveThinkingStep();
+    const step = ensureActiveThinkingStep();
+    step.isExplicitThinking = true;
     followScrollToBottom();
   });
 
@@ -750,7 +774,7 @@ export function initFlowStream(ctx) {
 
     // 真正捕捉到思维链时，流式刷新收起态跑马灯 + 展开态正文；收起态为从右向左流动字符串
     if (step.cardEl) {
-      syncThinkingPreview(step.cardEl, step.text);
+      syncThinkingPreview(step.cardEl, step.text, step);
     } else if (step.previewEl) {
       // 兜底：旧卡结构（历史快照）
       step.previewEl.textContent = step.text.replace(/[\r\n\t]+/g, " ").trim();

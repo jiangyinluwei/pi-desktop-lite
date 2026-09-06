@@ -385,8 +385,6 @@ export const createThinkingStepCard = ({
             <span class="thinking-preview-marquee" aria-hidden="true">
               <span class="thinking-preview-track">
                 <span class="thinking-preview-text">${escapeHtml(previewText)}</span>
-                <span class="thinking-preview-gap"> &nbsp;&nbsp;•&nbsp;&nbsp; </span>
-                <span class="thinking-preview-text thinking-preview-text--clone" aria-hidden="true">${escapeHtml(previewText)}</span>
               </span>
             </span>
           </span>
@@ -406,7 +404,8 @@ export const createThinkingStepCard = ({
   const previewStaticEl = cardEl.querySelector(".thinking-preview-static");
   const previewMarqueeEl = cardEl.querySelector(".thinking-preview-marquee");
   const previewTrackEl = cardEl.querySelector(".thinking-preview-track");
-  const previewTextEls = cardEl.querySelectorAll(".thinking-preview-text");
+  const previewTextEl = cardEl.querySelector(".thinking-preview-text");
+  const previewTextEls = previewTextEl ? [previewTextEl] : [];
   const bodyEl = cardEl.querySelector(".flow-step-body");
   const textStreamEl = cardEl.querySelector(".thinking-text-stream");
 
@@ -437,6 +436,7 @@ export const createThinkingStepCard = ({
     previewStaticEl,
     previewMarqueeEl,
     previewTrackEl,
+    previewTextEl,
     previewTextEls,
     bodyEl,
     textStreamEl,
@@ -447,16 +447,32 @@ export const createThinkingStepCard = ({
  * 同步 Thinking 卡片收起态预览文本（静态 + 跑马灯单扫掠）
  * 采用固定 14s 线性扫掠避免频繁改 duration 导致动画重启闪烁；
  * 视觉速度随字符长度自然变化，长句稍快、短句稍慢但始终保持可读。
- * @param {HTMLElement} cardEl Thinking 卡片根节点
+ * 优先直接使用传入的缓存引用，消除高频流式热路径下的 DOM 查询开销。
+ * @param {HTMLElement|Object} cardOrRefs Thinking 卡片根节点或包含缓存引用的对象
  * @param {string} text 原始思考文本
+ * @param {Object} [stepItem=null] 可选的步骤项缓存对象
  */
-export const syncThinkingPreview = (cardEl, text) => {
-  if (!cardEl) return;
+export const syncThinkingPreview = (cardOrRefs, text, stepItem = null) => {
+  if (!cardOrRefs) return;
   const normalized = String(text || "").replace(/[\r\n\t]+/g, " ").trim();
-  const staticEl = cardEl.querySelector(".thinking-preview-static");
-  const textEls = cardEl.querySelectorAll(".thinking-preview-text");
+
+  let staticEl = stepItem?.previewStaticEl || cardOrRefs.previewStaticEl;
+  let textEl = stepItem?.previewTextEl || cardOrRefs.previewTextEl;
+  let textEls = stepItem?.previewTextEls || cardOrRefs.previewTextEls;
+
+  if (!staticEl && typeof cardOrRefs.querySelector === "function") {
+    staticEl = cardOrRefs.querySelector(".thinking-preview-static");
+  }
+  if (!textEl && !textEls && typeof cardOrRefs.querySelector === "function") {
+    textEl = cardOrRefs.querySelector(".thinking-preview-text");
+  }
+
   if (staticEl) staticEl.textContent = normalized;
-  textEls.forEach((el) => { el.textContent = normalized; });
+  if (textEl) {
+    textEl.textContent = normalized;
+  } else if (textEls && typeof textEls.forEach === "function") {
+    textEls.forEach((el) => { el.textContent = normalized; });
+  }
 };
 
 /**
