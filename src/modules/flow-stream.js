@@ -308,19 +308,26 @@ export function initFlowStream(ctx) {
     // 重连中 / 切换中
     capsule.classList.remove("ok");
     if (payload.status === "reconnecting") {
+      const candInfo = payload.candidate ? ` (${payload.candidate.name || payload.candidate.id})` : "";
       const codeStr = payload.code ? ` ${payload.code}` : "";
       if (phase === "waiting" && payload.nextDelayMs) {
         const secs = Math.max(1, Math.round(payload.nextDelayMs / 1000));
-        textEl.textContent = `模型调用异常${codeStr} · 自动重连中 ${payload.attempt}/${payload.maxAttempts} · ${secs}s 后重试`;
+        textEl.textContent = `模型调用异常${codeStr}${candInfo} · 自动重连中 ${payload.attempt}/${payload.maxAttempts} · ${secs}s 后重试`;
       } else {
-        textEl.textContent = `自动重连中 ${payload.attempt}/${payload.maxAttempts}`;
+        textEl.textContent = `自动重连中 ${payload.attempt}/${payload.maxAttempts}${candInfo}`;
       }
       capsule.classList.remove("hidden");
     } else if (payload.status === "switching") {
-      if (phase === "switching_model") {
-        textEl.textContent = `正在自动切换至 ${payload.modelName || "其他模型"} 重试 … (${payload.candidateIndex + 1}/${payload.candidateTotal})`;
+      const cyclePrefix = payload.maxCycles > 1 ? `第 ${payload.cycle || 1}/${payload.maxCycles} 轮 · ` : "";
+      const countSuffix = `(${cyclePrefix}${payload.candidateIndex + 1}/${payload.candidateTotal})`;
+
+      if (phase === "waiting" && payload.nextDelayMs) {
+        const secs = Math.max(1, Math.round(payload.nextDelayMs / 1000));
+        textEl.textContent = `模型切换重试中 · ${secs}s 后尝试下一模型 … ${countSuffix}`;
+      } else if (phase === "switching_model") {
+        textEl.textContent = `正在自动切换至 ${payload.modelName || "其他模型"} 重试 … ${countSuffix}`;
       } else {
-        textEl.textContent = `${payload.modelName || "候选模型"} 重试中 … (${payload.candidateIndex + 1}/${payload.candidateTotal})`;
+        textEl.textContent = `${payload.modelName || "候选模型"} 重试中 … ${countSuffix}`;
       }
       capsule.classList.remove("hidden");
     }

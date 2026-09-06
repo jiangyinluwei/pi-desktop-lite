@@ -29,7 +29,7 @@
 - **后台多任务管理与状态无缝挂起**：支持多任务并发、前后台活跃任务直接切换无感自动挂起（防幽灵任务丢失）、显式「⏹ 终止」强制彻底杀灭子进程与防后台泄漏（杜绝 Token 消耗与迟到事件复活）、终态任务与活跃任务挂起彻底解耦（杜绝幽灵已完成徽标）、会话延续透传与多轮归属唯一性保证（`--session <path>` 续写同一底层文件，彻底杜绝历史被割裂为新记录）、会话流与文件变更收纳框隔离恢复，右上角 Mini 任务胶囊与半透明抽屉实时联动；
 - **工作区路由调度中枢**：提供 `code-area` 免污染路由调度中枢、Windows 原生文件夹选择器与多预设工作区平滑切换；
 - **手绘草图美学与组件套件**：全域手绘 SVG 图元、明暗纸质双模自适应，配套 `SketchSelect` / `SketchAutoFill` / `SketchModal` 原生草图组件；
-- **Rust 高性能核心与自愈保障**：底层孤儿进程级监管、内核崩溃平滑自动重连、Node.js 运行环境极速预检与 Windows 桌面级系统集成。
+- **Rust 高性能核心与自愈保障**：底层孤儿进程级监管、内核崩溃平滑自动重连、模型调用自动重连与多轮巡检切换（瞬态 24 次退避重连、永久/未知错误多轮轮转备选模型并平滑退避、MRU 置顶保护）、Node.js 运行环境极速预检与 Windows 桌面级系统集成。
 
 > 📖 **完整特性与架构规范**：详见项目内置开发技能 [`.agents/skills/pi-desktop-overview/SKILL.md`](.agents/skills/pi-desktop-overview/SKILL.md)。
 
@@ -107,7 +107,7 @@ pi-desktop-lite/
 │   │   ├── sessions-panel.js   # 会话记录列表、搜索筛选、进入 Flow 管线与界面会话清空
 │   │   ├── workspace-panel.js  # 多预设工作区设置面板与路由绑定
 │   │   └── global-interactions.js # 全局右键/Esc 回退与外链拦截
-│   ├── services/               # 前端服务层 (tauri-bridge, config-service, pi-client, workspace-service 等)
+│   ├── services/               # 前端服务层 (tauri-bridge, config-service, pi-client, model-failover 模型自愈引擎, workspace-service 等)
 │   │   └── stores/             # 共享可变状态唯一属主 (view-store, settings-store, attachments-store, flow-store 按 taskId 分仓)
 │   ├── styles/                 # 按功能域拆分的手绘样式 (tokens, layout, flow, markdown, settings, form-widgets 等)
 │   ├── index.html              # 页面主体

@@ -58,11 +58,16 @@ export function parseErrorMessage(err) {
  */
 const TRANSIENT_CODES = [
   "408", "429", "500", "502", "503", "504",
-  "rate_limit", "server_error", "overloaded", "temporarily_unavailable",
-  "timeout", "timed_out", "upstream_error", "gateway_timeout", "bad_gateway",
-  "econnreset", "econnrefused", "etimedout", "enotfound", "eai_again",
-  "socket hang up", "fetch failed", "connection refused", "connection reset",
-  "read econnreset", "network", "请求超时",
+  "rate_limit", "rate limit", "too many requests", "resource exhausted", "resource_exhausted",
+  "server_error", "server error", "internal server error", "overloaded", "model is overloaded",
+  "server is overloaded", "server is busy", "temporarily_unavailable", "temporarily unavailable",
+  "service unavailable", "service_unavailable", "upstream_error", "upstream connect error",
+  "gateway_timeout", "gateway timeout", "bad_gateway", "bad gateway",
+  "timeout", "timed_out", "timed out", "econnreset", "econnrefused", "etimedout", "enotfound",
+  "eai_again", "socket hang up", "fetch failed", "connection refused", "connection reset",
+  "read econnreset", "network", "high traffic", "capacity", "frequency limit",
+  "请求超时", "超频", "频繁", "限流", "排队", "拥挤", "拥堵", "服务器繁忙",
+  "请稍后重试", "请稍后再试", "服务暂时不可用", "访问频率超限", "连接超时", "网络异常",
 ];
 
 /**
@@ -170,6 +175,32 @@ export function isAbortError(err) {
 }
 
 /**
+ * 判定是否为不可自愈的致命候选错误（如 API Key 无效、401、模型不存在等），
+ * 该类错误在后续重试轮次中应跳过，避免无效重复尝试。
+ * @param {any} err
+ * @returns {boolean}
+ */
+export function isFatalCandidateError(err) {
+  if (!err) return false;
+  const s = String(extractErrorCode(err) || "").toLowerCase();
+  const rawMsg = String(
+    err?.raw?.errorMessage ||
+    err?.raw?.error?.message ||
+    err?.raw?.error ||
+    err?.message ||
+    ""
+  ).toLowerCase();
+  const combined = `${s} ${rawMsg}`;
+
+  const FATAL_TOKENS = [
+    "401", "404", "authentication_error", "invalid_api_key",
+    "model_not_found", "invalid_model", "unauthorized",
+    "鉴权失败", "api key", "模型不存在", "未开通权限",
+  ];
+  return FATAL_TOKENS.some((t) => combined.includes(t));
+}
+
+/**
  * 判定模型调用错误类别 ("TRANSIENT" | "PERMANENT" | "ABORTED")
  * 铁律：手动终止/中止一律返回 "ABORTED"，绝不归入瞬态重连或永久切换；
  * UNKNOWN 一律保守归永久 (进入切换兜底，切换也失败则输出错误信息)
@@ -180,8 +211,22 @@ export function classifyModelError(err) {
   if (isAbortError(err)) return "ABORTED";
   const code = extractErrorCode(err);
   const s = String(code || "").toLowerCase();
-  if (TRANSIENT_CODES.some((c) => s === c || s.includes(c))) return "TRANSIENT";
-  if (PERMANENT_CODES.some((c) => s === c || s.includes(c))) return "PERMANENT";
+  const rawMsg = String(
+    err?.raw?.errorMessage ||
+    err?.raw?.error?.message ||
+    err?.raw?.error ||
+    err?.message ||
+    ""
+  ).toLowerCase();
+
+  // 优先判定瞬态错误（HTTP 408/429/5xx、限流、超负荷、网络抖动等）
+  if (TRANSIENT_CODES.some((c) => s === c || s.includes(c) || (rawMsg && rawMsg.includes(c)))) {
+    return "TRANSIENT";
+  }
+  // 其次判定明确的永久错误
+  if (PERMANENT_CODES.some((c) => s === c || s.includes(c) || (rawMsg && rawMsg.includes(c)))) {
+    return "PERMANENT";
+  }
   return "PERMANENT"; // UNKNOWN 保守归永久
 }
 

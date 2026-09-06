@@ -14,7 +14,7 @@
  * 在引擎处于活跃态时调用 resolveTurnSuccess() / handleModelError() 来结算每一轮重发尝试。
  */
 
-import { piClient, classifyModelError, isAbortError } from "./pi-client.js";
+import { piClient, classifyModelError, isAbortError, isFatalCandidateError } from "./pi-client.js";
 import { configService } from "./config-service.js";
 
 class ModelFailoverEngine extends EventTarget {
@@ -103,7 +103,15 @@ class ModelFailoverEngine extends EventTarget {
     const tid = detail.taskId || detail.task_id || detail.raw?.task_id || detail.raw?.taskId || this.taskId;
     if (this.isTaskAborted(tid)) return false;
 
-    return Boolean(detail.provider && detail.model);
+    const effProvider =
+      detail.provider ||
+      configService.getSelectedModel()?.provider ||
+      piClient.currentModel?.provider;
+    const effModel =
+      detail.model ||
+      configService.getSelectedModel()?.modelId ||
+      piClient.currentModel?.id;
+    return Boolean(effProvider && effModel);
   }
 
   /**
@@ -144,11 +152,22 @@ class ModelFailoverEngine extends EventTarget {
       return;
     }
 
+    const effProvider =
+      detail?.provider ||
+      configService.getSelectedModel()?.provider ||
+      piClient.currentModel?.provider ||
+      "";
+    const effModel =
+      detail?.model ||
+      configService.getSelectedModel()?.modelId ||
+      piClient.currentModel?.id ||
+      "";
+
     this.kind = kind;
     this.taskId = tid || null;
     this.originalModel = {
-      provider: detail.provider || configService.getSelectedModel()?.provider,
-      modelId: detail.model || configService.getSelectedModel()?.modelId,
+      provider: effProvider,
+      modelId: effModel,
     };
     this.lastError = detail;
     this.hooks = hooks;
@@ -262,134 +281,236 @@ class ModelFailoverEngine extends EventTarget {
     this._runSwitch();
   }
 
-  async _runSwitch() {
-    const cfg = configService.getModelFailoverConfig();
+  /**
+   * 智能汇总与排重候选模型：优先白名单 MRU 顺序，必要时从内核可用模型补齐
+   * @returns {Promise<Array<any>>}
+   */
+  async _resolveCandidates() {
     const whitelist = configService.loadModelWhitelist() || [];
 
-    // 候选 = 白名单 MRU 顺序，跳过当前失败的原模型 (去重防死循环)
-    this.candidates = whitelist.filter(
-      (m) => !this._sameModel(m, this.originalModel)
-    );
+    // 第一优先级：白名单 MRU 顺序，跳过当前失败的原模型 (彻底去重)
+    let candidates = whitelist.filter((m) => !this._sameModel(m, this.originalModel));
+
+    // 第二优先级（智能补齐）：若白名单候选不足 3 个，尝试从内核已配置模型中补充可用候选
+    if (candidates.length < 3) {
+      try {
+        const available = await piClient.getAvailableModels();
+        if (Array.isArray(available) && available.length > 0) {
+          for (const m of available) {
+            if (!m || (!m.id && !m.modelId)) continue;
+            const isOriginal = this._sameModel(m, this.originalModel);
+            const alreadyInList = candidates.some((c) => this._sameModel(c, m));
+            if (!isOriginal && !alreadyInList) {
+              candidates.push({
+                id: m.id || m.modelId,
+                name: m.name || m.id || m.modelId,
+                provider: m.provider || "",
+                contextWindow: m.contextWindow || 64000,
+                maxTokens: m.maxTokens || 4096,
+                reasoning: !!m.reasoning,
+                isCustom: !!m.isCustom,
+              });
+              if (candidates.length >= 6) break;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    return candidates;
+  }
+
+  async _runSwitch() {
+    const cfg = configService.getModelFailoverConfig();
+    const maxCycles = Math.max(1, Number(cfg.maxSwitchCycles) || 3);
+    const maxTotalAttempts = Math.max(1, Number(cfg.maxTotalSwitchAttempts) || 12);
+    const switchBackoffSeq = Array.isArray(cfg.switchBackoffMs)
+      ? cfg.switchBackoffMs
+      : [1500, 3000, 6000];
+
+    // 解析候选列表（白名单优先 + 智能补齐）
+    this.candidates = await this._resolveCandidates();
 
     if (this.candidates.length === 0) {
-      // 白名单仅 1 个模型：无候选可切，直接放弃
+      // 白名单或可用模型中无有效候选可切，直接放弃
       this._giveUp(true);
       return;
     }
 
-    for (this.candidateIndex = 0; this.candidateIndex < this.candidates.length; this.candidateIndex++) {
-      if (this.status !== "switching" || this.isTaskAborted(this.taskId)) return; // 已被取消/手动终止
+    let totalAttempts = 0;
+    const unusableCandidates = new Set(); // 记录已确认致命且不可恢复的候选（如 401 密钥失效）
 
-      const candidate = this.candidates[this.candidateIndex];
-      this._switchedCandidates = this.candidateIndex + 1;
-      this.currentTemporaryModel = { provider: candidate.provider, modelId: candidate.id };
-
-      // 临时切换 (仅 pi_set_model，绝不刷新 MRU / selectedModel)
-      this._emit({
-        status: "switching",
-        phase: "switching_model",
-        candidate,
-        candidateIndex: this.candidateIndex,
-        candidateTotal: this.candidates.length,
-        modelName: candidate.name || candidate.id,
-      });
-
-      try {
-        const switchedModel = await piClient.setModel(candidate.provider, candidate.id);
-        // 防御：内核响应未含模型结构时，显式同步前端当前模型，确保重发命中候选模型
-        if (!switchedModel || (!switchedModel.id && !switchedModel.modelId)) {
-          piClient.currentModel = {
-            id: candidate.id,
-            provider: candidate.provider,
-            name: candidate.name || candidate.id,
-          };
-        }
-      } catch (e) {
-        if (this.status !== "switching" || this.isTaskAborted(this.taskId)) return;
-        // setModel 失败 → 继续下一候选
-        this.lastError = { message: e?.toString?.() || String(e), raw: e, provider: candidate.provider, model: candidate.id };
-        continue;
-      }
-
+    // 多轮巡检轮换：支持最多 maxCycles 轮，候选与轮次间带平滑退避延时
+    for (let cycle = 1; cycle <= maxCycles; cycle++) {
       if (this.status !== "switching" || this.isTaskAborted(this.taskId)) return;
 
-      // 重发相同输入
-      this._emit({
-        status: "switching",
-        phase: "sending",
-        candidate,
-        candidateIndex: this.candidateIndex,
-        candidateTotal: this.candidates.length,
-        modelName: candidate.name || candidate.id,
-      });
+      // 剔除已被证实致命不可用的候选
+      const activeCandidates = this.candidates.filter(
+        (c) => !unusableCandidates.has(this._modelKey(c))
+      );
 
-      const result = await this._sendAttempt();
-      if (this.status !== "switching" || this.isTaskAborted(this.taskId) || result?.cancelled) return;
-
-      if (result.success) {
-        this._succeed(true, candidate);
-        return;
+      if (activeCandidates.length === 0) {
+        // 所有候选均已证实致命不可用，提前结束轮巡
+        break;
       }
 
-      if (isAbortError(result.error)) {
-        this.cancel("user");
-        return;
-      }
+      for (let i = 0; i < activeCandidates.length; i++) {
+        if (this.status !== "switching" || this.isTaskAborted(this.taskId)) return;
+        if (totalAttempts >= maxTotalAttempts) break;
 
-      this.lastError = result.error || this.lastError;
-      const kind = classifyModelError(result.error || this.lastError);
-      if (kind === "ABORTED") {
-        this.cancel("user");
-        return;
-      }
+        const candidate = activeCandidates[i];
+        this.candidateIndex = i;
+        totalAttempts++;
+        this._switchedCandidates = totalAttempts;
+        this.currentTemporaryModel = { provider: candidate.provider, modelId: candidate.id };
 
-      if (kind === "TRANSIENT") {
-        // 候选模型瞬态错误 → 小额重连预算，避免单个抖动模型阻塞整条流水线
-        const budget = cfg.perCandidateReconnectBudget;
-        for (let r = 0; r < budget; r++) {
+        // 临时切换模型 (仅 pi_set_model，绝不刷新 MRU / selectedModel)
+        this._emit({
+          status: "switching",
+          phase: "switching_model",
+          candidate,
+          cycle,
+          maxCycles,
+          candidateIndex: i,
+          candidateTotal: activeCandidates.length,
+          totalAttempt: totalAttempts,
+          maxTotalAttempts,
+          modelName: candidate.name || candidate.id,
+        });
+
+        try {
+          const switchedModel = await piClient.setModel(candidate.provider, candidate.id);
+          // 防御：内核响应未含模型结构时，显式同步前端当前模型，确保重发命中候选模型
+          if (!switchedModel || (!switchedModel.id && !switchedModel.modelId)) {
+            piClient.currentModel = {
+              id: candidate.id,
+              provider: candidate.provider,
+              name: candidate.name || candidate.id,
+            };
+          }
+        } catch (e) {
           if (this.status !== "switching" || this.isTaskAborted(this.taskId)) return;
-          const rDelay = this._backoffDelay(r + 1, cfg);
+          this.lastError = { message: e?.toString?.() || String(e), raw: e, provider: candidate.provider, model: candidate.id };
+          if (isFatalCandidateError(this.lastError)) {
+            unusableCandidates.add(this._modelKey(candidate));
+          }
+          continue;
+        }
+
+        if (this.status !== "switching" || this.isTaskAborted(this.taskId)) return;
+
+        // 重发相同输入
+        this._emit({
+          status: "switching",
+          phase: "sending",
+          candidate,
+          cycle,
+          maxCycles,
+          candidateIndex: i,
+          candidateTotal: activeCandidates.length,
+          totalAttempt: totalAttempts,
+          maxTotalAttempts,
+          modelName: candidate.name || candidate.id,
+        });
+
+        const result = await this._sendAttempt();
+        if (this.status !== "switching" || this.isTaskAborted(this.taskId) || result?.cancelled) return;
+
+        if (result.success) {
+          this._succeed(true, candidate);
+          return;
+        }
+
+        if (isAbortError(result.error)) {
+          this.cancel("user");
+          return;
+        }
+
+        this.lastError = result.error || this.lastError;
+        const kind = classifyModelError(result.error || this.lastError);
+        if (kind === "ABORTED") {
+          this.cancel("user");
+          return;
+        }
+
+        // 判定是否记录为致命不可恢复模型（401/404/invalid_key 等）
+        if (isFatalCandidateError(result.error || this.lastError)) {
+          unusableCandidates.add(this._modelKey(candidate));
+        }
+
+        if (kind === "TRANSIENT") {
+          // 候选模型瞬态错误 → 小额重连预算，避免单个抖动模型阻塞整条流水线
+          const budget = cfg.perCandidateReconnectBudget || 2;
+          for (let r = 0; r < budget; r++) {
+            if (this.status !== "switching" || this.isTaskAborted(this.taskId)) return;
+            const rDelay = this._backoffDelay(r + 1, cfg);
+            this._emit({
+              status: "reconnecting",
+              phase: "waiting",
+              attempt: r + 1,
+              maxAttempts: budget,
+              nextDelayMs: rDelay,
+              kind: "TRANSIENT",
+              candidate,
+              cycle,
+              maxCycles,
+              candidateIndex: i,
+              candidateTotal: activeCandidates.length,
+              modelName: candidate.name || candidate.id,
+            });
+            await this._sleep(rDelay);
+            if (this.status !== "switching" || this.isTaskAborted(this.taskId)) return;
+
+            const r2 = await this._sendAttempt();
+            if (this.status !== "switching" || this.isTaskAborted(this.taskId) || r2?.cancelled) return;
+            if (r2.success) {
+              this._succeed(true, candidate);
+              return;
+            }
+            if (isAbortError(r2.error)) {
+              this.cancel("user");
+              return;
+            }
+            this.lastError = r2.error || this.lastError;
+            const rKind = classifyModelError(r2.error || this.lastError);
+            if (rKind === "ABORTED") {
+              this.cancel("user");
+              return;
+            }
+            if (isFatalCandidateError(r2.error || this.lastError)) {
+              unusableCandidates.add(this._modelKey(candidate));
+              break;
+            }
+            if (rKind === "PERMANENT") break; // 永久错误 → 结束当前候选的小额瞬态重试
+          }
+        }
+
+        // 候选切换间施加平滑退避，避免并发雪崩并给予服务端缓冲
+        if (totalAttempts < maxTotalAttempts && (i < activeCandidates.length - 1 || cycle < maxCycles)) {
+          const delayIndex = Math.min(cycle - 1, switchBackoffSeq.length - 1);
+          const switchDelay = switchBackoffSeq[delayIndex] || 1500;
           this._emit({
-            status: "reconnecting",
+            status: "switching",
             phase: "waiting",
-            attempt: r + 1,
-            maxAttempts: budget,
-            nextDelayMs: rDelay,
-            kind: "TRANSIENT",
-            candidate,
-            candidateIndex: this.candidateIndex,
-            candidateTotal: this.candidates.length,
+            nextDelayMs: switchDelay,
+            cycle,
+            maxCycles,
+            candidateIndex: i,
+            candidateTotal: activeCandidates.length,
+            totalAttempt: totalAttempts,
+            maxTotalAttempts,
             modelName: candidate.name || candidate.id,
           });
-          await this._sleep(rDelay);
-          if (this.status !== "switching" || this.isTaskAborted(this.taskId)) return;
-
-          const r2 = await this._sendAttempt();
-          if (this.status !== "switching" || this.isTaskAborted(this.taskId) || r2?.cancelled) return;
-          if (r2.success) {
-            this._succeed(true, candidate);
-            return;
-          }
-          if (isAbortError(r2.error)) {
-            this.cancel("user");
-            return;
-          }
-          this.lastError = r2.error || this.lastError;
-          const rKind = classifyModelError(r2.error || this.lastError);
-          if (rKind === "ABORTED") {
-            this.cancel("user");
-            return;
-          }
-          if (rKind === "PERMANENT") break; // 永久 → 下一候选
+          await this._sleep(switchDelay);
         }
-        // 预算耗尽 → 继续下一候选
       }
-      // 永久错误 → 继续下一候选
+
+      if (totalAttempts >= maxTotalAttempts) break;
     }
 
     if (this.status !== "switching" || this.isTaskAborted(this.taskId)) return;
 
-    // 全部候选单次遍历仍失败 → 恢复原模型并放弃
+    // 全部候选轮次遍历仍失败 → 恢复原模型并放弃
     await this._restoreOriginalModel();
     this._giveUp();
   }
@@ -517,12 +638,42 @@ class ModelFailoverEngine extends EventTarget {
     }
   }
 
+  _modelKey(c) {
+    if (!c) return "";
+    return `${String(c.provider || "").toLowerCase().trim()}:${String(c.id || c.modelId || "").toLowerCase().trim()}`;
+  }
+
   _sameModel(m, ref) {
     if (!m || !ref) return false;
-    return (
-      String(m.provider || "").toLowerCase() === String(ref.provider || "").toLowerCase() &&
-      String(m.id || "").toLowerCase() === String(ref.modelId || "").toLowerCase()
-    );
+    const mProvider = String(m.provider || "").toLowerCase().trim();
+    const refProvider = String(ref.provider || "").toLowerCase().trim();
+    const mId = String(m.id || m.modelId || "").toLowerCase().trim();
+    const refId = String(ref.modelId || ref.id || "").toLowerCase().trim();
+
+    if (!mId || !refId) return false;
+
+    // 1. 若双方都有明确的 provider 且不同，则非同一模型
+    if (mProvider && refProvider && mProvider !== refProvider) {
+      return false;
+    }
+
+    // 2. 直接完全相等
+    if (mId === refId) {
+      return true;
+    }
+
+    // 3. 剥离可能内含的 provider/ 前缀比对（例如 "openai/gpt-4o" vs "gpt-4o"）
+    const strip = (str, prov) => {
+      if (!str) return "";
+      if (prov && str.startsWith(`${prov}/`)) return str.slice(prov.length + 1);
+      const slash = str.indexOf("/");
+      return slash !== -1 ? str.slice(slash + 1) : str;
+    };
+
+    const cleanM = strip(mId, mProvider);
+    const cleanRef = strip(refId, refProvider);
+
+    return Boolean(cleanM && cleanRef && cleanM === cleanRef);
   }
 
   /**

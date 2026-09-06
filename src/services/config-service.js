@@ -25,6 +25,9 @@ export const DEFAULT_FAILOVER_CONFIG = {
   perCandidateReconnectBudget: 2,
   escalateToSwitchAfterReconnectExhausted: true,
   switchOnPermanentError: true,
+  maxSwitchCycles: 3,
+  switchBackoffMs: [1500, 3000, 6000],
+  maxTotalSwitchAttempts: 12,
 };
 
 class ConfigService extends EventTarget {
