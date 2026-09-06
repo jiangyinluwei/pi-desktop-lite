@@ -59,7 +59,7 @@ description: |
 
 对齐「伪思考框」首 token 延迟显示机制，工具调用同样存在两段空窗延迟，均需即时视觉反馈：
 
-1. **伪思考框与无显式文本完成机制**：`thinking-start` 或新轮次启动时即插入 `Thinking (0.0s)...` 占位思维切片，100ms 读秒；若捕捉到思维链 delta 则流式刷新收起态流动预览（实时展示从右向左流动输出流，紧跟最新输出内容，输出越快流动越快）与展开态正文；若模型未输出显式思考文本而直接进入工具调用（`toolcall-delta-start` / `tool-start`），或显式 `thinking-start` 后结束，封口时保留该切片并定格显示为「Thinking (X.Xs) 已完成思考」，绝不物理移除；仅在模型直接输出正文（`text-start`）且无显式思考/工具边界时，作为纯正文首 token 延迟占位卡静默移除；
+1. **伪思考框与无显式文本完成机制**：`thinking-start` 或新轮次启动时即插入 `Thinking (0.0s)...` 占位思维切片，100ms 读秒；若捕捉到思维链 delta 则流式刷新收起态流动预览（实时展示从右向左流动输出流，紧跟最新输出内容，输出越快流动越快）与展开态正文；若模型未输出显式思考文本而直接进入工具调用（`toolcall-delta-start` / `tool-start`），或显式 `thinking-start` 后结束，封口时保留该切片并定格显示为「Thinking (X.Xs) 已完成思考」（自动消除左侧渐隐遮罩并左对齐呈现，字迹清晰纯粹），绝不物理移除；仅在模型直接输出正文（`text-start`）且无显式思考/工具边界时，作为纯正文首 token 延迟占位卡静默移除；
 2. **伪工具运行框**：`toolcall-delta-start`（工具参数流式开始）即插入 `工具调用... + running + (0.0s)...` 占位卡（`flow-pipeline.js` 的 `ensureActiveToolPseudoStep`），100ms 读秒；参数流式结束（`toolcall-delta-end` 携带 `toolCall.name`）回填真实工具名；
 3. **真实工具卡读秒与累计延时铁律**：`tool-start` 创建真实卡片时继承伪工具运行框的 `startTime`，将大模型生成工具参数的延时与工具执行耗时累计显示（初始携带 `(${initialElapsed}s)...`），移除占位卡；`startToolRunTimer` 持续以 100ms 刷新累计读秒；`tool-end` 定格为累计总时长 `(Xs)` 并清空 `flowView.toolRunTimerInterval`，杜绝真实工具执行完成后耗时跳回 0.0s/0.1s 导致前期生成延时丢失；
 4. **状态清理铁律**：伪框与读秒计时器（`flowView.activeToolPseudoStep` / `flowView.toolPseudoTimerInterval` / `flowView.toolRunTimerInterval`）必须在 `resetStreamState`、`resetCurrentTurnForResend`、`finalizeStream`、`thinking-start`、`text-start` 全部边界兜底清理，杜绝幽灵计时器与残留占位卡；伪卡不写入 `flowView.currentSteps`，不污染历史快照。

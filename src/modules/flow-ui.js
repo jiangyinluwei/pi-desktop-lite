@@ -219,8 +219,9 @@ export function initFlowUi(ctx) {
           });
           stepsContainerEl.appendChild(pStep.cardEl);
         } else if (step.type === "thinking" || step.text) {
+          const thinkText = (step.text && step.text.trim()) ? step.text : (step.type === "thinking" ? "已完成思考" : "");
           const tStep = createThinkingStepCard({
-            text: step.text || "",
+            text: thinkText,
             durationText: step.durationText || "已完成思考",
             isOpen: false,
           });
@@ -282,7 +283,13 @@ export function initFlowUi(ctx) {
         header.setAttribute("aria-expanded", open ? "true" : "false");
         if (!open) {
           const previewEl = card.querySelector(".thinking-preview");
-          if (previewEl) previewEl.scrollLeft = previewEl.scrollWidth;
+          if (previewEl) {
+            if (card.classList.contains("no-fade") || previewEl.classList.contains("no-fade")) {
+              previewEl.scrollLeft = 0;
+            } else {
+              previewEl.scrollLeft = previewEl.scrollWidth;
+            }
+          }
         }
       };
       header.addEventListener("click", toggleCardCollapse);
@@ -294,9 +301,22 @@ export function initFlowUi(ctx) {
       });
     });
 
-    // 确保收起态的思维切片预览滚动对齐至最右侧（跟踪最新思考内容）
-    stepsContainerEl.querySelectorAll(".flow-step-thinking:not(.open) .thinking-preview").forEach((prevEl) => {
-      prevEl.scrollLeft = prevEl.scrollWidth;
+    // 确保收起态的思维切片预览滚动对齐至最右侧（跟踪最新思考内容；无输出的“已完成思考”保持左对齐无渐隐遮罩）
+    stepsContainerEl.querySelectorAll(".flow-step-thinking").forEach((card) => {
+      const prevEl = card.querySelector(".thinking-preview");
+      const streamEl = card.querySelector(".thinking-preview-stream") || card.querySelector(".thinking-preview-text");
+      const text = (streamEl?.textContent || prevEl?.textContent || "").trim();
+      const isFallback = text === "已完成思考";
+      if (isFallback) {
+        card.classList.add("no-fade");
+        if (prevEl) {
+          prevEl.classList.add("no-fade");
+          prevEl.setAttribute("data-no-fade", "true");
+          prevEl.scrollLeft = 0;
+        }
+      } else if (!card.classList.contains("open") && prevEl) {
+        prevEl.scrollLeft = prevEl.scrollWidth;
+      }
     });
 
     // 历史步骤卡片一键复制委托

@@ -370,9 +370,9 @@ export const createThinkingStepCard = ({
 } = {}) => {
   const cardEl = document.createElement("div");
   const isRunning = durationText.includes("...");
-  cardEl.className = `flow-step-card flow-step-thinking ${isRunning ? "running" : ""} ${isOpen ? "open" : "collapsed"}`;
-
   const previewText = text ? text.replace(/[\r\n\t]+/g, " ").trim() : "";
+  const isFallback = previewText === "已完成思考";
+  cardEl.className = `flow-step-card flow-step-thinking ${isRunning ? "running" : ""} ${isOpen ? "open" : "collapsed"} ${isFallback ? "no-fade" : ""}`;
 
   cardEl.innerHTML = `
       <div class="flow-step-header thinking-header" role="button" tabindex="0" aria-expanded="${isOpen ? "true" : "false"}">
@@ -380,7 +380,7 @@ export const createThinkingStepCard = ({
           <span class="flow-step-icon thinking-icon" aria-hidden="true">${ICONS.sparkle}</span>
           <span class="flow-step-badge thinking-badge">Thinking</span>
           <span class="flow-step-duration thinking-duration">${escapeHtml(durationText)}</span>
-          <span class="flow-step-preview thinking-preview">
+          <span class="flow-step-preview thinking-preview ${isFallback ? "no-fade" : ""}" ${isFallback ? 'data-no-fade="true"' : ""}>
             <span class="thinking-preview-stream">${escapeHtml(previewText)}</span>
           </span>
         </div>
@@ -400,14 +400,22 @@ export const createThinkingStepCard = ({
   const bodyEl = cardEl.querySelector(".flow-step-body");
   const textStreamEl = cardEl.querySelector(".thinking-text-stream");
 
+  if (isFallback && previewEl) {
+    previewEl.scrollLeft = 0;
+  }
+
   if (headerEl) {
     const toggleCollapse = () => {
       const open = cardEl.classList.toggle("open");
       cardEl.classList.toggle("collapsed", !open);
       headerEl.setAttribute("aria-expanded", open ? "true" : "false");
       if (!open && previewEl) {
-        // 收起时确保滚动对齐至最右侧，紧跟最新输出流
-        previewEl.scrollLeft = previewEl.scrollWidth;
+        if (cardEl.classList.contains("no-fade") || previewEl.classList.contains("no-fade")) {
+          previewEl.scrollLeft = 0;
+        } else {
+          // 收起时确保滚动对齐至最右侧，紧跟最新输出流
+          previewEl.scrollLeft = previewEl.scrollWidth;
+        }
       }
     };
     headerEl.addEventListener("click", (e) => {
@@ -439,6 +447,7 @@ export const createThinkingStepCard = ({
 /**
  * 同步 Thinking 卡片收起态预览文本（从右向左实时流动输出流）
  * 收起态实时跟踪最新输出内容，输出速度越快，流动速度越快；
+ * 若为无实际输出的“已完成思考”则消除渐隐遮罩并左对齐；
  * 优先直接使用传入的缓存引用，消除高频流式热路径下的 DOM 查询开销。
  * @param {HTMLElement|Object} cardOrRefs Thinking 卡片根节点或包含缓存引用的对象
  * @param {string} text 原始思考文本
@@ -450,6 +459,7 @@ export const syncThinkingPreview = (cardOrRefs, text, stepItem = null) => {
 
   let previewEl = stepItem?.previewEl || cardOrRefs.previewEl;
   let streamEl = stepItem?.previewStreamEl || stepItem?.previewTextEl || cardOrRefs.previewStreamEl || cardOrRefs.previewTextEl;
+  const cardEl = stepItem?.cardEl || (cardOrRefs instanceof HTMLElement && cardOrRefs.classList.contains("flow-step-card") ? cardOrRefs : cardOrRefs?.cardEl || cardOrRefs?.closest?.(".flow-step-card"));
 
   if (!previewEl && typeof cardOrRefs.querySelector === "function") {
     previewEl = cardOrRefs.querySelector(".thinking-preview");
@@ -464,10 +474,21 @@ export const syncThinkingPreview = (cardOrRefs, text, stepItem = null) => {
     previewEl.textContent = normalized;
   }
 
-  // 核心：若文本超出单行视口宽度，始终将滚动位置推至最右端，
-  // 呈现“从右向左流动、左侧滑出隐退、右侧实时紧跟最新输出流”的效果
+  const isFallback = normalized === "已完成思考";
   if (previewEl) {
-    previewEl.scrollLeft = previewEl.scrollWidth;
+    previewEl.classList.toggle("no-fade", isFallback);
+    if (isFallback) {
+      previewEl.setAttribute("data-no-fade", "true");
+      previewEl.scrollLeft = 0;
+    } else {
+      previewEl.removeAttribute("data-no-fade");
+      // 核心：若文本超出单行视口宽度，始终将滚动位置推至最右端，
+      // 呈现“从右向左流动、左侧滑出隐退、右侧实时紧跟最新输出流”的效果
+      previewEl.scrollLeft = previewEl.scrollWidth;
+    }
+  }
+  if (cardEl && cardEl.classList) {
+    cardEl.classList.toggle("no-fade", isFallback);
   }
 };
 

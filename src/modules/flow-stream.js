@@ -92,6 +92,7 @@ export function initFlowStream(ctx) {
         if (!step.text?.trim()) {
           step.text = "已完成思考";
           if (step.cardEl) {
+            step.cardEl.classList.add("no-fade");
             syncThinkingPreview(step.cardEl, step.text, step);
           }
           if (step.textStreamEl) {

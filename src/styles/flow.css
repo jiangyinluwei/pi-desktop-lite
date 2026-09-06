@@ -1317,6 +1317,14 @@
   -webkit-mask-image: linear-gradient(to right, transparent 0, black 16px, black 100%);
 }
 
+/* 无真实思考输出（展示“已完成思考”）时移除左侧渐隐遮罩 */
+.flow-step-card.flow-step-thinking .thinking-preview.no-fade,
+.flow-step-card.flow-step-thinking.no-fade .thinking-preview,
+.flow-step-card.flow-step-thinking .thinking-preview[data-no-fade="true"] {
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
 .flow-step-card.flow-step-thinking .thinking-preview::-webkit-scrollbar {
   display: none;
 }
