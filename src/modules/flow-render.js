@@ -405,7 +405,6 @@ export const createThinkingStepCard = ({
   const previewMarqueeEl = cardEl.querySelector(".thinking-preview-marquee");
   const previewTrackEl = cardEl.querySelector(".thinking-preview-track");
   const previewTextEl = cardEl.querySelector(".thinking-preview-text");
-  const previewTextEls = previewTextEl ? [previewTextEl] : [];
   const bodyEl = cardEl.querySelector(".flow-step-body");
   const textStreamEl = cardEl.querySelector(".thinking-text-stream");
 
@@ -437,7 +436,6 @@ export const createThinkingStepCard = ({
     previewMarqueeEl,
     previewTrackEl,
     previewTextEl,
-    previewTextEls,
     bodyEl,
     textStreamEl,
   };
@@ -445,8 +443,7 @@ export const createThinkingStepCard = ({
 
 /**
  * 同步 Thinking 卡片收起态预览文本（静态 + 跑马灯单扫掠）
- * 采用固定 14s 线性扫掠避免频繁改 duration 导致动画重启闪烁；
- * 视觉速度随字符长度自然变化，长句稍快、短句稍慢但始终保持可读。
+ * 采用固定 5s 线性扫掠；视觉速度随字符长度自然变化，长句稍快、短句稍慢但始终保持可读。
  * 优先直接使用传入的缓存引用，消除高频流式热路径下的 DOM 查询开销。
  * @param {HTMLElement|Object} cardOrRefs Thinking 卡片根节点或包含缓存引用的对象
  * @param {string} text 原始思考文本
@@ -458,21 +455,16 @@ export const syncThinkingPreview = (cardOrRefs, text, stepItem = null) => {
 
   let staticEl = stepItem?.previewStaticEl || cardOrRefs.previewStaticEl;
   let textEl = stepItem?.previewTextEl || cardOrRefs.previewTextEl;
-  let textEls = stepItem?.previewTextEls || cardOrRefs.previewTextEls;
 
   if (!staticEl && typeof cardOrRefs.querySelector === "function") {
     staticEl = cardOrRefs.querySelector(".thinking-preview-static");
   }
-  if (!textEl && !textEls && typeof cardOrRefs.querySelector === "function") {
+  if (!textEl && typeof cardOrRefs.querySelector === "function") {
     textEl = cardOrRefs.querySelector(".thinking-preview-text");
   }
 
   if (staticEl) staticEl.textContent = normalized;
-  if (textEl) {
-    textEl.textContent = normalized;
-  } else if (textEls && typeof textEls.forEach === "function") {
-    textEls.forEach((el) => { el.textContent = normalized; });
-  }
+  if (textEl) textEl.textContent = normalized;
 };
 
 /**

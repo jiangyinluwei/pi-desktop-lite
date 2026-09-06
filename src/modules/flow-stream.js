@@ -595,7 +595,6 @@ export function initFlowStream(ctx) {
       previewMarqueeEl: tStep.previewMarqueeEl,
       previewTrackEl: tStep.previewTrackEl,
       previewTextEl: tStep.previewTextEl,
-      previewTextEls: tStep.previewTextEls,
       bodyEl: tStep.bodyEl,
       textStreamEl: tStep.textStreamEl,
     };
