@@ -1338,18 +1338,18 @@
 }
 
 .thinking-preview-track {
-  /* display: block makes width equal to parent (marquee) width W;
-     translateX 100% baseline is W. Animation translateX(100%) to translateX(-100%)
-     means text flows from right side (outside W) to left side (-W),
-     visible for ~half the cycle. Fixes the old inline-block+padding-left issue
-     where text required W/(W+T)*14s (~13s for short text) to enter viewport. */
-  display: block;
+  /* display: inline-block + padding-left: 100%:
+     padding-left is relative to marquee content width W, so track = W(padding) + T(text).
+     translateX(0) puts text at X=W (right boundary); translateX(-100%) = -(W+T) puts
+     text at X=W-(W+T) = -T (off-screen left). Text flows right-to-left every 5s cycle. */
+  display: inline-block;
   white-space: nowrap;
   will-change: transform;
   font-size: 11.5px;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   color: var(--ink-muted);
   opacity: 0.92;
+  padding-left: 100%;
   padding-right: 24px;
 }
 
@@ -1358,9 +1358,13 @@
   white-space: nowrap;
 }
 
-/* Hide marquee when text is empty to suppress animation idle spin */
-.flow-step-card.flow-step-thinking.collapsed.running .thinking-preview-marquee:has(.thinking-preview-text:empty) {
-  display: none;
+/* Empty text: hide element so track shows nothing; suppress animation until text arrives */
+.thinking-preview-text:empty {
+  display: none !important;
+}
+
+.flow-step-card.flow-step-thinking.collapsed.running .thinking-preview-track:has(.thinking-preview-text:empty) {
+  animation: none !important;
 }
 
 /* 仅在收起 + 运行态展示流动；展开或已完成则展示静态省略 */
@@ -1373,17 +1377,19 @@
 }
 
 .flow-step-card.flow-step-thinking.collapsed.running .thinking-preview-track {
-  animation: thinkingMarqueeFlow linear infinite;
-  animation-duration: 14s;
+  /* 5s cycle: speed ≈ (W+T)/5 ≈ 60-80px/s, visually perceptible right-to-left ticker.
+     No animation-delay: text starts from X=W (right boundary) when first appearing,
+     enters viewport immediately and flows continuously left. */
+  animation: thinkingMarqueeFlow 5s linear infinite;
 }
 
 @keyframes thinkingMarqueeFlow {
   0% {
-    /* Start from right side outside viewport (100% = container width W) */
-    transform: translateX(100%);
+    /* translateX(0): track at natural pos, padding-left pushes text to X=W (right boundary) */
+    transform: translateX(0);
   }
   100% {
-    /* Exit left side (-100% = -W), text traverses full viewport */
+    /* translateX(-100%) = -(W+T): text at X=-T, fully off-screen left; loop resets */
     transform: translateX(-100%);
   }
 }
