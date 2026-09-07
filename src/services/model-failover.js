@@ -14,7 +14,7 @@
  * 在引擎处于活跃态时调用 resolveTurnSuccess() / handleModelError() 来结算每一轮重发尝试。
  */
 
-import { piClient, classifyModelError, isAbortError, isFatalCandidateError } from "./pi-client.js";
+import { piClient, classifyModelError, isAbortError, isFatalCandidateError, extractErrorFingerprint, isSameModelError } from "./pi-client.js";
 import { configService } from "./config-service.js";
 
 class ModelFailoverEngine extends EventTarget {
@@ -38,8 +38,13 @@ class ModelFailoverEngine extends EventTarget {
     this.hooks = null;
     this._resolveAttempt = null; // 当前在途尝试的结算回调
     this._backoffTimer = null;
+    this._heartbeatTimer = null;
+    this._currentPhase = "";
     this._reconnectCount = 0; // 累计重连次数 (用于摘要)
     this._switchedCandidates = 0; // 累计尝试过的候选模型数 (用于摘要)
+    this.firstErrorTimestamp = 0; // 首次同类错误时间戳 (120秒容忍判定基准)
+    this.firstErrorFingerprint = ""; // 首次错误归一化指纹
+    this.sameErrorCount = 0; // 连续相同错误累计计数
     if (!this._abortedTaskIds) {
       this._abortedTaskIds = new Set();
     }
@@ -173,12 +178,15 @@ class ModelFailoverEngine extends EventTarget {
     this.hooks = hooks;
     this._reconnectCount = 0;
     this._switchedCandidates = 0;
+    this.firstErrorTimestamp = Date.now();
+    this.firstErrorFingerprint = extractErrorFingerprint(detail);
+    this.sameErrorCount = 1;
 
     if (kind === "TRANSIENT") {
       this.status = "reconnecting";
       this._runReconnect();
     } else {
-      // PERMANENT (含 UNKNOWN 保守归永久) → 直接切换模型
+      // PERMANENT (含 UNKNOWN 保守归永久) → 若为致命候选错误或存在备选则切换，否则若非致命单模型转重连
       this.status = "switching";
       this._runSwitch();
     }
@@ -194,43 +202,94 @@ class ModelFailoverEngine extends EventTarget {
   }
 
   // ==========================================================================
-  // 行为分支一：瞬态错误自动重连 (2/4/8s 退避，≤24 次)
+  // 行为分支一：瞬态错误自动重连 (2/4/8s 退避，持续 120s 同错超时判定)
   // ==========================================================================
 
   async _runReconnect() {
     const cfg = configService.getModelFailoverConfig();
-    const max = cfg.maxReconnectAttempts;
+    const sameErrorTimeoutMs = Number(cfg.sameErrorTimeoutMs) || 120000;
+    const maxAttempts = Math.max(Number(cfg.maxReconnectAttempts) || 24, 30);
 
-    while (this.status === "reconnecting" && this.attempt < max) {
-      if (this.isTaskAborted(this.taskId)) return; // 响应手动终止门禁
+    // 确保首错指纹与时间戳已初始化
+    if (!this.firstErrorTimestamp) {
+      this.firstErrorTimestamp = Date.now();
+    }
+    if (!this.firstErrorFingerprint) {
+      this.firstErrorFingerprint = extractErrorFingerprint(this.lastError);
+    }
+    if (!this.sameErrorCount) {
+      this.sameErrorCount = 1;
+    }
+
+    // 启动每秒自愈心跳时钟（驱动已持续时间动态递增刷新，并提供 120s 硬性超时熔断防护）
+    this._startHeartbeat(cfg);
+
+    while (this.status === "reconnecting") {
+      if (this.isTaskAborted(this.taskId)) {
+        this._stopHeartbeat();
+        return;
+      }
+
+      // 检查当前持续同一错误是否已超过 120 秒判定窗口
+      const elapsedSinceFirstError = Date.now() - this.firstErrorTimestamp;
+      if (this.sameErrorCount > 1 && elapsedSinceFirstError >= sameErrorTimeoutMs) {
+        console.warn(
+          `[ModelFailover] 同一错误已持续 ${Math.round(elapsedSinceFirstError / 1000)}s (超过 ${Math.round(sameErrorTimeoutMs / 1000)}s 判定时间)，终止任务并弹出报错`
+        );
+        this._stopHeartbeat();
+        this._giveUp();
+        return;
+      }
+
       this.attempt++;
       this._reconnectCount = this.attempt;
       const delay = this._backoffDelay(this.attempt, cfg);
+      const isRateLimit =
+        isSameModelError(this.lastError, "tpm") ||
+        isSameModelError(this.lastError, "rpm") ||
+        isSameModelError(this.lastError, "rate_limit");
+
+      this._currentPhase = "waiting";
       this._emit({
         status: "reconnecting",
         phase: "waiting",
         attempt: this.attempt,
-        maxAttempts: max,
+        maxAttempts: maxAttempts,
         nextDelayMs: delay,
         kind: "TRANSIENT",
         code: this._errorCode(),
         modelName: this._modelName(),
+        elapsedSecs: Math.floor(elapsedSinceFirstError / 1000),
+        timeoutSecs: Math.round(sameErrorTimeoutMs / 1000),
+        isRateLimit,
+        isSameError: true,
       });
 
       await this._sleep(delay);
-      if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId)) return; // 已被取消/结算/手动终止
+      if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId)) {
+        this._stopHeartbeat();
+        return;
+      }
 
+      this._currentPhase = "sending";
       this._emit({
         status: "reconnecting",
         phase: "sending",
         attempt: this.attempt,
-        maxAttempts: max,
+        maxAttempts: maxAttempts,
         kind: "TRANSIENT",
         modelName: this._modelName(),
+        elapsedSecs: Math.floor((Date.now() - this.firstErrorTimestamp) / 1000),
+        timeoutSecs: Math.round(sameErrorTimeoutMs / 1000),
+        isRateLimit,
+        isSameError: true,
       });
 
       const result = await this._sendAttempt();
-      if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId) || result?.cancelled) return; // 已被取消/手动终止
+      if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId) || result?.cancelled) {
+        this._stopHeartbeat();
+        return;
+      }
 
       if (result.success) {
         this._succeed(false, null);
@@ -248,26 +307,45 @@ class ModelFailoverEngine extends EventTarget {
         this.cancel("user");
         return;
       }
-      if (kind === "PERMANENT") {
-        // 重连过程中转为永久错误 → 升级为切换 (若开启) 或直接放弃
-        if (cfg.switchOnPermanentError) {
-          this._beginSwitch(this.lastError);
-        } else {
+
+      // 核心判定：比对当前错误与首次错误是否为「同样的错」
+      const isSame = isSameModelError(result.error || this.lastError, this.firstErrorFingerprint);
+      const currentElapsed = Date.now() - this.firstErrorTimestamp;
+
+      if (isSame) {
+        this.sameErrorCount++;
+        // 若持续报同样的错，且已达到 120 秒判定时间：真正弹出报错并终止任务
+        if (currentElapsed >= sameErrorTimeoutMs) {
+          console.warn(
+            `[ModelFailover] 模型持续报相同错误达到 ${Math.round(currentElapsed / 1000)}s (≥ ${Math.round(sameErrorTimeoutMs / 1000)}s)，终止任务并弹出报错`
+          );
           this._giveUp();
+          return;
         }
-        return;
+        // 持续时间未满 120 秒：继续重连，绝不提前报错失败！
+        continue;
+      } else {
+        // 模型报出了不同的错误：
+        // 判定新错误是否为不可自愈的致命候选错误 (如 401 密钥失效)
+        if (isFatalCandidateError(result.error || this.lastError)) {
+          if (cfg.switchOnPermanentError) {
+            this._beginSwitch(this.lastError);
+          } else {
+            this._giveUp();
+          }
+          return;
+        }
+        // 若为非致命错误，重置判定基准为新错误，重新计算 120 秒判定容忍窗口
+        this.firstErrorTimestamp = Date.now();
+        this.firstErrorFingerprint = extractErrorFingerprint(result.error || this.lastError);
+        this.sameErrorCount = 1;
+        continue;
       }
-      // 瞬态 → 继续下一轮退避重连
     }
 
     if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId)) return;
 
-    // 重连次数耗尽
-    if (cfg.escalateToSwitchAfterReconnectExhausted) {
-      this._beginSwitch(this.lastError);
-    } else {
-      this._giveUp();
-    }
+    this._giveUp();
   }
 
   // ==========================================================================
@@ -328,11 +406,21 @@ class ModelFailoverEngine extends EventTarget {
       ? cfg.switchBackoffMs
       : [1500, 3000, 6000];
 
+    // 启动每秒自愈心跳时钟
+    this._startHeartbeat(cfg);
+
     // 解析候选列表（白名单优先 + 智能补齐）
     this.candidates = await this._resolveCandidates();
 
     if (this.candidates.length === 0) {
-      // 白名单或可用模型中无有效候选可切，直接放弃
+      // 若无备选模型可切，但当前错误并非不可自愈的致命候选错误（例如 401 密钥失效），
+      // 则降级转入同模型重连自愈通道，给予 120 秒同错容忍判定窗口，绝不 0 秒草率放弃！
+      if (!isFatalCandidateError(this.lastError)) {
+        this.status = "reconnecting";
+        this._runReconnect();
+        return;
+      }
+      // 白名单或可用模型中无有效候选可切，且为致命错误，直接放弃
       this._giveUp(true);
       return;
     }
@@ -543,9 +631,110 @@ class ModelFailoverEngine extends EventTarget {
   }
 
   /**
+   * 启动每秒自愈心跳定时器（驱动已持续时间动态递增刷新，并在持续同错达到 120s 时主动超时熔断）
+   * @param {Record<string, any>} [cfg]
+   */
+  _startHeartbeat(cfg = null) {
+    this._stopHeartbeat();
+    const config = cfg || configService.getModelFailoverConfig();
+    const sameErrorTimeoutMs = Number(config?.sameErrorTimeoutMs) || 120000;
+    const sameErrorTimeoutSecs = Math.round(sameErrorTimeoutMs / 1000);
+
+    this._heartbeatTimer = setInterval(() => {
+      if (!this.isActive() || this.isTaskAborted(this.taskId)) {
+        this._stopHeartbeat();
+        return;
+      }
+
+      const elapsedMs = this.firstErrorTimestamp ? Date.now() - this.firstErrorTimestamp : 0;
+      const elapsedSecs = Math.floor(elapsedMs / 1000);
+
+      // 120 秒硬性超时熔断判定 (独立于在途 await _sendAttempt 请求，杜绝假死挂起)
+      if (this.firstErrorTimestamp && elapsedMs >= sameErrorTimeoutMs) {
+        console.warn(
+          `[ModelFailover] 持续同类错误已达到 ${elapsedSecs}s (超过 ${sameErrorTimeoutSecs}s 判定阈值)，超时熔断并弹出报错`
+        );
+        this._stopHeartbeat();
+        if (this._resolveAttempt) {
+          this._resolveAttempt({
+            success: false,
+            error: this.lastError || { message: "模型调用持续发生异常已达到 120 秒超时判定阈值" },
+          });
+        }
+        this._giveUp();
+        return;
+      }
+
+      // 动态向前端派发心跳事件，确保已持续秒数每秒实时递增刷新
+      const isRateLimit =
+        isSameModelError(this.lastError, "tpm") ||
+        isSameModelError(this.lastError, "rpm") ||
+        isSameModelError(this.lastError, "rate_limit");
+
+      this._emit({
+        status: this.status,
+        phase: this._currentPhase || "sending",
+        attempt: this.attempt,
+        maxAttempts: Math.max(Number(config?.maxReconnectAttempts) || 24, 30),
+        kind: "TRANSIENT",
+        modelName: this._modelName(),
+        elapsedSecs,
+        timeoutSecs: sameErrorTimeoutSecs,
+        isRateLimit,
+        isSameError: true,
+      });
+    }, 1000);
+  }
+
+  /**
+   * 停止每秒自愈心跳时钟
+   */
+  _stopHeartbeat() {
+    if (this._heartbeatTimer) {
+      clearInterval(this._heartbeatTimer);
+      this._heartbeatTimer = null;
+    }
+  }
+
+  /**
+   * 重置引擎全部状态与时间累计（在成功自愈、终态放弃、取消或新轮次发起时调用）
+   */
+  _resetState() {
+    this._clearTimer();
+    this._stopHeartbeat();
+    this._currentPhase = "";
+    this.status = "idle";
+    this.attempt = 0;
+    this._reconnectCount = 0;
+    this._switchedCandidates = 0;
+    this.candidates = [];
+    this.currentCandidateIndex = -1;
+    this.currentTemporaryModel = null;
+    this.originalModel = null;
+    this.lastError = null;
+    this.hooks = null;
+    this.firstErrorTimestamp = 0;
+    this.firstErrorFingerprint = "";
+    this.sameErrorCount = 0;
+    this._resolveAttempt = null;
+  }
+
+  /**
+   * 外部显式重置接口 (新轮次发起时安全重置)
+   */
+  reset() {
+    this._resetState();
+  }
+
+  /**
    * 自愈成功：若为切换成功则临时切换转正常切换 (刷新 MRU 并持久化)
    */
   _succeed(switched, candidate) {
+    const isRateLimit =
+      isSameModelError(this.lastError, "tpm") ||
+      isSameModelError(this.lastError, "rpm") ||
+      isSameModelError(this.lastError, "rate_limit");
+
     this.status = "succeeded";
     if (switched && candidate) {
       // 临时切换 ➔ 正常切换：刷新「最新使用时间标识」并持久化 selectedModel
@@ -554,15 +743,17 @@ class ModelFailoverEngine extends EventTarget {
     this._emit({
       status: "succeeded",
       switched,
+      isRateLimit,
       modelName: candidate ? candidate.name || candidate.id : this._modelName(),
     });
     this.hooks?.onSuccess?.({
       switched,
       candidate,
+      isRateLimit,
       reconnectCount: this._reconnectCount,
     });
-    // 终态清理 (保留 lastError/计数以备后续归档摘要，但释放活跃状态)
-    this._clearTimer();
+    // 成功后彻底清空原本的时间累计与错误状态，确保下次限流从 0s 重新累计
+    this._resetState();
   }
 
   /**
@@ -571,9 +762,13 @@ class ModelFailoverEngine extends EventTarget {
   _giveUp(singleModelOnly = false) {
     this.status = "gave_up";
     this._clearTimer();
+    const sameErrorDurationSecs = this.firstErrorTimestamp
+      ? Math.round((Date.now() - this.firstErrorTimestamp) / 1000)
+      : 0;
     const summary = {
       reconnectCount: this._reconnectCount,
       triedCandidates: this._switchedCandidates,
+      sameErrorDurationSecs,
       singleModelOnly,
     };
     this._emit({ status: "gave_up", summary });

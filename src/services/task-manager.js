@@ -4,7 +4,7 @@
  */
 
 import { piClient, parseErrorMessage, isAbortError } from "./pi-client.js";
-import { notificationService } from "./notification-service.js";
+import { notificationService, isTransientRateLimitMessage } from "./notification-service.js";
 import { modelFailoverEngine } from "./model-failover.js";
 import { sessionService } from "./session-service.js";
 
@@ -466,10 +466,16 @@ export class TaskManager extends EventTarget {
       if (!task) return;
       if (task.status === "aborted" || task.isAborted) return;
 
-      // 自动重连切换进行中 或 将被引擎接管冷启动 (自动重连开启且含模型上下文)：
+      // 自动重连切换进行中 或 将被引擎接管冷启动 (自动重连开启且含模型上下文) 或 瞬态速率限制：
       // 错误一律由 ModelFailoverEngine 结算，绝不提前置 Task 为 error / 弹错误通知
       // (注：taskManager 监听器先于 main.js 注册，故冷启动时引擎尚未激活，需以 canHandle 预判接管)
-      if (modelFailoverEngine.isActive() || modelFailoverEngine.canHandle(detail)) return;
+      if (
+        modelFailoverEngine.isActive() ||
+        modelFailoverEngine.canHandle(detail) ||
+        isTransientRateLimitMessage(detail.message)
+      ) {
+        return;
+      }
 
       if (task.pendingInterruptSend) {
         // 「终止并发送」流程中旧轮报错视为已结算，不置 Task 为 error，等待新轮次发起
@@ -685,6 +691,14 @@ export class TaskManager extends EventTarget {
         // 「终止并发送」流程中旧轮错误已由 interrupt-send 流水线结算
         if (task.pendingInterruptSend) break;
         if (data.message && (data.message.stopReason === "error" || data.message.errorMessage)) {
+          const rawErrMsg = data.message.errorMessage || "";
+          if (
+            modelFailoverEngine.canHandle({ raw: data.message, message: rawErrMsg }) ||
+            isTransientRateLimitMessage(rawErrMsg) ||
+            isTransientRateLimitMessage(parseErrorMessage(rawErrMsg))
+          ) {
+            break;
+          }
           task.status = "error";
           task.completedAt = Date.now();
           task.errorMessage = parseErrorMessage(data.message.errorMessage || "模型执行出错");
@@ -732,6 +746,14 @@ export class TaskManager extends EventTarget {
           if (errMessage) {
             // 自动重连切换进行中：错误分支交由引擎结算，不提前置 Task 为 error
             if (modelFailoverEngine.isActive()) break;
+            const rawErrMsg = errMessage.errorMessage || "";
+            if (
+              modelFailoverEngine.canHandle({ raw: errMessage, message: rawErrMsg }) ||
+              isTransientRateLimitMessage(rawErrMsg) ||
+              isTransientRateLimitMessage(parseErrorMessage(rawErrMsg))
+            ) {
+              break;
+            }
             task.status = "error";
             task.completedAt = Date.now();
             task.errorMessage = parseErrorMessage(errMessage.errorMessage || "模型调用发生异常终止");
@@ -763,10 +785,16 @@ export class TaskManager extends EventTarget {
         }
 
         // 触发会话流完成通知（由 notificationService 内部严格校验窗体失焦状态，失焦时弹出 Windows 原生通知，聚焦时保持静默）
-        notificationService.notifyAgentCompleted({
-          taskId,
-          taskTitle: currentTurn?.query || task.title,
-        });
+        if (
+          !modelFailoverEngine.isActive() &&
+          !isTransientRateLimitMessage(task.errorMessage) &&
+          !isTransientRateLimitMessage(currentTurn?.errorMessage)
+        ) {
+          notificationService.notifyAgentCompleted({
+            taskId,
+            taskTitle: currentTurn?.query || task.title,
+          });
+        }
 
         scheduleSessionRefresh();
         break;

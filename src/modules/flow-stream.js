@@ -126,6 +126,9 @@ export function initFlowStream(ctx) {
   const resetStreamState = (query, attachments = [], isFollowUpTurn = false, taskId = null) => {
     streamData(taskId).set({ lastUserQuery: query });
     clearStreamTimersAndBuffers(taskId);
+    if (!modelFailoverEngine.isActive()) {
+      modelFailoverEngine.reset();
+    }
 
     if (!isFollowUpTurn) {
       // 全新会话 -> 清空 flowConversation 容器，并重置「注入提示」信息框状态
@@ -243,28 +246,86 @@ export function initFlowStream(ctx) {
   };
 
   /**
-   * 自动重连切换：复用当前 Turn 容器重发相同输入前重置当前轮次流式状态
-   * 不重建用户提问卡、不重复压入 prompt history、不新建 Task，仅清除上一轮临时产物
+   * 彻底清除当前轮次与任务中的错误状态、错误文本与错误卡片
+   * 在自愈重试、自愈成功与正常收尾时调用，确保 0 残留
+   * @param {string} [taskId]
+   */
+  const clearTurnErrorState = (taskId = null) => {
+    const bucketId = resolveStreamTaskId(taskId);
+    const fs = flowStore.for(bucketId);
+    fs.set({ errorMessage: null });
+
+    const currentTask = (bucketId && taskManager.getTask(bucketId)) || taskManager.getCurrentActiveTask();
+    if (currentTask) {
+      currentTask.errorMessage = null;
+      if (currentTask.status === "error") {
+        currentTask.status = "running";
+      }
+      if (Array.isArray(currentTask.turns) && currentTask.turns.length > 0) {
+        const lastTurn = currentTask.turns[currentTask.turns.length - 1];
+        if (lastTurn) {
+          lastTurn.errorMessage = null;
+          if (lastTurn.status === "error") {
+            lastTurn.status = "running";
+          }
+        }
+      }
+    }
+
+    // 物理移除当前活跃轮次 DOM 中残留的任何 .sketch-error-card 错误卡片
+    if (flowView.activeTurnRefs?.responseContentEl) {
+      const errCards = flowView.activeTurnRefs.responseContentEl.querySelectorAll(".sketch-error-card");
+      errCards.forEach((el) => el.remove());
+    }
+    if (flowView.activeTurnRefs?.groupEl) {
+      const groupCards = flowView.activeTurnRefs.groupEl.querySelectorAll(".sketch-error-card");
+      groupCards.forEach((el) => el.remove());
+    }
+    if (flowConversation) {
+      const lastGroup = flowConversation.lastElementChild;
+      if (lastGroup) {
+        const trailingCards = lastGroup.querySelectorAll(".sketch-error-card");
+        trailingCards.forEach((el) => el.remove());
+      }
+    }
+  };
+
+  /**
+   * 自动自愈重试：复用当前 Turn 容器重发相同输入前重置流式状态
+   * 步骤流与过程记录保留铁律：严禁清空 stepsContainerEl.innerHTML 与 renderedToolCards，
+   * 必须 100% 完整保留本轮之前已真实执行完毕的 Thinking 切片、工具调用卡片与 Point 切片。
    * @param {string} [taskId] 自愈引擎重发的任务 id（onResendAttempt 显式传入）
    */
   const resetCurrentTurnForResend = (taskId = null) => {
     clearStreamTimersAndBuffers(taskId);
+    clearTurnErrorState(taskId);
 
-    // 移除上一轮临时错误卡片 (避免重复堆叠)
+    // 移除伪工具运行占位卡 (若在途)
+    if (typeof api.removeActiveToolPseudoStep === "function") {
+      api.removeActiveToolPseudoStep();
+    }
+
+    // 结算并定格未封口的思考步骤 (避免重发期间计时器空跑，并保留已产生的思考文本与卡片)
+    sealActiveThinkingStep({ preserveForTool: true });
+
+    // 移除上一轮临时错误卡片，若正文容器无光标则补齐光标以备后续增量追加
     if (flowView.activeTurnRefs?.responseContentEl) {
-      const errCard = flowView.activeTurnRefs.responseContentEl.querySelector(".sketch-error-card");
-      if (errCard) errCard.remove();
-      const cursor = flowView.activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
-      if (cursor) cursor.remove();
-      flowView.activeTurnRefs.responseContentEl.innerHTML = `<span class="streaming-cursor"></span>`;
+      let cursor = flowView.activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
+      if (!cursor) {
+        cursor = document.createElement("span");
+        cursor.className = "streaming-cursor";
+        flowView.activeTurnRefs.responseContentEl.appendChild(cursor);
+      }
     }
-    // 清空时序步骤容器
-    if (flowView.activeTurnRefs?.stepsContainerEl) {
-      flowView.activeTurnRefs.stepsContainerEl.innerHTML = "";
+
+    // 步骤容器铁律：仅当容器为空（未产生任何步骤卡片）时才启动首字等待伪思考框；
+    // 若之前已有 Thinking、工具调用或 Point 卡片，严禁清空与重复插入伪框，确保因果因链完整。
+    const stepsContainer = flowView.activeTurnRefs?.stepsContainerEl;
+    if (stepsContainer && stepsContainer.children.length === 0) {
+      streamData(taskId).set({ thinkingStartTime: Date.now() });
+      ensureActiveThinkingStep();
     }
-    streamData(taskId).set({ thinkingStartTime: Date.now() });
-    // 立即启动伪思考框
-    ensureActiveThinkingStep();
+
     // 自愈期间保留「⏹ 终止」按钮可见
     if (flowBtnAbort) {
       flowBtnAbort.classList.remove("hidden");
@@ -275,7 +336,7 @@ export function initFlowStream(ctx) {
   };
 
   /**
-   * 更新自动重连/切换进度胶囊 (手绘草图风格，无 Emoji)
+   * 更新自动自愈/切换进度胶囊 (手绘草图风格，无 Emoji)
    */
   const updateFailoverCapsule = (payload = {}) => {
     if (!flowView.activeTurnRefs?.failoverCapsuleEl || !flowView.activeTurnRefs?.failoverTextEl) return;
@@ -284,19 +345,27 @@ export function initFlowStream(ctx) {
     const capsule = flowView.activeTurnRefs.failoverCapsuleEl;
 
     if (payload.status === "succeeded" && payload.switched) {
+      clearTurnErrorState();
       textEl.textContent = `已自动切换至 ${payload.modelName || "其他模型"} · 已记入最近使用`;
       capsule.classList.remove("hidden");
       capsule.classList.add("ok");
-      // 2s 后淡出
-      setTimeout(() => capsule.classList.add("hidden"), 2000);
+      // 2s 后淡出并彻底重置
+      setTimeout(() => {
+        capsule.classList.add("hidden");
+        capsule.classList.remove("ok");
+      }, 2000);
       return;
     }
     if (payload.status === "succeeded") {
-      // 重连成功 (未切换)：淡出「已恢复连接」
-      textEl.textContent = "已恢复连接";
+      clearTurnErrorState();
+      // 恢复成功：若是速率限制，提示「推理限制已解除，继续执行」；若是其他瞬态异常，提示「已恢复正常，继续执行」
+      textEl.textContent = payload.isRateLimit ? "推理限制已解除，继续执行" : "已恢复正常，继续执行";
       capsule.classList.remove("hidden");
       capsule.classList.add("ok");
-      setTimeout(() => capsule.classList.add("hidden"), 1500);
+      setTimeout(() => {
+        capsule.classList.add("hidden");
+        capsule.classList.remove("ok");
+      }, 1200);
       return;
     }
     if (payload.status === "gave_up" || payload.status === "cancelled") {
@@ -305,16 +374,34 @@ export function initFlowStream(ctx) {
       return;
     }
 
-    // 重连中 / 切换中
+    // 等待恢复中 / 切换中
     capsule.classList.remove("ok");
     if (payload.status === "reconnecting") {
       const candInfo = payload.candidate ? ` (${payload.candidate.name || payload.candidate.id})` : "";
-      const codeStr = payload.code ? ` ${payload.code}` : "";
-      if (phase === "waiting" && payload.nextDelayMs) {
-        const secs = Math.max(1, Math.round(payload.nextDelayMs / 1000));
-        textEl.textContent = `模型调用异常${codeStr}${candInfo} · 自动重连中 ${payload.attempt}/${payload.maxAttempts} · ${secs}s 后重试`;
+      const isRateLimit = Boolean(payload.isRateLimit);
+      const progressTag = payload.timeoutSecs
+        ? ` (已持续 ${payload.elapsedSecs || 0}s/判定 ${payload.timeoutSecs}s)`
+        : ` ${payload.attempt}/${payload.maxAttempts}`;
+
+      if (isRateLimit) {
+        if (phase === "waiting" && payload.nextDelayMs) {
+          const secs = Math.max(1, Math.round(payload.nextDelayMs / 1000));
+          textEl.textContent = `触发模型每分钟推理速率限制 (TPM/RPM)，正在等待恢复...${progressTag} · ${secs}s 后重试`;
+        } else if (phase === "sending") {
+          textEl.textContent = `触发模型每分钟推理速率限制 (TPM/RPM)，正在等待恢复...${progressTag} · 正在重发请求 …`;
+        } else {
+          textEl.textContent = `触发模型每分钟推理速率限制 (TPM/RPM)，正在等待恢复...${progressTag}`;
+        }
       } else {
-        textEl.textContent = `自动重连中 ${payload.attempt}/${payload.maxAttempts}${candInfo}`;
+        const errTag = payload.code ? `异常 ${payload.code}` : "异常";
+        if (phase === "waiting" && payload.nextDelayMs) {
+          const secs = Math.max(1, Math.round(payload.nextDelayMs / 1000));
+          textEl.textContent = `模型${errTag}${candInfo} · 正在等待恢复${progressTag} · ${secs}s 后重试`;
+        } else if (phase === "sending") {
+          textEl.textContent = `模型${errTag}${candInfo} · 正在重发请求${progressTag} …`;
+        } else {
+          textEl.textContent = `正在等待恢复${progressTag}${candInfo}`;
+        }
       }
       capsule.classList.remove("hidden");
     } else if (payload.status === "switching") {
@@ -753,6 +840,9 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("thinking-start", () => {
     if (!isForegroundStreamEvent()) return;
+    if (modelFailoverEngine.isActive()) {
+      modelFailoverEngine.resolveTurnSuccess();
+    }
     streamData(piClient.lastEventTaskId).set({ hasReceivedDelta: true });
     // 阶段性输出判定铁律：模型输出一段文字后再次进入 Thinking 状态，
     // 则前面那段文字属于「阶段性输出」——先封口为 Point 卡，再继续思维切片
@@ -768,6 +858,9 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("thinking-delta", (e) => {
     if (!isForegroundStreamEvent()) return;
+    if (modelFailoverEngine.isActive()) {
+      modelFailoverEngine.resolveTurnSuccess();
+    }
     const fs = streamData(piClient.lastEventTaskId);
     fs.set({ hasReceivedDelta: true });
     const delta = e.detail || "";
@@ -804,6 +897,9 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("text-start", () => {
     if (!isForegroundStreamEvent()) return;
+    if (modelFailoverEngine.isActive()) {
+      modelFailoverEngine.resolveTurnSuccess();
+    }
     streamData(piClient.lastEventTaskId).set({ hasReceivedDelta: true });
     // 新一段文本开始：若上一段阶段性输出尚未封口（无工具调用边界），先封口
     sealActivePhaseOutput(piClient.lastEventTaskId);
@@ -818,6 +914,9 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("text-delta", (e) => {
     if (!isForegroundStreamEvent()) return;
+    if (modelFailoverEngine.isActive()) {
+      modelFailoverEngine.resolveTurnSuccess();
+    }
     const fs = streamData(piClient.lastEventTaskId);
     // appendResponse 同步累积响应文本并置 hasReceivedDelta（流式热路径）
     fs.appendResponse(e.detail || "");
@@ -846,4 +945,5 @@ export function initFlowStream(ctx) {
   api.renderAbortNoticeHtml = renderAbortNoticeHtml;
   api.appendFlowAbortNotice = appendFlowAbortNotice;
   api.renderErrorCard = renderErrorCard;
+  api.clearTurnErrorState = clearTurnErrorState;
 }

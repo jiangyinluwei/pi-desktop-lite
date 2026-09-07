@@ -9,6 +9,26 @@
 
 import { invokeTauri, listenTauri } from "./tauri-bridge.js";
 
+/**
+ * 判定消息是否属于 TPM/RPM 速率限制或自动重连中的瞬态状态 (严禁系统弹窗打扰)
+ * @param {string} msg
+ * @returns {boolean}
+ */
+export function isTransientRateLimitMessage(msg) {
+  if (!msg || typeof msg !== "string") return false;
+  const s = msg.toLowerCase();
+  return (
+    s.includes("tpm") ||
+    s.includes("rpm") ||
+    s.includes("每分钟推理速率") ||
+    s.includes("速率限制") ||
+    s.includes("rate limit") ||
+    s.includes("rate_limit") ||
+    s.includes("等待恢复") ||
+    s.includes("自动重连")
+  );
+}
+
 export class NotificationService {
   constructor() {
     this._isFocused = typeof document !== "undefined" && typeof document.hasFocus === "function" ? document.hasFocus() : true;
@@ -141,6 +161,11 @@ export class NotificationService {
       return false;
     }
 
+    // 速率限制与自动重连等待属于瞬态自愈状态，仅作为界面状态条提示，绝对不弹窗打扰
+    if (isTransientRateLimitMessage(body) || isTransientRateLimitMessage(title)) {
+      return false;
+    }
+
     const now = Date.now();
     if (now - this._lastToastTime < this._toastCooldownMs) {
       // 处于防抖冷却期，防止 Windows 消息重复触发多次
@@ -180,6 +205,10 @@ export class NotificationService {
     if (options.taskId) {
       this.unregisterTask(options.taskId);
     }
+    // 速率限制与自动重连等待消息直接静默，不触发系统弹窗
+    if (isTransientRateLimitMessage(options.message) || isTransientRateLimitMessage(options.title)) {
+      return false;
+    }
     const title = options.title || "pi-dl";
     const body = options.message || "任务执行发生异常已终止，请返回查看详情。";
     return await this.showSystemToast(title, body);
@@ -195,7 +224,7 @@ export class NotificationService {
     const taskTitle = options.taskTitle || options.message;
     this.unregisterTask(taskId);
 
-    if (taskTitle && typeof taskTitle === "string") {
+    if (taskTitle && typeof taskTitle === "string" && !isTransientRateLimitMessage(taskTitle)) {
       this._completedTasksHistory.push(taskTitle);
     }
 

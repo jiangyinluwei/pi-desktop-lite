@@ -89,6 +89,7 @@ export const EVENT_CHANNEL_TABLE_VERSION = 2;
 //  * @property {(text: string) => string} renderAbortNoticeHtml  flow-stream → 中断提示 HTML
 //  * @property {(html: string) => void} appendFlowAbortNotice    flow-stream → 追加中断提示卡
 //  * @property {(err: object) => object} renderErrorCard         flow-stream → 错误卡渲染
+//  * @property {(taskId?: string) => void} clearTurnErrorState      flow-stream → 彻底清除轮次错误状态与卡片
 //  * @property {(md: string) => string} renderMarkdown           flow-ui → Markdown 渲染引擎
 //  * @property {() => void} collapseAllDoneToolCards             flow-ui → 折叠全部已完成工具卡
 //  * @property {() => void} collapseAllToolCards                 flow-ui → 折叠全部工具卡

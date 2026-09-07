@@ -6,7 +6,7 @@ import { piClient, isAbortError } from "../services/pi-client.js";
 import { configService } from "../services/config-service.js";
 import { promptHistoryNavigator } from "../services/prompt-history.js";
 import { invokeTauri } from "../services/tauri-bridge.js";
-import { notificationService } from "../services/notification-service.js";
+import { notificationService, isTransientRateLimitMessage } from "../services/notification-service.js";
 import { taskManager, resolveTaskSessionIdentity } from "../services/task-manager.js";
 import { sketchAlert, sketchConfirm } from "../services/sketch-modal.js";
 import { modelFailoverEngine } from "../services/model-failover.js";
@@ -294,6 +294,7 @@ export function initFlowPipeline(ctx) {
 
   piClient.addEventListener("toolcall-delta-start", (e) => {
     if (!isForegroundStreamEvent()) return;
+    checkResolveFailoverSuccess();
     // 阶段性输出判定铁律：模型输出一段文字后进入工具调用状态（工具参数流式开始即视为进入），
     // 先封口该段文字为 Point 卡，再进入工具调用切片（tool-start 处的封口为幂等兜底）
     if (typeof api.sealActivePhaseOutput === "function") {
@@ -317,6 +318,7 @@ export function initFlowPipeline(ctx) {
 
   piClient.addEventListener("tool-start", (e) => {
     if (!isForegroundStreamEvent()) return;
+    checkResolveFailoverSuccess();
     streamData(piClient.lastEventTaskId).set({ hasReceivedDelta: true });
     const data = e.detail;
     const toolCallId = data.toolCallId;
@@ -584,12 +586,21 @@ export function initFlowPipeline(ctx) {
       }
       api.renderErrorCard(detail);
     },
-    // 自愈成功：正常收尾 (收起工具卡 + 结束流式 + 沉淀历史快照)
+    // 自愈成功：仅清除错误卡片与错误状态，绝不提前结束流式！真正的收尾留给 agent-end 自然触发
     onSuccess: () => {
-      api.collapseAllToolCards();
-      api.finalizeStream();
-      api.archiveCurrentFlowToHistory();
+      if (typeof api.clearTurnErrorState === "function") {
+        api.clearTurnErrorState();
+      }
     },
+  };
+
+  /**
+   * 首响应即时自愈结算：模型一旦恢复正常产生响应（思考/正文/工具），若自愈引擎活跃立即结算成功
+   */
+  const checkResolveFailoverSuccess = () => {
+    if (modelFailoverEngine.isActive() && isForegroundStreamEvent()) {
+      modelFailoverEngine.resolveTurnSuccess();
+    }
   };
 
   piClient.addEventListener("agent-error", (e) => {
@@ -624,12 +635,17 @@ export function initFlowPipeline(ctx) {
         return;
       }
     }
+
+    const isRateLimit =
+      isTransientRateLimitMessage(e.detail?.message) ||
+      isTransientRateLimitMessage(e.detail?.raw?.errorMessage);
+
     if (modelFailoverEngine.isActive()) {
       // 自愈进行中：该错误即为当前重发尝试的结果 (含 RPC/扩展错误)，一律交由引擎结算，
       // 避免引擎在途尝试悬空挂起，也绝不提前渲染错误卡打断自愈
       modelFailoverEngine.handleModelError(e.detail, failoverHooks);
-    } else if (modelFailoverEngine.canHandle(e.detail)) {
-      // 冷启动：自动重连开启且错误含模型上下文 → 交给引擎自愈
+    } else if (modelFailoverEngine.canHandle(e.detail) || isRateLimit) {
+      // 冷启动：自动重连开启且错误含模型上下文（或命中 TPM/RPM 速率限制）→ 统一交由引擎自愈，绝不降级渲染错误卡
       modelFailoverEngine.handleModelError(e.detail, failoverHooks);
     } else {
       api.renderErrorCard(e.detail);
@@ -641,10 +657,9 @@ export function initFlowPipeline(ctx) {
     if (!taskManager.isForegroundStreamTask(e.detail?.task_id || e.detail?.taskId || piClient.lastEventTaskId)) {
       return;
     }
-    // 引擎自愈进行中：结算当前重发尝试为成功，由引擎负责收尾，避免提前归档历史
+    // 引擎自愈若仍活跃（例如模型 0 思考 0 输出直接结束）：兜底结算当前重发尝试为成功
     if (modelFailoverEngine.isActive()) {
       modelFailoverEngine.resolveTurnSuccess();
-      return;
     }
     // 「终止并发送」进行中：旧轮结算由 interrupt-send 流水线接管，跳过收尾与归档
     const endFs = flowStore.for(resolveStreamTaskId(piClient.lastEventTaskId));

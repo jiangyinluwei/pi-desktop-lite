@@ -43,6 +43,9 @@ export function parseErrorMessage(err) {
   if (str.includes("CreditsError") || str.includes("No payment method") || str.includes("insufficient_quota")) {
     return "账户额度不足或未绑定有效支付方式，请检查对应服务商账户账单。";
   }
+  if (str.toLowerCase().includes("tpm") || str.toLowerCase().includes("rpm") || str.includes("推理速度") || str.includes("速率限制")) {
+    return "触发模型每分钟推理速率限制 (TPM/RPM)，正在等待恢复...";
+  }
   if (str.includes("rate_limit") || str.includes("429")) {
     return "触发服务商请求速率限制 (429 Rate Limit)，请稍候重试。";
   }
@@ -54,11 +57,14 @@ export function parseErrorMessage(err) {
 }
 
 /**
- * 瞬态错误码判定信号 (可自动重连)：HTTP 状态码 / 错误 token / 网络层关键字
+ * 瞬态错误码判定信号 (可自动重连)：HTTP 状态码 / 错误 token / 网络层关键字 / TPM/RPM 速率限制
  */
 const TRANSIENT_CODES = [
   "408", "429", "500", "502", "503", "504",
   "rate_limit", "rate limit", "too many requests", "resource exhausted", "resource_exhausted",
+  "tpm", "rpm", "inference tpm exhausted", "tpm exhausted", "rpm exhausted",
+  "tokens per minute", "requests per minute", "tpm limit", "rpm limit",
+  "rate_limit_exceeded", "rate limit exceeded", "rate limit reached", "token limit", "speed limit",
   "server_error", "server error", "internal server error", "overloaded", "model is overloaded",
   "server is overloaded", "server is busy", "temporarily_unavailable", "temporarily unavailable",
   "service unavailable", "service_unavailable", "upstream_error", "upstream connect error",
@@ -68,6 +74,7 @@ const TRANSIENT_CODES = [
   "read econnreset", "network", "high traffic", "capacity", "frequency limit",
   "请求超时", "超频", "频繁", "限流", "排队", "拥挤", "拥堵", "服务器繁忙",
   "请稍后重试", "请稍后再试", "服务暂时不可用", "访问频率超限", "连接超时", "网络异常",
+  "推理速度", "每分钟", "速率限制",
 ];
 
 /**
@@ -228,6 +235,92 @@ export function classifyModelError(err) {
     return "PERMANENT";
   }
   return "PERMANENT"; // UNKNOWN 保守归永久
+}
+
+/**
+ * 提取模型调用的归一化错误指纹 (用于判定前后两次报错是否为「同样的错」)
+ * 过滤动态变化的 request_id、时间戳、UUID、重试等待秒数等噪音，保留核心错误码与错误信息
+ * @param {any} err agent-error detail 或原始错误对象
+ * @returns {string}
+ */
+export function extractErrorFingerprint(err) {
+  if (!err) return "";
+  const raw = err?.raw;
+  const candidate =
+    raw?.errorMessage ||
+    raw?.error?.message ||
+    (raw?.error && typeof raw.error === "string" ? raw.error : "") ||
+    raw?.message ||
+    (typeof raw === "string" ? raw : "") ||
+    err?.message ||
+    (typeof err === "string" ? err : "") ||
+    "";
+  let str = String(candidate).toLowerCase().trim();
+
+  // 1. 尝试提取 3 位 HTTP 状态码 (4xx/5xx) 或明确的 error type/code
+  let httpCode = "";
+  try {
+    const jsonMatch = str.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed?.error?.code) httpCode = String(parsed.error.code).toLowerCase();
+      else if (parsed?.error?.type) httpCode = String(parsed.error.type).toLowerCase();
+      else if (parsed?.code) httpCode = String(parsed.code).toLowerCase();
+      else if (parsed?.type) httpCode = String(parsed.type).toLowerCase();
+    }
+  } catch (_) {}
+
+  if (!httpCode) {
+    const digits = str.match(/\b(4\d\d|5\d\d)\b/);
+    if (digits) httpCode = digits[1];
+  }
+
+  // 2. 过滤常见的动态噪音标记
+  // UUID (如 c285e656-1234-...)
+  str = str.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "");
+  // request_id / req_id / trace_id / call_id (如 req_01jky... / trace_id: 111)
+  str = str.replace(/\b(req|request|trace|call)[-_]?(id)?[:=]?\s*['"]?[a-z0-9_-]+/gi, "");
+  // ISO 时间戳 (如 2026-09-07T09:42:27)
+  str = str.replace(/\d{4}-\d{2}-\d{2}[tT\s]\d{2}:\d{2}:\d{2}(\.\d+)?(z|[+-]\d{2}:?\d{2})?/gi, "");
+  // 纯数字时间戳 (如 1725678901234)
+  str = str.replace(/\b1\d{9,12}\b/g, "");
+  // 动态等待秒数 (如 please try again in 4.5s / 4s / 60000ms)
+  str = str.replace(/\b(in|after)?\s*\d+(\.\d+)?\s*(s|sec|seconds|ms|millis|milliseconds)\b/gi, "");
+  // 过滤多余标点与空白
+  str = str.replace(/[,;:]+/g, " ").replace(/\s+/g, " ").trim();
+
+  const cleanMsg = str.slice(0, 160);
+  return httpCode && !cleanMsg.startsWith(httpCode) ? `${httpCode}:${cleanMsg}` : cleanMsg;
+}
+
+/**
+ * 判定两次报错是否属于「同样的错」
+ * 具备容错性：指纹完全相同、核心信息互相包含、或同属 TPM/RPM 速率限制即视为同错
+ * @param {any} err1
+ * @param {any} err2
+ * @returns {boolean}
+ */
+export function isSameModelError(err1, err2) {
+  if (!err1 || !err2) return false;
+  const fp1 = typeof err1 === "string" ? err1.toLowerCase().trim() : extractErrorFingerprint(err1);
+  const fp2 = typeof err2 === "string" ? err2.toLowerCase().trim() : extractErrorFingerprint(err2);
+  if (!fp1 || !fp2) return false;
+  if (fp1 === fp2) return true;
+
+  // 互相包含判定 (例如 "inference tpm exhausted" 与 "429: inference tpm exhausted")
+  if (fp1.includes(fp2) || fp2.includes(fp1)) return true;
+
+  // TPM 速率限制判定：若两者都包含 tpm 或 tokens per minute，视为同一类速率限制错误
+  const isTpm1 = fp1.includes("tpm") || fp1.includes("tokens per minute");
+  const isTpm2 = fp2.includes("tpm") || fp2.includes("tokens per minute");
+  if (isTpm1 && isTpm2) return true;
+
+  // RPM 速率限制判定：若两者都包含 rpm 或 requests per minute，视为同一类速率限制错误
+  const isRpm1 = fp1.includes("rpm") || fp1.includes("requests per minute");
+  const isRpm2 = fp2.includes("rpm") || fp2.includes("requests per minute");
+  if (isRpm1 && isRpm2) return true;
+
+  return false;
 }
 
 class PiClient extends EventTarget {

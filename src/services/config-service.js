@@ -22,6 +22,7 @@ export const DEFAULT_FAILOVER_CONFIG = {
   maxReconnectAttempts: 24,
   reconnectBackoffMs: [2000, 4000, 8000],
   maxBackoffMs: 8000,
+  sameErrorTimeoutMs: 120000, // 持续同一错误判定容忍窗口 (120 秒)，超时方终止任务并弹错
   perCandidateReconnectBudget: 2,
   escalateToSwitchAfterReconnectExhausted: true,
   switchOnPermanentError: true,
