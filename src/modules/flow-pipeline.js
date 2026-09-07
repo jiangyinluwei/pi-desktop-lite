@@ -850,6 +850,11 @@ export function initFlowPipeline(ctx) {
       modelFailoverEngine.cancel("new-query");
     }
 
+    // 用户重新发起会话或追问：彻底清理历史残留的错误卡片与错误状态
+    if (typeof api.clearTurnErrorState === "function") {
+      api.clearTurnErrorState(activeTask?.id);
+    }
+
     let currentTask = activeTask;
 
     if (isFollowUp && currentTask) {

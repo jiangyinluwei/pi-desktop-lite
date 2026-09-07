@@ -126,6 +126,7 @@ export function initFlowStream(ctx) {
   const resetStreamState = (query, attachments = [], isFollowUpTurn = false, taskId = null) => {
     streamData(taskId).set({ lastUserQuery: query });
     clearStreamTimersAndBuffers(taskId);
+    clearTurnErrorState(taskId);
     if (!modelFailoverEngine.isActive()) {
       modelFailoverEngine.reset();
     }
@@ -142,12 +143,14 @@ export function initFlowStream(ctx) {
         api.resetFileChanges();
       }
     } else {
-      // 同工作流多轮对话 -> 固化上一轮（收起思考与工具卡片，移除上一轮光标）
+      // 同工作流多轮对话 -> 固化上一轮（收起思考与工具卡片，移除上一轮光标与残留错误卡）
       if (flowView.activeTurnRefs) {
         api.collapseThinkingCard(flowView.activeTurnRefs.thinkingCardEl, flowView.activeTurnRefs.thinkingToggleBtn);
         if (flowView.activeTurnRefs.responseContentEl) {
           const prevCursor = flowView.activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
           if (prevCursor) prevCursor.remove();
+          const prevErrCard = flowView.activeTurnRefs.responseContentEl.querySelector(".sketch-error-card");
+          if (prevErrCard) prevErrCard.remove();
         }
       }
       api.collapseAllDoneToolCards();
@@ -247,7 +250,7 @@ export function initFlowStream(ctx) {
 
   /**
    * 彻底清除当前轮次与任务中的错误状态、错误文本与错误卡片
-   * 在自愈重试、自愈成功与正常收尾时调用，确保 0 残留
+   * 在自愈重试、自愈成功、正常收尾或重新发起会话/追问时调用，确保 0 残留
    * @param {string} [taskId]
    */
   const clearTurnErrorState = (taskId = null) => {
@@ -262,17 +265,19 @@ export function initFlowStream(ctx) {
         currentTask.status = "running";
       }
       if (Array.isArray(currentTask.turns) && currentTask.turns.length > 0) {
-        const lastTurn = currentTask.turns[currentTask.turns.length - 1];
-        if (lastTurn) {
-          lastTurn.errorMessage = null;
-          if (lastTurn.status === "error") {
-            lastTurn.status = "running";
+        currentTask.turns.forEach((t) => {
+          t.errorMessage = null;
+          if (t.status === "error") {
+            t.status = "completed";
           }
-        }
+          if (typeof t.responseText === "string" && t.responseText.startsWith("> ⚠️ **模型调用失败**：")) {
+            t.responseText = "";
+          }
+        });
       }
     }
 
-    // 物理移除当前活跃轮次 DOM 中残留的任何 .sketch-error-card 错误卡片
+    // 物理移除当前活跃轮次与整个会话 DOM 中残留的任何 .sketch-error-card 错误卡片
     if (flowView.activeTurnRefs?.responseContentEl) {
       const errCards = flowView.activeTurnRefs.responseContentEl.querySelectorAll(".sketch-error-card");
       errCards.forEach((el) => el.remove());
@@ -282,11 +287,13 @@ export function initFlowStream(ctx) {
       groupCards.forEach((el) => el.remove());
     }
     if (flowConversation) {
-      const lastGroup = flowConversation.lastElementChild;
-      if (lastGroup) {
-        const trailingCards = lastGroup.querySelectorAll(".sketch-error-card");
-        trailingCards.forEach((el) => el.remove());
-      }
+      const allErrCards = flowConversation.querySelectorAll(".sketch-error-card");
+      allErrCards.forEach((el) => el.remove());
+      const allFailoverCapsules = flowConversation.querySelectorAll(".flow-failover-capsule");
+      allFailoverCapsules.forEach((el) => {
+        el.classList.add("hidden");
+        el.classList.remove("ok");
+      });
     }
   };
 
@@ -630,6 +637,7 @@ export function initFlowStream(ctx) {
 
       if (btnRetry) {
         btnRetry.addEventListener("click", () => {
+          clearTurnErrorState(bucketId);
           if (fs.lastUserQuery) {
             api.handleFlowQuery(fs.lastUserQuery, fs.lastSentAttachments);
           }

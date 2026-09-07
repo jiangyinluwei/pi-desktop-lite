@@ -192,6 +192,20 @@ export class TaskManager extends EventTarget {
       completedAt: null,
     };
 
+    // 若上一轮次处于报错异常状态，进入新一轮会话时清除上一轮的历史报错标记与合成占位文本
+    if (task.turns.length > 0) {
+      const prevTurn = task.turns[task.turns.length - 1];
+      if (prevTurn) {
+        prevTurn.errorMessage = null;
+        if (prevTurn.status === "error") {
+          prevTurn.status = "completed";
+        }
+        if (typeof prevTurn.responseText === "string" && prevTurn.responseText.startsWith("> ⚠️ **模型调用失败**：")) {
+          prevTurn.responseText = "";
+        }
+      }
+    }
+
     task.turns.push(newTurn);
     task.status = "thinking";
     task.completedAt = null;

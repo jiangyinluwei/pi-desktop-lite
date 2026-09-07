@@ -411,17 +411,21 @@ export function initTaskPanel(ctx) {
       const isLast = idx === turns.length - 1;
       const isOpen = isLast && isRunning && (!turn.responseText || turn.responseText.trim().length === 0);
 
+      const rawResponseText = turn.responseText || "";
+      const isHistoricalSyntheticError = !isLast && rawResponseText.startsWith("> ⚠️ **模型调用失败**：");
+      const safeResponseText = isHistoricalSyntheticError ? "" : rawResponseText;
+
       const groupRefs = api.createFlowTurnGroupElement({
         query: turn.query || "",
         attachments: turn.attachments || [],
         thinkingText: turn.thinkingText || "",
         thinkingDurationText: turn.thinkingDurationText || turn.thinkingDuration || "已完成思考",
-        responseText: turn.responseText || "",
+        responseText: safeResponseText,
         toolCalls: turn.toolCalls || [],
         steps: turn.steps || [],
         isOpenThinking: isOpen,
         isAborted: turn.isAborted || turn.responseText?.includes("刚刚会话已手动终止"),
-        errorMessage: turn.errorMessage,
+        errorMessage: isLast && !isRunning ? turn.errorMessage : null,
       });
 
       if (flowConversation && groupRefs?.groupEl) {
@@ -436,8 +440,8 @@ export function initTaskPanel(ctx) {
           lastUserQuery: turn.query || "",
           lastSentAttachments: turn.attachments || [],
           thinkingText: turn.thinkingText || "",
-          responseText: turn.responseText || "",
-          errorMessage: turn.errorMessage || null,
+          responseText: isRunning ? (turn.responseText || "") : safeResponseText,
+          errorMessage: isRunning ? null : (turn.errorMessage || null),
           hasReceivedDelta: Boolean(turn.responseText && turn.responseText.trim().length > 0),
           hasAutoCollapsedThinking: !isOpen,
         });
