@@ -14,7 +14,7 @@ description: Runtime constraint active when writing files, creating files, or ex
 * **Never create temporary files in workspace**: Never create temporary files (e.g., `tmp.py`, `temp.txt`, `output.log`, `test.ps1`, `probe.js`) in the workspace root, routed project directories, or subdirectories.
 * **Direct markdown output for analysis**: Deliver analysis, reviews, explanations, and answers directly as Markdown in conversation; never redirect output to scratch files on disk.
 * **Keep Git status pristine**: Prevent untracked file pollution in git repositories.
-* **Authorized failure logging exemption**: Structured diagnostic logs organized under `tool-failure-logging` into the workspace `log/` folder (`<workspace>/log/`) are explicitly authorized and preserved for debugging and post-mortem review; all scratch probes and temp scripts remain strictly isolated to `{{PI_DL_TEMP_DIR}}`.
+* **Authorized failure logging exemption**: Structured diagnostic logs organized under `tool-failure-logging` into `~/.pi-dl/workspaces/log/<workspace>/` are explicitly authorized and preserved for debugging and post-mortem review; all scratch probes and temp scripts remain strictly isolated to `{{PI_DL_TEMP_DIR}}`.
 
 ---
 

@@ -45,7 +45,7 @@ When invoking tools or planning actions:
    - Progressively prune obsolete raw tool payloads; protect core goals and latest code snippets; maintain consistent context state.
 
 8. **Ephemeral Temp Hygiene (`temp-file-hygiene`)**:
-   - ALL temporary scripts, probe logs, and scratch files MUST strictly reside in `~/.pi-dl/temp/`; zero pollution in workspace or project root; clean up immediately upon task completion (`rm` / `Remove-Item`). Diagnostic failure logs under `tool-failure-logging` in `<workspace>/log/` are authorized and exempt.
+   - ALL temporary scripts, probe logs, and scratch files MUST strictly reside in `~/.pi-dl/temp/`; zero pollution in workspace or project root; clean up immediately upon task completion (`rm` / `Remove-Item`). Diagnostic failure logs under `tool-failure-logging` in `~/.pi-dl/workspaces/log/<workspace>/` are authorized and exempt.
 
 9. **Tool Failure Diagnostics & Workspace Logging (`tool-failure-logging`)**:
-   - When any tool execution encounters a failure status, non-zero error code, or exception: immediately compile and record structured failure details (timestamp, tool name, arguments, stderr/traceback, root cause) into the workspace `log/` folder (auto-create `log/` if absent, e.g., `<workspace>/log/tool-errors.log`); preserve diagnostic logs for post-mortem analysis; never silently ignore errors.
+   - When any tool execution encounters a failure status, non-zero error code, or exception: immediately compile and record structured failure details (timestamp, tool name, arguments, stderr/traceback, root cause) into `~/.pi-dl/workspaces/log/<workspace>/` (on Windows `C:\Users\<username>\.pi-dl\workspaces\log\<routed_workspace_name>\`, auto-create if absent, e.g., `tool-errors.log`); zero pollution to target project root; preserve diagnostic logs for post-mortem analysis; never silently ignore errors.

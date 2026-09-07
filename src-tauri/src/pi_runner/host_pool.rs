@@ -248,15 +248,18 @@ impl SessionHost {
                                     let args = map.get("args").unwrap_or(&Value::Null);
                                     let result = map.get("result").unwrap_or(&Value::Null);
                                     let active_ws = crate::workspace::read_active_workspace_id();
-                                    let ws = if active_ws == "code-area" {
+                                    let route_path = if active_ws == "code-area" {
                                         crate::workspace::read_code_area_route_path()
-                                            .map(std::path::PathBuf::from)
-                                            .unwrap_or_else(|| workspace_for_events.clone())
                                     } else {
-                                        workspace_for_events.clone()
+                                        None
                                     };
+                                    let ws_name = crate::pi_runner::inner_skills::resolve_workspace_log_name(
+                                        &active_ws,
+                                        route_path.as_deref(),
+                                        &workspace_for_events,
+                                    );
                                     let _ = crate::pi_runner::inner_skills::write_tool_failure_log(
-                                        &ws,
+                                        &ws_name,
                                         Some(&task_id_clone),
                                         Some(&session_id_clone),
                                         tool_name,

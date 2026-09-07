@@ -169,7 +169,7 @@
 | **`dynamic-workflows-orchestration`** | [`src-tauri/inner-skills/dynamic-workflows-orchestration/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/dynamic-workflows-orchestration/SKILL.md) | `dynamic_workflows`, `execute_workflow` | 分阶段前置校验、单步自愈熔断、执行进度与里程碑追踪。 |
 | **`active-context-pruning`** | [`src-tauri/inner-skills/active-context-pruning/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/active-context-pruning/SKILL.md) | `context_prune`, `prune_context`, `pai-acp` | 渐进修剪冗余工具载荷、保护核心意图与最新代码锚点。 |
 | **`temp-file-hygiene`** | [`src-tauri/inner-skills/temp-file-hygiene/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/temp-file-hygiene/SKILL.md) | `write`, `create_file`, `bash`, `cmd` | 临时文件强制沙盒隔离至 `~/.pi-dl/temp/`，零污染项目与工作区，用后即删。 |
-| **`tool-failure-logging`** | [`src-tauri/inner-skills/tool-failure-logging/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/tool-failure-logging/SKILL.md) | 工具执行失败 / 异常 | 工具调用失败细节自动结构化整理至工作区 `log/` 文件夹（连续日志与快照归档，豁免清理）。 |
+| **`tool-failure-logging`** | [`src-tauri/inner-skills/tool-failure-logging/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/tool-failure-logging/SKILL.md) | 工具执行失败 / 异常 | 工具调用失败细节自动结构化整理至 `~/.pi-dl/workspaces/log/<路由工作区名>/` 文件夹（零污染项目根，连续日志与快照归档，豁免清理）。 |
 
 ---
 

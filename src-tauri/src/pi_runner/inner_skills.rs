@@ -437,12 +437,61 @@ impl Default for InnerSkillInjector {
     }
 }
 
-/// 记录工具调用失败细节至工作区 log 文件夹 (不存在则自动新建)
+/// 获取统一的工具调用失败日志目录路径 (~/.pi-dl/workspaces/log/<workspace_name>)
+pub fn get_tool_failure_log_dir(workspace_name: &str) -> PathBuf {
+    let clean_name = workspace_name
+        .trim_matches(|c: char| c == '/' || c == '\\' || c.is_whitespace());
+    let folder_name = if clean_name.is_empty() {
+        "default"
+    } else {
+        clean_name
+    };
+
+    dirs::home_dir()
+        .map(|h| h.join(".pi-dl").join("workspaces").join("log").join(folder_name))
+        .unwrap_or_else(|| PathBuf::from(".pi-dl").join("workspaces").join("log").join(folder_name))
+}
+
+/// 解析用于集中日志归档的工作区标识名称
+pub fn resolve_workspace_log_name(
+    active_ws_id: &str,
+    code_area_route: Option<&str>,
+    fallback_ws: &std::path::Path,
+) -> String {
+    if active_ws_id == "code-area" {
+        if let Some(rp) = code_area_route {
+            let trimmed = rp.trim_end_matches(['/', '\\']);
+            if let Some(name) = std::path::Path::new(trimmed).file_name().and_then(|n| n.to_str()) {
+                let clean = name.trim();
+                if !clean.is_empty() {
+                    return clean.to_string();
+                }
+            }
+        }
+        return "code-area".to_string();
+    }
+
+    if !active_ws_id.is_empty() && active_ws_id != "custom" {
+        return active_ws_id.to_string();
+    }
+
+    let trimmed = fallback_ws.to_string_lossy();
+    let trimmed = trimmed.trim_end_matches(['/', '\\']);
+    std::path::Path::new(trimmed)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("default")
+        .to_string()
+}
+
+/// 记录工具调用失败细节至集中 log 文件夹 (~/.pi-dl/workspaces/log/<workspace_name>/)
 /// 写入两种文件：
-/// 1. 连续追加日志: <workspace>/log/tool-errors.log
-/// 2. 单次失败快照: <workspace>/log/tool_failure_<timestamp>_<tool>.log
+/// 1. 连续追加日志: ~/.pi-dl/workspaces/log/<workspace_name>/tool-errors.log
+/// 2. 单次失败快照: ~/.pi-dl/workspaces/log/<workspace_name>/tool_failure_<timestamp>_<tool>.log
 pub fn write_tool_failure_log(
-    workspace_path: &std::path::Path,
+    workspace_name: &str,
     task_id: Option<&str>,
     session_id: Option<&str>,
     tool_name: &str,
@@ -452,7 +501,7 @@ pub fn write_tool_failure_log(
 ) -> std::io::Result<PathBuf> {
     use std::io::Write;
 
-    let log_dir = workspace_path.join("log");
+    let log_dir = get_tool_failure_log_dir(workspace_name);
     if !log_dir.exists() {
         std::fs::create_dir_all(&log_dir)?;
     }
@@ -464,6 +513,7 @@ pub fn write_tool_failure_log(
     let mut entry = String::new();
     entry.push_str("================================================================================\n");
     entry.push_str(&format!("[{}] TOOL EXECUTION FAILURE REPORT\n", time_str));
+    entry.push_str(&format!("Workspace: {}\n", workspace_name));
     if let Some(tid) = task_id {
         entry.push_str(&format!("Task ID: {}\n", tid));
     }
@@ -484,7 +534,7 @@ pub fn write_tool_failure_log(
     }
     entry.push_str("\n================================================================================\n\n");
 
-    // 1. 追加到连续日志文件 <workspace>/log/tool-errors.log
+    // 1. 追加到连续日志文件 ~/.pi-dl/workspaces/log/<workspace_name>/tool-errors.log
     let continuous_log = log_dir.join("tool-errors.log");
     let mut file = std::fs::OpenOptions::new()
         .create(true)
@@ -492,7 +542,7 @@ pub fn write_tool_failure_log(
         .open(&continuous_log)?;
     file.write_all(entry.as_bytes())?;
 
-    // 2. 写入单独的单次失败快照文件 <workspace>/log/tool_failure_<timestamp>_<tool>.log
+    // 2. 写入单独的单次失败快照文件 ~/.pi-dl/workspaces/log/<workspace_name>/tool_failure_<timestamp>_<tool>.log
     let clean_tool = tool_name.replace(|c: char| !c.is_alphanumeric() && c != '_' && c != '-', "_");
     let single_log = log_dir.join(format!("tool_failure_{}_{}.log", file_time_str, clean_tool));
     let _ = std::fs::write(&single_log, &entry);
