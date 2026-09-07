@@ -192,6 +192,7 @@ impl SessionHost {
         let session_path_clone = self.session_path.clone();
         let is_active_clone = self.is_active.clone();
         let pending_responses_clone = self.pending_responses.clone();
+        let workspace_for_events = workspace.clone();
 
         tokio::spawn(async move {
             while let Some(mut event_val) = event_rx.recv().await {
@@ -229,7 +230,7 @@ impl SessionHost {
                         }
                     }
 
-                    // 监听 agent 状态变化以更新 is_active
+                    // 监听 agent 状态变化以更新 is_active，并在工具失败时落盘
                     if let Some(event_type) = map.get("type").and_then(|v| v.as_str()) {
                         match event_type {
                             "agent_start" => {
@@ -237,6 +238,33 @@ impl SessionHost {
                             }
                             "agent_end" | "agent_settled" => {
                                 *is_active_clone.write().await = false;
+                            }
+                            "tool_execution_end" => {
+                                let is_error = map.get("isError").and_then(|v| v.as_bool()).unwrap_or(false)
+                                    || map.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+                                if is_error {
+                                    let tool_name = map.get("toolName").and_then(|v| v.as_str()).unwrap_or("unknown");
+                                    let tool_call_id = map.get("toolCallId").and_then(|v| v.as_str());
+                                    let args = map.get("args").unwrap_or(&Value::Null);
+                                    let result = map.get("result").unwrap_or(&Value::Null);
+                                    let active_ws = crate::workspace::read_active_workspace_id();
+                                    let ws = if active_ws == "code-area" {
+                                        crate::workspace::read_code_area_route_path()
+                                            .map(std::path::PathBuf::from)
+                                            .unwrap_or_else(|| workspace_for_events.clone())
+                                    } else {
+                                        workspace_for_events.clone()
+                                    };
+                                    let _ = crate::pi_runner::inner_skills::write_tool_failure_log(
+                                        &ws,
+                                        Some(&task_id_clone),
+                                        Some(&session_id_clone),
+                                        tool_name,
+                                        tool_call_id,
+                                        args,
+                                        result,
+                                    );
+                                }
                             }
                             _ => {}
                         }

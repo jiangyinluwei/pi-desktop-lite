@@ -65,6 +65,8 @@ export function initFlowPipeline(ctx) {
         return "active-context-pruning (长会话主动上下文修剪规范)";
       case "temp-file-hygiene":
         return "temp-file-hygiene (临时文件沙盒与即用即删规范)";
+      case "tool-failure-logging":
+        return "tool-failure-logging (工具调用失败细节日志记录规范)";
       default:
         return `${skillName} (运行态约束)`;
     }
@@ -471,6 +473,7 @@ export function initFlowPipeline(ctx) {
         }
       }
     }
+
     if (flowView.toolRunTimerInterval) {
       clearInterval(flowView.toolRunTimerInterval);
       flowView.toolRunTimerInterval = null;

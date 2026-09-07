@@ -15,6 +15,7 @@
 | `dynamic_workflows`, `execute_workflow`, `pipeline_step`, `run_workflow` | `dynamic-workflows-orchestration` | **Mandatory** |
 | `context_prune`, `prune_context`, `pai-acp`, `compress_context` | `active-context-pruning` | **Mandatory** |
 | `write`, `write_file`, `create_file`, `temp_file`, `scratchpad`, `bash`, `terminal`, `powershell`, `cmd`, `execute_command` | `temp-file-hygiene` | **Mandatory** |
+| `bash`, `terminal`, `powershell`, `cmd`, `execute_command`, `write`, `write_file`, `edit`, `read_file`, `subagent`, `web_search`, `tool_failure`, `log_error` | `tool-failure-logging` | **Mandatory** |
 
 ---
 
@@ -44,4 +45,7 @@ When invoking tools or planning actions:
    - Progressively prune obsolete raw tool payloads; protect core goals and latest code snippets; maintain consistent context state.
 
 8. **Ephemeral Temp Hygiene (`temp-file-hygiene`)**:
-   - ALL temporary scripts, probe logs, and scratch files MUST strictly reside in `~/.pi-dl/temp/`; zero pollution in workspace or project root; clean up immediately upon task completion (`rm` / `Remove-Item`).
+   - ALL temporary scripts, probe logs, and scratch files MUST strictly reside in `~/.pi-dl/temp/`; zero pollution in workspace or project root; clean up immediately upon task completion (`rm` / `Remove-Item`). Diagnostic failure logs under `tool-failure-logging` in `<workspace>/log/` are authorized and exempt.
+
+9. **Tool Failure Diagnostics & Workspace Logging (`tool-failure-logging`)**:
+   - When any tool execution encounters a failure status, non-zero error code, or exception: immediately compile and record structured failure details (timestamp, tool name, arguments, stderr/traceback, root cause) into the workspace `log/` folder (auto-create `log/` if absent, e.g., `<workspace>/log/tool-errors.log`); preserve diagnostic logs for post-mortem analysis; never silently ignore errors.

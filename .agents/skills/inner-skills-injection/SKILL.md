@@ -56,7 +56,8 @@ src-tauri/inner-skills/
 ├── persistent-memory-retrieval/              # 独立 Skill 5: 持久化记忆与跨会话检索
 ├── dynamic-workflows-orchestration/          # 独立 Skill 6: 动态工作流与流水线编排
 ├── active-context-pruning/                   # 独立 Skill 7: 主动上下文修剪与长会话压缩
-└── temp-file-hygiene/                        # 独立 Skill 8: 临时文件沙盒与即用即删卫生约束
+├── temp-file-hygiene/                        # 独立 Skill 8: 临时文件沙盒与即用即删卫生约束
+└── tool-failure-logging/                     # 独立 Skill 9: 工具执行失败细节落盘规范 (<workspace>/log/)
 ```
 
 ---

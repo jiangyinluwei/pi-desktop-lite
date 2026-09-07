@@ -13,6 +13,7 @@ const EMBEDDED_MEMORY_SKILL_MD: &str = include_str!("../../inner-skills/persiste
 const EMBEDDED_WORKFLOW_SKILL_MD: &str = include_str!("../../inner-skills/dynamic-workflows-orchestration/SKILL.md");
 const EMBEDDED_PRUNING_SKILL_MD: &str = include_str!("../../inner-skills/active-context-pruning/SKILL.md");
 const EMBEDDED_TEMP_HYGIENE_SKILL_MD: &str = include_str!("../../inner-skills/temp-file-hygiene/SKILL.md");
+const EMBEDDED_TOOL_FAILURE_SKILL_MD: &str = include_str!("../../inner-skills/tool-failure-logging/SKILL.md");
 
 /// 获取统一的运行时临时目录路径 (~/.pi-dl/temp)
 pub fn get_runtime_temp_dir() -> PathBuf {
@@ -240,6 +241,25 @@ impl InnerSkillInjector {
                 skill_name: "temp-file-hygiene".to_string(),
                 enforcement: "Mandatory".to_string(),
             });
+            mappings.push(SkillMapping {
+                tools: vec![
+                    "bash".to_string(),
+                    "terminal".to_string(),
+                    "powershell".to_string(),
+                    "cmd".to_string(),
+                    "execute_command".to_string(),
+                    "write".to_string(),
+                    "write_file".to_string(),
+                    "edit".to_string(),
+                    "read_file".to_string(),
+                    "subagent".to_string(),
+                    "web_search".to_string(),
+                    "tool_failure".to_string(),
+                    "log_error".to_string(),
+                ],
+                skill_name: "tool-failure-logging".to_string(),
+                enforcement: "Mandatory".to_string(),
+            });
         }
 
         mappings
@@ -273,6 +293,7 @@ impl InnerSkillInjector {
             "dynamic-workflows-orchestration" => Some(EMBEDDED_WORKFLOW_SKILL_MD),
             "active-context-pruning" => Some(EMBEDDED_PRUNING_SKILL_MD),
             "temp-file-hygiene" => Some(EMBEDDED_TEMP_HYGIENE_SKILL_MD),
+            "tool-failure-logging" => Some(EMBEDDED_TOOL_FAILURE_SKILL_MD),
             _ => None,
         }
     }
@@ -415,3 +436,73 @@ impl Default for InnerSkillInjector {
         Self::new()
     }
 }
+
+/// 记录工具调用失败细节至工作区 log 文件夹 (不存在则自动新建)
+/// 写入两种文件：
+/// 1. 连续追加日志: <workspace>/log/tool-errors.log
+/// 2. 单次失败快照: <workspace>/log/tool_failure_<timestamp>_<tool>.log
+pub fn write_tool_failure_log(
+    workspace_path: &std::path::Path,
+    task_id: Option<&str>,
+    session_id: Option<&str>,
+    tool_name: &str,
+    tool_call_id: Option<&str>,
+    args: &serde_json::Value,
+    error_result: &serde_json::Value,
+) -> std::io::Result<PathBuf> {
+    use std::io::Write;
+
+    let log_dir = workspace_path.join("log");
+    if !log_dir.exists() {
+        std::fs::create_dir_all(&log_dir)?;
+    }
+
+    let now = chrono::Local::now();
+    let time_str = now.format("%Y-%m-%d %H:%M:%S").to_string();
+    let file_time_str = now.format("%Y%m%d_%H%M%S").to_string();
+
+    let mut entry = String::new();
+    entry.push_str("================================================================================\n");
+    entry.push_str(&format!("[{}] TOOL EXECUTION FAILURE REPORT\n", time_str));
+    if let Some(tid) = task_id {
+        entry.push_str(&format!("Task ID: {}\n", tid));
+    }
+    if let Some(sid) = session_id {
+        entry.push_str(&format!("Session ID: {}\n", sid));
+    }
+    entry.push_str(&format!("Tool: {}\n", tool_name));
+    if let Some(cid) = tool_call_id {
+        entry.push_str(&format!("Call ID: {}\n", cid));
+    }
+    entry.push_str("Invoked Arguments:\n");
+    entry.push_str(&serde_json::to_string_pretty(args).unwrap_or_else(|_| args.to_string()));
+    entry.push_str("\nFailure Details / Error Result:\n");
+    if let Some(s) = error_result.as_str() {
+        entry.push_str(s);
+    } else {
+        entry.push_str(&serde_json::to_string_pretty(error_result).unwrap_or_else(|_| error_result.to_string()));
+    }
+    entry.push_str("\n================================================================================\n\n");
+
+    // 1. 追加到连续日志文件 <workspace>/log/tool-errors.log
+    let continuous_log = log_dir.join("tool-errors.log");
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&continuous_log)?;
+    file.write_all(entry.as_bytes())?;
+
+    // 2. 写入单独的单次失败快照文件 <workspace>/log/tool_failure_<timestamp>_<tool>.log
+    let clean_tool = tool_name.replace(|c: char| !c.is_alphanumeric() && c != '_' && c != '-', "_");
+    let single_log = log_dir.join(format!("tool_failure_{}_{}.log", file_time_str, clean_tool));
+    let _ = std::fs::write(&single_log, &entry);
+
+    log::info!(
+        "[InnerSkill:tool-failure-logging] Recorded failure log for tool `{}` in {:?}",
+        tool_name,
+        continuous_log
+    );
+
+    Ok(continuous_log)
+}
+
