@@ -52,7 +52,7 @@ export function initFlowPipeline(ctx) {
       case "windows-bash-compatibility":
         return "windows-bash-compatibility (Windows Shell 兼容规范)";
       case "document-multimodal-inspection":
-        return "document-multimodal-inspection (多格式文档与 OCR 解析规范)";
+        return "document-multimodal-inspection (多模态视检与文档解析规范)";
       case "multi-agent-orchestration":
         return "multi-agent-orchestration (多 Agent 并行协作规范)";
       case "web-search-silent-access":

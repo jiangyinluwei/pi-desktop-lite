@@ -50,7 +50,7 @@ flowchart TD
 src-tauri/inner-skills/
 ├── RULES.md                                  # 映射总纲 (唯一事实来源, < 100 Tokens)
 ├── windows-bash-compatibility/               # 独立 Skill 1: Windows 命令行与终端兼容
-├── document-multimodal-inspection/           # 独立 Skill 2: 多格式文档深度遍历与 OCR 解析
+├── document-multimodal-inspection/           # 独立 Skill 2: 多模态视检与多格式文档深度遍历
 ├── multi-agent-orchestration/                # 独立 Skill 3: 多智能体并行与子任务协作
 ├── web-search-silent-access/                 # 独立 Skill 4: 静默后台联网搜索与自动摘要
 ├── persistent-memory-retrieval/              # 独立 Skill 5: 持久化记忆与跨会话检索

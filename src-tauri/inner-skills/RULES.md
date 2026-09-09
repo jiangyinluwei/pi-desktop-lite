@@ -27,7 +27,7 @@ When invoking tools or planning actions:
    - Forward slashes `/` for paths; quote paths with spaces; non-interactive (`-y`); disable pagers (`PAGER=cat`, `--no-pager`); UTF-8 & `NO_COLOR=1`; no spontaneous file creation.
 
 2. **Folder & Multi-Format Documents (`document-multimodal-inspection`)**:
-   - Proactively traverse directories; never cat raw binary (`.docx`, `.doc`, `.pdf`, `.pptx`, `.xlsx`, images); automatically invoke specialized parsers/OCR (`pi-ocr`, `deword`, `pi-docparser`) to extract authentic text; batch synthesize findings.
+   - Proactively traverse directories; never cat raw binary; prioritize native vision for images, falling back to OCR (`pi-ocr`) only if text-only or on failure; use specialized parsers (`deword`, `pi-docparser`) for office docs; batch synthesize findings.
 
 3. **Multi-Agent Scheduling (`multi-agent-orchestration`)**:
    - Define clear subtask boundaries; dispatch independent subtasks in parallel; enforce timeouts; synthesize and deduplicate subagent findings before final response.
