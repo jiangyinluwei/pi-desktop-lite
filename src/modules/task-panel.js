@@ -171,19 +171,17 @@ export function initTaskPanel(ctx) {
       const isRunning = task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec";
       const isCurrent = taskManager.currentActiveTaskId === task.id;
 
-      // 自动重连切换进行中：该 Task 绑定引擎自愈流水线时展示专属状态徽章
+      // 自动强制重连进行中：该 Task 绑定引擎内置重连流水线时展示专属状态徽章
       const engineStatus =
         modelFailoverEngine.isActive() &&
-        modelFailoverEngine.taskId &&
-        modelFailoverEngine.taskId === task.id
+          modelFailoverEngine.taskId &&
+          modelFailoverEngine.taskId === task.id
           ? modelFailoverEngine.status
           : null;
 
       let statusText = "已完成";
       if (engineStatus === "reconnecting") {
-        statusText = "自动重连中";
-      } else if (engineStatus === "switching") {
-        statusText = "切换模型中";
+        statusText = "自动内置重连中";
       } else if (task.status === "thinking") {
         const elapsed = ((Date.now() - task.startedAt) / 1000).toFixed(0);
         statusText = `思考中 (${elapsed}s)`;
@@ -532,18 +530,18 @@ export function initTaskPanel(ctx) {
     const turns = Array.isArray(task.turns) && task.turns.length > 0
       ? task.turns.map((t) => ({ ...t, query: cleanUserPrompt(t.query || "") }))
       : [
-          {
-            query: cleanUserPrompt(task.query || task.title || ""),
-            attachments: task.attachments || [],
-            thinkingText: task.thinkingText || "",
-            thinkingDurationText: task.thinkingDurationText || "已完成思考",
-            responseText: task.responseText || "",
-            toolCalls: task.toolCalls || [],
-            steps: task.steps || [],
-            isAborted: task.status === "aborted",
-            errorMessage: task.errorMessage || (task.status === "error" ? "模型调用发生异常终止" : null),
-          },
-        ];
+        {
+          query: cleanUserPrompt(task.query || task.title || ""),
+          attachments: task.attachments || [],
+          thinkingText: task.thinkingText || "",
+          thinkingDurationText: task.thinkingDurationText || "已完成思考",
+          responseText: task.responseText || "",
+          toolCalls: task.toolCalls || [],
+          steps: task.steps || [],
+          isAborted: task.status === "aborted",
+          errorMessage: task.errorMessage || (task.status === "error" ? "模型调用发生异常终止" : null),
+        },
+      ];
 
     const isRunning = task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec";
 
@@ -589,18 +587,18 @@ export function initTaskPanel(ctx) {
     const turns = Array.isArray(conv.turns) && conv.turns.length > 0
       ? conv.turns.map((t) => ({ ...t, query: cleanUserPrompt(t.query || "") }))
       : [
-          {
-            query: cleanUserPrompt(conv.query || conv.title || ""),
-            attachments: [],
-            thinkingText: conv.thinkingText || "",
-            thinkingDurationText: conv.thinkingDuration || "已完成思考",
-            responseText: conv.responseText || "",
-            toolCalls: conv.toolCalls || [],
-            steps: conv.steps || [],
-            isAborted: conv.isAborted,
-            status: "completed",
-          },
-        ];
+        {
+          query: cleanUserPrompt(conv.query || conv.title || ""),
+          attachments: [],
+          thinkingText: conv.thinkingText || "",
+          thinkingDurationText: conv.thinkingDuration || "已完成思考",
+          responseText: conv.responseText || "",
+          toolCalls: conv.toolCalls || [],
+          steps: conv.steps || [],
+          isAborted: conv.isAborted,
+          status: "completed",
+        },
+      ];
 
     if (!task) {
       task = taskManager.createTask({
@@ -658,16 +656,16 @@ export function initTaskPanel(ctx) {
 
     const stepsSnapshot = (Array.isArray(flowView.currentSteps) && flowView.currentSteps.length > 0)
       ? flowView.currentSteps.map((s) => ({
-          type: s.type,
-          id: s.id,
-          text: s.text,
-          durationText: s.durationText,
-          name: s.name,
-          args: s.args,
-          status: s.status,
-          result: s.result,
-          is_error: s.is_error,
-        }))
+        type: s.type,
+        id: s.id,
+        text: s.text,
+        durationText: s.durationText,
+        name: s.name,
+        args: s.args,
+        status: s.status,
+        result: s.result,
+        is_error: s.is_error,
+      }))
       : [];
 
     if (currentActive && Array.isArray(currentActive.turns) && currentActive.turns.length > 0) {

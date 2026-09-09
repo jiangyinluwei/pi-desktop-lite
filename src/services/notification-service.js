@@ -10,7 +10,7 @@
 import { invokeTauri, listenTauri } from "./tauri-bridge.js";
 
 /**
- * 判定消息是否属于 TPM/RPM 速率限制或自动重连中的瞬态状态 (严禁系统弹窗打扰)
+ * 判定消息是否属于 TPM/RPM 速率限制或内置重连中的瞬态状态 (严禁系统弹窗打扰)
  * @param {string} msg
  * @returns {boolean}
  */
@@ -25,7 +25,8 @@ export function isTransientRateLimitMessage(msg) {
     s.includes("rate limit") ||
     s.includes("rate_limit") ||
     s.includes("等待恢复") ||
-    s.includes("自动重连")
+    s.includes("自动重连") ||
+    s.includes("内置重连")
   );
 }
 
@@ -161,7 +162,7 @@ export class NotificationService {
       return false;
     }
 
-    // 速率限制与自动重连等待属于瞬态自愈状态，仅作为界面状态条提示，绝对不弹窗打扰
+    // 速率限制与内置重连等待属于瞬态状态，仅作为界面状态条提示，绝对不弹窗打扰
     if (isTransientRateLimitMessage(body) || isTransientRateLimitMessage(title)) {
       return false;
     }
@@ -205,7 +206,7 @@ export class NotificationService {
     if (options.taskId) {
       this.unregisterTask(options.taskId);
     }
-    // 速率限制与自动重连等待消息直接静默，不触发系统弹窗
+    // 速率限制与内置重连等待消息直接静默，不触发系统弹窗
     if (isTransientRateLimitMessage(options.message) || isTransientRateLimitMessage(options.title)) {
       return false;
     }

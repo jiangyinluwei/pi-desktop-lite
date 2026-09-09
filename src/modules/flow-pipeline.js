@@ -566,22 +566,21 @@ export function initFlowPipeline(ctx) {
   });
 
   // ==========================================================================
-  // 自动重连切换引擎 (ModelFailoverEngine) 接入
-  // 瞬态错误自动重连 / 永久错误自动切换，全程无需用户介入，绝不提前渲染错误卡与归档
+  // 自动强制重连引擎 (ModelFailoverEngine) 接入
+  // 无痕内置重连：隐藏「模型XXX异常」窗体，后台静默续发「继续」文本，最多 10 次
   // ==========================================================================
   const failoverHooks = {
-    // 同 Turn 复用重发相同输入 (不重建提问卡、不重复压入 prompt history、不新建 Task)
+    // 同 Turn 复用当前轮次：重置流式缓冲但保留既有步骤/工具卡片，后台静默续发「继续」
+    // (不重建提问卡、不重复压入 prompt history、不新建 Task，用户全程无感知)
     onResendAttempt: (taskId) => {
       api.resetCurrentTurnForResend(taskId);
-      // 自愈重发使用「该任务自己分仓」缓存的 Prompt 与图片载荷（按 Task 隔离）
-      const fs = flowStore.for(taskId);
       const { sessionPath, sessionId } = resolveTaskSessionIdentity(taskManager.getTask(taskId));
-      return piClient.sendPrompt(fs.lastSentPrompt, fs.lastImagePayloads, null, taskId, sessionPath, sessionId);
+      return piClient.sendPrompt("继续", null, null, taskId, sessionPath, sessionId);
     },
-    // 全部失败兜底：复用既有错误卡并追加自愈摘要
+    // 10 次内置重连全部耗尽仍失败：才渲染「模型XXX异常」错误卡并追加内置重连摘要
     onGiveUp: (errDetail, summary) => {
       const detail = { ...(errDetail || {}) };
-      if (summary && (summary.reconnectCount > 0 || summary.triedCandidates > 0)) {
+      if (summary && summary.reconnectCount > 0) {
         detail.failoverSummary = summary;
       }
       api.renderErrorCard(detail);
@@ -604,7 +603,7 @@ export function initFlowPipeline(ctx) {
   };
 
   piClient.addEventListener("agent-error", (e) => {
-    // 手动终止 / 中断类错误：绝不渲染错误卡，绝对不能触发自动重连或切换
+    // 手动终止 / 中断类错误：绝不渲染错误卡，绝对不能触发自动内置重连
     if (isAbortError(e.detail)) {
       return;
     }
@@ -645,7 +644,7 @@ export function initFlowPipeline(ctx) {
       // 避免引擎在途尝试悬空挂起，也绝不提前渲染错误卡打断自愈
       modelFailoverEngine.handleModelError(e.detail, failoverHooks);
     } else if (modelFailoverEngine.canHandle(e.detail) || isRateLimit) {
-      // 冷启动：自动重连开启且错误含模型上下文（或命中 TPM/RPM 速率限制）→ 统一交由引擎自愈，绝不降级渲染错误卡
+      // 冷启动：自动强制重连开启且错误含模型上下文（或命中 TPM/RPM 速率限制）→ 统一交由引擎内置重连，绝不降级渲染错误卡
       modelFailoverEngine.handleModelError(e.detail, failoverHooks);
     } else {
       api.renderErrorCard(e.detail);
@@ -736,15 +735,15 @@ export function initFlowPipeline(ctx) {
     const currentRunningTask =
       viewStore.mode === VIEW_FLOW
         ? (() => {
-            const t = taskManager.getCurrentActiveTask();
-            if (!t) return null;
-            return t.status === "thinking" ||
-              t.status === "streaming" ||
-              t.status === "tool_exec" ||
-              t.status === "paused"
-              ? t
-              : null;
-          })()
+          const t = taskManager.getCurrentActiveTask();
+          if (!t) return null;
+          return t.status === "thinking" ||
+            t.status === "streaming" ||
+            t.status === "tool_exec" ||
+            t.status === "paused"
+            ? t
+            : null;
+        })()
         : null;
 
     if (currentRunningTask) {
@@ -944,8 +943,6 @@ export function initFlowPipeline(ctx) {
       }
 
       // 同一个 Flow 使用同一个 currentTask.id 保持会话上下文
-      // 缓存构造后的 Prompt 与图片 Payload 至本任务分仓，供自动重连切换引擎同 Turn 复用重发
-      flowStore.for(currentTask?.id).set({ lastSentPrompt: promptToSend, lastImagePayloads: imagePayloads });
 
       // 发送前预检：若在图片准备或排队期间用户已点击终止，直接短路退出
       if (currentTask && (currentTask.isAborted || currentTask.status === "aborted")) {

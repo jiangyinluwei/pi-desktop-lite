@@ -105,15 +105,15 @@ pub fn pi_save_settings_config(settings_data: Value) -> Result<(), String> {
 
 /// 向 Pi 内核 ~/.pi/agent/settings.json 探测式注入模型自动重连推荐配置 (best-effort, 失败静默)
 ///
-/// 轨道 A (内核参数注入)：若内核识别重试键则让其自身按推荐值 (24 次 / 2-4-8s 退避) 重连；
-/// 轨道 B (桌面 ModelFailoverEngine) 为行为主实现，无论本指令是否生效均能保证「恰好 24 次」语义。
-/// 本指令对未知 schema 安全跳过、绝不报错，绝不阻断引擎自愈流水线。
+/// 轨道 A (内核参数注入)：若内核识别重试键则让其自身按推荐值 (10 次 / 2-4-8-16s 退避) 重连；
+/// 轨道 B (桌面 ModelFailoverEngine) 为行为主实现，无论本指令是否生效均能保证「恰好 10 次」语义。
+/// 本指令对未知 schema 安全跳过、绝不报错，绝不阻断引擎内置重连流水线。
 #[tauri::command]
 pub fn pi_apply_model_failover_preset(config: Value) -> Result<(), String> {
     let max_attempts = config
         .get("maxReconnectAttempts")
         .and_then(|v| v.as_u64())
-        .unwrap_or(24);
+        .unwrap_or(10);
 
     // 退避序列 (ms) 转为秒级数组供内核使用，并封顶 maxBackoffMs
     let backoff_secs: Vec<Value> = config
@@ -127,13 +127,13 @@ pub fn pi_apply_model_failover_preset(config: Value) -> Result<(), String> {
                 })
                 .collect()
         })
-        .unwrap_or_else(|| vec![Value::from(2u64), Value::from(4u64), Value::from(8u64)]);
+        .unwrap_or_else(|| vec![Value::from(2u64), Value::from(4u64), Value::from(8u64), Value::from(16u64)]);
 
     let max_backoff_secs = config
         .get("maxBackoffMs")
         .and_then(|v| v.as_u64())
         .map(|ms| (ms / 1000).max(1))
-        .unwrap_or(8);
+        .unwrap_or(16);
 
     let mut settings = pi_get_settings_config().unwrap_or_else(|_| json!({}));
     if !settings.is_object() {

@@ -27,7 +27,7 @@ A desktop research and reasoning application with minimalist hand-drawn sketch &
 - **Four-State Interface & Flow Streaming**: Detailed, Focus, Flow stream, and full-page Settings modes with single-line thinking chains and Typedown-grade Markdown rendering;
 - **Background Tasks & Routed Workspaces**: Seamless task background suspension, explicit termination with process hard-kill and anti-resurrection guards, terminal-state task cleanup to prevent phantom "completed" badges, session continuity via `--session <path>` (multi-turn conversations never fragment into separate history records), historical turn restoration, `code-area` non-polluting routing hub, and multi-preset switching;
 - **Hand-Drawn Sketch Aesthetics**: Universal hand-drawn SVG vector icons, paper-texture dual-mode themes, and custom `SketchSelect` / `SketchAutoFill` / `SketchModal` components;
-- **Rust Performance & Self-Healing Core**: Kernel-level orphan process harvesting, smooth auto-reconnect insurance on crashes, model invocation failover (transient & "inference tpm exhausted" rate-limit auto-retry with 120s same-error threshold window and elapsed-time reset on success, step-by-step history retention, single-model degradation guard, multi-cycle candidate failover with MRU preservation), Node.js preflight checks, and native desktop integration.
+- **Rust Performance & Self-Healing Core**: Kernel-level orphan process harvesting, smooth auto-reconnect insurance on crashes, silent built-in model reconnect (background re-sends a hidden "continue" prompt, fixed 10 attempts, 2/4/8/16s backoff, live "auto reconnect N/10" capsule, executed-step history preserved, error window shown only after all 10 attempts are exhausted; automatic model switching has been removed), Node.js preflight checks, and native desktop integration.
 
 > 📖 **Full Architecture & Development Specifications**: Refer to [`.agents/skills/pi-desktop-overview/SKILL.md`](.agents/skills/pi-desktop-overview/SKILL.md).
 
@@ -91,7 +91,7 @@ pi-desktop-lite/
 │   │   ├── flow-render.js      # Flow pure rendering: card factories, argument/result HTML formatting (side-effect free)
 │   │   ├── flow-dom.js         # Flow read-only DOM references: createFlowDom() -> ctx.flowDom
 │   │   ├── flow-state-view.js  # Flow view-derived cache owner: flowView sealed cache object
-│   │   ├── flow-stream.js      # Stream state machine, error cards, and auto-failover capsules
+│   │   ├── flow-stream.js      # Stream state machine, error cards, and built-in reconnect capsules
 │   │   ├── flow-pipeline.js    # Prompt dispatch, tool call events, self-healing pipeline
 │   │   ├── task-panel.js       # Background task capsule, sidebar, history restore
 │   │   ├── sessions-panel.js   # Session records, search/filter, enter Flow pipeline

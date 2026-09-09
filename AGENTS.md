@@ -41,7 +41,7 @@
    - 全域禁用浏览器默认右键菜单（`contextmenu` 拦截）；
    - **四态界面层级流**：`半透明侧边栏 (最高优先级)` ➔ `设置全页面 (界面4: settings)` ➔ `Flow 交互版 (界面3: 运行/暂停态转入后台挂起，已结束/中断态归档至历史)` ➔ `专注版 (界面2)` ➔ `详细版 (界面1)` ➔ 输入框失焦/清空；
    - **设置页 → Flow 定向回退 (`flowFromSettings`)**：从设置页会话记录 Tab「进入 Flow」时置 `viewStore.set({ flowFromSettings: true })`；Flow 中右键/Esc 时若空闲/已结束，直接回退至设置页会话记录 Tab（`previousMode: VIEW_DETAILED` 钉住 `viewStore.previous`，再右键照常回界面1）；若运行/暂停，走正常挂起通道；
-   - **挂起与终止双通道解耦与强制终止铁律 (Decoupled Suspend & Force Termination Invariance)**：右键/Esc 转入后台挂起（`isSuspended = true`，进入 `TaskManager`，不调用 abort）；显式「⏹ 终止」按钮强制彻底终止 Agent 生成（Rust `SessionHost` 强杀子进程并阻断未决 prompt，前端 `PiClient` 拦截流式事件派发，`TaskManager` 门禁严禁任何迟到事件复活任务为 running/thinking/streaming/completed）。**手动点击终止时，全链路绝对禁止触发任何模型自动重连或模型切换**；已终止任务（`isAborted === true` 或 `status === "aborted"`）右键/Esc 严禁转入后台挂起（`suspendCurrentFlow` 返回 `null`，`handleGlobalStepBack` 判定 `isRunning = false` 直接归档并物理清除该 Task，回退至 Focus 界面）；
+   - **挂起与终止双通道解耦与强制终止铁律 (Decoupled Suspend & Force Termination Invariance)**：右键/Esc 转入后台挂起（`isSuspended = true`，进入 `TaskManager`，不调用 abort）；显式「⏹ 终止」按钮强制彻底终止 Agent 生成（Rust `SessionHost` 强杀子进程并阻断未决 prompt，前端 `PiClient` 拦截流式事件派发，`TaskManager` 门禁严禁任何迟到事件复活任务为 running/thinking/streaming/completed）。**手动点击终止时，全链路绝对禁止触发任何模型内置重连**；已终止任务（`isAborted === true` 或 `status === "aborted"`）右键/Esc 严禁转入后台挂起（`suspendCurrentFlow` 返回 `null`，`handleGlobalStepBack` 判定 `isRunning = false` 直接归档并物理清除该 Task，回退至 Focus 界面）；
    - **任务直切自动挂起铁律 (Auto-Suspend on Active Task Switch)**：从右上角任务抽屉、历史会话或通知点击直接切换活跃 Task 时，原前台活跃任务必须在 TaskManager 中自动无缝转入后台挂起（`prevTask.isSuspended = true`），绝不允许产生既不在前台又未挂起的幽灵任务；切换进入新 Task 时统一在 `renderTurnsIntoFlow` 中重置收纳框引用 (`api.resetFileChanges`) 与流式步骤/工具卡片缓存，并对齐最新轮次步骤，保证多任务间任意来回直切均 100% 保持会话完整、互相隔离且不丢失；
    - **终态任务严禁后台挂起与幽灵已完成胶囊防范 (Completed Task Non-Suspension Invariance)**：在任务直接切换 (`setActiveTask` / `createTask`) 时，仅当前台原活跃任务处于运行态或待确认态（`thinking / streaming / tool_exec / paused`）时才转入后台挂起（`prevTask.isSuspended = true`）；若原任务已处于终态（`completed / aborted / error`），严禁赋予 `isSuspended = true`，直接从 `TaskManager` 清理，彻底杜绝从历史记录/会话记录切换进入其他会话时右上角瞬间冒出前一会话「已完成 (1/1 Task)」幽灵绿色徽标的缺陷；
    - **会话延续与多轮归属唯一性铁律 (Session Continuity & Consolidation Invariance)**：无论是全新会话、还是从「会话记录」或「历史记录」抽屉还原继续提问，后续追问统一透传底层会话文件路径（`sessionPath`）与会话 ID（`sessionId`）；Rust 后端 `PiHostPool` / `SessionHost` 在拉起内核子进程时，若存在已有会话路径（或经 `SessionIndexCache` 反查命中），严格采用 `pi --mode rpc --session <path>` 续写同一 `.jsonl` 文件，严禁使用盲目生成新 UUID 的 `--session-id` 导致多轮对话在重启或直接退出后被割裂为独立碎片记录；`ConversationHistoryService` 归档时严禁用空字符串覆写已有 `sessionPath`，保证历史记录与磁盘会话 100% 对应且多轮聚合完整；
@@ -112,20 +112,15 @@
     - **常驻生命周期托管**：`SessionWatcher` 必须在 Rust 后端 setup 阶段通过 `app.manage(session_watcher)` 注入全局生命周期托管，内部封装 `Arc<Mutex<Option<RecommendedWatcher>>>` 确保线程安全与常驻存活，严禁作为局部变量在 setup 闭包结束时被 RAII Drop 释放导致文件监听器销毁；
     - **目录精准锁定与递归监听**：默认监听目录严格锁定为 Pi 内核真实会话根目录 `~/.pi/agent/sessions`（二级子目录按 CWD 隔离），初始化时自动 `create_dir_all` 确保存在；
     - **三重同步与自愈机制**：提供 `pi_refresh_sessions` 主动扫描广播指令；前端切换至设置页「会话记录」Tab 时强制拉取最新数据（`api.loadSessions(true)`）；会话任务终态（`agent_end` / `agent_settled`）时自动延迟触发增量会话同步，形成「实时文件监听 + 终态主动同步 + Tab 切换强刷」三重保证，杜绝会话完成后无法实时进入记录的缺陷。
-18. **模型自动自愈、时间清零与多轮切换铁律 (Model Failover & Invariance)**：
-    - **瞬态退避与速率限制自愈 (TPM/RPM Invariance)**：429/5xx/网络抖动/请求超负荷以及“inference tpm exhausted”/TPM/RPM 推理速率限制等瞬态错误按 2/4/8s 自动退避等待并重试（上限 24 次，后台常驻 SessionHost 子进程无需重启模型，Pi 内核基于已有会话在原进程内等待恢复）；
-    - **120 秒同错判定、自愈心跳与成功时间清零铁律 (120s Threshold & Heartbeat Invariance)**：
-      - **自愈心跳与 120s 硬性超时熔断**：引擎在自愈期间启动 1s 周期心跳时钟，在等待退避与重发请求期间每秒动态驱动持续时间递增刷新（呈现“已持续 Xs/判定 120s”），彻底消除重发时的假死感；同时心跳时钟内置 120s 硬性超时判定，独立于在途网络请求阻塞，一旦持续同错达到 120s 立即主动熔断未决尝试，弹出错误卡片并终止任务；
-      - **成功时间清零铁律**：设立 120 秒同错判定时间（`sameErrorTimeoutMs: 120000`），自愈/重试成功后，必须立即清空原本的时间累计与错误指纹（`firstErrorTimestamp = 0`、`sameErrorCount = 0`），确保下一次发生限流时从 0 秒重新开始累计计算；
-    - **纯状态示意条与系统弹窗静默铁律 (Status-Capsule-Only & Notification Silence)**：触发模型每分钟推理速率限制 (TPM/RPM) 等瞬态自愈状态时，**严禁触发任何 Windows 原生系统弹窗提醒 (Toast / Notification)**，也**严禁在正文回答区域插入不可撤回的红色错误卡片 (`.sketch-error-card`)**；统一由 Flow 轮次顶部的手绘进度胶囊作为**纯状态示意条**（精准呈现“触发模型每分钟推理速率限制 (TPM/RPM)，正在等待恢复... (已持续 Xs/判定 120s) · Ys 后重试”；重发中呈现“... 正在重发请求 …”且秒数每秒实时递增跳动）；
-    - **过程记录保留与首响应即时自愈流水线 (Steps Retention & Instant Success Cleanup)**：
-      - **过程记录保留铁律**：重发尝试（`resetCurrentTurnForResend`）时**严禁清空步骤容器（`stepsContainerEl.innerHTML`）与工具卡片缓存（`renderedToolCards`）**，必须 100% 完整保留本轮之前已真实执行完毕的 Thinking 切片（已封口/含实质内容）、工具调用卡片与 Point 阶段性输出切片，恢复后增量无缝追加后续因果链条；
-      - **首响应即时结算与胶囊快速淡出**：模型一旦恢复正常产生响应（Thinking/Text/Toolcall 产生首事件），立即结算自愈成功；状态示意条即时显示“推理限制已解除，继续执行”（或“已恢复正常，继续执行”）并于 1.2 秒内快速淡出隐藏，绝不滞留屏幕；同时调用 `clearTurnErrorState` 原子化清除错误状态；解耦自愈成功与整轮流式结束，真正的工具卡收起、流式收口与会话归档交由后续 `agent-end` 自然触发；
-      - **会话重启与追问时错误卡彻底清理铁律 (Error Card Cleanup on Continuation)**：当界面出现模型调用失败诊断卡（`.sketch-error-card`）后，无论用户发送新提问（如“继续”）、还是点击错误卡「重试当前提问」按钮重新发起会话，系统在启动新轮次前必须彻底物理移除 `flowConversation` 与轮次容器中残留的所有 `.sketch-error-card`，重置自愈胶囊，并将 `task.turns` 中上一轮次的错误标记（`errorMessage: null`）与合成占位文本清理归位，确保后续流式生成与历史重渲 0 残留；
-    - **候选池去重与智能补齐**：永久/未知错误启动模型切换；优先白名单 MRU 顺序，少于 3 个候选时自动从内核可用模型补齐备选；`_sameModel` 规范化剥离 `provider/` 前缀严格去重，杜绝原失败模型混入浪费切换名额；若无其他候选且非不可自愈致命错误，自动降级转入同模型 120 秒自愈通道，杜绝 0 秒草率放弃；
-    - **多轮巡检与平滑退避**：支持候选模型列表多轮轮询（默认最多 3 轮，候选与轮次间施加 1.5s~6s 平滑退避延时，全局切换上限 12 次），彻底杜绝单次遍历换两三次即草率放弃的缺陷；
-    - **致命错误剔除与终止守则**：候选模型返回 401/404/鉴权失败等不可自愈错误时自动登记剔除，后续轮次跳过；用户显式点击「⏹ 终止」时全链路彻底强杀退出，严禁触发任何自动重连或切换；
-    - **MRU 保护**：临时切换期间仅 `pi_set_model`，绝不刷新 MRU 与持久化选择，仅候选模型首次成功输出后才转正常切换并持久化置顶。
+18. **模型无痕内置重连铁律 (Model Silent Built-in Reconnect & Invariance)**：
+    - **无痕内置重连 (Silent Reconnect)**：仅在「模型XXX异常」错误窗体本应弹出时触发（设置-模型配置-右上角「自动强制重连」勾选启用）；引擎隐藏错误窗体，自动在后台向模型续发「继续」文本（不生成提问卡、不重复压入 prompt history、不新建 Task，全程不显示），用户无感知；
+    - **写死 10 次与固定退避 (Fixed 10 Attempts & Backoff)**：每次续发计作一次「内置重连」，上限写死 10 次（`maxReconnectAttempts: 10`）；退避序列 2s → 4s → 8s → 16s → 16s…（恒封顶 `maxBackoffMs: 16000`）；轮次顶部进度胶囊恒定以「自动内置重连 N/10 ...」开头（等待中追加「Xs 后重试」，续发中追加「正在重发请求 …」）；
+    - **取消自动切换模型 (No Auto Model Switch)**：引擎不再承担任何自动切换模型职责（候选池解析、MRU 巡检、多轮轮转、临时切换与恢复原模型逻辑已彻底移除）；错误卡上的「切换其他模型」为纯手动入口；
+    - **耗尽才弹窗 (Give Up After Exhaustion)**：仅当 10 次内置重连全部耗尽仍失败时，才渲染既有「模型调用失败 [模型]」错误卡并附摘要「已尝试自动内置重连 N/10 次后仍失败」；
+    - **过程记录保留铁律**：重发尝试（`resetCurrentTurnForResend`）时**严禁清空步骤容器（`stepsContainerEl.innerHTML`）与工具卡片缓存（`renderedToolCards`）**，必须 100% 完整保留本轮之前已真实执行完毕的 Thinking 切片（已封口/含实质内容）、工具调用卡片与 Point 阶段性输出切片，恢复后增量无缝追加后续因果链条；
+    - **纯状态示意条与系统弹窗静默铁律 (Status-Capsule-Only & Notification Silence)**：内置重连期间**严禁触发任何 Windows 原生系统弹窗提醒 (Toast / Notification)**，也**严禁在正文回答区域插入不可撤回的红色错误卡片 (`.sketch-error-card`)**；统一由 Flow 轮次顶部的手绘进度胶囊作为**纯状态示意条**；
+    - **首响应即时结算与终止守则**：模型一旦恢复正常产生响应（Thinking/Text/Toolcall 产生首事件），立即结算成功；胶囊即时显示「自动内置重连成功 · 已恢复正常，继续执行」并于 1.2 秒内快速淡出隐藏，同时调用 `clearTurnErrorState` 原子化清除错误状态；真正的工具卡收起、流式收口与会话归档交由后续 `agent-end` 自然触发；用户显式点击「⏹ 终止」时全链路彻底强杀退出（`isTaskAborted` 门禁），严禁触发任何内置重连；
+    - **会话重启与追问时错误卡彻底清理铁律 (Error Card Cleanup on Continuation)**：当界面出现模型调用失败诊断卡（`.sketch-error-card`）后，无论用户发送新提问（如“继续”）、还是点击错误卡「重试当前提问」按钮重新发起会话，系统在启动新轮次前必须彻底物理移除 `flowConversation` 与轮次容器中残留的所有 `.sketch-error-card`，重置重连胶囊，并将 `task.turns` 中上一轮次的错误标记（`errorMessage: null`）与合成占位文本清理归位，确保后续流式生成与历史重渲 0 残留；
 
 > 📖 **完整功能矩阵与系统特性总览**：详见项目架构总览技能 [`.agents/skills/pi-desktop-overview/SKILL.md`](file:///.agents/skills/pi-desktop-overview/SKILL.md)。
 
@@ -147,7 +142,7 @@
 | | **`sketch-modal-pattern`** | [`.agents/skills/sketch-modal-pattern/SKILL.md`](file:///.agents/skills/sketch-modal-pattern/SKILL.md) | 手绘素描居中模态弹窗（Pop & Shake、Step Back 优先拦截、焦点陷阱）（触发：模态窗/弹窗/alert替换）。 |
 | | **`sketch-form-autofill-pattern`** | [`.agents/skills/sketch-form-autofill-pattern/SKILL.md`](file:///.agents/skills/sketch-form-autofill-pattern/SKILL.md) | 手绘表单规范、消灭原生变色与 `SketchAutoFill` 智能联想（触发：新增表单/自定义填表/autofill）。 |
 | | **`svg-asset-workflow`** | [`.agents/skills/svg-asset-workflow/SKILL.md`](file:///.agents/skills/svg-asset-workflow/SKILL.md) | 手绘 SVG 图元规范、`currentColor` 主题自适应与内联管理（触发：SVG图标/替换图标/图标规范）。 |
-| | **`flow-interaction-pattern`** | [`.agents/skills/flow-interaction-pattern/SKILL.md`](file:///.agents/skills/flow-interaction-pattern/SKILL.md) | Flow 流式交互（单行紧凑过程卡、因果时序拼接、多轮定位、模型自动重连、文件变更收纳框、会话回退撤回、状态分仓与自绑定）（触发：flow交互/思维链/轮次定位/文件变更/修改了哪些文件/会话回退/撤回文件）。 |
+| | **`flow-interaction-pattern`** | [`.agents/skills/flow-interaction-pattern/SKILL.md`](file:///.agents/skills/flow-interaction-pattern/SKILL.md) | Flow 流式交互（单行紧凑过程卡、因果时序拼接、多轮定位、模型无痕内置重连、文件变更收纳框、会话回退撤回、状态分仓与自绑定）（触发：flow交互/思维链/轮次定位/文件变更/修改了哪些文件/会话回退/撤回文件）。 |
 | | **`settings-view-pattern`** | [`.agents/skills/settings-view-pattern/SKILL.md`](file:///.agents/skills/settings-view-pattern/SKILL.md) | 设置全屏独立视图（第4态）、5 大 Tab、MRU 模型排序与回退流（触发：设置界面/配置页面/settings）。 |
 | **工程与治理** | **`desktop-kernel-lifecycle`** | [`.agents/skills/desktop-kernel-lifecycle/SKILL.md`](file:///.agents/skills/desktop-kernel-lifecycle/SKILL.md) | Tauri 2 + Rust 内核生命周期管控、多环境寻址与 Release 打包避坑（触发：内核崩溃/进程重启/打包）。 |
 | | **`auto-compile-and-fix`** | [`.agents/skills/auto-compile-and-fix/SKILL.md`](file:///.agents/skills/auto-compile-and-fix/SKILL.md) | 任务完成后自动极速编译与失败自愈闭环、前端门禁与度量（触发：编译校验/自动修复/构建验证/门禁）。 |

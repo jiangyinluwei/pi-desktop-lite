@@ -1032,7 +1032,7 @@
   }
 }
 
-/* 自动重连/切换进度胶囊 (手绘草图风格，运行态瞬态展示，不沉淀历史) */
+/* 无痕内置重连进度胶囊 (手绘草图风格，运行态瞬态展示，不沉淀历史) */
 .flow-failover-capsule {
   display: inline-flex;
   align-items: center;

@@ -276,7 +276,7 @@
   margin: 2px 0 0 0;
 }
 
-/* 自动重连切换 Checkbox (手绘草图质感，常态透明无边框、悬浮显框，杜绝 Layout Shift) */
+/* 自动强制重连 Checkbox (手绘草图质感，常态透明无边框、悬浮显框，杜绝 Layout Shift) */
 .auto-reconnect-toggle {
   display: inline-flex;
   align-items: center;

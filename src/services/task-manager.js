@@ -15,7 +15,7 @@ import { sessionService } from "./session-service.js";
  */
 const scheduleSessionRefresh = () => {
   setTimeout(() => {
-    sessionService.refreshSessions().catch(() => {});
+    sessionService.refreshSessions().catch(() => { });
   }, 400);
 };
 
@@ -436,11 +436,11 @@ export class TaskManager extends EventTarget {
       try {
         await piClient.abort(taskId);
         await piClient.destroyTask(taskId);
-      } catch (_) {}
+      } catch (_) { }
     } else {
       try {
         await piClient.destroyTask(taskId);
-      } catch (_) {}
+      } catch (_) { }
     }
 
     notificationService.unregisterTask(taskId);
@@ -480,7 +480,7 @@ export class TaskManager extends EventTarget {
       if (!task) return;
       if (task.status === "aborted" || task.isAborted) return;
 
-      // 自动重连切换进行中 或 将被引擎接管冷启动 (自动重连开启且含模型上下文) 或 瞬态速率限制：
+      // 自动强制重连进行中 或 将被引擎接管冷启动 (内置重连开启且含模型上下文) 或 瞬态速率限制：
       // 错误一律由 ModelFailoverEngine 结算，绝不提前置 Task 为 error / 弹错误通知
       // (注：taskManager 监听器先于 main.js 注册，故冷启动时引擎尚未激活，需以 canHandle 预判接管)
       if (
@@ -700,7 +700,7 @@ export class TaskManager extends EventTarget {
       case "turn_end":
       case "message_start":
       case "message_end":
-        // 自动重连切换进行中：错误分支交由引擎结算，不提前置 Task 为 error
+        // 自动强制重连进行中：错误分支交由引擎结算，不提前置 Task 为 error
         if (modelFailoverEngine.isActive()) break;
         // 「终止并发送」流程中旧轮错误已由 interrupt-send 流水线结算
         if (task.pendingInterruptSend) break;
@@ -725,7 +725,7 @@ export class TaskManager extends EventTarget {
         break;
 
       case "extension_error":
-        // 自动重连切换进行中：错误分支交由引擎结算
+        // 自动强制重连进行中：错误分支交由引擎结算
         if (modelFailoverEngine.isActive()) break;
         // 「终止并发送」流程中旧轮错误已由 interrupt-send 流水线结算
         if (task.pendingInterruptSend) break;
@@ -758,7 +758,7 @@ export class TaskManager extends EventTarget {
             (m) => m.stopReason === "error" || m.errorMessage
           );
           if (errMessage) {
-            // 自动重连切换进行中：错误分支交由引擎结算，不提前置 Task 为 error
+            // 自动强制重连进行中：错误分支交由引擎结算，不提前置 Task 为 error
             if (modelFailoverEngine.isActive()) break;
             const rawErrMsg = errMessage.errorMessage || "";
             if (

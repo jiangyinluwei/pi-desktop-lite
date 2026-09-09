@@ -292,7 +292,7 @@ export function initKernelPanel(ctx) {
     });
   }
 
-  // 模型配置「自动重连切换」开关 (默认勾选，全局持久化)
+  // 模型配置「自动强制重连」开关 (默认勾选，全局持久化)
   if (autoReconnectSwitch) {
     autoReconnectSwitch.checked = configService.getAutoReconnectSwitch();
     autoReconnectSwitch.addEventListener("change", () => {

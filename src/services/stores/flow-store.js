@@ -42,8 +42,6 @@ function createFlowData() {
     hasReceivedDelta: false,
     hasAutoCollapsedThinking: false,
     interruptSendTaskId: null,
-    lastSentPrompt: "",
-    lastImagePayloads: null,
     lastSentAttachments: [],
     thinkingStartTime: 0,
   };
@@ -99,12 +97,6 @@ function scopeFor(taskId) {
     },
     get interruptSendTaskId() {
       return s.interruptSendTaskId;
-    },
-    get lastSentPrompt() {
-      return s.lastSentPrompt;
-    },
-    get lastImagePayloads() {
-      return s.lastImagePayloads;
     },
     get lastSentAttachments() {
       return s.lastSentAttachments;

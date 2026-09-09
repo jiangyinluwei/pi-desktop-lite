@@ -29,7 +29,7 @@
 - **后台多任务管理与状态无缝挂起**：支持多任务并发、前后台活跃任务直接切换无感自动挂起（防幽灵任务丢失）、显式「⏹ 终止」强制彻底杀灭子进程与防后台泄漏（杜绝 Token 消耗与迟到事件复活）、终态任务与活跃任务挂起彻底解耦（杜绝幽灵已完成徽标）、会话延续透传与多轮归属唯一性保证（`--session <path>` 续写同一底层文件，彻底杜绝历史被割裂为新记录）、会话流与文件变更收纳框隔离恢复，右上角 Mini 任务胶囊与半透明抽屉实时联动；
 - **工作区路由调度中枢**：提供 `code-area` 免污染路由调度中枢、Windows 原生文件夹选择器与多预设工作区平滑切换；
 - **手绘草图美学与组件套件**：全域手绘 SVG 图元、明暗纸质双模自适应，配套 `SketchSelect` / `SketchAutoFill` / `SketchModal` 原生草图组件；
-- **Rust 高性能核心与自愈保障**：底层孤儿进程级监管、内核崩溃平滑自动重连、模型调用自愈与多轮巡检切换（瞬态与“inference tpm exhausted”/TPM 速率限制自动退避重试、120 秒同错判定容忍窗口与成功时间清零、已有步骤记录完好保留、单模型降级保护、永久/未知错误多轮轮转备选模型并平滑退避、MRU 置顶保护）、Node.js 运行环境极速预检与 Windows 桌面级系统集成。
+- **Rust 高性能核心与自愈保障**：底层孤儿进程级监管、内核崩溃平滑自动重连、模型调用无痕内置重连（后台静默续发「继续」文本、写死 10 次、2/4/8/16s 固定退避、轮次胶囊「自动内置重连 N/10 ...」实时提示、已有步骤记录完好保留、10 次耗尽才弹出错误窗体，已彻底取消自动切换模型逻辑）、Node.js 运行环境极速预检与 Windows 桌面级系统集成。
 
 > 📖 **完整特性与架构规范**：详见项目内置开发技能 [`.agents/skills/pi-desktop-overview/SKILL.md`](.agents/skills/pi-desktop-overview/SKILL.md)。
 
@@ -99,15 +99,15 @@ pi-desktop-lite/
 │   │   ├── flow-render.js      # Flow 纯渲染层：工具/思维/阶段卡片创建、入参/结果 HTML 格式化（无副作用，显式 import）
 │   │   ├── flow-dom.js         # Flow 域只读 DOM 引用层：createFlowDom() → ctx.flowDom，flow-* 模块只读引用
 │   │   ├── flow-state-view.js  # Flow 视图派生缓存唯一属主：flowView 密封对象（密封隔离，严禁入 store）
-│   │   ├── flow-stream.js      # 流式状态机、错误卡渲染与自动重连胶囊
-│   │   ├── flow-pipeline.js    # 提问下发、工具调用事件、自愈引擎与发送拦截
+│   │   ├── flow-stream.js      # 流式状态机、错误卡渲染与内置重连胶囊
+│   │   ├── flow-pipeline.js    # 提问下发、工具调用事件、内置重连引擎与发送拦截
 │   │   ├── flow-file-changes.js # 会话文件变更收纳框（新增/修改/删除文件汇总，点击打开所在文件夹；按 Task 会话流缓存，回入 Flow 一致恢复；含逐条变更日志供回退预览/剪枝）
 │   │   ├── flow-rollback.js     # 会话回退编排（轮次「回退到此处」入口、SketchModal 确认、文件撤回还原 + 内核 fork + 剪枝重渲 + 3 秒浮窗提醒）
 │   │   ├── task-panel.js       # 后台任务胶囊、侧边栏、历史恢复与快照归档
 │   │   ├── sessions-panel.js   # 会话记录列表、搜索筛选、进入 Flow 管线与界面会话清空
 │   │   ├── workspace-panel.js  # 多预设工作区设置面板与路由绑定
 │   │   └── global-interactions.js # 全局右键/Esc 回退与外链拦截
-│   ├── services/               # 前端服务层 (tauri-bridge, config-service, pi-client, model-failover 模型自愈引擎, workspace-service 等)
+│   ├── services/               # 前端服务层 (tauri-bridge, config-service, pi-client, model-failover 内置重连引擎, workspace-service 等)
 │   │   └── stores/             # 共享可变状态唯一属主 (view-store, settings-store, attachments-store, flow-store 按 taskId 分仓)
 │   ├── styles/                 # 按功能域拆分的手绘样式 (tokens, layout, flow, markdown, settings, form-widgets 等)
 │   ├── index.html              # 页面主体

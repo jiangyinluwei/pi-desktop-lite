@@ -188,8 +188,7 @@ export const EVENT_CHANNEL_TABLE_VERSION = 2;
 // 2. src/services/stores/flow-store.js（纯数据唯一属主，按 taskId 分仓）：
 //    flowStore.for(taskId)     —— responseText / thinkingText / errorMessage / lastUserQuery /
 //                                 hasReceivedDelta / hasAutoCollapsedThinking / interruptSendTaskId /
-//                                 lastSentPrompt / lastSentAttachments / lastImagePayloads /
-//                                 thinkingStartTime 的唯一读写面（get/set/appendResponse/resetAll）
+//                                 lastSentAttachments / thinkingStartTime 的唯一读写面（get/set/appendResponse/resetAll）
 //
 // ⚠️ 分仓键规则：发送链传 currentTask.id、回填链（renderTurnsIntoFlow）传 task.id、
 //    自愈链传引擎 taskId；事件处理器传 piClient.lastEventTaskId（调用点均已过前台门禁）；

@@ -15,8 +15,8 @@
  *      分仓键在门禁通过时恒等于 piClient.lastEventTaskId，后台任务事件永远写不到前台分仓。
  *
  * 纯数据字段（responseText / thinkingText / errorMessage / lastUserQuery / hasReceivedDelta /
- * hasAutoCollapsedThinking / interruptSendTaskId / lastSentPrompt / lastSentAttachments /
- * lastImagePayloads / thinkingStartTime）一律经 `flowStore.for(resolveStreamTaskId(id))` 读写，
+ * hasAutoCollapsedThinking / interruptSendTaskId / lastSentAttachments / thinkingStartTime）
+ * 一律经 `flowStore.for(resolveStreamTaskId(id))` 读写，
  * 本模块与任何模块都严禁再出现 `flow.<纯数据>` 裸写。
  */
 

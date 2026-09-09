@@ -1,7 +1,7 @@
 ---
 name: settings-view-pattern
 description: |
-  指导桌面端 (Tauri 2 + Web 前端) 中项目设置独立全屏页面（Settings View - 第 4 态独立视图）的工程化实现与交互设计。涵盖非浮窗全屏视图状态机、3 秒定时平滑渐隐指引、~/.pi-dl/config.json 应用全局配置持久化与 ~/.pi/agent/ 双层映射、5 大 Tab 导航（常规 / 模型配置 / 内核 / 会话记录 / 工作区）、当前模型列表 MRU 最近选用自动排序与锁定保护、模型配置「自动重连切换」Checkbox 与 modelFailover 推荐参数块持久化及内核 pi_apply_model_failover_preset 探测式注入、多预设工作区面板（模板→运行时副本切换）、自定义模型 Token 规范智能吸附、手绘草图表单几何工程美学及全域右键/Esc 回退流水线规范。当用户提出"设置界面"、"配置页面"、"设置页写法"、"settings view"、"模型配置界面"、"持久化配置"、"设置规范"、"自动重连切换"、"工作区"时使用此技能。
+  指导桌面端 (Tauri 2 + Web 前端) 中项目设置独立全屏页面（Settings View - 第 4 态独立视图）的工程化实现与交互设计。涵盖非浮窗全屏视图状态机、3 秒定时平滑渐隐指引、~/.pi-dl/config.json 应用全局配置持久化与 ~/.pi/agent/ 双层映射、5 大 Tab 导航（常规 / 模型配置 / 内核 / 会话记录 / 工作区）、当前模型列表 MRU 最近选用自动排序与锁定保护、模型配置「自动强制重连」Checkbox 与 modelFailover 推荐参数块持久化及内核 pi_apply_model_failover_preset 探测式注入、多预设工作区面板（模板→运行时副本切换）、自定义模型 Token 规范智能吸附、手绘草图表单几何工程美学及全域右键/Esc 回退流水线规范。当用户提出"设置界面"、"配置页面"、"设置页写法"、"settings view"、"模型配置界面"、"持久化配置"、"设置规范"、"自动强制重连"、"工作区"时使用此技能。
 ---
 
 # 项目设置独立全屏页面工程规范 (Settings View Pattern)
@@ -34,8 +34,8 @@ graph TD
 ```
 
 ### 应用全局配置 (`~/.pi-dl/config.json`)
-- `autoReconnectSwitch`（默认 `true`）：模型调用报错时进入自动重连切换流水线；
-- `modelFailover`：`maxReconnectAttempts: 24`，退避序列 `[2000, 4000, 8000]`，单候选重连预算 2 次；
+- `autoReconnectSwitch`（默认 `true`）：模型调用报错时进入无痕内置重连流水线（后台静默续发「继续」，写死 10 次）；
+- `modelFailover`：`maxReconnectAttempts: 10`，退避序列 `[2000, 4000, 8000, 16000]`（恒封顶 16s）；
 - **内核辅助注入**：启动与勾选时通过 `pi_apply_model_failover_preset` 探测式写入 `settings.json`（已存在自定义配置时不覆盖）。
 
 ---
@@ -49,7 +49,7 @@ graph TD
 - **MRU 自动排序与首位锁定**：首位（`index 0`）始终固定为当前选中模型，锁定禁止删除；点击任一模型选用立即移至首位；新增模型插入至 `index 1`；
 - **子代理模型自动钉住 (`pi-subagents`)**：选用模型时若检测到已安装 `pi-subagents` 扩展，自动调用 `pi_sync_subagent_pinned_model` 将当前主模型锁定为子代理默认模型与各角色 overrides，防止高阶思维模型跃升；
 - **折叠式通道抽屉**：列表限高 240px，展开抽屉时模型列表进入 `.collapsed-single`（仅留选中项），表单聚焦时调用 `scrollElementIntoViewBottom` 智能对齐视口下缘；
-- **自动重连切换 Checkbox**：标题右侧集成手绘草图复选框，常态透明无边框（`1px transparent` 占位），`hover` 显边框。
+- **自动强制重连 Checkbox**：标题右侧集成手绘草图复选框，常态透明无边框（`1px transparent` 占位），`hover` 显边框。
 
 ### 3. 内核与扩展管理 (`pane-packages`)
 - **内核监控与热更新**：顶部展示内核状态（Ready/Starting/Stopped/Crashed），支持一键重启与流式下载热更新；

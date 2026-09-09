@@ -9,7 +9,7 @@ import { flowView, resolveStreamTaskId } from "./flow-state-view.js";
 import { createThinkingStepCard, createPhaseStepCard, syncThinkingPreview } from "./flow-render.js";
 
 /**
- * 流式状态机、错误卡渲染与自动重连胶囊
+ * 流式状态机、错误卡渲染与内置重连胶囊
  *
  * 阶段 7 批次 A 数据分层：
  *   - 纯数据（responseText / thinkingText / errorMessage / lastUserQuery / hasReceivedDelta /
@@ -343,7 +343,8 @@ export function initFlowStream(ctx) {
   };
 
   /**
-   * 更新自动自愈/切换进度胶囊 (手绘草图风格，无 Emoji)
+   * 更新无痕内置重连进度胶囊 (手绘草图风格，无 Emoji)
+   * 文案铁律：「自动内置重连 N/10 ...」在最开头即展示
    */
   const updateFailoverCapsule = (payload = {}) => {
     if (!flowView.activeTurnRefs?.failoverCapsuleEl || !flowView.activeTurnRefs?.failoverTextEl) return;
@@ -351,22 +352,9 @@ export function initFlowStream(ctx) {
     const textEl = flowView.activeTurnRefs.failoverTextEl;
     const capsule = flowView.activeTurnRefs.failoverCapsuleEl;
 
-    if (payload.status === "succeeded" && payload.switched) {
-      clearTurnErrorState();
-      textEl.textContent = `已自动切换至 ${payload.modelName || "其他模型"} · 已记入最近使用`;
-      capsule.classList.remove("hidden");
-      capsule.classList.add("ok");
-      // 2s 后淡出并彻底重置
-      setTimeout(() => {
-        capsule.classList.add("hidden");
-        capsule.classList.remove("ok");
-      }, 2000);
-      return;
-    }
     if (payload.status === "succeeded") {
       clearTurnErrorState();
-      // 恢复成功：若是速率限制，提示「推理限制已解除，继续执行」；若是其他瞬态异常，提示「已恢复正常，继续执行」
-      textEl.textContent = payload.isRateLimit ? "推理限制已解除，继续执行" : "已恢复正常，继续执行";
+      textEl.textContent = "自动内置重连成功 · 已恢复正常，继续执行";
       capsule.classList.remove("hidden");
       capsule.classList.add("ok");
       setTimeout(() => {
@@ -380,76 +368,36 @@ export function initFlowStream(ctx) {
       capsule.classList.remove("ok");
       return;
     }
+    if (payload.status !== "reconnecting") return;
 
-    // 等待恢复中 / 切换中
+    // 内置重连等待中 / 续发中：恒定以「自动内置重连 N/10 ...」开头
     capsule.classList.remove("ok");
-    if (payload.status === "reconnecting") {
-      const candInfo = payload.candidate ? ` (${payload.candidate.name || payload.candidate.id})` : "";
-      const isRateLimit = Boolean(payload.isRateLimit);
-      const progressTag = payload.timeoutSecs
-        ? ` (已持续 ${payload.elapsedSecs || 0}s/判定 ${payload.timeoutSecs}s)`
-        : ` ${payload.attempt}/${payload.maxAttempts}`;
-
-      if (isRateLimit) {
-        if (phase === "waiting" && payload.nextDelayMs) {
-          const secs = Math.max(1, Math.round(payload.nextDelayMs / 1000));
-          textEl.textContent = `触发模型每分钟推理速率限制 (TPM/RPM)，正在等待恢复...${progressTag} · ${secs}s 后重试`;
-        } else if (phase === "sending") {
-          textEl.textContent = `触发模型每分钟推理速率限制 (TPM/RPM)，正在等待恢复...${progressTag} · 正在重发请求 …`;
-        } else {
-          textEl.textContent = `触发模型每分钟推理速率限制 (TPM/RPM)，正在等待恢复...${progressTag}`;
-        }
-      } else {
-        const errTag = payload.code ? `异常 ${payload.code}` : "异常";
-        if (phase === "waiting" && payload.nextDelayMs) {
-          const secs = Math.max(1, Math.round(payload.nextDelayMs / 1000));
-          textEl.textContent = `模型${errTag}${candInfo} · 正在等待恢复${progressTag} · ${secs}s 后重试`;
-        } else if (phase === "sending") {
-          textEl.textContent = `模型${errTag}${candInfo} · 正在重发请求${progressTag} …`;
-        } else {
-          textEl.textContent = `正在等待恢复${progressTag}${candInfo}`;
-        }
-      }
-      capsule.classList.remove("hidden");
-    } else if (payload.status === "switching") {
-      const cyclePrefix = payload.maxCycles > 1 ? `第 ${payload.cycle || 1}/${payload.maxCycles} 轮 · ` : "";
-      const countSuffix = `(${cyclePrefix}${payload.candidateIndex + 1}/${payload.candidateTotal})`;
-
-      if (phase === "waiting" && payload.nextDelayMs) {
-        const secs = Math.max(1, Math.round(payload.nextDelayMs / 1000));
-        textEl.textContent = `模型切换重试中 · ${secs}s 后尝试下一模型 … ${countSuffix}`;
-      } else if (phase === "switching_model") {
-        textEl.textContent = `正在自动切换至 ${payload.modelName || "其他模型"} 重试 … ${countSuffix}`;
-      } else {
-        textEl.textContent = `${payload.modelName || "候选模型"} 重试中 … ${countSuffix}`;
-      }
-      capsule.classList.remove("hidden");
+    const progress = `${payload.attempt || 0}/${payload.maxAttempts || 0}`;
+    if (phase === "waiting" && payload.nextDelayMs) {
+      const secs = Math.max(1, Math.round(payload.nextDelayMs / 1000));
+      textEl.textContent = `自动内置重连 ${progress} · ${secs}s 后重试`;
+    } else if (phase === "sending") {
+      textEl.textContent = `自动内置重连 ${progress} · 正在重发请求 …`;
+    } else {
+      textEl.textContent = `自动内置重连 ${progress} ...`;
     }
-    // 注：重连/切换胶囊更新不再强制滚动到底部，避免输出期间打断用户滚轮浏览
+    capsule.classList.remove("hidden");
   };
 
-  // 自动重连切换引擎进度事件 → 更新 Flow 进度胶囊
+  // 自动强制重连引擎进度事件 → 更新 Flow 进度胶囊
   modelFailoverEngine.addEventListener("failover-status", (e) => {
     const payload = e.detail || {};
     // 退避等待期间停止思考计时，避免耗时位残留「思考中」虚长
-    if (
-      (payload.status === "reconnecting" || payload.status === "switching") &&
-      payload.phase === "waiting" &&
-      flowView.thinkingTimerInterval
-    ) {
+    if (payload.status === "reconnecting" && payload.phase === "waiting" && flowView.thinkingTimerInterval) {
       clearInterval(flowView.thinkingTimerInterval);
       flowView.thinkingTimerInterval = null;
     }
-    if (
-      (payload.status === "reconnecting" || payload.status === "switching") &&
-      payload.phase === "waiting" &&
-      flowView.textTimerInterval
-    ) {
+    if (payload.status === "reconnecting" && payload.phase === "waiting" && flowView.textTimerInterval) {
       clearInterval(flowView.textTimerInterval);
       flowView.textTimerInterval = null;
     }
     updateFailoverCapsule(payload);
-    // 侧边栏挂起任务状态徽章 (自动重连中/切换模型中) 实时刷新
+    // 侧边栏挂起任务状态徽章 (自动内置重连中) 实时刷新
     if (
       taskDetailsSidebar &&
       taskDetailsSidebar.classList.contains("open") &&
@@ -560,23 +508,12 @@ export function initFlowStream(ctx) {
       `
       : "";
 
-    // 自愈摘要行：仅当引擎发生过自动重连/切换时才追加 (复用 renderErrorCard 终态渲染)
+    // 内置重连摘要行：仅当引擎耗尽 10 次内置重连后才追加
     let failoverSummaryHtml = "";
     if (errDetail?.failoverSummary) {
-      if (errDetail.failoverSummary.singleModelOnly) {
-        failoverSummaryHtml = `<div class="error-failover-summary">当前仅配置 1 个模型，无其他候选模型可自动切换</div>`;
-      } else {
-        const parts = [];
-        if (errDetail.failoverSummary.reconnectCount > 0) {
-          parts.push(`已尝试重连 ${errDetail.failoverSummary.reconnectCount} 次`);
-        }
-        if (errDetail.failoverSummary.triedCandidates > 0) {
-          parts.push(`已依次尝试 ${errDetail.failoverSummary.triedCandidates} 个模型`);
-        }
-        if (parts.length > 0) {
-          failoverSummaryHtml = `<div class="error-failover-summary">${parts.join(" / ")} 后仍失败</div>`;
-        }
-      }
+      const n = errDetail.failoverSummary.reconnectCount || 0;
+      const total = errDetail.failoverSummary.maxAttempts || n;
+      failoverSummaryHtml = `<div class="error-failover-summary">已尝试自动内置重连 ${n}/${total} 次后仍失败</div>`;
     }
 
     const cardHtml = `

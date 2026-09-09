@@ -189,14 +189,14 @@ export function initFlowUi(ctx) {
     `;
     groupEl.appendChild(routeCapsuleEl);
 
-    // 2b. 自动重连/切换进度胶囊 (手绘草图风格，运行态瞬态展示，不沉淀历史)
+    // 2b. 无痕内置重连进度胶囊 (手绘草图风格，运行态瞬态展示，不沉淀历史)
     const failoverCapsuleEl = document.createElement("div");
     failoverCapsuleEl.className = "flow-failover-capsule hidden";
     failoverCapsuleEl.setAttribute("role", "status");
     failoverCapsuleEl.setAttribute("aria-live", "polite");
     failoverCapsuleEl.innerHTML = `
       <span class="capsule-icon" aria-hidden="true">${ICONS.bolt}</span>
-      <span class="capsule-text">模型调用异常 · 自动重连中</span>
+      <span class="capsule-text">自动内置重连中</span>
     `;
     groupEl.appendChild(failoverCapsuleEl);
 

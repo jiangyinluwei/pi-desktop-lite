@@ -189,13 +189,12 @@ export function initModelPanel(ctx) {
           </div>
         </div>
         <div class="model-item-actions">
-          ${
-            isActive
-              ? `<span class="flat-badge flat-badge-active">使用中</span>
+          ${isActive
+          ? `<span class="flat-badge flat-badge-active">使用中</span>
                  <button type="button" class="flat-btn flat-btn-secondary mini btn-remove-model" disabled style="opacity: 0.35; cursor: not-allowed; display: inline-flex; align-items: center; gap: 4px;" title="当前使用中的模型禁止删除"><span class="btn-icon">${ICONS.lock}</span> 锁定</button>`
-              : `<button type="button" class="flat-btn flat-btn-secondary mini btn-select-model">选用</button>
+          : `<button type="button" class="flat-btn flat-btn-secondary mini btn-select-model">选用</button>
                  <button type="button" class="flat-btn flat-btn-secondary mini btn-remove-model" title="从列表移除" aria-label="从列表移除" style="display: inline-flex; align-items: center; justify-content: center; padding: 4px 6px;">${ICONS.close}</button>`
-          }
+        }
         </div>
       `;
 
@@ -247,7 +246,7 @@ export function initModelPanel(ctx) {
 
   const loadModelsAndState = async () => {
     try {
-      // 同步「自动重连切换」勾选状态至设置页 UI
+      // 同步「自动强制重连」勾选状态至设置页 UI
       if (autoReconnectSwitch) {
         autoReconnectSwitch.checked = configService.getAutoReconnectSwitch();
       }
@@ -378,8 +377,8 @@ export function initModelPanel(ctx) {
       settingsStore.currentOfficialAuth[provMeta.id] ||
       (provMeta.id.startsWith("opencode")
         ? settingsStore.currentOfficialAuth["opencode-zen"] ||
-          settingsStore.currentOfficialAuth["opencode-go"] ||
-          settingsStore.currentOfficialAuth["opencode"]
+        settingsStore.currentOfficialAuth["opencode-go"] ||
+        settingsStore.currentOfficialAuth["opencode"]
         : null);
     const existingKey = typeof authEntry === "string" ? authEntry : authEntry?.key || "";
 
