@@ -2,6 +2,7 @@ import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
 import { bus } from "../lib/event-bus.js";
+import { isInteractiveExtensionUiRequest } from "../lib/contracts.js";
 import { piClient, isAbortError } from "../services/pi-client.js";
 import { configService } from "../services/config-service.js";
 import { promptHistoryNavigator } from "../services/prompt-history.js";
@@ -532,27 +533,11 @@ export function initFlowPipeline(ctx) {
 
   piClient.addEventListener("extension-ui", (e) => {
     const data = e?.detail || {};
-    const method = String(data.method || "").toLowerCase();
 
     // 仅当扩展插件发出真正需要人工介入与交互确认的请求（如 confirm/prompt/select/input/form 等）时，
     // 且处于非聚焦状态才触发系统通知；常规的 setWidget / setStatus / notify(info) 等被动组件更新绝不触发人工介入通知
-    const INTERACTIVE_METHODS = [
-      "confirm",
-      "prompt",
-      "select",
-      "input",
-      "editor",
-      "form",
-      "ask_user",
-      "human_intervention",
-      "decision",
-    ];
-    const isInteractive =
-      INTERACTIVE_METHODS.includes(method) ||
-      data.interactive === true ||
-      data.requiresConfirmation === true;
-
-    if (isInteractive) {
+    // 交互判定唯一源见 src/lib/contracts.js（阶段 8 消除双份常量）
+    if (isInteractiveExtensionUiRequest(data)) {
       const msg =
         data.message ||
         data.title ||

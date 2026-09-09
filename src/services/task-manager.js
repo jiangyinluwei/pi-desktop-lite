@@ -7,6 +7,10 @@ import { piClient, parseErrorMessage, isAbortError } from "./pi-client.js";
 import { notificationService, isTransientRateLimitMessage } from "./notification-service.js";
 import { modelFailoverEngine } from "./model-failover.js";
 import { sessionService } from "./session-service.js";
+import {
+  EXTENSION_UI_RESPONDABLE_METHODS,
+  isInteractiveExtensionUiRequest,
+} from "../lib/contracts.js";
 
 /**
  * 会话记录增量同步（双保险）：任务进入任意终态（completed/error/aborted）后，
@@ -118,6 +122,8 @@ export class TaskManager extends EventTarget {
       events: [],
       hasUnread: false,
       errorMessage: null,
+      /** @type {Map<string, object>} 未决人工交互请求（extension_ui_request.id → request） */
+      pendingUiRequests: new Map(),
       turns: [
         {
           id: `turn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -304,6 +310,121 @@ export class TaskManager extends EventTarget {
     );
   }
 
+  /* ======================================================================
+   * 未决人工交互请求（Extension UI）生命周期
+   * ----------------------------------------------------------------------
+   * 登记：内核发出 extension_ui_request（select/confirm/input/editor）时同步写入
+   *       task.pendingUiRequests（id → 请求帧），随 Task 挂起保留、直切不丢；
+   * 清除：作答回写成功 / 超时 / agent_end / abort / 内核重启；
+   * 恢复：Map 清空且 Task 仍为 paused 时，若内核仍在生成则回落 streaming。
+   * 全程同步（对齐 Store action 同步铁律），TaskManager 即 Task 状态属主。
+   * ====================================================================== */
+
+  /**
+   * 登记一条未决人工交互请求（仅内核原生可回写的四类方法建卡）。
+   * @param {TaskItem} task
+   * @param {Record<string, any>} data 原始 extension_ui_request 帧
+   */
+  _registerPendingUiRequest(task, data) {
+    const method = String(data.method || "").toLowerCase();
+    const id = data.id;
+    if (!id || !task.pendingUiRequests) return;
+    // 非可回写方法（扩展别名 prompt/form/... 或纯标记帧）只置 paused，不建作答卡
+    if (!EXTENSION_UI_RESPONDABLE_METHODS.includes(method)) return;
+    if (task.pendingUiRequests.has(id)) return;
+    // select 选项可能是字符串或 {label, description} 对象：统一归一为字符串（回写值须与内核原样匹配）
+    const options = Array.isArray(data.options)
+      ? data.options.map((opt) => {
+          if (opt && typeof opt === "object") {
+            return String(opt.value ?? opt.label ?? opt.text ?? "");
+          }
+          return String(opt ?? "");
+        })
+      : [];
+    task.pendingUiRequests.set(id, {
+      id,
+      method,
+      title: data.title || data.message || data.prompt || "",
+      message: data.message || "",
+      options,
+      placeholder: data.placeholder || "",
+      prefill: data.prefill ?? data.defaultValue ?? "",
+      defaultYes: data.defaultYes,
+      timeout: typeof data.timeout === "number" ? data.timeout : null,
+      receivedAt: Date.now(),
+    });
+  }
+
+  /**
+   * 取某 Task 的未决请求列表（按接收顺序）。
+   * @param {string} taskId
+   * @returns {object[]}
+   */
+  getPendingUiRequests(taskId) {
+    const task = this.tasks.get(taskId);
+    if (!task?.pendingUiRequests) return [];
+    return Array.from(task.pendingUiRequests.values());
+  }
+
+  /** 是否存在未决人工交互请求（供任务抽屉徽标与门禁判定）。 */
+  hasPendingUiRequests(taskId) {
+    const task = this.tasks.get(taskId);
+    return Boolean(task?.pendingUiRequests && task.pendingUiRequests.size > 0);
+  }
+
+  /**
+   * 同步移除一条未决请求（作答提交时先同步摘除，杜绝双击双答竞态）。
+   * @param {string} taskId
+   * @param {string} requestId
+   * @returns {object|null} 被移除的请求
+   */
+  takePendingUiRequest(taskId, requestId) {
+    const task = this.tasks.get(taskId);
+    if (!task?.pendingUiRequests) return null;
+    const req = task.pendingUiRequests.get(requestId) || null;
+    if (req) {
+      task.pendingUiRequests.delete(requestId);
+      this._settlePausedAfterUi(task);
+    }
+    return req;
+  }
+
+  /**
+   * 清空某 Task 全部未决请求（终止 / 内核重启 / 轮次收口）。
+   * @param {string} taskId
+   * @param {{ resume?: boolean }} [opts] resume=false 时不做 paused→streaming 回落
+   *        （轮次结束帧由 agent_end 自行收口，回落会造成终态前的瞬时状态抖动）
+   * @returns {object[]} 被清除的请求（供调用方 best-effort 回写 cancelled）
+   */
+  clearPendingUiRequests(taskId, opts = {}) {
+    const task = this.tasks.get(taskId);
+    if (!task?.pendingUiRequests || task.pendingUiRequests.size === 0) return [];
+    const cleared = Array.from(task.pendingUiRequests.values());
+    task.pendingUiRequests.clear();
+    if (opts.resume !== false) {
+      this._settlePausedAfterUi(task);
+    }
+    return cleared;
+  }
+
+  /**
+   * 未决请求清空后，若 Task 仍停留在 paused（纯因人工交互而暂停）则恢复运行态。
+   * 仅在内核仍在生成（piClient.isStreaming）且非终态时回落 streaming，
+   * 否则保持 paused 交给后续 agent_end / 错误帧自然收口。
+   * @param {TaskItem} task
+   */
+  _settlePausedAfterUi(task) {
+    if (!task || task.status !== "paused") return;
+    if (task.pendingUiRequests && task.pendingUiRequests.size > 0) return;
+    if (task.isAborted || task.status === "aborted") return;
+    if (!piClient.isStreaming) return;
+    task.status = "streaming";
+    const lastTurn = task.turns && task.turns.length > 0 ? task.turns[task.turns.length - 1] : null;
+    if (lastTurn && lastTurn.status === "paused") lastTurn.status = "streaming";
+    this.dispatchEvent(new CustomEvent("task-updated", { detail: task }));
+    this.dispatchEvent(new CustomEvent("tasks-changed", { detail: { tasks: this.getAllTasks() } }));
+  }
+
   /**
    * 将指定 Task 统一结算为异常终态（通知 + 状态广播 + 末轮错误标记）。
    * 供 agent-error 监听与后台任务重连引擎耗尽兑底 (onGiveUp) 复用。
@@ -444,6 +565,11 @@ export class TaskManager extends EventTarget {
     const task = this.tasks.get(taskId);
     if (!task) return;
 
+    // 未决人工交互请求：强杀前 best-effort 回写 cancelled，解除内核阻塞等待；
+    // Rust 侧 send_command 的 aborted 门禁保证迟到作答不复活进程（铁律3 强制终止）
+    // resume:false —— 即将置 aborted，禁止 paused→streaming 的瞬时状态抖动
+    const pendingUi = this.clearPendingUiRequests(taskId, { resume: false });
+
     task.status = "aborted";
     task.isAborted = true;
     task.completedAt = Date.now();
@@ -456,6 +582,12 @@ export class TaskManager extends EventTarget {
     notificationService.unregisterTask(taskId);
     modelFailoverEngine.markTaskAborted(taskId);
     modelFailoverEngine.cancel("abort");
+
+    await Promise.all(
+      pendingUi.map((req) =>
+        piClient.sendExtensionUiResponse(taskId, req.id, { cancelled: true }).catch(() => {})
+      )
+    );
 
     try {
       await piClient.abort(taskId);
@@ -717,22 +849,14 @@ export class TaskManager extends EventTarget {
       }
 
       case "extension_ui_request": {
-        const method = String(data.method || "").toLowerCase();
-        const INTERACTIVE_METHODS = [
-          "confirm",
-          "prompt",
-          "select",
-          "input",
-          "editor",
-          "form",
-          "ask_user",
-          "human_intervention",
-          "decision",
-        ];
-        if (INTERACTIVE_METHODS.includes(method) || data.interactive === true || data.requiresConfirmation === true) {
+        // 交互判定唯一源见 src/lib/contracts.js（阶段 8 消除双份常量）
+        if (isInteractiveExtensionUiRequest(data)) {
           task.status = "paused";
           task.activeToolName = null;
           if (currentTurn) currentTurn.status = "paused";
+          // 未决人工交互请求登记（Task 状态属主即 TaskManager，不新增 store）：
+          // 仅内核原生支持回写的四类方法登记为「可作答」；别名方法只置 paused 不建卡
+          this._registerPendingUiRequest(task, data);
         }
         break;
       }
@@ -782,6 +906,8 @@ export class TaskManager extends EventTarget {
 
       case "agent_end":
       case "agent_settled":
+        // 轮次结束：未决人工交互请求随轮次收口一并失效（避免任务终态后仍悬挂作答卡）
+        this.clearPendingUiRequests(taskId, { resume: false });
         // 用户中途输入「终止并发送」：旧轮结算由前端 interrupt-send 流水线接管，
         // 仅把当前轮标记为已中断，绝不提前将整个 Task 置为 completed
         if (task.pendingInterruptSend) {

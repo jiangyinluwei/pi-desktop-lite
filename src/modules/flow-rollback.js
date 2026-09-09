@@ -19,10 +19,11 @@ import { bindAll } from "../lib/el-binder.js";
  *   5) 剪枝本地文件变更仓 + 重渲 Flow 至回退点 + 提问回填输入框 + 顶部浮窗提示结果（持续 3 秒）。
  */
 
-/** 任务是否处于生成中（回退前置守卫：生成进行中禁止回退） */
+/** 任务是否处于生成中（回退前置守卫：生成进行中禁止回退）
+ *  paused（人工交互待确认）同属「生成进行中」——内核正阻塞等待作答，回退会撕裂因果链 */
 const isTaskRunning = (task) => {
   if (!task) return false;
-  return ["thinking", "streaming", "tool_exec"].includes(task.status);
+  return ["thinking", "streaming", "tool_exec", "paused"].includes(task.status);
 };
 
 /** 内核 fork 消息文本与本地轮次提问的匹配（严格文本优先，前缀次之） */

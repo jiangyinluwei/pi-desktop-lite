@@ -60,6 +60,50 @@
 export const EVENT_CHANNEL_TABLE_VERSION = 2;
 
 // =====================================================================
+// 【扩展 UI 交互方法判定 · 唯一源（阶段 8：消除 task-manager / flow-pipeline 双份常量）】
+// =====================================================================
+// 内核 Extension UI 子协议（docs/rpc.md §Extension UI Protocol）中「对话式」方法：
+// select / confirm / input / editor 会阻塞等待客户端回写 extension_ui_response；
+// 其余（notify / setStatus / setWidget / setTitle / set_editor_text）为 fire-and-forget，
+// 仅作信息展示，绝不建作答卡、绝不置 Task 为 paused。
+// 历史遗留别名（prompt / form / ask_user / human_intervention / decision）由部分扩展发出，
+// 一并视为交互类；数据帧的 interactive / requiresConfirmation 显式标记同样命中。
+export const EXTENSION_UI_DIALOG_METHODS = Object.freeze([
+  "confirm",
+  "prompt",
+  "select",
+  "input",
+  "editor",
+  "form",
+  "ask_user",
+  "human_intervention",
+  "decision",
+]);
+
+/** 内核原生支持回写应答的四类方法（extension_ui_response 仅对这四类生效）。 */
+export const EXTENSION_UI_RESPONDABLE_METHODS = Object.freeze([
+  "select",
+  "confirm",
+  "input",
+  "editor",
+]);
+
+/**
+ * 判定一条 extension_ui_request 是否属于「需要人工作答」的对话式请求。
+ * @param {Record<string, any>} data 原始请求帧
+ * @returns {boolean}
+ */
+export function isInteractiveExtensionUiRequest(data) {
+  if (!data || typeof data !== "object") return false;
+  const method = String(data.method || "").toLowerCase();
+  return (
+    EXTENSION_UI_DIALOG_METHODS.includes(method) ||
+    data.interactive === true ||
+    data.requiresConfirmation === true
+  );
+}
+
+// =====================================================================
 // 【ctx.api 函数槽契约 · 阶段 6 定型】
 // =====================================================================
 // 仍保留在 ctx 的 api 函数槽上的函数槽全量登记（按属主模块分组）。阶段 6 已清退
@@ -76,6 +120,9 @@ export const EVENT_CHANNEL_TABLE_VERSION = 2;
 //  * @property {(taskId: string) => void} restoreFileChangesFor  flow-file-changes → 按 Task 恢复会话流缓存仓
 //  * @property {() => object[]} collectRollbackPreview           flow-file-changes → 回退预览逐条变更
 //  * @property {(taskId: string) => void} pruneFileChangesFor    flow-file-changes → 回退后剪枝重渲
+//  * @property {(taskId: string, request: object) => void} showHumanInputCard        flow-human-input → 前台渲染人工交互作答卡
+//  * @property {(taskId: string) => void} restoreHumanInputCards flow-human-input → 挂起任务回入 Flow 时重建未决卡
+//  * @property {(taskId: string, reason?: string) => void} invalidateHumanInputCards flow-human-input → 终止/内核重启/超时后标记卡片失效
 //  * @property {() => void} resetInjectionNotice                 flow-pipeline → 重置「注入提示」信息框
 //  * @property {(text: string) => Promise<void>} handleFlowQuery         flow-pipeline → Flow 提问下发（发送链热区）
 //  * @property {() => void} submitCurrentPrompt                  flow-pipeline → 发送入口

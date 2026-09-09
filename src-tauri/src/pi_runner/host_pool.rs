@@ -778,6 +778,19 @@ impl PiHostPool {
         hosts.get(task_id).map(|h| h.session_id.clone())
     }
 
+    /// 向指定 Task 的内核子进程发送任意 RPC 指令（fire-and-forget，人工交互作答链路）
+    /// 复用 SessionHost::send_command 的 aborted 门禁：终止后迟到作答被 Rust 层物理拒绝
+    pub async fn send_command_to_task(&self, task_id: &str, command: Value) -> Result<(), String> {
+        let host = {
+            let hosts = self.hosts.read().await;
+            hosts
+                .get(task_id)
+                .cloned()
+                .ok_or_else(|| format!("Task {} 不存在或已结束", task_id))?
+        };
+        host.send_command(command).await
+    }
+
     /// 向指定 Task 的内核子进程发送带响应 RPC 指令（会话回退链路）
     pub async fn send_command_to_task_with_response(
         &self,

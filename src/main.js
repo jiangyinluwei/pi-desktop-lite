@@ -28,6 +28,7 @@ import { createFlowDom } from "./modules/flow-dom.js";
 import { flowView } from "./modules/flow-state-view.js";
 import { initFlowStream } from "./modules/flow-stream.js";
 import { initFlowPipeline } from "./modules/flow-pipeline.js";
+import { initHumanInput } from "./modules/flow-human-input.js";
 import { initFileChanges } from "./modules/flow-file-changes.js";
 import { initFlowRollback } from "./modules/flow-rollback.js";
 import { initTaskPanel } from "./modules/task-panel.js";
@@ -71,6 +72,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initFlowUi(ctx);
   initFlowStream(ctx);
   initFlowPipeline(ctx);
+  initHumanInput(ctx);
   initFileChanges(ctx);
   initTaskPanel(ctx);
   initFlowRollback(ctx);

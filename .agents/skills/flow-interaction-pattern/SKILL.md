@@ -1,7 +1,7 @@
 ---
 name: flow-interaction-pattern
 description: |
-  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/阶段性输出 Point 切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-Point1-工具1-Point2-工具2...」真实因果链条一段一段拼接；③伪框占位机制（首 token 延迟期「Thinking (0.0s)...」伪思考框；工具参数流式期「工具调用(edit)... + 读秒 + running」伪工具运行框，真实卡就位即移除）；④Flow 界面任意区域滚轮事件委托至最外层滚动容器；⑤多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑥多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑦模型无痕内置重连流水线 (ModelFailoverEngine)；⑧输出卡底部手绘风格的保存操作栏；⑨会话完成后「文件变更」收纳框（flow-file-changes，收集新增/修改/删除的文件、点击条目在资源管理器中定位其所在文件夹；按 Task 会话流缓存至程序生命周期结束，右键退出再经历史/Task 记录回入 Flow 一致恢复）；⑩用户提问卡右侧一键复制提问按钮（prompt-copy-btn：常态透明无边框、悬浮显手绘边框，点击复制净化后原始提问并短暂变绿反馈，静态初始模板与动态历史轮次均生效）；⑪多任务直切自动挂起、历史记录智能重定向与状态隔离（任务直切原活跃任务无缝转入后台挂起、历史进入智能重定向至 restoreTaskToFlow 杜绝静态快照覆写实时 live turns、Flow DOM 防重入与工具切片引用自愈回填）；⑫会话回退与文件撤回（flow-rollback：轮次提问卡悬浮「回退到此处」→ SketchModal 确认 → 工具执行前快照还原「已修改/已删除」文件（新增文件永不撤回）→ 内核原生 RPC fork 历史节点回退 → 本地剪枝重渲 + 提问回填输入框 + 顶部浮窗 3 秒提醒结果）；⑬前端解耦分层架构（flowStore.for(taskId) 纯数据分仓、flowView 视图密封缓存、flow-render 纯渲染显式依赖、flow-dom 只读 DOM 引用与 el-binder 按需自绑定，严禁解构已废除的 ctx.el）。当用户提出"flow界面交互"、"思维链流式展示"、"阶段性输出"、"Point卡"、"工具调用简略"、"单行思维"、"步骤切片"、"伪思考框"、"伪运行框"、"工具调用读秒"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"、"自动强制重连"、"内置重连"、"无痕重连"、"文件变更"、"修改了哪些文件"、"多任务直切"、"任务切换"、"自动挂起"、"历史记录重定向"、"防重入"、"会话回退"、"对话回退"、"回退到此处"、"文件撤回"、"撤销修改"时使用此技能。
+  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/阶段性输出 Point 切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-Point1-工具1-Point2-工具2...」真实因果链条一段一段拼接；③伪框占位机制（首 token 延迟期「Thinking (0.0s)...」伪思考框；工具参数流式期「工具调用(edit)... + 读秒 + running」伪工具运行框，真实卡就位即移除）；④Flow 界面任意区域滚轮事件委托至最外层滚动容器；⑤多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑥多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑦模型无痕内置重连流水线 (ModelFailoverEngine)；⑧输出卡底部手绘风格的保存操作栏；⑨会话完成后「文件变更」收纳框（flow-file-changes，收集新增/修改/删除的文件、点击条目在资源管理器中定位其所在文件夹；按 Task 会话流缓存至程序生命周期结束，右键退出再经历史/Task 记录回入 Flow 一致恢复）；⑩用户提问卡右侧一键复制提问按钮（prompt-copy-btn：常态透明无边框、悬浮显手绘边框，点击复制净化后原始提问并短暂变绿反馈，静态初始模板与动态历史轮次均生效）；⑪多任务直切自动挂起、历史记录智能重定向与状态隔离（任务直切原活跃任务无缝转入后台挂起、历史进入智能重定向至 restoreTaskToFlow 杜绝静态快照覆写实时 live turns、Flow DOM 防重入与工具切片引用自愈回填）；⑫会话回退与文件撤回（flow-rollback：轮次提问卡悬浮「回退到此处」→ SketchModal 确认 → 工具执行前快照还原「已修改/已删除」文件（新增文件永不撤回）→ 内核原生 RPC fork 历史节点回退 → 本地剪枝重渲 + 提问回填输入框 + 顶部浮窗 3 秒提醒结果）；⑬前端解耦分层架构（flowStore.for(taskId) 纯数据分仓、flowView 视图密封缓存、flow-render 纯渲染显式依赖、flow-dom 只读 DOM 引用与 el-binder 按需自绑定，严禁解构已废除的 ctx.el）；⑭中途提问人工回归选择（flow-human-input：内核 Extension UI 子协议 extension_ui_request 的 select/confirm/input/editor 在 Flow 中呈现手绘待答横条 + SketchModal 作答弹窗，作答回写 extension_ui_response 解除内核阻塞；timeout 由内核自动解析、fire-and-forget 方法不建卡；未决请求随 Task 挂起保留、终止 best-effort 回写 cancelled）。当用户提出"flow界面交互"、"思维链流式展示"、"阶段性输出"、"Point卡"、"工具调用简略"、"单行思维"、"步骤切片"、"伪思考框"、"伪运行框"、"工具调用读秒"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"、"自动强制重连"、"内置重连"、"无痕重连"、"文件变更"、"修改了哪些文件"、"多任务直切"、"任务切换"、"自动挂起"、"历史记录重定向"、"防重入"、"会话回退"、"对话回退"、"回退到此处"、"文件撤回"、"撤销修改"、"中途提问"、"人工选择"、"人工介入"、"extension_ui"、"等待用户作答"、"ask_question"时使用此技能。
 ---
 
 # Flow 交互界面规范 (Flow Interaction Pattern)
@@ -276,3 +276,64 @@ Flow 支持回退到任意一次历史对话（配合 pi 内核原生历史节�
      - **多轮回退（`turnIndex > 0`）**：调用 `conversationHistoryService.pruneConversationTurns` 将历史快照同步截断至 `turnIndex` 轮并刷新最终回答与耗时快照，保持历史卡片与当前 Flow 100% 同步；
 - **回退语义**：fork 至第 k 轮用户消息 = 保留前 k-1 轮完整对话，第 k 轮提问回填输入框供编辑重发，第 k 轮回复及其后全部丢弃；文件状态还原至第 k 轮执行前；
 - **结果提醒**：顶部浮窗（`bus.emit("ui:toast")`，事件在 `contracts.js` 契约表登记，`task-panel.js` 为唯一 `bus.on` 渲染属主）持续 3 秒，成功/失败/部分失败文案精确到恢复文件数与原因。
+
+---
+
+## 📌 12. 中途提问人工回归选择 (Human-in-the-Loop Mid-Run Ask-Back)
+
+模型 / 扩展在运行中途发起的人工交互请求（内核 Extension UI 子协议，`docs/rpc.md` §Extension UI Protocol），在 Flow 中以手绘待答横条 + 作答弹窗呈现，用户作答后回写 `extension_ui_response` 解除内核阻塞并续跑。
+
+### 12.1 协议事实（活体探针结论，内核 0.84.4）
+- **可回写方法**：`select` / `confirm` / `input` / `editor` —— 内核在 stdout 发 `extension_ui_request`（带唯一 `id`、`method`、`title`、`options`/`message`、可选 `timeout`），**阻塞等待**客户端从 stdin 回写 `extension_ui_response`（`{id, value}` / `{id, confirmed}` / `{id, cancelled:true}`）；
+- **fire-and-forget 方法**：`notify` / `setStatus` / `setWidget` / `setTitle` / `set_editor_text` —— 只发不收，**绝不建作答卡、绝不置 Task 为 paused**；
+- **`timeout` 语义**：带超时的请求由**内核侧**自动按默认值解析（select/input/editor 得 `undefined`，confirm 得 `false`），客户端**不得代答**，仅呈现读秒示意；
+- **内置 `ask_question` 工具**：内核 0.84.4 实测**不存在该内置工具**（模型工具清单中无此项，`--exclude-tools ask_question` 仅为兼容旧版的开关）。`flow-render.js` 保留其友好名/图标映射作为未来兼容，P0 覆盖范围为扩展 UI 子协议。
+
+### 12.2 三层数据流
+```text
+内核子进程 stdout: extension_ui_request {id, method, title, options?, timeout?}
+  ▼ Rust SessionHost stdout framer 注入 task_id/sessionPath → emit("pi:event")
+pi-client.js handleAgentEvent → 派发 CustomEvent "extension-ui"
+  ▼
+TaskManager.handleTaskEvent case "extension_ui_request"
+  ├─ isInteractiveExtensionUiRequest(data) 判定（唯一源 contracts.js）
+  ├─ task.status = "paused"（沿用既有语义）
+  └─ task.pendingUiRequests.set(id, request)   ← 仅四类可回写方法登记
+  ▼
+flow-human-input.js（前台门禁通过时）
+  ├─ 渲染待答横条（紧接轮次步骤流之后）+ 焦点在窗自动呼出 SketchModal 作答
+  └─ 用户提交 → 同步摘除 pendingUiRequests + 定格横条 → 异步回写
+  ▼
+pi-client.sendExtensionUiResponse(taskId, id, payload)
+  ▼ IPC pi_send_command_to_task(task_id, {type:"extension_ui_response", ...})
+SessionHost::send_command → 内核 stdin → 解除阻塞续跑
+```
+
+### 12.3 属主划分
+| 关注点 | 属主 | 说明 |
+| :--- | :--- | :--- |
+| 未决请求真源 | `src/services/task-manager.js` | `task.pendingUiRequests`（Map<id, request>），随 Task 挂起保留；**不新增 store**（TaskManager 即 Task 状态属主） |
+| IPC 转发 | `src/services/pi-client.js` | `sendExtensionUiResponse(taskId, requestId, payload)`；服务层**禁碰 DOM** |
+| 呈现与作答 | `src/modules/flow-human-input.js` | 横条 / 弹窗 / 读秒 / 失效态；DOM 引用归模块内部缓存（不入 `flowView`，交互卡非流式时序切片） |
+| 交互判定 | `src/lib/contracts.js` | `EXTENSION_UI_DIALOG_METHODS` / `EXTENSION_UI_RESPONDABLE_METHODS` / `isInteractiveExtensionUiRequest` 唯一源（消除 task-manager 与 flow-pipeline 双份常量） |
+| 失焦 Toast | `src/modules/flow-pipeline.js` | 既有 `notifyHumanIntervention` 保留（铁律 9），本模块不重复通知 |
+
+### 12.4 卡片形态与交互
+- **待答横条**（`.flow-human-input-bar`）：三态 —— `pending`（手绘脉冲微动效 + 「待作答」徽标 + 读秒胶囊）/ `done`（已作答 / 已跳过 / 已自动跳过，定格并移除按钮）/ `failed`（朱红边框 + 失效原因）；紧接 `flow-steps-container` 之后挂载，保持「思维/工具 → 待答横条 → 回答正文」因果时序；
+- **作答弹窗**：`SketchModal`（居中、毛玻璃遮罩、焦点陷阱、Esc / 右键 Step Back 关闭）；`select` → `SketchSelect`（180ms Pop & Micro-Shake）；`confirm` → 双按钮互斥选中（`defaultYes` 决定默认聚焦项）；`input` → 单行手绘输入框；`editor` → 多行 textarea（`prefill` 预填）；
+- **两个动作位**：`提交`（主操作，返回 `{value}` 或 `{confirmed}`）与 `稍后作答` / `跳过作答`（关闭弹窗保持未决 / 回写 `cancelled: true`）；
+- **自动呼出**：窗口处于焦点（`document.hasFocus()`）时收到请求直接呼出作答弹窗；失焦则仅留横条 + 既有 Toast（不打扰铁律）；
+- **按钮规范**：常态 `background: transparent; border: 1px solid transparent;` 保持几何占位，仅 `:hover` / `:focus-visible` 显手绘边框（铁律 5）。
+
+### 12.5 生命周期与铁律对齐
+- **作答时序（严格同步判定 + 异步回写）**：① 用户提交 → **先同步** `takePendingUiRequest` 摘除未决请求并定格横条（杜绝双击双答竞态）；② **再异步** `sendExtensionUiResponse`；③ 回写失败（Task 已终止 / 进程已亡）→ 横条转「作答未能送达 · 任务已终止」失效态 + Toast 提示，**不重试轰炸**；
+- **挂起与直切（铁律 3）**：交互未决时直切任务 → 原 Task 照常 `isSuspended = true`（`paused` 属待确认态，符合终态判定排除）；回入 Flow 由 `renderTurnsIntoFlow → api.restoreHumanInputCards(task.id)` 重建全部未决横条，请求不丢失；后台任务的请求只入 TaskManager 数据与抽屉徽标（「待确认 (N)」），**绝不渲染前台横条**（前台门禁 `isForegroundStreamTask`）；
+- **强制终止（铁律 3 / 18）**：`abortTask` 先 `clearPendingUiRequests` 取回未决请求 → `Promise.all` best-effort 回写 `{cancelled:true}` → 再走既有 `piClient.abort` 强杀链路；Rust `SessionHost::send_command` 的 aborted 门禁物理拒绝迟到作答；`invalidateHumanInputCards` 将横条转失效态；**严禁**触发模型内置重连；
+- **回退互斥（铁律 3）**：交互未决 = 生成进行中；`flow-rollback.js` 的 `isTaskRunning` 已显式纳入 `paused`（**原实现仅含 thinking/streaming/tool_exec，人工交互未决时可被回退撕裂因果链 —— 实施中修复**），命中即 toast「生成进行中，请等待完成或手动终止后再回退」并中止；
+- **重连引擎共存（铁律 18）**：`paused`（UI 阻塞）与「模型异常」语义严格区分；`modelFailoverEngine` 仅由错误帧驱动，UI 阻塞不触发续发「继续」；
+- **清理时机**：作答回写 / 读秒归零（内核自动解析）/ `agent_end` / `agent_settled`（`{resume:false}`，避免终态前状态抖动）/ abort / `task-removed` / 内核 `kernel-status-change`（`hasKernel === false` 时全部失效）；`pendingUiRequests` 清空且 Task 仍 `paused`、`piClient.isStreaming` 为真时回落 `streaming`。
+- **文本控件焦点铁律（实施中修复的缺陷）**：`SketchModal.open()` 在自身 `requestAnimationFrame` 内聚焦「提交」按钮；`input` / `editor` 分支的文本控件聚焦**必须再延后一帧**（`requestAnimationFrame(() => field.focus())`）注册，否则会被按钮抢回焦点，用户敲键落到按钮上导致提交空值。
+
+### 12.6 门禁与验证
+- `npm run check`（cargo check）+ `npm run check:fe` + `npm run measure:coupling`（裸写断言 = 0）全绿；改动文件逐一 `node --check`；
+- 活体探针脚本与临时扩展（`~/.pi/agent/extensions/test-human-input.ts` 或 `--extension` 指定路径）在验证后**必须清除**（代码卫生铁律）。

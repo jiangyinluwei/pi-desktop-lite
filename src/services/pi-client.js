@@ -535,6 +535,24 @@ class PiClient extends EventTarget {
   }
 
   /**
+   * 回写人工交互应答（解除内核 Extension UI 阻塞，docs/rpc.md §Extension UI Responses）
+   * 服务层职责：仅做 IPC 转发，严禁操作 DOM。
+   * @param {string} taskId 目标 Task（应答定向回写该 Task 的内核子进程 stdin）
+   * @param {string} requestId 原样回传的 extension_ui_request.id
+   * @param {{ value?: string, confirmed?: boolean, cancelled?: boolean }} payload
+   * @returns {Promise<void>}
+   */
+  async sendExtensionUiResponse(taskId, requestId, payload = {}) {
+    if (!taskId || !requestId) {
+      throw new Error("sendExtensionUiResponse 需要 taskId 与 requestId");
+    }
+    return await this.invoke("pi_send_command_to_task", {
+      taskId,
+      command: { type: "extension_ui_response", id: requestId, ...payload },
+    });
+  }
+
+  /**
    * 中止正在进行的 Agent 运行（支持指定 taskId）
    * @param {string} [taskId]
    */

@@ -40,6 +40,16 @@ pub async fn pi_send_command(
     supervisor.send_command(command).await
 }
 
+/// 向指定 Task 的内核子进程发送任意 RPC 指令（fire-and-forget，人工交互作答链路）
+#[tauri::command]
+pub async fn pi_send_command_to_task(
+    host_pool: State<'_, PiHostPool>,
+    task_id: String,
+    command: serde_json::Value,
+) -> Result<(), String> {
+    host_pool.send_command_to_task(&task_id, command).await
+}
+
 /// 中止指定任务（task_id 为空时中止主会话）
 #[tauri::command]
 pub async fn pi_abort(

@@ -1931,3 +1931,244 @@
 }
 
 
+
+/* ==========================================================================
+   中途提问人工回归选择（Human-in-the-Loop Ask-Back）— 待答横条与作答控件
+   --------------------------------------------------------------------------
+   横条紧接轮次步骤流之后，保持「思维/工具 → 待答横条 → 回答正文」因果时序；
+   三态：pending（待作答，高亮脉冲）/ done（已作答或已跳过，定格）/ failed（已失效）。
+   按钮遵循铁律 5：常态透明无边框 + 1px 几何占位，悬浮/聚焦才显框。
+   ========================================================================== */
+
+.flow-human-input-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 6px 0 10px 0;
+  padding: 6px 10px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 255px 8px 225px 8px / 8px 225px 8px 255px;
+  background-color: var(--sketch-tag-bg);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+.flow-human-input-bar.pending {
+  border-color: var(--sketch-border);
+  box-shadow: var(--sketch-shadow);
+  animation: humanInputPulse 2.2s ease-in-out infinite;
+}
+
+@keyframes humanInputPulse {
+  0%, 100% { box-shadow: var(--sketch-shadow); }
+  50% { box-shadow: var(--sketch-shadow-hover); }
+}
+
+.flow-human-input-bar.frozen {
+  animation: none;
+  opacity: 0.72;
+}
+
+.flow-human-input-bar.frozen.failed {
+  border-color: rgba(220, 38, 38, 0.45);
+}
+
+.human-input-bar-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  cursor: pointer;
+  outline: none;
+}
+
+.human-input-bar-main:focus-visible {
+  outline: 1.5px solid var(--sketch-border);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.human-input-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-muted);
+  flex: 0 0 auto;
+}
+
+.human-input-icon svg {
+  display: block;
+}
+
+.human-input-bar-title {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.human-input-countdown {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+.human-input-bar-status {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--sketch-border-subtle);
+  color: var(--ink-muted);
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.human-input-bar-status.pending {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+}
+
+.human-input-bar-status.done {
+  color: var(--ink-muted);
+}
+
+.human-input-bar-status.failed {
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.45);
+}
+
+.human-input-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+/* 手绘按钮：常态透明、无可见边框、1px 几何占位（铁律 5） */
+.human-input-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-muted);
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 255px 8px 225px 8px / 8px 225px 8px 255px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.human-input-btn:hover {
+  color: var(--ink-primary);
+  background-color: var(--sketch-tag-hover-bg);
+  border-color: var(--sketch-border-subtle);
+}
+
+.human-input-btn:focus-visible {
+  outline: 1.5px solid var(--sketch-border);
+  outline-offset: 1px;
+}
+
+.human-input-btn:active {
+  transform: scale(0.95);
+}
+
+.human-input-btn.primary {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  box-shadow: 1px 2px 0px var(--sketch-border-subtle);
+}
+
+.human-input-btn.primary:hover {
+  background-color: var(--sketch-tag-hover-bg);
+  border-color: var(--sketch-border);
+  transform: translateY(-1px);
+}
+
+/* ---------- 作答弹窗内容（SketchModal 内嵌控件） ---------- */
+
+.human-input-modal-body {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.human-input-field-label {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+}
+
+.human-input-text,
+.human-input-textarea {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--ink-primary);
+  background-color: transparent;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 255px 8px 225px 8px / 8px 225px 8px 255px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.human-input-textarea {
+  border-radius: 8px 225px 8px 255px / 225px 8px 255px 8px;
+  resize: vertical;
+  min-height: 96px;
+  line-height: 1.6;
+}
+
+.human-input-text:focus,
+.human-input-textarea:focus {
+  border-color: var(--sketch-border);
+  box-shadow: var(--sketch-shadow);
+}
+
+.human-input-select {
+  width: 100%;
+}
+
+.human-input-confirm-row {
+  display: flex;
+  gap: 10px;
+}
+
+.human-input-choice {
+  flex: 1 1 0;
+  background: transparent;
+  border: 1px solid var(--sketch-border-subtle);
+  color: var(--ink-muted);
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+  border-radius: 255px 8px 225px 8px / 8px 225px 8px 255px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.human-input-choice:hover {
+  color: var(--ink-primary);
+  background-color: var(--sketch-tag-hover-bg);
+  border-color: var(--sketch-border);
+}
+
+.human-input-choice.selected {
+  color: var(--ink-primary);
+  background-color: var(--sketch-tag-hover-bg);
+  border-color: var(--sketch-border);
+  box-shadow: 1px 2px 0px var(--sketch-border-subtle);
+}
+
+.human-input-choice:focus-visible {
+  outline: 1.5px solid var(--sketch-border);
+  outline-offset: 1px;
+}

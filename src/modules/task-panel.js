@@ -168,7 +168,12 @@ export function initTaskPanel(ctx) {
     }
 
     tasks.forEach((task) => {
-      const isRunning = task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec";
+      // 含 paused（人工交互待确认）：终止按钮必须可见，用户方可强制终止阻塞中的任务（铁律19/TC8）
+      const isRunning =
+        task.status === "thinking" ||
+        task.status === "streaming" ||
+        task.status === "tool_exec" ||
+        task.status === "paused";
       const isCurrent = taskManager.currentActiveTaskId === task.id;
 
       // 自动强制重连进行中：该 Task 绑定引擎内置重连流水线时展示专属状态徽章
@@ -190,7 +195,9 @@ export function initTaskPanel(ctx) {
       } else if (task.status === "tool_exec") {
         statusText = `执行工具: ${task.activeToolName || "tool"}`;
       } else if (task.status === "paused") {
-        statusText = "待确认";
+        // 未决人工交互请求：抽屉徽标显示「待确认（N 项）」而非泛化的「待确认」
+        const pendingUiCount = task.pendingUiRequests ? task.pendingUiRequests.size : 0;
+        statusText = pendingUiCount > 0 ? `待确认 (${pendingUiCount})` : "待确认";
       } else if (task.status === "aborted") {
         statusText = "已终止";
       } else if (task.status === "error") {
@@ -473,6 +480,11 @@ export function initTaskPanel(ctx) {
       api.restoreFileChangesFor(task.id);
     }
 
+    // 未决人工交互请求随 Task 挂起保留：回入 Flow 时重建作答横条（请求不丢失，铁律3）
+    if (typeof api.restoreHumanInputCards === "function") {
+      api.restoreHumanInputCards(task.id);
+    }
+
     if (syncModelName && flowModelName) {
       flowModelName.textContent = task.model || "Model";
     }
@@ -543,7 +555,12 @@ export function initTaskPanel(ctx) {
         },
       ];
 
-    const isRunning = task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec";
+    // paused（人工交互待确认）同样视为「进行中」：保留流式末尾渲染与终止按钮可见性
+    const isRunning =
+      task.status === "thinking" ||
+      task.status === "streaming" ||
+      task.status === "tool_exec" ||
+      task.status === "paused";
 
     renderTurnsIntoFlow(task, turns, { isRunning, syncModelName: true });
   };

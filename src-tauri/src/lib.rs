@@ -53,6 +53,7 @@ pub fn run() {
             pi_send_steer,
             pi_send_follow_up,
             pi_send_command,
+            pi_send_command_to_task,
             pi_get_fork_messages,
             pi_fork_session,
             pi_rollback_files,
