@@ -1,4 +1,6 @@
-use super::models::{InstalledPackage, NodeEnvironmentInfo, PackageProgressPayload, PackageUpdateInfo};
+use super::models::{
+    InstalledPackage, NodeEnvironmentInfo, PackageProgressPayload, PackageUpdateInfo,
+};
 use crate::config_manager::get_pi_agent_dir;
 use crate::pi_runner::supervisor::PiSupervisor;
 use crate::version_watcher::checker::is_newer;
@@ -127,13 +129,14 @@ pub fn get_installed_packages() -> Result<Vec<InstalledPackage>, String> {
             }
         }
 
-        let (has_preset, is_preset_applied, preset_title) = match super::presets::find_preset_for_package(&pkg_name) {
-            Some(preset) => {
-                let applied = super::presets::is_preset_applied(&preset);
-                (true, applied, Some(preset.title))
-            }
-            None => (false, false, None),
-        };
+        let (has_preset, is_preset_applied, preset_title) =
+            match super::presets::find_preset_for_package(&pkg_name) {
+                Some(preset) => {
+                    let applied = super::presets::is_preset_applied(&preset);
+                    (true, applied, Some(preset.title))
+                }
+                None => (false, false, None),
+            };
 
         installed_list.push(InstalledPackage {
             name: pkg_name,
@@ -184,11 +187,26 @@ pub async fn check_node_environment() -> NodeEnvironmentInfo {
             candidates.push(PathBuf::from(pf86).join("nodejs").join("node.exe"));
         }
         if let Ok(local_app) = std::env::var("LOCALAPPDATA") {
-            candidates.push(PathBuf::from(&local_app).join("Programs").join("node").join("node.exe"));
-            candidates.push(PathBuf::from(&local_app).join("Programs").join("nodejs").join("node.exe"));
+            candidates.push(
+                PathBuf::from(&local_app)
+                    .join("Programs")
+                    .join("node")
+                    .join("node.exe"),
+            );
+            candidates.push(
+                PathBuf::from(&local_app)
+                    .join("Programs")
+                    .join("nodejs")
+                    .join("node.exe"),
+            );
         }
         if let Ok(app_data) = std::env::var("APPDATA") {
-            candidates.push(PathBuf::from(app_data).join("nvm").join("current").join("node.exe"));
+            candidates.push(
+                PathBuf::from(app_data)
+                    .join("nvm")
+                    .join("current")
+                    .join("node.exe"),
+            );
         }
 
         for candidate in candidates {
@@ -199,7 +217,9 @@ pub async fn check_node_environment() -> NodeEnvironmentInfo {
                 {
                     fallback_cmd.creation_flags(0x08000000);
                 }
-                if let Ok(output_res) = tokio::time::timeout(Duration::from_secs(3), fallback_cmd.output()).await {
+                if let Ok(output_res) =
+                    tokio::time::timeout(Duration::from_secs(3), fallback_cmd.output()).await
+                {
                     if let Ok(out) = output_res {
                         if out.status.success() {
                             let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -229,7 +249,8 @@ pub async fn check_node_environment() -> NodeEnvironmentInfo {
             npm_cmd.creation_flags(0x08000000);
         }
 
-        if let Ok(output_res) = tokio::time::timeout(Duration::from_secs(3), npm_cmd.output()).await {
+        if let Ok(output_res) = tokio::time::timeout(Duration::from_secs(3), npm_cmd.output()).await
+        {
             if let Ok(out) = output_res {
                 if out.status.success() {
                     let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -274,7 +295,8 @@ pub async fn install_package(
     // 前置环境防御校验：确认 Node.js 环境就绪
     let node_env = check_node_environment().await;
     if !node_env.installed {
-        let err_msg = "未检测到 Node.js 运行环境，请先安装 Node.js (https://nodejs.org/)".to_string();
+        let err_msg =
+            "未检测到 Node.js 运行环境，请先安装 Node.js (https://nodejs.org/)".to_string();
         let _ = app_handle.emit(
             "package-progress",
             PackageProgressPayload {
@@ -287,7 +309,8 @@ pub async fn install_package(
         return Err(err_msg);
     }
 
-    let pi_bin = PiSupervisor::find_pi_binary(Some(app_handle)).unwrap_or_else(|| PathBuf::from("pi"));
+    let pi_bin =
+        PiSupervisor::find_pi_binary(Some(app_handle)).unwrap_or_else(|| PathBuf::from("pi"));
 
     log::info!(
         "[PackageManager] Installing package '{}' using binary: {:?}",
@@ -357,7 +380,10 @@ pub async fn install_package(
             while let Ok(Some(line)) = reader.next_line().await {
                 log::info!("[PackageManager stdout] {}", line);
                 let lower = line.to_lowercase();
-                if lower.contains("installing") || lower.contains("fetch") || lower.contains("download") {
+                if lower.contains("installing")
+                    || lower.contains("fetch")
+                    || lower.contains("download")
+                {
                     let _ = app_handle_clone.emit(
                         "package-progress",
                         PackageProgressPayload {
@@ -367,7 +393,10 @@ pub async fn install_package(
                             message: "正在下载 npm 模块与静态依赖...".to_string(),
                         },
                     );
-                } else if lower.contains("added") || lower.contains("changed") || lower.contains("packages") {
+                } else if lower.contains("added")
+                    || lower.contains("changed")
+                    || lower.contains("packages")
+                {
                     let _ = app_handle_clone.emit(
                         "package-progress",
                         PackageProgressPayload {
@@ -406,7 +435,10 @@ pub async fn install_package(
         lines.join("\n")
     });
 
-    let status = child.wait().await.map_err(|e| format!("Wait failed: {}", e))?;
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| format!("Wait failed: {}", e))?;
     let stdout_str = stdout_task.await.unwrap_or_default();
     let stderr_str = stderr_task.await.unwrap_or_default();
 
@@ -417,7 +449,11 @@ pub async fn install_package(
             stdout_str
         };
         log::error!("[PackageManager] Install failed: {}", err_msg);
-        let final_err = format!("Install failed (code {:?}): {}", status.code(), err_msg.trim());
+        let final_err = format!(
+            "Install failed (code {:?}): {}",
+            status.code(),
+            err_msg.trim()
+        );
         let _ = app_handle.emit(
             "package-progress",
             PackageProgressPayload {
@@ -433,28 +469,29 @@ pub async fn install_package(
     log::info!("[PackageManager] Successfully installed {}", pkg_name);
 
     // 检查并自动应用推荐配置预设
-    let auto_preset_applied = if let Some(preset) = super::presets::find_preset_for_package(&pkg_name) {
-        match super::presets::apply_preset(&preset) {
-            Ok(_) => {
-                log::info!(
-                    "[PackageManager] Auto-applied preset '{}' for package '{}'",
-                    preset.title,
-                    pkg_name
-                );
-                true
+    let auto_preset_applied =
+        if let Some(preset) = super::presets::find_preset_for_package(&pkg_name) {
+            match super::presets::apply_preset(&preset) {
+                Ok(_) => {
+                    log::info!(
+                        "[PackageManager] Auto-applied preset '{}' for package '{}'",
+                        preset.title,
+                        pkg_name
+                    );
+                    true
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[PackageManager] Failed to auto-apply preset for package '{}': {}",
+                        pkg_name,
+                        e
+                    );
+                    false
+                }
             }
-            Err(e) => {
-                log::warn!(
-                    "[PackageManager] Failed to auto-apply preset for package '{}': {}",
-                    pkg_name,
-                    e
-                );
-                false
-            }
-        }
-    } else {
-        false
-    };
+        } else {
+            false
+        };
 
     let completed_msg = if auto_preset_applied {
         format!("组件 {} 安装成功，已自动应用推荐配置！", pkg_name)
@@ -488,7 +525,8 @@ pub async fn uninstall_package(
     // 异步排队获取全局互斥锁（严格按队列顺序执行，杜绝并发冲突）
     let _lock = PACKAGE_OPERATION_MUTEX.lock().await;
 
-    let pi_bin = PiSupervisor::find_pi_binary(Some(app_handle)).unwrap_or_else(|| PathBuf::from("pi"));
+    let pi_bin =
+        PiSupervisor::find_pi_binary(Some(app_handle)).unwrap_or_else(|| PathBuf::from("pi"));
 
     log::info!(
         "[PackageManager] Removing package '{}' using binary: {:?}",
@@ -546,7 +584,11 @@ pub async fn uninstall_package(
             stdout_str
         };
         log::error!("[PackageManager] Uninstall failed: {}", err_msg);
-        let final_err = format!("Uninstall failed (code {:?}): {}", output.status.code(), err_msg.trim());
+        let final_err = format!(
+            "Uninstall failed (code {:?}): {}",
+            output.status.code(),
+            err_msg.trim()
+        );
         let _ = app_handle.emit(
             "package-progress",
             PackageProgressPayload {
@@ -582,7 +624,7 @@ pub async fn check_package_updates() -> Result<Vec<PackageUpdateInfo>, String> {
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(8))
-        .user_agent("pi-desktop-lite/0.1.0")
+        .user_agent("pi-desktop-lite/0.1.1")
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
@@ -635,7 +677,8 @@ pub async fn update_package(
     // 前置环境防御校验：确认 Node.js 环境就绪
     let node_env = check_node_environment().await;
     if !node_env.installed {
-        let err_msg = "未检测到 Node.js 运行环境，请先安装 Node.js (https://nodejs.org/)".to_string();
+        let err_msg =
+            "未检测到 Node.js 运行环境，请先安装 Node.js (https://nodejs.org/)".to_string();
         let _ = app_handle.emit(
             "package-progress",
             PackageProgressPayload {
@@ -648,7 +691,8 @@ pub async fn update_package(
         return Err(err_msg);
     }
 
-    let pi_bin = PiSupervisor::find_pi_binary(Some(app_handle)).unwrap_or_else(|| PathBuf::from("pi"));
+    let pi_bin =
+        PiSupervisor::find_pi_binary(Some(app_handle)).unwrap_or_else(|| PathBuf::from("pi"));
     let update_spec = format!("npm:{}", pkg_name);
 
     log::info!(
@@ -718,7 +762,10 @@ pub async fn update_package(
             while let Ok(Some(line)) = reader.next_line().await {
                 log::info!("[PackageManager stdout] {}", line);
                 let lower = line.to_lowercase();
-                if lower.contains("updating") || lower.contains("fetch") || lower.contains("download") {
+                if lower.contains("updating")
+                    || lower.contains("fetch")
+                    || lower.contains("download")
+                {
                     let _ = app_handle_clone.emit(
                         "package-progress",
                         PackageProgressPayload {
@@ -728,7 +775,10 @@ pub async fn update_package(
                             message: "正在下载 npm 最新包模块与文件...".to_string(),
                         },
                     );
-                } else if lower.contains("added") || lower.contains("changed") || lower.contains("packages") {
+                } else if lower.contains("added")
+                    || lower.contains("changed")
+                    || lower.contains("packages")
+                {
                     let _ = app_handle_clone.emit(
                         "package-progress",
                         PackageProgressPayload {
@@ -767,7 +817,10 @@ pub async fn update_package(
         lines.join("\n")
     });
 
-    let status = child.wait().await.map_err(|e| format!("Wait failed: {}", e))?;
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| format!("Wait failed: {}", e))?;
     let stdout_str = stdout_task.await.unwrap_or_default();
     let stderr_str = stderr_task.await.unwrap_or_default();
 
@@ -778,7 +831,11 @@ pub async fn update_package(
             stdout_str
         };
         log::error!("[PackageManager] Update failed: {}", err_msg);
-        let final_err = format!("Update failed (code {:?}): {}", status.code(), err_msg.trim());
+        let final_err = format!(
+            "Update failed (code {:?}): {}",
+            status.code(),
+            err_msg.trim()
+        );
         let _ = app_handle.emit(
             "package-progress",
             PackageProgressPayload {

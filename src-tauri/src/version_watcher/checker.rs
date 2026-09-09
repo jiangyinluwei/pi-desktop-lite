@@ -62,7 +62,12 @@ struct GitHubReleaseResponse {
 
 /// 解析 SemVer 字符串为 (major, minor, patch)
 pub fn parse_semver(v: &str) -> (u64, u64, u64) {
-    let clean = v.trim().trim_start_matches('v').trim_start_matches('^').trim_start_matches('~').trim_start_matches('@');
+    let clean = v
+        .trim()
+        .trim_start_matches('v')
+        .trim_start_matches('^')
+        .trim_start_matches('~')
+        .trim_start_matches('@');
     let main_part = clean.split('-').next().unwrap_or(clean);
     let parts: Vec<&str> = main_part.split('.').collect();
     let major = parts.get(0).and_then(|s| s.parse().ok()).unwrap_or(0);
@@ -82,7 +87,7 @@ pub fn is_newer(local: &str, remote: &str) -> bool {
 pub async fn check_latest_version(current_version: &str) -> VersionCheckResult {
     let client = match reqwest::Client::builder()
         .timeout(HTTP_TIMEOUT)
-        .user_agent("pi-desktop-lite/0.1.0")
+        .user_agent("pi-desktop-lite/0.1.1")
         .build()
     {
         Ok(c) => c,
@@ -120,11 +125,7 @@ pub async fn check_latest_version(current_version: &str) -> VersionCheckResult {
     let (npm_ver, gh_info) = tokio::join!(npm_fut, gh_fut);
 
     let (detected_version, notes, published_at) = match (npm_ver, gh_info) {
-        (Some(ver), Some(gh)) => (
-            Some(ver),
-            gh.body.map(|n| redact_str(&n)),
-            gh.published_at,
-        ),
+        (Some(ver), Some(gh)) => (Some(ver), gh.body.map(|n| redact_str(&n)), gh.published_at),
         (Some(ver), None) => (Some(ver), None, None),
         (None, Some(gh)) => (
             gh.tag_name.map(|t| t.trim_start_matches('v').to_string()),

@@ -263,7 +263,7 @@ pub async fn search_catalog(
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
-        .user_agent("pi-desktop-lite/0.1.0")
+        .user_agent("pi-desktop-lite/0.1.1")
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
