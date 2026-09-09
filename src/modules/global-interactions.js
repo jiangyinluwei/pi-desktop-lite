@@ -1,19 +1,22 @@
 import { VIEW_DETAILED, VIEW_FOCUS, VIEW_FLOW } from "../lib/view-constants.js";
+import { bus } from "../lib/event-bus.js";
 import { piClient } from "../services/pi-client.js";
 import { taskManager } from "../services/task-manager.js";
 import { openExternalUrl } from "../services/tauri-bridge.js";
+import { bindAll } from "../lib/el-binder.js";
 
 /**
  * 全局右键/Esc 回退、窗口生命周期与关闭保护
  */
 export function initGlobalInteractions(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
-  const flow = ctx.flow;
-  const attachments = ctx.attachments;
-
+  const viewStore = ctx.viewStore;
+  const attachmentsStore = ctx.attachmentsStore;
+  // 批次 B：模块自绑定（searchInput / searchForm 跨簇共享 id，同 id 同元素）
+  const el = bindAll({
+    searchInput: "search-input",
+    searchForm: "search-form",
+  });
   const searchInput = el.searchInput;
   const searchForm = el.searchForm;
 
@@ -53,13 +56,13 @@ export function initGlobalInteractions(ctx) {
     }
 
     // 2. Flow (界面3) -> 右键转入后台挂起 (若仍在运行或处于暂停待确认态) 或 归档至历史记录 (若已结束/已中断)
-    if (view.mode === VIEW_FLOW) {
+    if (viewStore.mode === VIEW_FLOW) {
       // 定向回退特例：从设置页会话记录 Tab 进入的 Flow（flowFromSettings 标志）
       // 空闲/已结束态 → 不挂起、不归档，直接回设置页会话记录 Tab（Flow 现场保留）；
       // 运行/暂停态 → 清标志后落入下方原有挂起通道，防运行中误回设置页丢失感知。
-      const flowFromSettings = Boolean(view.flowFromSettings);
+      const flowFromSettings = Boolean(viewStore.flowFromSettings);
       if (flowFromSettings) {
-        view.flowFromSettings = false;
+        viewStore.set({ flowFromSettings: false });
       }
 
       const activeTask = taskManager.getCurrentActiveTask();
@@ -76,19 +79,22 @@ export function initGlobalInteractions(ctx) {
       if (isRunning || isPaused) {
         // 正在运行中或处于暂停/待确认状态 -> 右键/Esc 无感转入后台挂起 (isSuspended = true)
         const suspended = taskManager.suspendCurrentFlow();
-        api.setViewMode(VIEW_FOCUS, true);
+        viewStore.morph(VIEW_FOCUS, { shouldFocusInput: true });
         const taskTitle = suspended?.title || "Task";
         const pauseSuffix = isPaused ? " [待确认]" : "";
-        api.showGlobalToast(`已转入后台运行 (${taskTitle})${pauseSuffix}`, 1500);
+        bus.emit("ui:toast", { text: `已转入后台运行 (${taskTitle})${pauseSuffix}`, duration: 1500 });
         api.updateMiniTaskCapsuleUI();
         return;
       } else {
         // 运行已结束 (Done / Completed / Aborted / Error / Idle 中断或正常结束) -> 右键/Esc 归档为历史记录并清除 Task
-        api.archiveCurrentFlowToHistory();
+        // 若当前任务已被回退为 0 轮草稿态，严禁触发归档，直接清理任务
+        if (!activeTask || !Array.isArray(activeTask.turns) || activeTask.turns.length > 0) {
+          api.archiveCurrentFlowToHistory();
+        }
         if (activeTask) {
           taskManager.removeTask(activeTask.id);
         }
-        api.setViewMode(VIEW_FOCUS, true);
+        viewStore.morph(VIEW_FOCUS, { shouldFocusInput: true });
         api.updateMiniTaskCapsuleUI();
         api.renderConversationMessages();
         return;
@@ -96,8 +102,8 @@ export function initGlobalInteractions(ctx) {
     }
 
     // Focus (界面2) -> 右键回退至 Detailed (界面1) 并失焦
-    if (view.mode === VIEW_FOCUS) {
-      api.setViewMode(VIEW_DETAILED, false);
+    if (viewStore.mode === VIEW_FOCUS) {
+      viewStore.morph(VIEW_DETAILED, { shouldFocusInput: false });
       if (document.activeElement && typeof document.activeElement.blur === "function") {
         document.activeElement.blur();
       }
@@ -117,7 +123,7 @@ export function initGlobalInteractions(ctx) {
       return;
     }
 
-    if ((searchInput && searchInput.value.trim().length > 0) || attachments.files.length > 0) {
+    if ((searchInput && searchInput.value.trim().length > 0) || attachmentsStore.files.length > 0) {
       searchInput.value = "";
       api.clearAttachedFiles();
       api.updateInputState();
@@ -133,7 +139,7 @@ export function initGlobalInteractions(ctx) {
 
   window.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    if (view.mode === VIEW_DETAILED && searchForm && searchForm.contains(e.target)) {
+    if (viewStore.mode === VIEW_DETAILED && searchForm && searchForm.contains(e.target)) {
       return;
     }
     handleGlobalStepBack(e);
@@ -147,19 +153,19 @@ export function initGlobalInteractions(ctx) {
 
   // 窗口生命周期与关闭保护：在窗口关闭、页面隐藏或离开时自动归档 Flow
   window.addEventListener("beforeunload", () => {
-    if (view.mode === VIEW_FLOW) {
+    if (viewStore.mode === VIEW_FLOW) {
       api.archiveCurrentFlowToHistory();
     }
   });
 
   window.addEventListener("pagehide", () => {
-    if (view.mode === VIEW_FLOW) {
+    if (viewStore.mode === VIEW_FLOW) {
       api.archiveCurrentFlowToHistory();
     }
   });
 
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden" && view.mode === VIEW_FLOW) {
+    if (document.visibilityState === "hidden" && viewStore.mode === VIEW_FLOW) {
       api.archiveCurrentFlowToHistory();
     }
   });

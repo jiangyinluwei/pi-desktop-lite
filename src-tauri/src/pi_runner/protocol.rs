@@ -27,6 +27,10 @@ pub struct PromptRequest {
     pub model_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", alias = "thinkingLevel")]
     pub thinking_level: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", alias = "sessionPath", alias = "session_path")]
+    pub session_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", alias = "sessionId", alias = "session_id")]
+    pub session_id: Option<String>,
 }
 
 /// 前端向 Agent 提交 Steering 消息参数

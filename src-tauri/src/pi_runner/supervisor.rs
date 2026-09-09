@@ -222,33 +222,16 @@ impl PiSupervisor {
         cmd.arg("--mode")
             .arg("rpc");
 
+        // 会话回退快照守卫开关：仅桌面端拉起的内核进程启用内置扩展
+        cmd.env(crate::rollback::ROLLBACK_ENV_KEY, "1");
+
         // 从 ~/.pi-dl/config.json 预读选中的模型与思考等级
-        if let Some(home) = dirs::home_dir() {
-            let config_path = home.join(".pi-dl").join("config.json");
-            if config_path.is_file() {
-                if let Ok(content) = std::fs::read_to_string(&config_path) {
-                    if let Ok(json_val) = serde_json::from_str::<Value>(&content) {
-                        if let Some(selected) = json_val.get("selectedModel") {
-                            let provider = selected.get("provider").and_then(|v| v.as_str());
-                            let model_id = selected
-                                .get("modelId")
-                                .or_else(|| selected.get("id"))
-                                .or_else(|| selected.get("name"))
-                                .and_then(|v| v.as_str());
-                            if let (Some(p), Some(m)) = (provider, model_id) {
-                                if !p.trim().is_empty() && !m.trim().is_empty() {
-                                    cmd.arg("--provider").arg(p).arg("--model").arg(m);
-                                }
-                            }
-                        }
-                        if let Some(level) = json_val.get("defaultThinkingLevel").and_then(|v| v.as_str()) {
-                            if !level.trim().is_empty() {
-                                cmd.arg("--thinking").arg(level);
-                            }
-                        }
-                    }
-                }
-            }
+        let (saved_model, saved_thinking) = crate::config_manager::get_saved_model_and_thinking();
+        if let Some((p, m)) = saved_model {
+            cmd.arg("--provider").arg(p).arg("--model").arg(m);
+        }
+        if let Some(level) = saved_thinking {
+            cmd.arg("--thinking").arg(level);
         }
 
         cmd.stdin(Stdio::piped())
@@ -325,7 +308,8 @@ impl PiSupervisor {
                     supervisor_for_events.skill_injector.begin_turn();
                 }
 
-                // 如果是 response 响应帧且携带 id，尝试唤醒对应的 oneshot 等待者
+                // response 响应帧优先唤醒本地等待者（fork / get_fork_messages 等）；
+                // 无论有无等待者（如超时后响应姗姗来迟）直接丢弃，绝不落入广播路径产生杂散 IPC 帧
                 if event_type == "response" {
                     if let Some(id) = event_val.get("id").and_then(|v| v.as_str()) {
                         let mut guard = pending_responses_clone.lock().await;
@@ -333,6 +317,7 @@ impl PiSupervisor {
                             let _ = tx.send(event_val.clone());
                         }
                     }
+                    continue;
                 }
 
                 let _ = app_handle_for_events.emit("pi:event", event_val);
@@ -701,55 +686,58 @@ impl PiSupervisor {
             return;
         }
 
-        let Some(activation) = this.skill_injector.hook_tool_call(tool_name) else {
-            return;
-        };
-
-        // 当轮去重：同一 Skill 在同一轮次内只注入一次
-        if !this.skill_injector.mark_skill_activated(&activation.skill) {
+        let activations = this.skill_injector.hook_tool_calls(tool_name);
+        if activations.is_empty() {
             return;
         }
 
-        let Some(injection_text) = this
-            .skill_injector
-            .build_skill_injection_text(&activation.skill)
-        else {
-            return;
-        };
-
-        let steer_message = format!(
-            "[pi-desktop-lite Inner-Skill Hook] 工具 `{}` 触发运行态技能 `{}`，以下约束即时生效，调用该类工具时必须严格遵守：\n{}",
-            activation.tool_name, activation.skill, injection_text
-        );
-
-        // 通知前端更新「注入提示」信息框（以实际注入为准：steer 即时注入或兑底入队后随下一次 Prompt 注入）
-        let _ = this.app_handle.emit(
-            "pi:inner-skill-activated",
-            serde_json::json!({
-                "toolName": activation.tool_name,
-                "skill": activation.skill,
-                "mode": "steer",
-            }),
-        );
-
-        match this
-            .send_command(serde_json::json!({
-                "type": "steer",
-                "message": steer_message,
-            }))
-            .await
-        {
-            Ok(_) => {
-                // steer 动态注入成功，移除兑底队列避免重复注入
-                this.skill_injector.dequeue_skill(&activation.skill);
+        for activation in activations {
+            // 当轮去重：同一 Skill 在同一轮次内只注入一次
+            if !this.skill_injector.mark_skill_activated(&activation.skill) {
+                continue;
             }
-            Err(err) => {
-                log::warn!(
-                    "[Supervisor] Inner-Skill steer injection failed for tool `{}` (skill `{}`), fallback to next prompt queue: {}",
-                    activation.tool_name,
-                    activation.skill,
-                    err
-                );
+
+            let Some(injection_text) = this
+                .skill_injector
+                .build_skill_injection_text(&activation.skill)
+            else {
+                continue;
+            };
+
+            let steer_message = format!(
+                "[pi-desktop-lite Inner-Skill Hook] 工具 `{}` 触发运行态技能 `{}`，以下约束即时生效，调用该类工具时必须严格遵守：\n{}",
+                activation.tool_name, activation.skill, injection_text
+            );
+
+            // 通知前端更新「注入提示」信息框（以实际注入为准：steer 即时注入或兑底入队后随下一次 Prompt 注入）
+            let _ = this.app_handle.emit(
+                "pi:inner-skill-activated",
+                serde_json::json!({
+                    "toolName": activation.tool_name,
+                    "skill": activation.skill,
+                    "mode": "steer",
+                }),
+            );
+
+            match this
+                .send_command(serde_json::json!({
+                    "type": "steer",
+                    "message": steer_message,
+                }))
+                .await
+            {
+                Ok(_) => {
+                    // steer 动态注入成功，移除兑底队列避免重复注入
+                    this.skill_injector.dequeue_skill(&activation.skill);
+                }
+                Err(err) => {
+                    log::warn!(
+                        "[Supervisor] Inner-Skill steer injection failed for tool `{}` (skill `{}`), fallback to next prompt queue: {}",
+                        activation.tool_name,
+                        activation.skill,
+                        err
+                    );
+                }
             }
         }
     }

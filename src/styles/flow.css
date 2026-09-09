@@ -272,6 +272,7 @@
   display: flex;
   align-items: center;
   margin-top: 3px;
+  flex-shrink: 0;
 }
 
 .prompt-main-wrap {
@@ -279,6 +280,7 @@
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+  flex: 1;
 }
 
 .flow-prompt-attachments {
@@ -313,6 +315,207 @@
   font-weight: 600;
   color: var(--ink-primary);
   line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* 提问一键复制按钮：常态透明无边框（1px 透明占位防抖），悬浮/聚焦显现手绘边框 */
+.flow-user-prompt-card .prompt-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 3px;
+  margin-left: 2px;
+  padding: 3px;
+  font-family: inherit;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.flow-user-prompt-card .prompt-copy-btn:hover {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  background: var(--sketch-box-bg);
+}
+
+.flow-user-prompt-card .prompt-copy-btn:focus-visible {
+  outline: none;
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  background: var(--sketch-box-bg);
+}
+
+.flow-user-prompt-card .prompt-copy-btn.copied {
+  color: #059669;
+}
+
+:root[data-theme="dark"] .flow-user-prompt-card .prompt-copy-btn.copied {
+  color: #34d399;
+}
+
+/* 提问「回退到此处」按钮：常态隐藏，悬浮提问卡时显现；常态透明无边框（1px 透明占位防抖），悬浮/聚焦显现手绘边框 */
+.flow-user-prompt-card .flow-rollback-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 3px;
+  margin-left: 2px;
+  padding: 3px;
+  font-family: inherit;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.15s ease;
+}
+
+.flow-user-prompt-card:hover .flow-rollback-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.flow-user-prompt-card .flow-rollback-btn:hover,
+.flow-user-prompt-card .flow-rollback-btn:focus-visible {
+  outline: none;
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  background: var(--sketch-box-bg);
+}
+
+/* 会话回退确认弹窗：文件清单（SketchModal detailHtml 富文本详情） */
+.sketch-modal-detail-html .rollback-section {
+  margin: 6px 0 2px;
+}
+
+.sketch-modal-detail-html .rollback-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  margin-bottom: 5px;
+}
+
+.sketch-modal-detail-html .rollback-file-list {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  max-height: 168px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sketch-modal-detail-html .rollback-file-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sketch-modal-detail-html .rollback-kind {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 5px;
+  border: 1px solid var(--sketch-border);
+  border-radius: 3px;
+  color: var(--ink-muted);
+}
+
+.sketch-modal-detail-html .rollback-kind.kind-delete {
+  color: #b91c1c;
+}
+
+.sketch-modal-detail-html .rollback-kind.kind-modify {
+  color: #92400e;
+}
+
+.sketch-modal-detail-html .rollback-kind.kind-add {
+  color: #047857;
+}
+
+.sketch-modal-detail-html .rollback-kind.kind-too-large {
+  color: #b91c1c;
+  border-color: rgba(185, 28, 28, 0.45);
+  background: rgba(185, 28, 28, 0.08);
+  font-weight: 600;
+}
+
+:root[data-theme="dark"] .sketch-modal-detail-html .rollback-kind.kind-delete {
+  color: #f87171;
+}
+
+:root[data-theme="dark"] .sketch-modal-detail-html .rollback-kind.kind-modify {
+  color: #fbbf24;
+}
+
+:root[data-theme="dark"] .sketch-modal-detail-html .rollback-kind.kind-add {
+  color: #34d399;
+}
+
+:root[data-theme="dark"] .sketch-modal-detail-html .rollback-kind.kind-too-large {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.sketch-modal-detail-html .rollback-path {
+  font-size: 11px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+/* 回退弹窗大文件超限警示横幅 (P3-1 明示提醒) */
+.sketch-modal-detail-html .rollback-warning-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #b91c1c;
+  background: rgba(185, 28, 28, 0.07);
+  border: 1.2px solid rgba(185, 28, 28, 0.35);
+  border-radius: 4px 6px 3px 5px;
+  box-sizing: border-box;
+}
+
+:root[data-theme="dark"] .sketch-modal-detail-html .rollback-warning-banner {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.sketch-modal-detail-html .rollback-warning-banner strong {
+  font-weight: 600;
+}
+
+.sketch-modal-detail-html .rollback-note {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+  padding: 6px 8px;
+  background: var(--sketch-tag-bg);
+  border: 1px dashed var(--sketch-border-subtle);
+  border-radius: 4px;
 }
 
 /* 会话流「注入提示」信息框：位于路由目标项目胶囊下方，集中展示所有调用模型前注入的上下文条目
@@ -417,6 +620,407 @@
   color: var(--ink-primary);
 }
 
+/* 会话流「文件变更」收纳框：会话完成后收集于会话流末尾，
+   集中展示本轮会话被模型「新增 / 修改 / 删除」的文件；
+   背景完全透明、无胶囊外边框；自适应宽度、路径过长自动以...省略显示，绝无横向滚动条 */
+.flow-file-changes {
+  align-self: stretch;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  margin: 2px 0 6px 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: inherit;
+  color: var(--ink-muted);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
+  animation: sketchCapsuleFadeIn 0.2s ease-out;
+}
+
+:root[data-theme="dark"] .flow-file-changes {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+/* 头部按钮（自适应全宽，整条可点击折叠/展开） */
+.flow-file-changes .file-changes-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 6px 2px;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.flow-file-changes .file-changes-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ink-muted);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.15s ease;
+}
+
+.flow-file-changes .file-changes-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ink-muted);
+  transition: color 0.15s ease;
+}
+
+.flow-file-changes .file-changes-title {
+  flex-shrink: 0;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-primary);
+  transition: color 0.15s ease;
+}
+
+/* 头部右侧信息区：无胶囊边框+透明背景，纯文字指示 */
+.flow-file-changes .file-changes-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.flow-file-changes .file-changes-summary-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.flow-file-changes .file-changes-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  border: none;
+  background: transparent;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  user-select: none;
+}
+
+.flow-file-changes .file-changes-pill.pill-add {
+  color: #047857;
+  background: transparent;
+}
+
+.flow-file-changes .file-changes-pill.pill-modify {
+  color: #b45309;
+  background: transparent;
+}
+
+.flow-file-changes .file-changes-pill.pill-delete {
+  color: #be123c;
+  background: transparent;
+}
+
+:root[data-theme="dark"] .flow-file-changes .file-changes-pill.pill-add {
+  color: #34d399;
+  background: transparent;
+}
+
+:root[data-theme="dark"] .flow-file-changes .file-changes-pill.pill-modify {
+  color: #fbbf24;
+  background: transparent;
+}
+
+:root[data-theme="dark"] .flow-file-changes .file-changes-pill.pill-delete {
+  color: #fb7185;
+  background: transparent;
+}
+
+.flow-file-changes .file-changes-count {
+  font-size: 11px;
+  color: var(--ink-muted);
+  opacity: 0.85;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.flow-file-changes .file-changes-header:hover .file-changes-title {
+  color: var(--ink-primary);
+}
+
+.flow-file-changes .file-changes-header:hover .file-changes-chevron,
+.flow-file-changes .file-changes-header:hover .file-changes-icon {
+  color: var(--ink-primary);
+}
+
+/* 收起态折叠隐藏清单列表 */
+.flow-file-changes.collapsed .file-changes-list {
+  display: none;
+}
+
+/* 清单列表：宽度自适应，严格禁止横向滚动条 */
+.flow-file-changes .file-changes-list {
+  margin: 0;
+  padding: 2px 0 6px;
+  list-style: none;
+  border-top: 1px dashed var(--sketch-border-subtle);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  max-height: 280px;
+  overflow-x: hidden !important;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.2s ease;
+}
+
+.flow-file-changes .file-changes-list:hover {
+  scrollbar-color: var(--sketch-border-subtle) transparent;
+}
+
+.flow-file-changes .file-changes-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.flow-file-changes .file-changes-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.flow-file-changes .file-changes-list::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+}
+
+.flow-file-changes .file-changes-list:hover::-webkit-scrollbar-thumb {
+  background: var(--sketch-border-subtle);
+}
+
+/* 单个文件条目：100%自适应宽度，严禁使用负外边距 */
+.flow-file-changes .file-change-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
+  padding: 4px 6px;
+  margin: 1px 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
+}
+
+.flow-file-changes .file-change-item:active {
+  transform: scale(0.995);
+}
+
+/* 桌面端铁律五：常态透明无边框，悬浮/聚焦显手绘微边框与轻微背景 */
+.flow-file-changes .file-change-item:hover,
+.flow-file-changes .file-change-item:focus-visible {
+  background: var(--sketch-tag-hover-bg);
+  border-color: var(--sketch-border-subtle);
+  outline: none;
+}
+
+:root[data-theme="dark"] .flow-file-changes .file-change-item:hover,
+:root[data-theme="dark"] .flow-file-changes .file-change-item:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(237, 232, 220, 0.16);
+}
+
+/* 内容主体：自适应弹性收缩，允许子元素省略溢出 */
+.flow-file-changes .file-change-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 0;
+  overflow: hidden;
+}
+
+/* ==========================================================================
+   「增加、修改、删除」标识 (取消胶囊边框+背景色，纯透明背景与语义色彩)
+   ========================================================================== */
+.flow-file-changes .file-change-kind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex-shrink: 0;
+  height: auto;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  user-select: none;
+}
+
+.flow-file-changes .file-change-kind-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.flow-file-changes .file-change-kind-text {
+  display: inline-block;
+  line-height: 1;
+}
+
+/* 浅色模式 - 纯透明背景、高对比度语义色彩 */
+.flow-file-changes .kind-add {
+  color: #047857;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.flow-file-changes .kind-modify {
+  color: #b45309;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.flow-file-changes .kind-delete {
+  color: #be123c;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+/* 深色模式 - 纯透明背景、高对比度语义色彩 */
+:root[data-theme="dark"] .flow-file-changes .kind-add {
+  color: #34d399;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .flow-file-changes .kind-modify {
+  color: #fbbf24;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .flow-file-changes .kind-delete {
+  color: #fb7185;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+/* 文件名与路径：自适应截断，文本过长用...省略，绝对避免横向滚动条 */
+.flow-file-changes .file-change-name {
+  flex: 0 1 auto;
+  max-width: 45%;
+  min-width: 0;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, "Cascadia Code", "Segoe UI Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--ink-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 删除项条目名称带有优雅的删除修饰 */
+.flow-file-changes .file-change-item.kind-delete .file-change-name {
+  opacity: 0.85;
+  text-decoration: line-through;
+  text-decoration-color: rgba(190, 18, 60, 0.45);
+}
+
+:root[data-theme="dark"] .flow-file-changes .file-change-item.kind-delete .file-change-name {
+  text-decoration-color: rgba(251, 113, 133, 0.45);
+}
+
+/* 路径：自适应弹性延伸与收缩，过长文本一律以...省略 */
+.flow-file-changes .file-change-dir {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, "Cascadia Code", "Segoe UI Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: var(--ink-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.72;
+}
+
+/* 右侧定位操作区：固定右对齐，绝不换行 */
+.flow-file-changes .file-change-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 6px;
+  white-space: nowrap;
+}
+
+.flow-file-changes .file-change-action-hint {
+  font-size: 11px;
+  color: var(--ink-muted);
+  opacity: 0;
+  transform: translateX(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  user-select: none;
+}
+
+.flow-file-changes .file-change-folder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  opacity: 0.4;
+  transition: opacity 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.flow-file-changes .file-change-item:hover .file-change-action-hint,
+.flow-file-changes .file-change-item:focus-visible .file-change-action-hint {
+  opacity: 0.85;
+  transform: translateX(0);
+}
+
+.flow-file-changes .file-change-item:hover .file-change-folder,
+.flow-file-changes .file-change-item:focus-visible .file-change-folder {
+  opacity: 0.95;
+  color: var(--ink-primary);
+  transform: scale(1.05);
+}
+
 @keyframes sketchCapsuleFadeIn {
   from {
     opacity: 0;
@@ -428,7 +1032,7 @@
   }
 }
 
-/* 自动重连/切换进度胶囊 (手绘草图风格，运行态瞬态展示，不沉淀历史) */
+/* 无痕内置重连进度胶囊 (手绘草图风格，运行态瞬态展示，不沉淀历史) */
 .flow-failover-capsule {
   display: inline-flex;
   align-items: center;
@@ -699,7 +1303,47 @@
 }
 
 .flow-step-card.flow-step-thinking .thinking-preview {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  white-space: nowrap;
+  position: relative;
+  scrollbar-width: none;
+  /* 左侧渐变羽化遮罩：文字由右向左流动滑出时自然淡隐 */
+  mask-image: linear-gradient(to right, transparent 0, black 16px, black 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, black 16px, black 100%);
+}
+
+/* 无真实思考输出（展示“已完成思考”）时移除左侧渐隐遮罩 */
+.flow-step-card.flow-step-thinking .thinking-preview.no-fade,
+.flow-step-card.flow-step-thinking.no-fade .thinking-preview,
+.flow-step-card.flow-step-thinking .thinking-preview[data-no-fade="true"] {
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+.flow-step-card.flow-step-thinking .thinking-preview::-webkit-scrollbar {
+  display: none;
+}
+
+/* 收起态流动输出流：单行紧跟最新输出文本 */
+.thinking-preview-stream {
+  display: inline-block;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   color: var(--ink-muted);
+  opacity: 0.88;
+}
+
+/* 展开态隐藏单行预览（使用 visibility 保持滚动布局盒尺寸不被重置） */
+.flow-step-card.flow-step-thinking.open .thinking-preview {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .flow-step-body.thinking-body {
@@ -818,6 +1462,43 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
   color: var(--ink-muted);
+}
+
+/* 伪工具运行框（参数流式期占位）：虚线边框 + 降不透明度 + 工具图标呼吸旋转，
+   视觉上与真实工具卡区分，待 tool-start 真实卡就位后被移除 */
+.flow-step-card.flow-step-tool.tool-pseudo-card {
+  border-style: dashed;
+  opacity: 0.82;
+}
+
+.flow-step-card.flow-step-tool.tool-pseudo-card .tool-duration {
+  color: #d97706;
+}
+
+:root[data-theme="dark"] .flow-step-card.flow-step-tool.tool-pseudo-card .tool-duration {
+  color: #fbbf24;
+}
+
+.flow-step-card.flow-step-tool.running .tool-icon {
+  animation: toolIconSpin 2.4s ease-in-out infinite;
+}
+
+@keyframes toolIconSpin {
+  0%, 100% {
+    transform: rotate(-12deg) scale(1);
+  }
+  50% {
+    transform: rotate(12deg) scale(1.08);
+  }
+}
+
+.flow-step-card.flow-step-tool .tool-duration {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  opacity: 0.85;
 }
 
 /* 工具状态徽章 */
@@ -1250,3 +1931,244 @@
 }
 
 
+
+/* ==========================================================================
+   中途提问人工回归选择（Human-in-the-Loop Ask-Back）— 待答横条与作答控件
+   --------------------------------------------------------------------------
+   横条紧接轮次步骤流之后，保持「思维/工具 → 待答横条 → 回答正文」因果时序；
+   三态：pending（待作答，高亮脉冲）/ done（已作答或已跳过，定格）/ failed（已失效）。
+   按钮遵循铁律 5：常态透明无边框 + 1px 几何占位，悬浮/聚焦才显框。
+   ========================================================================== */
+
+.flow-human-input-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 6px 0 10px 0;
+  padding: 6px 10px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 255px 8px 225px 8px / 8px 225px 8px 255px;
+  background-color: var(--sketch-tag-bg);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+.flow-human-input-bar.pending {
+  border-color: var(--sketch-border);
+  box-shadow: var(--sketch-shadow);
+  animation: humanInputPulse 2.2s ease-in-out infinite;
+}
+
+@keyframes humanInputPulse {
+  0%, 100% { box-shadow: var(--sketch-shadow); }
+  50% { box-shadow: var(--sketch-shadow-hover); }
+}
+
+.flow-human-input-bar.frozen {
+  animation: none;
+  opacity: 0.72;
+}
+
+.flow-human-input-bar.frozen.failed {
+  border-color: rgba(220, 38, 38, 0.45);
+}
+
+.human-input-bar-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  cursor: pointer;
+  outline: none;
+}
+
+.human-input-bar-main:focus-visible {
+  outline: 1.5px solid var(--sketch-border);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.human-input-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-muted);
+  flex: 0 0 auto;
+}
+
+.human-input-icon svg {
+  display: block;
+}
+
+.human-input-bar-title {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.human-input-countdown {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+.human-input-bar-status {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--sketch-border-subtle);
+  color: var(--ink-muted);
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.human-input-bar-status.pending {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+}
+
+.human-input-bar-status.done {
+  color: var(--ink-muted);
+}
+
+.human-input-bar-status.failed {
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.45);
+}
+
+.human-input-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+/* 手绘按钮：常态透明、无可见边框、1px 几何占位（铁律 5） */
+.human-input-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-muted);
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 255px 8px 225px 8px / 8px 225px 8px 255px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.human-input-btn:hover {
+  color: var(--ink-primary);
+  background-color: var(--sketch-tag-hover-bg);
+  border-color: var(--sketch-border-subtle);
+}
+
+.human-input-btn:focus-visible {
+  outline: 1.5px solid var(--sketch-border);
+  outline-offset: 1px;
+}
+
+.human-input-btn:active {
+  transform: scale(0.95);
+}
+
+.human-input-btn.primary {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border);
+  box-shadow: 1px 2px 0px var(--sketch-border-subtle);
+}
+
+.human-input-btn.primary:hover {
+  background-color: var(--sketch-tag-hover-bg);
+  border-color: var(--sketch-border);
+  transform: translateY(-1px);
+}
+
+/* ---------- 作答弹窗内容（SketchModal 内嵌控件） ---------- */
+
+.human-input-modal-body {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.human-input-field-label {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+}
+
+.human-input-text,
+.human-input-textarea {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--ink-primary);
+  background-color: transparent;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 255px 8px 225px 8px / 8px 225px 8px 255px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.human-input-textarea {
+  border-radius: 8px 225px 8px 255px / 225px 8px 255px 8px;
+  resize: vertical;
+  min-height: 96px;
+  line-height: 1.6;
+}
+
+.human-input-text:focus,
+.human-input-textarea:focus {
+  border-color: var(--sketch-border);
+  box-shadow: var(--sketch-shadow);
+}
+
+.human-input-select {
+  width: 100%;
+}
+
+.human-input-confirm-row {
+  display: flex;
+  gap: 10px;
+}
+
+.human-input-choice {
+  flex: 1 1 0;
+  background: transparent;
+  border: 1px solid var(--sketch-border-subtle);
+  color: var(--ink-muted);
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+  border-radius: 255px 8px 225px 8px / 8px 225px 8px 255px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.human-input-choice:hover {
+  color: var(--ink-primary);
+  background-color: var(--sketch-tag-hover-bg);
+  border-color: var(--sketch-border);
+}
+
+.human-input-choice.selected {
+  color: var(--ink-primary);
+  background-color: var(--sketch-tag-hover-bg);
+  border-color: var(--sketch-border);
+  box-shadow: 1px 2px 0px var(--sketch-border-subtle);
+}
+
+.human-input-choice:focus-visible {
+  outline: 1.5px solid var(--sketch-border);
+  outline-offset: 1px;
+}

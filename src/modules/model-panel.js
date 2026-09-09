@@ -4,20 +4,39 @@ import { piClient } from "../services/pi-client.js";
 import { configService } from "../services/config-service.js";
 import { enhanceSelect } from "../services/sketch-select.js";
 import { sketchAlert } from "../services/sketch-modal.js";
+import { bindAll } from "../lib/el-binder.js";
+import { scrollSettingsToBottom } from "./settings-navigation.js";
 
 /**
  * 当前模型列表、白名单 MRU 与官方通道配置
  */
 export function initModelPanel(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
-  const flow = ctx.flow;
-  const attachments = ctx.attachments;
+  const settingsStore = ctx.settingsStore;
+  const flowDom = ctx.flowDom;
+  // 批次 B：模块自绑定（officialProviderSelect / autoReconnectSwitch 为跨簇共享 id，同 id 同元素）
+  const el = bindAll({
+    currentModelProvider: "current-model-provider",
+    currentModelName: "current-model-name",
+    currentModelInfo: "current-model-info",
+    thinkingSelectDropdown: "thinking-select-dropdown",
+    whitelistModelsList: "whitelist-models-list",
+    autoReconnectSwitch: "auto-reconnect-switch",
+    officialProviderSelect: "official-provider-select",
+    officialProviderTitle: "official-provider-title",
+    officialProviderDesc: "official-provider-desc",
+    officialProviderDoc: "official-provider-doc",
+    officialApiKeyInput: "official-api-key-input",
+    btnToggleKeyVisibility: "btn-toggle-key-visibility",
+    btnSaveOfficialKey: "btn-save-official-key",
+    officialKeyStatus: "official-key-status",
+    officialModelsGrid: "official-models-grid",
+    btnFetchOfficialModels: "btn-fetch-official-models",
+    btnFetchOfficialModelsText: "btn-fetch-official-models-text",
+  });
 
-  const flowModelName = el.flowModelName;
-  const flowModelTag = el.flowModelTag;
+  const flowModelName = flowDom.flowModelName;
+  const flowModelTag = flowDom.flowModelTag;
   const currentModelProvider = el.currentModelProvider;
   const currentModelName = el.currentModelName;
   const currentModelInfo = el.currentModelInfo;
@@ -35,6 +54,18 @@ export function initModelPanel(ctx) {
   const officialModelsGrid = el.officialModelsGrid;
   const btnFetchOfficialModels = el.btnFetchOfficialModels;
   const btnFetchOfficialModelsText = el.btnFetchOfficialModelsText;
+
+  // 同步初始化内核状态 UI（消除初次加载时的闪烁）
+  const initialHasKernel = piClient.hasKernel();
+  if (typeof document !== "undefined" && document.body) {
+    document.body.classList.toggle("kernel-missing", !initialHasKernel);
+  }
+  if (flowModelTag) {
+    flowModelTag.classList.toggle("kernel-missing", !initialHasKernel);
+  }
+  if (initialHasKernel) {
+    loadModelsAndState();
+  }
 
   // ==========================================================================
   // 3. 当前模型列表与白名单机制 (最近选用 MRU 自动排序 + 选中模型禁止删除保护)
@@ -83,7 +114,7 @@ export function initModelPanel(ctx) {
   const renderWhitelistModels = (activeModel) => {
     if (!whitelistModelsList) return;
 
-    if (settings.expandedChannel) {
+    if (settingsStore.expandedChannel) {
       whitelistModelsList.classList.add("collapsed-single");
     } else {
       whitelistModelsList.classList.remove("collapsed-single");
@@ -158,13 +189,12 @@ export function initModelPanel(ctx) {
           </div>
         </div>
         <div class="model-item-actions">
-          ${
-            isActive
-              ? `<span class="flat-badge flat-badge-active">使用中</span>
+          ${isActive
+          ? `<span class="flat-badge flat-badge-active">使用中</span>
                  <button type="button" class="flat-btn flat-btn-secondary mini btn-remove-model" disabled style="opacity: 0.35; cursor: not-allowed; display: inline-flex; align-items: center; gap: 4px;" title="当前使用中的模型禁止删除"><span class="btn-icon">${ICONS.lock}</span> 锁定</button>`
-              : `<button type="button" class="flat-btn flat-btn-secondary mini btn-select-model">选用</button>
+          : `<button type="button" class="flat-btn flat-btn-secondary mini btn-select-model">选用</button>
                  <button type="button" class="flat-btn flat-btn-secondary mini btn-remove-model" title="从列表移除" aria-label="从列表移除" style="display: inline-flex; align-items: center; justify-content: center; padding: 4px 6px;">${ICONS.close}</button>`
-          }
+        }
         </div>
       `;
 
@@ -216,7 +246,7 @@ export function initModelPanel(ctx) {
 
   const loadModelsAndState = async () => {
     try {
-      // 同步「自动重连切换」勾选状态至设置页 UI
+      // 同步「自动强制重连」勾选状态至设置页 UI
       if (autoReconnectSwitch) {
         autoReconnectSwitch.checked = configService.getAutoReconnectSwitch();
       }
@@ -232,7 +262,7 @@ export function initModelPanel(ctx) {
         configService.getOfficialModelsCatalog(),
       ]);
 
-      settings.officialCatalog = catalog || [];
+      settingsStore.setOfficialCatalog(catalog || []);
 
       // 检查白名单是否已存在，不存在则初始化
       let whitelist = configService.loadModelWhitelist();
@@ -240,7 +270,7 @@ export function initModelPanel(ctx) {
         if (state?.model) {
           configService.addModelToWhitelist(state.model);
         }
-        settings.officialCatalog.forEach((p) => {
+        settingsStore.officialCatalog.forEach((p) => {
           p.models
             .filter((m) => m.is_default)
             .forEach((m) => {
@@ -313,7 +343,14 @@ export function initModelPanel(ctx) {
   });
 
   piClient.addEventListener("kernel-status-change", (e) => {
-    if (e.detail?.hasKernel) {
+    const hasKernel = Boolean(e.detail?.hasKernel);
+    if (typeof document !== "undefined" && document.body) {
+      document.body.classList.toggle("kernel-missing", !hasKernel);
+    }
+    if (flowModelTag) {
+      flowModelTag.classList.toggle("kernel-missing", !hasKernel);
+    }
+    if (hasKernel) {
       loadModelsAndState();
     } else {
       if (flowModelName) flowModelName.textContent = "未检测到pi内核";
@@ -326,7 +363,7 @@ export function initModelPanel(ctx) {
   // ==========================================================================
 
   const renderOfficialProviderDetails = (providerId) => {
-    const provMeta = settings.officialCatalog.find((p) => p.id === providerId);
+    const provMeta = settingsStore.officialCatalog.find((p) => p.id === providerId);
     if (!provMeta) return;
 
     if (officialProviderTitle) officialProviderTitle.textContent = provMeta.name;
@@ -337,11 +374,11 @@ export function initModelPanel(ctx) {
     }
 
     const authEntry =
-      settings.currentOfficialAuth[provMeta.id] ||
+      settingsStore.currentOfficialAuth[provMeta.id] ||
       (provMeta.id.startsWith("opencode")
-        ? settings.currentOfficialAuth["opencode-zen"] ||
-          settings.currentOfficialAuth["opencode-go"] ||
-          settings.currentOfficialAuth["opencode"]
+        ? settingsStore.currentOfficialAuth["opencode-zen"] ||
+        settingsStore.currentOfficialAuth["opencode-go"] ||
+        settingsStore.currentOfficialAuth["opencode"]
         : null);
     const existingKey = typeof authEntry === "string" ? authEntry : authEntry?.key || "";
 
@@ -424,12 +461,12 @@ export function initModelPanel(ctx) {
         configService.getOfficialModelsCatalog(),
       ]);
 
-      settings.currentOfficialAuth = authConfig || {};
-      settings.officialCatalog = catalog || [];
+      settingsStore.setCurrentOfficialAuth(authConfig || {});
+      settingsStore.setOfficialCatalog(catalog || []);
 
       if (officialProviderSelect) {
         officialProviderSelect.innerHTML = "";
-        settings.officialCatalog.forEach((p, idx) => {
+        settingsStore.officialCatalog.forEach((p, idx) => {
           const opt = document.createElement("option");
           opt.value = p.id;
           opt.textContent = `${p.name} (${p.models.length} 个模型)`;
@@ -437,9 +474,9 @@ export function initModelPanel(ctx) {
           officialProviderSelect.appendChild(opt);
         });
 
-        if (settings.officialCatalog.length > 0) {
-          officialProviderSelect.value = settings.officialCatalog[0].id;
-          renderOfficialProviderDetails(settings.officialCatalog[0].id);
+        if (settingsStore.officialCatalog.length > 0) {
+          officialProviderSelect.value = settingsStore.officialCatalog[0].id;
+          renderOfficialProviderDetails(settingsStore.officialCatalog[0].id);
         }
 
         if (officialProviderSelect.__sketchSelect) {
@@ -456,7 +493,7 @@ export function initModelPanel(ctx) {
   if (officialProviderSelect) {
     officialProviderSelect.addEventListener("change", () => {
       renderOfficialProviderDetails(officialProviderSelect.value);
-      api.scrollSettingsToBottom(true);
+      scrollSettingsToBottom(true);
     });
   }
 
@@ -476,7 +513,7 @@ export function initModelPanel(ctx) {
 
       try {
         await configService.saveProviderApiKey(provider, key);
-        settings.currentOfficialAuth = await configService.getAuthConfig();
+        settingsStore.setCurrentOfficialAuth(await configService.getAuthConfig());
         renderOfficialProviderDetails(provider);
         await sketchAlert(`官方通道 [${provider}] API Key 已成功保存至 ~/.pi/agent/auth.json！`, { type: "success", title: "保存成功" });
       } catch (err) {
@@ -501,12 +538,12 @@ export function initModelPanel(ctx) {
       try {
         const fetchedModels = await configService.fetchOfficialModels(provider);
         if (Array.isArray(fetchedModels) && fetchedModels.length > 0) {
-          const provMeta = settings.officialCatalog.find((p) => p.id === provider);
+          const provMeta = settingsStore.officialCatalog.find((p) => p.id === provider);
           if (provMeta) {
             provMeta.models = fetchedModels;
           }
           renderOfficialProviderDetails(provider);
-          api.scrollSettingsToBottom(true);
+          scrollSettingsToBottom(true);
           if (officialKeyStatus) {
             officialKeyStatus.textContent = `● 成功从官网/内核拉取并同步 ${fetchedModels.length} 个最新可用模型`;
             officialKeyStatus.style.color = "#10b981";

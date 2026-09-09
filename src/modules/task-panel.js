@@ -1,40 +1,55 @@
 import { escapeHtml, cleanUserPrompt } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
+import { bus } from "../lib/event-bus.js";
 import { piClient } from "../services/pi-client.js";
 import { sessionService } from "../services/session-service.js";
 import { conversationHistoryService } from "../services/conversation-history.js";
-import { taskManager } from "../services/task-manager.js";
+import { taskManager, resolveTaskSessionIdentity } from "../services/task-manager.js";
 import { modelFailoverEngine } from "../services/model-failover.js";
+import { flowStore } from "../services/stores/flow-store.js";
+import { bindAll } from "../lib/el-binder.js";
 
 /**
  * 后台任务胶囊、侧边栏、历史恢复与快照归档
  */
 export function initTaskPanel(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
-  const flow = ctx.flow;
-  const attachments = ctx.attachments;
-
-  const flowScrollArea = el.flowScrollArea;
-  const flowConversation = el.flowConversation;
-  const thinkingToggleBtn = el.thinkingToggleBtn;
-  const thinkingDuration = el.thinkingDuration;
-  const flowModelName = el.flowModelName;
+  const viewStore = ctx.viewStore;
+  const flowView = ctx.flowView;
+  const flowStore = ctx.flowStore;
+  const flowDom = ctx.flowDom;
+  // 批次 B：模块自绑定（sketchMessagesDrawer 与 sessions-panel 跨簇共享，同 id 同元素）
+  const el = bindAll({
+    sketchMessagesDrawer: "sketch-messages-drawer",
+    messagesPrimaryRow: "messages-primary-row",
+    messagesExpandedGrid: "messages-expanded-grid",
+    miniTaskCapsule: "mini-task-capsule",
+    capsuleTaskText: "capsule-task-text",
+    globalToastBanner: "global-toast-banner",
+    globalToastText: "global-toast-text",
+    taskSidebarSummary: "task-sidebar-summary",
+    taskSidebarList: "task-sidebar-list",
+    btnCloseTaskSidebar: "btn-close-task-sidebar",
+  });
   const sketchMessagesDrawer = el.sketchMessagesDrawer;
   const messagesPrimaryRow = el.messagesPrimaryRow;
   const messagesExpandedGrid = el.messagesExpandedGrid;
   const miniTaskCapsule = el.miniTaskCapsule;
   const capsuleTaskText = el.capsuleTaskText;
-  const flowBtnAbort = el.flowBtnAbort;
   const globalToastBanner = el.globalToastBanner;
   const globalToastText = el.globalToastText;
-  const taskDetailsSidebar = el.taskDetailsSidebar;
   const taskSidebarSummary = el.taskSidebarSummary;
   const taskSidebarList = el.taskSidebarList;
   const btnCloseTaskSidebar = el.btnCloseTaskSidebar;
+
+  const flowScrollArea = flowDom.flowScrollArea;
+  const flowConversation = flowDom.flowConversation;
+  const thinkingToggleBtn = flowDom.thinkingToggleBtn;
+  const thinkingDuration = flowDom.thinkingDuration;
+  const flowModelName = flowDom.flowModelName;
+  const flowBtnAbort = flowDom.flowBtnAbort;
+  const taskDetailsSidebar = flowDom.taskDetailsSidebar;
 
   // ==========================================================================
   // 详细界面历史对话讯息方框交互引擎 (Sketch Message Drawer & MRU Flow Recovery)
@@ -153,22 +168,25 @@ export function initTaskPanel(ctx) {
     }
 
     tasks.forEach((task) => {
-      const isRunning = task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec";
+      // 含 paused（人工交互待确认）：终止按钮必须可见，用户方可强制终止阻塞中的任务（铁律19/TC8）
+      const isRunning =
+        task.status === "thinking" ||
+        task.status === "streaming" ||
+        task.status === "tool_exec" ||
+        task.status === "paused";
       const isCurrent = taskManager.currentActiveTaskId === task.id;
 
-      // 自动重连切换进行中：该 Task 绑定引擎自愈流水线时展示专属状态徽章
+      // 自动强制重连进行中：该 Task 绑定引擎内置重连流水线时展示专属状态徽章
       const engineStatus =
         modelFailoverEngine.isActive() &&
-        modelFailoverEngine.taskId &&
-        modelFailoverEngine.taskId === task.id
+          modelFailoverEngine.taskId &&
+          modelFailoverEngine.taskId === task.id
           ? modelFailoverEngine.status
           : null;
 
       let statusText = "已完成";
       if (engineStatus === "reconnecting") {
-        statusText = "自动重连中";
-      } else if (engineStatus === "switching") {
-        statusText = "切换模型中";
+        statusText = "自动内置重连中";
       } else if (task.status === "thinking") {
         const elapsed = ((Date.now() - task.startedAt) / 1000).toFixed(0);
         statusText = `思考中 (${elapsed}s)`;
@@ -177,7 +195,9 @@ export function initTaskPanel(ctx) {
       } else if (task.status === "tool_exec") {
         statusText = `执行工具: ${task.activeToolName || "tool"}`;
       } else if (task.status === "paused") {
-        statusText = "待确认";
+        // 未决人工交互请求：抽屉徽标显示「待确认（N 项）」而非泛化的「待确认」
+        const pendingUiCount = task.pendingUiRequests ? task.pendingUiRequests.size : 0;
+        statusText = pendingUiCount > 0 ? `待确认 (${pendingUiCount})` : "待确认";
       } else if (task.status === "aborted") {
         statusText = "已终止";
       } else if (task.status === "error") {
@@ -366,29 +386,51 @@ export function initTaskPanel(ctx) {
       isRunning = false,
       syncModelName = false,
       sessionPath = null,
+      sessionId = null,
     } = options;
 
+    if (sessionPath && !task.sessionPath) {
+      task.sessionPath = sessionPath;
+    }
+    if (sessionId && !task.sessionId) {
+      task.sessionId = sessionId;
+    }
+
     taskManager.setActiveTask(task.id);
+
+    // 重置文件变更收纳框 DOM 引用（旧会话缓存仓已保留，避免 DOM 销毁后残留悬垂引用）
+    if (typeof api.resetFileChanges === "function") {
+      api.resetFileChanges();
+    }
 
     if (flowConversation) {
       flowConversation.innerHTML = "";
     }
 
+    // 重置流式状态缓存，杜绝跨会话工具卡片与步骤快照残留
+    flowView.renderedToolCards.clear();
+    flowView.activeThinkingStep = null;
+    flowView.currentSteps = [];
+
     turns.forEach((turn, idx) => {
       const isLast = idx === turns.length - 1;
       const isOpen = isLast && isRunning && (!turn.responseText || turn.responseText.trim().length === 0);
+
+      const rawResponseText = turn.responseText || "";
+      const isHistoricalSyntheticError = !isLast && rawResponseText.startsWith("> ⚠️ **模型调用失败**：");
+      const safeResponseText = isHistoricalSyntheticError ? "" : rawResponseText;
 
       const groupRefs = api.createFlowTurnGroupElement({
         query: turn.query || "",
         attachments: turn.attachments || [],
         thinkingText: turn.thinkingText || "",
         thinkingDurationText: turn.thinkingDurationText || turn.thinkingDuration || "已完成思考",
-        responseText: turn.responseText || "",
+        responseText: safeResponseText,
         toolCalls: turn.toolCalls || [],
         steps: turn.steps || [],
         isOpenThinking: isOpen,
         isAborted: turn.isAborted || turn.responseText?.includes("刚刚会话已手动终止"),
-        errorMessage: turn.errorMessage,
+        errorMessage: isLast && !isRunning ? turn.errorMessage : null,
       });
 
       if (flowConversation && groupRefs?.groupEl) {
@@ -396,14 +438,31 @@ export function initTaskPanel(ctx) {
       }
 
       if (isLast) {
-        flow.activeTurnRefs = groupRefs;
-        flow.lastUserQuery = turn.query || "";
-        flow.lastSentAttachments = turn.attachments || [];
-        flow.currentThinkingText = turn.thinkingText || "";
-        flow.currentResponseText = turn.responseText || "";
-        flow.currentErrorMessage = turn.errorMessage || null;
-        flow.hasReceivedDelta = Boolean(turn.responseText && turn.responseText.trim().length > 0);
-        flow.hasAutoCollapsedThinking = !isOpen;
+        flowView.activeTurnRefs = groupRefs;
+        // 末轮纯数据回填：写入「该任务自己」的分仓（多任务直切隔离铁律 ——
+        // 后台挂起任务的流式事件写它自己的分仓，与本前台分仓互不可见）
+        flowStore.for(task.id).set({
+          lastUserQuery: turn.query || "",
+          lastSentAttachments: turn.attachments || [],
+          thinkingText: turn.thinkingText || "",
+          responseText: isRunning ? (turn.responseText || "") : safeResponseText,
+          errorMessage: isRunning ? null : (turn.errorMessage || null),
+          hasReceivedDelta: Boolean(turn.responseText && turn.responseText.trim().length > 0),
+          hasAutoCollapsedThinking: !isOpen,
+        });
+        flowView.currentSteps = Array.isArray(turn.steps) ? [...turn.steps] : [];
+
+        // H26 自愈：将最后一轮中已渲染的工具卡 DOM 节点回填至 flowView.renderedToolCards
+        // 保证切入运行中任务后，后续到达的 tool-update / tool-end 能够精准定位到 DOM 节点
+        if (groupRefs?.groupEl) {
+          const toolCardEls = groupRefs.groupEl.querySelectorAll(".flow-step-tool");
+          toolCardEls.forEach((cardEl) => {
+            const rawId = cardEl.id && cardEl.id.startsWith("tool-") ? cardEl.id.replace(/^tool-/, "") : cardEl.id;
+            if (rawId) {
+              flowView.renderedToolCards.set(rawId, cardEl);
+            }
+          });
+        }
 
         if (isRunning && groupRefs.responseContentEl) {
           groupRefs.responseContentEl.innerHTML = api.renderMarkdown(turn.responseText || "") + `<span class="streaming-cursor"></span>`;
@@ -413,6 +472,18 @@ export function initTaskPanel(ctx) {
         api.collapseThinkingCard(groupRefs.thinkingCardEl, groupRefs.thinkingToggleBtn);
       }
     });
+
+    // 会话流缓存铁律：返回 Flow 时恢复该会话生命周期内收集的「文件变更」收纳框，
+    // 保证右键退出（挂起/归档）后经历史记录 / Task 记录回入时呈现与退出前一致。
+    // 内核会话还原等无缓存仓的会话自然空操作，不产生任何串档
+    if (typeof api.restoreFileChangesFor === "function") {
+      api.restoreFileChangesFor(task.id);
+    }
+
+    // 未决人工交互请求随 Task 挂起保留：回入 Flow 时重建作答横条（请求不丢失，铁律3）
+    if (typeof api.restoreHumanInputCards === "function") {
+      api.restoreHumanInputCards(task.id);
+    }
 
     if (syncModelName && flowModelName) {
       flowModelName.textContent = task.model || "Model";
@@ -426,7 +497,7 @@ export function initTaskPanel(ctx) {
       }
     }
 
-    api.setViewMode(VIEW_FLOW, true);
+    viewStore.morph(VIEW_FLOW, { shouldFocusInput: true });
 
     // 同步切换底层 Pi 会话
     if (sessionPath) {
@@ -438,12 +509,20 @@ export function initTaskPanel(ctx) {
     if (flowScrollArea) {
       flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
     }
+
+    // 活跃任务切换后即刻刷新 Mini 任务胶囊 UI
+    updateMiniTaskCapsuleUI();
   };
 
   const restoreTaskToFlow = (task) => {
     if (!task) return;
 
-    if (view.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id !== task.id) {
+    // H25 防重入铁律：如果已经在 Flow 模式且当前前台活跃任务正是此任务，直接返回，严禁清空 DOM 与截断流式
+    if (viewStore.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id === task.id) {
+      return;
+    }
+
+    if (viewStore.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id !== task.id) {
       archiveCurrentFlowToHistory();
     }
 
@@ -453,34 +532,35 @@ export function initTaskPanel(ctx) {
       );
       if (existingConv) {
         task.conversationId = existingConv.id;
-        if ((!Array.isArray(task.turns) || task.turns.length === 0) && Array.isArray(existingConv.turns) && existingConv.turns.length > 0) {
+        // 防幽灵反向覆写门禁：若当前 task 已显式经历过回退剪枝 (__isRolledBack)，绝不允许使用旧历史 turns 重新回填！
+        if (!task.__isRolledBack && (!Array.isArray(task.turns) || task.turns.length === 0) && Array.isArray(existingConv.turns) && existingConv.turns.length > 0) {
           task.turns = JSON.parse(JSON.stringify(existingConv.turns));
         }
       }
     }
 
-    taskManager.setActiveTask(task.id);
-    if (flowConversation) {
-      flowConversation.innerHTML = "";
-    }
-
     const turns = Array.isArray(task.turns) && task.turns.length > 0
       ? task.turns.map((t) => ({ ...t, query: cleanUserPrompt(t.query || "") }))
       : [
-          {
-            query: cleanUserPrompt(task.query || task.title || ""),
-            attachments: task.attachments || [],
-            thinkingText: task.thinkingText || "",
-            thinkingDurationText: task.thinkingDurationText || "已完成思考",
-            responseText: task.responseText || "",
-            toolCalls: task.toolCalls || [],
-            steps: task.steps || [],
-            isAborted: task.status === "aborted",
-            errorMessage: task.errorMessage || (task.status === "error" ? "模型调用发生异常终止" : null),
-          },
-        ];
+        {
+          query: cleanUserPrompt(task.query || task.title || ""),
+          attachments: task.attachments || [],
+          thinkingText: task.thinkingText || "",
+          thinkingDurationText: task.thinkingDurationText || "已完成思考",
+          responseText: task.responseText || "",
+          toolCalls: task.toolCalls || [],
+          steps: task.steps || [],
+          isAborted: task.status === "aborted",
+          errorMessage: task.errorMessage || (task.status === "error" ? "模型调用发生异常终止" : null),
+        },
+      ];
 
-    const isRunning = task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec";
+    // paused（人工交互待确认）同样视为「进行中」：保留流式末尾渲染与终止按钮可见性
+    const isRunning =
+      task.status === "thinking" ||
+      task.status === "streaming" ||
+      task.status === "tool_exec" ||
+      task.status === "paused";
 
     renderTurnsIntoFlow(task, turns, { isRunning, syncModelName: true });
   };
@@ -488,31 +568,54 @@ export function initTaskPanel(ctx) {
   const restoreConversationToFlow = (conv) => {
     if (!conv) return;
 
-    if (view.mode === VIEW_FLOW) {
+    // 智能探测对应的 Task 实例（按 conv.taskId、conv.id 或 conversationId 匹配）
+    const taskIdToUse = conv.taskId || conv.id;
+    let existingTask = taskManager.getTask(taskIdToUse);
+    if (!existingTask) {
+      existingTask = taskManager.getAllTasks().find(
+        (t) => t.conversationId === conv.id || t.id === conv.id || t.id === conv.taskId
+      );
+    }
+
+    // 防重入铁律：如果已经在 Flow 模式且当前前台活跃任务正是此任务，直接返回
+    const currentActive = taskManager.getCurrentActiveTask();
+    if (viewStore.mode === VIEW_FLOW && currentActive && (currentActive.id === (existingTask?.id || taskIdToUse) || currentActive.conversationId === conv.id)) {
+      return;
+    }
+
+    // 刷新该讯息的浏览时间戳（MRU 刷新排序至第 1 位）
+    conversationHistoryService.touchConversation(conv.id);
+
+    // 铁律 1 & H28: 入口智能重定向与防覆写
+    // 若该 Task 在 TaskManager 中已存在（无论是活跃运行、后台挂起、还是保留在内存的终态任务），
+    // 严禁使用静态历史快照覆写实时 live turns，严禁强行置 task.status = "completed"！
+    // 直接走 restoreTaskToFlow 通道，平滑无缝接入任务现场并保留真实状态机
+    if (existingTask) {
+      restoreTaskToFlow(existingTask);
+      return;
+    }
+
+    if (viewStore.mode === VIEW_FLOW) {
       archiveCurrentFlowToHistory();
     }
 
-    // 1. 刷新该讯息的浏览时间戳（MRU 刷新排序至第 1 位）
-    conversationHistoryService.touchConversation(conv.id);
-
-    // 2. 将该历史对话还原并绑定为 TaskManager 的当前活跃 Task，确保后续提问保留在同一个工作流
-    const taskIdToUse = conv.taskId || conv.id;
+    // 仅当 Task 不存在于内存中（纯静态历史还原）时，才从 conv 快照重新构建 Task
     let task = taskManager.getTask(taskIdToUse);
     const turns = Array.isArray(conv.turns) && conv.turns.length > 0
       ? conv.turns.map((t) => ({ ...t, query: cleanUserPrompt(t.query || "") }))
       : [
-          {
-            query: cleanUserPrompt(conv.query || conv.title || ""),
-            attachments: [],
-            thinkingText: conv.thinkingText || "",
-            thinkingDurationText: conv.thinkingDuration || "已完成思考",
-            responseText: conv.responseText || "",
-            toolCalls: conv.toolCalls || [],
-            steps: conv.steps || [],
-            isAborted: conv.isAborted,
-            status: "completed",
-          },
-        ];
+        {
+          query: cleanUserPrompt(conv.query || conv.title || ""),
+          attachments: [],
+          thinkingText: conv.thinkingText || "",
+          thinkingDurationText: conv.thinkingDuration || "已完成思考",
+          responseText: conv.responseText || "",
+          toolCalls: conv.toolCalls || [],
+          steps: conv.steps || [],
+          isAborted: conv.isAborted,
+          status: "completed",
+        },
+      ];
 
     if (!task) {
       task = taskManager.createTask({
@@ -525,48 +628,61 @@ export function initTaskPanel(ctx) {
     }
     task.turns = JSON.parse(JSON.stringify(turns));
     task.conversationId = conv.id;
-    task.status = "completed";
+    // H27 治理：精准保留已中止/异常状态，非中止则赋予 completed 终态
+    task.status = conv.isAborted ? "aborted" : "completed";
+    task.sessionPath = conv.sessionPath || null;
+    task.sessionId = resolveTaskSessionIdentity({ id: taskIdToUse, sessionId: conv.sessionId }).sessionId;
     const lastTurn = turns[turns.length - 1];
     task.thinkingText = lastTurn?.thinkingText || conv.thinkingText || "";
     task.responseText = lastTurn?.responseText || conv.responseText || "";
     task.toolCalls = lastTurn?.toolCalls || conv.toolCalls || [];
     task.thinkingDurationText = lastTurn?.thinkingDurationText || conv.thinkingDuration || "已完成思考";
 
-    renderTurnsIntoFlow(task, turns, { sessionPath: conv.sessionPath || null });
+    renderTurnsIntoFlow(task, turns, {
+      sessionPath: task.sessionPath,
+      sessionId: task.sessionId,
+    });
   };
 
   const archiveCurrentFlowToHistory = () => {
     const currentActive = taskManager.getCurrentActiveTask();
+    // 铁律：若当前活跃 Task 经历过回退且轮次归零 (turns.length === 0)，属于草稿态，严禁归档至历史记录
+    if (currentActive && Array.isArray(currentActive.turns) && currentActive.turns.length === 0) {
+      return;
+    }
+    // 快照读取走「当前活跃任务自己」的纯数据分仓（与 flowView 视图缓存并行取用）
+    const fs = flowStore.for(currentActive?.id);
+
     const isAborted = Boolean(
       (currentActive && currentActive.status === "aborted") ||
-      flow.activeTurnRefs?.responseContentEl?.querySelector(".flow-abort-callout")
+      flowView.activeTurnRefs?.responseContentEl?.querySelector(".flow-abort-callout")
     );
 
-    let responseTextToSave = flow.currentResponseText;
-    if (!responseTextToSave && (flow.currentErrorMessage || flow.activeTurnRefs?.responseContentEl?.querySelector(".sketch-error-card"))) {
-      responseTextToSave = `> ⚠️ **模型调用失败**：${flow.currentErrorMessage || "模型执行异常终止"}`;
+    let responseTextToSave = fs.responseText;
+    if (!responseTextToSave && (fs.errorMessage || flowView.activeTurnRefs?.responseContentEl?.querySelector(".sketch-error-card"))) {
+      responseTextToSave = `> ⚠️ **模型调用失败**：${fs.errorMessage || "模型执行异常终止"}`;
     }
 
     const toolCallsSnapshot = [];
-    flow.renderedToolCards.forEach((cardEl, id) => {
+    flowView.renderedToolCards.forEach((cardEl, id) => {
       toolCallsSnapshot.push({
         id,
         html: cardEl.outerHTML,
       });
     });
 
-    const stepsSnapshot = (Array.isArray(flow.currentSteps) && flow.currentSteps.length > 0)
-      ? flow.currentSteps.map((s) => ({
-          type: s.type,
-          id: s.id,
-          text: s.text,
-          durationText: s.durationText,
-          name: s.name,
-          args: s.args,
-          status: s.status,
-          result: s.result,
-          is_error: s.is_error,
-        }))
+    const stepsSnapshot = (Array.isArray(flowView.currentSteps) && flowView.currentSteps.length > 0)
+      ? flowView.currentSteps.map((s) => ({
+        type: s.type,
+        id: s.id,
+        text: s.text,
+        durationText: s.durationText,
+        name: s.name,
+        args: s.args,
+        status: s.status,
+        result: s.result,
+        is_error: s.is_error,
+      }))
       : [];
 
     if (currentActive && Array.isArray(currentActive.turns) && currentActive.turns.length > 0) {
@@ -575,13 +691,13 @@ export function initTaskPanel(ctx) {
         if (isLastTurn) {
           return {
             ...turn,
-            thinkingText: flow.currentThinkingText || turn.thinkingText || "",
+            thinkingText: fs.thinkingText || turn.thinkingText || "",
             responseText: responseTextToSave || turn.responseText || "",
             toolCalls: toolCallsSnapshot.length > 0 ? toolCallsSnapshot : (turn.toolCalls || []),
             steps: stepsSnapshot.length > 0 ? stepsSnapshot : (turn.steps || []),
-            thinkingDurationText: flow.activeTurnRefs?.thinkingDurationEl ? flow.activeTurnRefs.thinkingDurationEl.textContent : (turn.thinkingDurationText || "已完成思考"),
+            thinkingDurationText: flowView.activeTurnRefs?.thinkingDurationEl ? flowView.activeTurnRefs.thinkingDurationEl.textContent : (turn.thinkingDurationText || "已完成思考"),
             isAborted: isAborted || turn.isAborted,
-            errorMessage: flow.currentErrorMessage || turn.errorMessage,
+            errorMessage: fs.errorMessage || turn.errorMessage,
           };
         }
         return turn;
@@ -590,38 +706,52 @@ export function initTaskPanel(ctx) {
       // 同步内存中的 turns 状态
       currentActive.turns = turnsToSave;
 
+      // 铁律 2 (H28)：Task 归档与终结彻底解耦（完全终止才归档至历史记录）
+      // 处于运行态或待确认态（thinking / streaming / tool_exec / paused）的 Task 绝不写入 conversationHistoryService
+      const isRunningOrPaused =
+        currentActive.status === "thinking" ||
+        currentActive.status === "streaming" ||
+        currentActive.status === "tool_exec" ||
+        currentActive.status === "paused";
+
+      if (isRunningOrPaused && !isAborted) {
+        return;
+      }
+
       const firstTurn = turnsToSave[0];
       const lastTurn = turnsToSave[turnsToSave.length - 1];
       const savedConv = conversationHistoryService.recordConversation({
         id: currentActive.conversationId || undefined,
         taskId: currentActive.id,
-        query: firstTurn?.query || flow.lastUserQuery,
+        query: firstTurn?.query || fs.lastUserQuery,
         title: firstTurn?.query ? conversationHistoryService.generateSummaryTitle(firstTurn.query) : undefined,
         turns: turnsToSave,
         steps: stepsSnapshot.length > 0 ? stepsSnapshot : (lastTurn?.steps || []),
-        thinkingText: lastTurn?.thinkingText || flow.currentThinkingText || "",
+        thinkingText: lastTurn?.thinkingText || fs.thinkingText || "",
         responseText: lastTurn?.responseText || responseTextToSave || "",
         toolCalls: lastTurn?.toolCalls || toolCallsSnapshot,
-        thinkingDuration: lastTurn?.thinkingDurationText || (flow.activeTurnRefs?.thinkingDurationEl ? flow.activeTurnRefs.thinkingDurationEl.textContent : null),
+        thinkingDuration: lastTurn?.thinkingDurationText || (flowView.activeTurnRefs?.thinkingDurationEl ? flowView.activeTurnRefs.thinkingDurationEl.textContent : null),
         modelId: currentActive.model || piClient.currentModel?.id || "",
-        sessionPath: "",
+        sessionPath: resolveTaskSessionIdentity(currentActive).sessionPath || "",
+        sessionId: resolveTaskSessionIdentity(currentActive).sessionId || undefined,
         isAborted: turnsToSave.some((t) => t.isAborted),
       });
 
       if (savedConv && savedConv.id) {
         currentActive.conversationId = savedConv.id;
       }
-    } else if (flow.lastUserQuery && (responseTextToSave || flow.currentThinkingText || isAborted)) {
+    } else if (fs.lastUserQuery && (responseTextToSave || fs.thinkingText || isAborted)) {
       const savedConv = conversationHistoryService.recordConversation({
         id: currentActive?.conversationId || undefined,
         taskId: currentActive ? currentActive.id : undefined,
-        query: flow.lastUserQuery,
-        thinkingText: flow.currentThinkingText,
+        query: fs.lastUserQuery,
+        thinkingText: fs.thinkingText,
         responseText: responseTextToSave || "",
         toolCalls: toolCallsSnapshot,
-        thinkingDuration: flow.activeTurnRefs?.thinkingDurationEl ? flow.activeTurnRefs.thinkingDurationEl.textContent : null,
+        thinkingDuration: flowView.activeTurnRefs?.thinkingDurationEl ? flowView.activeTurnRefs.thinkingDurationEl.textContent : null,
         modelId: piClient.currentModel?.id || "",
-        sessionPath: "",
+        sessionPath: resolveTaskSessionIdentity(currentActive).sessionPath || "",
+        sessionId: resolveTaskSessionIdentity(currentActive).sessionId || undefined,
         isAborted,
       });
 
@@ -666,6 +796,16 @@ export function initTaskPanel(ctx) {
 
       const timeStr = formatRelativeTime(conv.lastViewedAt || conv.createdAt);
 
+      // 探测是否存在匹配的后台活跃/挂起任务 (H28 运行中脉冲徽章)
+      const matchedTask = taskManager.getTask(conv.taskId || conv.id) ||
+        taskManager.getAllTasks().find((t) => t.conversationId === conv.id);
+      const isRunning = matchedTask && (
+        matchedTask.status === "thinking" ||
+        matchedTask.status === "streaming" ||
+        matchedTask.status === "tool_exec" ||
+        matchedTask.status === "paused"
+      );
+
       card.innerHTML = `
         <svg class="sketch-card-circle-overlay" viewBox="0 0 200 60" preserveAspectRatio="none" aria-hidden="true">
           <path class="sketch-circle-loop" d="M 14,32 C 10,13 36,4 102,4.5 C 168,5 192,15 190,32 C 187,49 162,56 98,55.5 C 34,55 8,45 10,27 C 12,14 38,5.5 106,6" />
@@ -676,6 +816,7 @@ export function initTaskPanel(ctx) {
         <div class="message-card-title" title="${escapeHtml(conv.query || conv.title)}">${escapeHtml(conv.title || conv.query)}</div>
         <div class="message-card-meta">
           <span class="message-card-time">${escapeHtml(timeStr)}</span>
+          ${isRunning ? `<span class="message-card-running-badge"><span class="badge-dot" aria-hidden="true"></span>运行中</span>` : ""}
         </div>
       `;
 
@@ -866,7 +1007,11 @@ export function initTaskPanel(ctx) {
   // 初始渲染讯息方框
   renderConversationMessages();
 
-  api.showGlobalToast = showGlobalToast;
+  // 全局 toast 通知：唯一监听方（阶段 1 事件总线收编）
+  bus.on("ui:toast", ({ text, duration }) => {
+    showGlobalToast(text, duration);
+  });
+
   api.updateMiniTaskCapsuleUI = updateMiniTaskCapsuleUI;
   api.closeTaskSidebar = closeTaskSidebar;
   api.renderTaskSidebarList = renderTaskSidebarList;

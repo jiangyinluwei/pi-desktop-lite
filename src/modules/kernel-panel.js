@@ -5,18 +5,42 @@ import { openExternalUrl } from "../services/tauri-bridge.js";
 import { ProgressStepper } from "../services/progress-stepper.js";
 import { notificationService } from "../services/notification-service.js";
 import { sketchAlert, sketchConfirm } from "../services/sketch-modal.js";
+import { bindAll } from "../lib/el-binder.js";
 
 /**
  * 内核状态、版本检查与一键更新流水线
  */
 export function initKernelPanel(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
-  const flow = ctx.flow;
-  const attachments = ctx.attachments;
-
+  // 批次 B：模块自绑定（autoReconnectSwitch / settingsBadge 为跨簇共享 id，同 id 同元素）
+  const el = bindAll({
+    settingsBadge: "settings-badge",
+    hostStatusDot: "host-status-dot",
+    hostStatusText: "host-status-text",
+    hostVersionText: "host-version-text",
+    btnRestartHost: "btn-restart-host",
+    btnCheckUpdate: "btn-check-update",
+    updateNotice: "update-notice",
+    updateMsg: "update-msg",
+    updateNoticeActions: "update-notice-actions",
+    btnToggleChangelog: "btn-toggle-changelog",
+    btnIgnoreUpdate: "btn-ignore-update",
+    btnUpdateKernel: "btn-update-kernel",
+    kernelUpdateProgressWrap: "kernel-update-progress-wrap",
+    kernelProgressStage: "kernel-progress-stage",
+    kernelProgressPercent: "kernel-progress-percent",
+    btnCancelUpdate: "btn-cancel-update",
+    kernelProgressFill: "kernel-progress-fill",
+    kernelProgressSubMsg: "kernel-progress-sub-msg",
+    kernelChangelogDrawer: "kernel-changelog-drawer",
+    changelogVersionTag: "changelog-version-tag",
+    btnCloseChangelog: "btn-close-changelog",
+    kernelChangelogContent: "kernel-changelog-content",
+    autoReconnectSwitch: "auto-reconnect-switch",
+    kernelPackagesArea: "kernel-packages-area",
+    kernelAlert: "kernel-alert",
+    kernelAlertText: "kernel-alert-text",
+  });
   const settingsBadge = el.settingsBadge;
   const hostStatusDot = el.hostStatusDot;
   const hostStatusText = el.hostStatusText;
@@ -268,7 +292,7 @@ export function initKernelPanel(ctx) {
     });
   }
 
-  // 模型配置「自动重连切换」开关 (默认勾选，全局持久化)
+  // 模型配置「自动强制重连」开关 (默认勾选，全局持久化)
   if (autoReconnectSwitch) {
     autoReconnectSwitch.checked = configService.getAutoReconnectSwitch();
     autoReconnectSwitch.addEventListener("change", () => {

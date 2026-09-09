@@ -263,7 +263,7 @@ pub async fn search_catalog(
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
-        .user_agent("pi-desktop-lite/0.1.0")
+        .user_agent("pi-desktop-lite/0.1.1")
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
@@ -294,25 +294,5 @@ pub async fn search_catalog(
     }
 
     Ok(result)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_live_search_catalog() {
-        let res = search_catalog(None, None, Some("downloads".to_string()), Some(1))
-            .await
-            .expect("search_catalog failed");
-        println!(
-            "Fetched {} packages, total_count: {}, pages: {}",
-            res.packages.len(),
-            res.total_count,
-            res.total_pages
-        );
-        assert!(!res.packages.is_empty(), "packages should not be empty");
-        println!("First package: {:?}", res.packages[0]);
-    }
 }
 

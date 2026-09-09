@@ -1,8 +1,10 @@
 import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
+import { bus } from "../lib/event-bus.js";
 import { piClient } from "../services/pi-client.js";
 import { SketchModal, sketchConfirm } from "../services/sketch-modal.js";
 import { workspaceService } from "../services/workspace-service.js";
+import { bindAll } from "../lib/el-binder.js";
 
 /**
  * 弹出手绘草图质感路由工作区配置对话框 (SketchModal 规范)
@@ -157,9 +159,25 @@ export function promptCodeAreaRouteModal(initialPath = "", customTitle = "配置
  * - 切换交互：code-area 门禁拦截（必须选路由） / 运行时任务确认 / 切换后自动重载
  */
 export function initWorkspacePanel(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
-  const settings = ctx.settings;
+  const settingsStore = ctx.settingsStore;
+  // 批次 B：模块自绑定（只取本面板用到的 DOM id，终结 ctx.el 全量注入）
+  const el = bindAll({
+    workspaceList: "workspace-list",
+    workspaceActiveName: "workspace-active-name",
+    workspaceActivePath: "workspace-active-path",
+    workspaceActiveBadge: "workspace-active-badge",
+    codeAreaRouteCard: "code-area-route-card",
+    codeAreaRouteInput: "code-area-route-input",
+    codeAreaRouteStatus: "code-area-route-status",
+    btnBrowseRouteFolder: "btn-browse-route-folder",
+    btnSaveRoutePath: "btn-save-route-path",
+    codeAreaHistorySection: "code-area-history-section",
+    codeAreaHistoryList: "code-area-history-list",
+    codeAreaSkillsSection: "code-area-skills-section",
+    codeAreaSkillsList: "code-area-skills-list",
+    codeAreaSkillsCount: "code-area-skills-count",
+  });
 
   const workspaceList = el.workspaceList;
   const workspaceActiveName = el.workspaceActiveName;
@@ -179,9 +197,7 @@ export function initWorkspacePanel(ctx) {
   const codeAreaSkillsCount = el.codeAreaSkillsCount;
 
   const showGlobalToast = (msg, duration = 1500) => {
-    if (typeof api.showGlobalToast === "function") {
-      api.showGlobalToast(msg, duration);
-    }
+    bus.emit("ui:toast", { text: msg, duration });
   };
 
   // ==========================================================================
@@ -271,14 +287,14 @@ export function initWorkspacePanel(ctx) {
   // ==========================================================================
   const renderActiveCard = (active) => {
     if (!active) return;
-    settings.activeWorkspace = {
+    settingsStore.setActiveWorkspace({
       id: active.id,
       name: active.name,
       path: active.path,
       requiresRoute: Boolean(active.requiresRoute || active.id === "code-area"),
       routePath: active.routePath || null,
       routeName: active.routeName || null,
-    };
+    });
 
     if (workspaceActiveName) {
       workspaceActiveName.textContent = active.name || active.id || "默认工作区";
@@ -418,8 +434,8 @@ export function initWorkspacePanel(ctx) {
       // 刷新当前卡片与列表
       await loadWorkspaces();
 
-      // 通知全局与输入框更新工作区状态
-      window.dispatchEvent(new CustomEvent("workspace-changed", { detail: { workspace: ws } }));
+      // 通知全局与输入框更新工作区状态（阶段 6：走同步事件总线契约 ui:workspace-changed）
+      bus.emit("ui:workspace-changed", { workspace: ws });
       if (typeof api.syncWorkspaceInputState === "function") {
         api.syncWorkspaceInputState();
       }
@@ -461,14 +477,14 @@ export function initWorkspacePanel(ctx) {
           codeAreaRouteInput.value = chosen;
           await workspaceService.setCodeAreaRoute(chosen);
           await renderCodeAreaRouteDetails();
-          if (settings.activeWorkspace) {
-            settings.activeWorkspace.routePath = chosen;
-            settings.activeWorkspace.routeName = chosen.split("/").pop() || chosen;
-          }
+          settingsStore.updateActiveWorkspace({
+            routePath: chosen,
+            routeName: chosen.split("/").pop() || chosen,
+          });
           if (typeof api.syncWorkspaceInputState === "function") {
             api.syncWorkspaceInputState();
           }
-          window.dispatchEvent(new CustomEvent("workspace-changed"));
+          bus.emit("ui:workspace-changed");
           showGlobalToast("已绑定目标项目目录", 1600);
         }
       } catch (err) {
@@ -488,14 +504,14 @@ export function initWorkspacePanel(ctx) {
       try {
         await workspaceService.setCodeAreaRoute(val);
         await renderCodeAreaRouteDetails();
-        if (settings.activeWorkspace) {
-          settings.activeWorkspace.routePath = val;
-          settings.activeWorkspace.routeName = val.split("/").pop() || val;
-        }
+        settingsStore.updateActiveWorkspace({
+          routePath: val,
+          routeName: val.split("/").pop() || val,
+        });
         if (typeof api.syncWorkspaceInputState === "function") {
           api.syncWorkspaceInputState();
         }
-        window.dispatchEvent(new CustomEvent("workspace-changed"));
+        bus.emit("ui:workspace-changed");
         showGlobalToast("已保存目标项目路由绑定", 1800);
       } catch (err) {
         console.error("[WorkspacePanel] Save route failed:", err);
@@ -523,14 +539,14 @@ export function initWorkspacePanel(ctx) {
           try {
             await workspaceService.setCodeAreaRoute(path);
             await renderCodeAreaRouteDetails();
-            if (settings.activeWorkspace) {
-              settings.activeWorkspace.routePath = path;
-              settings.activeWorkspace.routeName = path.split("/").pop() || path;
-            }
+            settingsStore.updateActiveWorkspace({
+              routePath: path,
+              routeName: path.split("/").pop() || path,
+            });
             if (typeof api.syncWorkspaceInputState === "function") {
               api.syncWorkspaceInputState();
             }
-            window.dispatchEvent(new CustomEvent("workspace-changed"));
+            bus.emit("ui:workspace-changed");
             showGlobalToast(`已切换路由目标为: ${path.split("/").pop() || path}`, 1800);
           } catch (err) {
             showGlobalToast(`切换历史项目失败: ${err.message || err}`, 2200);

@@ -156,7 +156,12 @@ class ConversationHistoryService extends EventTarget {
       conv.thinkingDuration = data.thinkingDuration || conv.thinkingDuration || "";
       conv.lastViewedAt = now;
       conv.modelId = data.modelId || conv.modelId;
-      conv.sessionPath = data.sessionPath || conv.sessionPath;
+      if (data.sessionPath) {
+        conv.sessionPath = data.sessionPath;
+      }
+      if (data.sessionId) {
+        conv.sessionId = data.sessionId;
+      }
       if (data.taskId) {
         conv.taskId = data.taskId;
       }
@@ -180,6 +185,7 @@ class ConversationHistoryService extends EventTarget {
         thinkingDuration: data.thinkingDuration || "",
         modelId: data.modelId || "",
         sessionPath: data.sessionPath || "",
+        sessionId: data.sessionId || undefined,
         isAborted: Boolean(data.isAborted),
         turns: cleanedTurns,
         createdAt: now,
@@ -241,6 +247,54 @@ class ConversationHistoryService extends EventTarget {
     this.hiddenIds.clear();
     this.saveToStorage();
     this.dispatchEvent(new CustomEvent("conversations-change", { detail: this.getVisibleConversations() }));
+  }
+
+  /**
+   * 彻底删除指定会话记录（如首轮提问回退撤销时物理移除记录）
+   * @param {string} idOrTaskId 会话 ID 或关联的 Task ID
+   * @returns {boolean} 是否成功删除
+   */
+  deleteConversation(idOrTaskId) {
+    if (!idOrTaskId) return false;
+    const idx = this.conversations.findIndex(
+      (c) => c.id === idOrTaskId || c.taskId === idOrTaskId
+    );
+    if (idx !== -1) {
+      const removed = this.conversations.splice(idx, 1)[0];
+      if (removed?.id) {
+        this.hiddenIds.delete(removed.id);
+      }
+      this.saveToStorage();
+      this.dispatchEvent(new CustomEvent("conversations-change", { detail: this.getVisibleConversations() }));
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * 同步剪枝多轮历史记录的轮次（用于多轮对话回退至第 k 轮）
+   * @param {string} idOrTaskId 会话 ID 或关联的 Task ID
+   * @param {number} pruneToIndex 剪枝保留的目标轮次数
+   * @returns {boolean} 是否成功剪枝
+   */
+  pruneConversationTurns(idOrTaskId, pruneToIndex) {
+    if (!idOrTaskId || typeof pruneToIndex !== "number" || pruneToIndex <= 0) return false;
+    const conv = this.conversations.find((c) => c.id === idOrTaskId || c.taskId === idOrTaskId);
+    if (!conv || !Array.isArray(conv.turns)) return false;
+
+    conv.turns = conv.turns.slice(0, pruneToIndex);
+    const lastTurn = conv.turns[conv.turns.length - 1];
+    if (lastTurn) {
+      conv.responseText = lastTurn.responseText || "";
+      conv.thinkingText = lastTurn.thinkingText || "";
+      conv.toolCalls = lastTurn.toolCalls || [];
+      conv.steps = lastTurn.steps || [];
+      conv.thinkingDuration = lastTurn.thinkingDurationText || "";
+      conv.isAborted = Boolean(lastTurn.isAborted);
+    }
+    this.saveToStorage();
+    this.dispatchEvent(new CustomEvent("conversations-change", { detail: this.getVisibleConversations() }));
+    return true;
   }
 
   /**

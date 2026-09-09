@@ -12,7 +12,7 @@ description: 指导 Pi Desktop Lite 桌面端作为 Pi Agent 宿主代理时，�
 ## 📌 核心开发铁律
 
 1. **`RULES.md` 仅为极简映射总纲**：体积严格控制在 `< 100` Tokens，纯英文书写，作为映射关系的唯一事实来源（Single Source of Truth），严禁堆砌具体长篇规则；
-2. **具体规则独立封装**：每个特定领域规则独立存放于 `src-tauri/inner-skills/<skill-name>/SKILL.md`；
+2. **具体规则独立封装**：每个特定领域规则独立存放于 `src-tauri/inner-skills/<skill-name>/SKILL.md`，全英文精炼编写（保证语义严谨与极简 Token 损耗，杜绝系统 Emoji）；
 3. **按需命中精准激活**：日常问答（如 `hello`）保持 100% 原始提问零注入零消耗；当且仅当底层 Agent 触发调用命中映射项的工具时，才动态激活对应 Skill。
 
 ---
@@ -50,12 +50,14 @@ flowchart TD
 src-tauri/inner-skills/
 ├── RULES.md                                  # 映射总纲 (唯一事实来源, < 100 Tokens)
 ├── windows-bash-compatibility/               # 独立 Skill 1: Windows 命令行与终端兼容
-├── document-multimodal-inspection/           # 独立 Skill 2: 多格式文档深度遍历与 OCR 解析
+├── document-multimodal-inspection/           # 独立 Skill 2: 多模态视检与多格式文档深度遍历
 ├── multi-agent-orchestration/                # 独立 Skill 3: 多智能体并行与子任务协作
 ├── web-search-silent-access/                 # 独立 Skill 4: 静默后台联网搜索与自动摘要
 ├── persistent-memory-retrieval/              # 独立 Skill 5: 持久化记忆与跨会话检索
 ├── dynamic-workflows-orchestration/          # 独立 Skill 6: 动态工作流与流水线编排
-└── active-context-pruning/                   # 独立 Skill 7: 主动上下文修剪与长会话压缩
+├── active-context-pruning/                   # 独立 Skill 7: 主动上下文修剪与长会话压缩
+├── temp-file-hygiene/                        # 独立 Skill 8: 临时文件沙盒与即用即删卫生约束
+└── tool-failure-logging/                     # 独立 Skill 9: 工具执行失败细节落盘规范 (~/.pi-dl/workspaces/log/<路由工作区名>/)
 ```
 
 ---
@@ -86,11 +88,11 @@ description: 描述运行态技能在何种场景下被触发与主要约束。
 ### Step 3: 后端内嵌与前端「注入提示」框条目挂载
 1. **Rust 后端 (`src-tauri/src/pi_runner/inner_skills.rs`)**：
    - 增加 `const EMBEDDED_YOUR_SKILL_MD: &str = include_str!("../../inner-skills/your-new-skill-name/SKILL.md");`；
-   - 在 `get_skill_detail` 中增加匹配分支并补充单元测试。
+   - 在 `get_skill_detail` 中增加匹配分支（若编写临时测试验证逻辑，验证通过后**必须彻底清除**，严禁滞留代码库）。
 2. **前端模块 (`src/modules/flow-pipeline.js`)**：
    - 在 `getSkillDisplayName` 注册中文友好标签（注入提示条目展示用，inner_skill 条目自动拼装展示名）；
    - 每段注入提醒：后端每次真实注入均广播一次 `pi:inner-skill-activated`，前端监听后调用 `addInjectionNoticeItem("inner_skill", skillName)` 在路由目标项目胶囊下方的「注入提示」信息框中追加条目（kind+name 去重，跨轮累积，默认收起显示「注入提示」与注入数量，全新会话重置）；
-   - 路由上下文注入上报：`inject_prompt`（`src-tauri/src/pi_runner/supervisor.rs`）在兑底 Inner-Skill 与 code-area 路由上下文（`build_code_area_routing_context_with_items`）注入后广播 `pi:context_injected`（payload 携带 `items: [{kind, name}]`，kind ∈ inner_skill / agents_md / readme_md / routed_skill / routing_context），前端监听 `context-injected` 逐条追加至「注入提示」框；
+   - 路由上下文注入上报：`inject_prompt`（`src-tauri/src/pi_runner/supervisor.rs`）在兑底 Inner-Skill 与 code-area 路由上下文（`build_code_area_routing_context_with_items`）注入后广播 `pi:context_injected`（payload 携带 `items: [{kind, name}]`，kind ∈ inner_skill / agents_md / readme_md / routing_context），前端监听 `context-injected` 逐条追加至「注入提示」框；
    - 同步在 `src/styles/flow.css` 保留 `.flow-injection-notice` 信息框样式（直角矩形简洁风头部 + 可点击展开的条目清单，默认收起显示「注入提示」与注入数量）；
 3. **构建验证**：
    - 运行 `npm run check` 确保前端 AST 与 Rust 编译均通过。

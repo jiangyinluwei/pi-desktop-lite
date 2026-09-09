@@ -1,6 +1,6 @@
 [package]
 name = "pi-dl"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -36,6 +36,7 @@ dirs = "5"
 log = "0.4"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 futures-util = "0.3"
+base64 = "0.22"
 rfd = "0.15"
 
 [target.'cfg(windows)'.dependencies]

@@ -10,7 +10,7 @@ description: |
 
 ---
 
-## ⚠️ 多次修改的四大高危病灶
+## ⚠️ 多次修改的五大高危病灶
 
 | 病灶 | 典型场景 | 严重后果 |
 |---|---|---|
@@ -18,10 +18,11 @@ description: |
 | **标识符重复声明** | 多次迭代中在不同位置重复声明全局/模块级状态（如 `let activeTurn`）。 | `Identifier 'xxx' has already been declared` 致命语法错误。 |
 | **僵尸事件监听** | 重构组件交互后，旧的全局 DOM 监听器未解绑。 | 双重响应、事件穿透或空指针异常。 |
 | **孤儿 DOM 选择器** | 动态 DOM 已升级，旧代码残留对已销毁占位 ID 的直接操作。 | 运行时静默报错或视图错乱。 |
+| **测试代码滞留** | 验证算法或预检逻辑时添加了临时单元测试，任务完成后未清理。 | 污染生产代码库，增加代码体积与维护负荷，违反纯粹交付标准。 |
 
 ---
 
-## 🛡️ 五大黄金清理铁律
+## 🛡️ 六大黄金清理铁律
 
 ### 铁律 1：修改前必须重新对齐真实行号 (View Before Replace)
 严禁凭历史记忆下发替换指令。在修改前**必须先用 `view_file` 对齐目标文件前后的真实代码切片与行号**。
@@ -36,8 +37,10 @@ grep "const expandToolCard" src/modules/flow-ui.js
 grep "activeTurnRefs" src/main.js src/modules/*.js
 ```
 
-### 铁律 4：强制执行极速 AST 静态门禁 (`node -c`)
-修改 JavaScript 代码后，**必须立即运行 Node.js 静态语法编译检查**（0.05秒极速完成）：
+### 铁律 4：强制执行前端静态校验门禁 (`check:fe` / `node -c`)
+修改 JavaScript 代码后，**必须立即运行前端静态校验门禁**（秒级极速完成）：
+- **首选（复合重构 / 多文件改动）**：`npm run check:fe` — 覆盖全量前端语法 + import 图解析 + 循环依赖检测；
+- **快速单文件 AST**：`node -c <filePath>`；
 ```bash
 node -c src/main.js
 node -c src/modules/flow-ui.js
@@ -45,10 +48,14 @@ node -c src/modules/flow-stream.js
 node -c src/modules/flow-pipeline.js
 node -c src/modules/task-panel.js
 node -c src/services/task-manager.js
+npm run check:fe   # 复合重构门禁（语法 + import 图 + 循环依赖）
 ```
 
 ### 铁律 5：多轮数据结构的幂等迁移
 改造核心数据结构时，同步清理旧字段（如单值 `query` 与数组 `turns`），防止脏数据互锁。
+
+### 铁律 6：添加单元测试代码后必须清除 (Clean Temporary Test Code)
+任何在开发、重构、自愈验证或算法推演阶段添加的临时单元测试（如 Rust 内联 `#[cfg(test)] mod tests { ... }`、`#[test]`、前端临时断言或测试桩），仅用于当次开发过程中的逻辑正确性校验；**在验证通过后、任务最终交付前必须彻底清除**，保持生产代码库纯净精炼，严禁任何测试代码滞留。
 
 ---
 
@@ -59,11 +66,13 @@ node -c src/services/task-manager.js
      ↓
 [2. 原子替换] 一次性替换并彻底抹除旧代码
      ↓
-[3. node -c] 极速执行 JS AST 语法扫描（秒级自愈语法报错）
+[3. 临时测试即测即清] 验证逻辑所添加的单元测试必须彻底删除
      ↓
-[4. grep 扫描] 验证无重复声明与幽灵残余
+[4. npm run check:fe / node -c] 极速执行前端静态校验门禁（语法 + import 图 + 循环依赖，秒级自愈语法报错）
      ↓
-[5. npm run check] 验证全工程集成编译
+[5. grep 扫描] 验证无重复声明、无测试代码残余与幽灵残余
+     ↓
+[6. npm run check] 验证全工程集成编译
 ```
 
 ---
@@ -72,6 +81,7 @@ node -c src/services/task-manager.js
 
 | 检查场景 | 推荐命令 | 作用 |
 |---|---|---|
-| **JS 语法与 AST 完整性** | `node -c <filePath>` | 静态解析 JS 语法，秒级捕获未闭合括号与语法错误 |
+| **JS 语法与 AST 完整性** | `npm run check:fe` / `node -c <filePath>` | 全量前端语法 + import 图 + 循环依赖检测，秒级捕获未闭合括号、幽灵残余与循环依赖 |
 | **重复声明与残余检索** | `grep_search` / `grep` | 检查关键符号声明次数，杜绝重复副本 |
+| **测试代码清空检查** | `grep_search` (Query: `#[cfg(test)]`) | 检查全工程是否无残留单元测试与测试桩 |
 | **全工程集成编译** | `npm run check` | 验证 Rust 与前端类型系统完整性 |

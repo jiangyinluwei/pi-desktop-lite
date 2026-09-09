@@ -14,6 +14,8 @@
 | `memory_retrieve`, `memory_store`, `pi-memory`, `recall_memory`, `search_memory` | `persistent-memory-retrieval` | **Mandatory** |
 | `dynamic_workflows`, `execute_workflow`, `pipeline_step`, `run_workflow` | `dynamic-workflows-orchestration` | **Mandatory** |
 | `context_prune`, `prune_context`, `pai-acp`, `compress_context` | `active-context-pruning` | **Mandatory** |
+| `write`, `write_file`, `create_file`, `temp_file`, `scratchpad`, `bash`, `terminal`, `powershell`, `cmd`, `execute_command` | `temp-file-hygiene` | **Mandatory** |
+| `bash`, `terminal`, `powershell`, `cmd`, `execute_command`, `write`, `write_file`, `edit`, `read_file`, `subagent`, `web_search`, `tool_failure`, `log_error` | `tool-failure-logging` | **Mandatory** |
 
 ---
 
@@ -25,7 +27,7 @@ When invoking tools or planning actions:
    - Forward slashes `/` for paths; quote paths with spaces; non-interactive (`-y`); disable pagers (`PAGER=cat`, `--no-pager`); UTF-8 & `NO_COLOR=1`; no spontaneous file creation.
 
 2. **Folder & Multi-Format Documents (`document-multimodal-inspection`)**:
-   - Proactively traverse directories; never cat raw binary (`.docx`, `.doc`, `.pdf`, `.pptx`, `.xlsx`, images); automatically invoke specialized parsers/OCR (`pi-ocr`, `deword`, `pi-docparser`) to extract authentic text; batch synthesize findings.
+   - Proactively traverse directories; never cat raw binary; prioritize native vision for images, falling back to OCR (`pi-ocr`) only if text-only or on failure; use specialized parsers (`deword`, `pi-docparser`) for office docs; batch synthesize findings.
 
 3. **Multi-Agent Scheduling (`multi-agent-orchestration`)**:
    - Define clear subtask boundaries; dispatch independent subtasks in parallel; enforce timeouts; synthesize and deduplicate subagent findings before final response.
@@ -41,3 +43,9 @@ When invoking tools or planning actions:
 
 7. **Active Context Pruning (`active-context-pruning`)**:
    - Progressively prune obsolete raw tool payloads; protect core goals and latest code snippets; maintain consistent context state.
+
+8. **Ephemeral Temp Hygiene (`temp-file-hygiene`)**:
+   - ALL temporary scripts, probe logs, and scratch files MUST strictly reside in `~/.pi-dl/temp/`; zero pollution in workspace or project root; clean up immediately upon task completion (`rm` / `Remove-Item`). Diagnostic failure logs under `tool-failure-logging` in `~/.pi-dl/workspaces/log/<workspace>/` are authorized and exempt.
+
+9. **Tool Failure Diagnostics & Workspace Logging (`tool-failure-logging`)**:
+   - When any tool execution encounters a failure status, non-zero error code, or exception: immediately compile and record structured failure details (timestamp, tool name, arguments, stderr/traceback, root cause) into `~/.pi-dl/workspaces/log/<workspace>/` (on Windows `C:\Users\<username>\.pi-dl\workspaces\log\<routed_workspace_name>\`, auto-create if absent, e.g., `tool-errors.log`); zero pollution to target project root; preserve diagnostic logs for post-mortem analysis; never silently ignore errors.

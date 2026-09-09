@@ -23,25 +23,34 @@
 1. **代码卫生与冗余清理 (`iterative-modification-hygiene`)**：
    - 严禁凭记忆修改，替换前先 `view_file` 对齐真实代码切片与行号；
    - 替换必须原子化覆盖旧逻辑与变量，杜绝未闭合括号、幽灵函数签名（Dangling Snippets）或重复声明；
+   - **添加单元测试代码后必须清除**：任何在开发、重构或自愈验证过程中添加的临时单元测试（如 `#[cfg(test)] mod tests`、`#[test]` 或临时测试断言），在逻辑验证完成及任务交付前**必须彻底清除**，保持生产源码纯粹精炼，严禁滞留生产库；
    - Web 前端修改后立即运行 `node -c <filePath>` 静态验证 AST，杜绝语法错误导致冷启动卡死与白屏。
 2. **极速编译校验**：优先运行极速校验命令（如 `npm run check` 或 `cargo check`，~1 秒；涉及 Tauri 配置或底层 ABI 修改时使用 `npm run build:check`）。
 3. **失败自愈与循环修复**：若校验报错，必须分析日志根因并自动修复，重新编译直至 **Exit Code 0**。
-4. **交付门禁**：仅在代码冗余清理完毕、前端 AST 校验与后端编译均通过后，方可向用户交付。
+4. **交付门禁**：仅在代码冗余与临时测试代码清理完毕、前端 AST 校验与后端编译均通过后，方可向用户交付。
 
 ---
 
 ## 📌 核心准则三：桌面端交互铁律与手势约束
 
-本项目前端作为轻量桌面应用，**所有 UI 与交互修改必须严格遵守以下 13 项核心铁律**：
+本项目前端作为轻量桌面应用，**所有 UI 与交互修改必须严格遵守以下 19 项核心铁律**：
 
 1. **拖拽区域限制**：全窗口仅顶部约 **30px** 标题栏支持拖拽（`-webkit-app-region: drag` / `data-tauri-drag-region`），内容主体、背景与品牌区严禁开启拖拽；
 2. **焦点释放与消除高亮**：输入框高亮在点击外部空白区、非输入元素或右键点击时，必须立即失焦（`blur()`）并消除高亮；
 3. **全域右键“返回上一步 (Step Back)”与四态界面流**：
    - 全域禁用浏览器默认右键菜单（`contextmenu` 拦截）；
    - **四态界面层级流**：`半透明侧边栏 (最高优先级)` ➔ `设置全页面 (界面4: settings)` ➔ `Flow 交互版 (界面3: 运行/暂停态转入后台挂起，已结束/中断态归档至历史)` ➔ `专注版 (界面2)` ➔ `详细版 (界面1)` ➔ 输入框失焦/清空；
-   - **设置页 → Flow 定向回退 (`flowFromSettings`)**：从设置页会话记录 Tab「进入 Flow」时置 `view.flowFromSettings = true`；Flow 中右键/Esc 时若空闲/已结束，直接回退至设置页会话记录 Tab（`previousMode: VIEW_DETAILED` 钉住 `view.previous`，再右键照常回界面1）；若运行/暂停，走正常挂起通道；
-   - **挂起与终止双通道解耦与终止防重连铁律**：右键/Esc 转入后台挂起（`isSuspended = true`，进入 `TaskManager`，不调用 abort）；显式「⏹ 终止」按钮彻底终止 Agent 生成并追加手动终止提示。**手动点击终止时，全链路绝对禁止触发任何模型自动重连或模型切换**；
-   - **后台流式串轮过滤铁律**：挂起任务的流式事件经前台门禁 (`taskManager.isForegroundStreamTask` + `piClient.lastEventTaskId`) 在 Flow UI 层全量过滤，只入 Task 数据缓冲，绝不写入前台 Flow DOM/历史轮次；历史讯息抽屉 (`task-panel.js`) 采用签名比对 + 180ms 节流调度渲染，杜绝后台任务事件风暴导致的悬浮频闪与双击选中失效；
+   - **设置页 → Flow 定向回退 (`flowFromSettings`)**：从设置页会话记录 Tab「进入 Flow」时置 `viewStore.set({ flowFromSettings: true })`；Flow 中右键/Esc 时若空闲/已结束，直接回退至设置页会话记录 Tab（`previousMode: VIEW_DETAILED` 钉住 `viewStore.previous`，再右键照常回界面1）；若运行/暂停，走正常挂起通道；
+   - **挂起与终止双通道解耦与强制终止铁律 (Decoupled Suspend & Force Termination Invariance)**：右键/Esc 转入后台挂起（`isSuspended = true`，进入 `TaskManager`，不调用 abort）；显式「⏹ 终止」按钮强制彻底终止 Agent 生成（Rust `SessionHost` 强杀子进程并阻断未决 prompt，前端 `PiClient` 拦截流式事件派发，`TaskManager` 门禁严禁任何迟到事件复活任务为 running/thinking/streaming/completed）。**手动点击终止时，全链路绝对禁止触发任何模型内置重连**；**人工交互未决请求随 Task 挂起保留**（`task.pendingUiRequests` 不随挂起丢失，回入 Flow 由 `restoreHumanInputCards` 重建作答横条），终止时先 best-effort 回写 `extension_ui_response{cancelled:true}` 再走强杀链路（详见铁律19）；已终止任务（`isAborted === true` 或 `status === "aborted"`）右键/Esc 严禁转入后台挂起（`suspendCurrentFlow` 返回 `null`，`handleGlobalStepBack` 判定 `isRunning = false` 直接归档并物理清除该 Task，回退至 Focus 界面）；
+   - **任务直切自动挂起铁律 (Auto-Suspend on Active Task Switch)**：从右上角任务抽屉、历史会话或通知点击直接切换活跃 Task 时，原前台活跃任务必须在 TaskManager 中自动无缝转入后台挂起（`prevTask.isSuspended = true`），绝不允许产生既不在前台又未挂起的幽灵任务；切换进入新 Task 时统一在 `renderTurnsIntoFlow` 中重置收纳框引用 (`api.resetFileChanges`) 与流式步骤/工具卡片缓存，并对齐最新轮次步骤，保证多任务间任意来回直切均 100% 保持会话完整、互相隔离且不丢失；
+   - **终态任务严禁后台挂起与幽灵已完成胶囊防范 (Completed Task Non-Suspension Invariance)**：在任务直接切换 (`setActiveTask` / `createTask`) 时，仅当前台原活跃任务处于运行态或待确认态（`thinking / streaming / tool_exec / paused`）时才转入后台挂起（`prevTask.isSuspended = true`）；若原任务已处于终态（`completed / aborted / error`），严禁赋予 `isSuspended = true`，直接从 `TaskManager` 清理，彻底杜绝从历史记录/会话记录切换进入其他会话时右上角瞬间冒出前一会话「已完成 (1/1 Task)」幽灵绿色徽标的缺陷；
+   - **会话延续与多轮归属唯一性铁律 (Session Continuity & Consolidation Invariance)**：无论是全新会话、还是从「会话记录」或「历史记录」抽屉还原继续提问，后续追问统一透传底层会话文件路径（`sessionPath`）与会话 ID（`sessionId`）；Rust 后端 `PiHostPool` / `SessionHost` 在拉起内核子进程时，若存在已有会话路径（或经 `SessionIndexCache` 反查命中），严格采用 `pi --mode rpc --session <path>` 续写同一 `.jsonl` 文件，严禁使用盲目生成新 UUID 的 `--session-id` 导致多轮对话在重启或直接退出后被割裂为独立碎片记录；`ConversationHistoryService` 归档时严禁用空字符串覆写已有 `sessionPath`，保证历史记录与磁盘会话 100% 对应且多轮聚合完整；
+   - **历史记录智能重定向与解耦归档铁律 (History-to-Task Smart Redirection & Decoupled Archive)**：从历史讯息抽屉点击卡片时，优先探测该会话是否在 TaskManager 中作为活跃/挂起任务存在；若存在直接重定向至 `restoreTaskToFlow`，严禁用静态旧 turns 覆写 live turns 或强制置 `completed`；`archiveCurrentFlowToHistory` 仅在终态（`completed / aborted / error`）时写入持久化历史，运行中仅同步内存 `turns`；历史抽屉对后台运行中任务展示脉冲「运行中」微动效徽章；
+   - **会话回退与文件撤回铁律 (Flow Rollback & File Restoration)**：Flow 支持回退到任意一次历史对话（配合 pi 内核原生 RPC fork 历史节点回退），回退时自动撤回「已修改/已删除」的文件，**已新增的文件绝不撤回**（防误删）；快照由内置扩展在 `tool_call` 阶段（工具执行前、可阻塞）确定性落盘至 `~/.pi-dl/rollback/<sessionId>/`（桌面端注入 `PI_DL_ROLLBACK=1` 启用）；单文件 >8MB 超限明示警告横幅与专属徽标，弹窗转为只读警示阻止盲目回退；执行链路 = 回退点预解析（`pi_get_fork_messages`）→ 快照预检（`pi_rollback_files(dry_run: true)`，存在缺失/超限保守中止，磁盘与内核 0 变更）→ 内核 fork 先行（`pi_fork_session`，失败则磁盘 0 写入环境完全干净）→ 原子落盘（`pi_rollback_files(dry_run: false)`）→ 本地变更仓剪枝重渲 + 提问回填输入框 + 历史服务双向同步（首轮回退物理清除历史记录并解除绑定，多轮同步剪枝历史轮次；标记 `__isRolledBack` 阻断旧历史幽灵复活；0 轮草稿态任务严禁归档）；完成后顶部浮窗提醒成功/失败持续 3 秒；生成进行中禁止回退；响应帧无论有无等待者统一丢弃不落入广播通道（详见 `.agents/skills/flow-interaction-pattern/SKILL.md` §11）；
+   - **Flow DOM 防重入铁律 (Flow Re-entrance Guard)**：已处于 Flow 模式且当前活跃任务匹配时，`restoreTaskToFlow` 与 `restoreConversationToFlow` 直接退出，严禁清空 DOM 导致流式截断与界面闪烁；
+   - **运行中工具切片 DOM 自愈 (Running Tool DOM Self-Healing)**：切入运行中任务时由 `renderTurnsIntoFlow` 回填 `flow.renderedToolCards`，并在 `flow-pipeline.js` 的 `tool-update`/`tool-end` 中增加基于 DOM ID 的动态检索兜底与读秒自愈刷新，防止卡片永久卡在 running；
+   - **后台流式串轮过滤铁律**：挂起任务的流式事件经前台门禁 (`taskManager.isForegroundStreamTask` + `piClient.lastEventTaskId`) 在 Flow UI 层全量过滤，只入 Task 数据缓冲，绝不写入前台 Flow DOM/历史轮次；历史讯息抽屉 (`task-panel.js`) 采用签名比对 + 180ms 节流调度渲染，杜绝后台任务事件风暴导致的悬浮频闪与双击选中失效；**会话流缓存铁律**：每个 Task 一份文件变更缓存仓（`flow-file-changes.js` `sessionStores`），前后台事件按 task_id 归仓收集、直至程序生命周期结束；右键退出（挂起/归档）后经历史记录/Task 记录回入 Flow 时由 `renderTurnsIntoFlow` → `restoreFileChangesFor` 一致恢复收纳框，历史快照卡片重绑以 `__piBound` expando 去重（严禁 `dataset.bound` 判定，杜绝双绑互消与快照死卡）；**删除识别工作目录铁律**：Shell 删除目标（`rm / del / Remove-Item`）须经 `cd` 链路 + MSYS 盘符转换 + `~`/`[USER_HOME]` 展开 + 会话 CWD 兑底归一化为绝对路径后再经 `pi_path_exists` 探测/复核，杜绝相对路径因桌面端进程 CWD 失真被去伪规则误杀（表现：删除示意信息在收纳框中消失）；**新增文件同步探测铁律 (Synchronous Pre-Execution Probe Invariance)**：写文件工具（`write` / `write_file` / `create_file` 等）启动时，`tool-start` 必须纯同步执行并在当前事件调用栈内立即向 `existenceProbes` 登记存在性探测 Promise，严禁引入任何 `await` 导致微任务挂起，杜绝写文件瞬时完成后 `tool-end` 抢先到达引发探测竞态将新增文件误判为修改；`tool-end` 比对统一使用 `normalizePathKey` 消除正反斜杠与大小写差异；
+   - **思维切片生命周期与无显式文本完成机制 (Thinking Step Lifecycle & Retention Invariance)**：提问后首 token 延迟期呈现「Thinking (0.0s)...」伪思维框并 100ms 读秒；若模型未输出显式思考文本直接跃迁至工具调用（`toolcall-delta-start` / `tool-start`），或显式派发 `thinking-start`，切片封口时必须定格保留为「Thinking (X.Xs) 已完成思考」，绝严禁将其作为空占位符从 DOM 中物理移除导致界面闪烁与思维状态丢失；仅当模型首 token 为纯正文输出（`text-start` / `text-delta` 且无显式思考与工具边界）时，初始伪思考框才作为加载占位符静默移除；收起态实时展示从右向左的流动输出流，跟踪最新输出内容（输出速度越快流动越快），封口与折叠时右对齐定格，增量同步直达缓存引用消除热路径 DOM 查询；无显式思考输出展示“已完成思考”时自动消除左侧渐隐遮罩并左对齐呈现，保持字迹清晰纯粹；
    - **输入框防抖**：详细版下对着输入框点击右键时静默屏蔽，杜绝界面瞬切抖动；新模块均需接入 `window.__piRegisterStepBack`；
 4. **手绘 SVG 矢量图元规范（消除系统 Emoji）**：
    - 禁止使用系统默认 Emoji，所有功能与提示图标统一在 `src/assets/svg/` 归档并以内联手绘 SVG 呈现；
@@ -85,14 +94,43 @@
     - **平滑切换与择时绑定**：允许先切换至 `code-area`，再在设置面板或主界面择时添加路由；处于 `code-area` 且未绑定路由时，输入框禁止输入（只读提示），点击输入框快速呼出路由绑定对话框；
     - **免污染铁律**：`code-area` 自身绝对不创建或修改业务文件，所有代码读写、补丁与命令执行严格作用于目标路由项目；
     - **存在性自动校验与失效清除**：切换至 `code-area` 或启动时，自动校验路由工作区与「最近使用项目」是否在本地磁盘真实存在；失效时自动清除选项并过滤失效历史；
-    - 对话流上下文注入：发起 Prompt / FollowUp 时透明注入 `<code_area_routing_context>`（目标绝对路径、免污染铁律与 Hub 技能清单），自动读取并注入目标路由工作区的 `AGENTS.md` / `README.md`，若命中技能映射则注入完整指令块（`<routed_project_skills>`），并在 Flow 呈现路由目标胶囊；所有注入条目（Inner-Skill / AGENTS.md / README.md / 命中技能 / 路由信封）在 Flow 会话流「路由目标项目」胶囊下方的「注入提示」信息框中集中呈现（直角简洁风格，默认收起显示「注入提示」与注入数量，点击展开完整清单；动态累积、去重）；
+    - 对话流上下文注入：发起 Prompt / FollowUp 时透明注入 `<code_area_routing_context>`（目标绝对路径、免污染铁律与 Hub 技能清单），自动读取并注入目标路由工作区的 `AGENTS.md`（及 `README.md`）。`.agents/skills/` 下的技能规约无需全量强制前置注入，由 Agent 遵循 `AGENTS.md` 中的 Skills 映射矩阵按需查阅并调用；并在 Flow 呈现路由目标胶囊；所有注入条目（Inner-Skill / AGENTS.md / README.md / 路由信封）在 Flow 会话流「路由目标项目」胶囊下方的「注入提示」信息框中集中呈现（直角简洁风格，默认收起显示「注入提示」与注入数量，点击展开完整清单；动态累积、去重）；
 14. **子代理模型自动钉住与防跃升机制 (Subagents Model Pinning & Escalation Prevention)**：
     - 当启用 `pi-subagents` 扩展组件时，在软件初次启动加载、用户切换模型、或安装/更新组件时，自动将当前主模型同步写入 `~/.pi/agent/settings.json` 的 `subagents.defaultModel` 与各常用角色（`oracle`, `worker`, `reviewer`, `researcher`, `planner`, `scout` 等）的 `agentOverrides`；
     - 采用非破坏性读-合并-写回语义，完整保留其余已有配置；未启用 `pi-subagents` 时绝不产生冗余字段污染，彻底杜绝子代理角色因 high-thinking 能力画像擅自升配调用更昂贵模型（如 `deepseek-v4-pro`）造成的额外 Token 消耗；
 15. **Node.js 运行环境预设检测与安装拦截引导规范 (Node.js Environment Preflight & Degradation)**：
     - **底层依赖与自适应探测**：Pi 扩展组件安装/更新与内核生态依赖 Node.js/npm 运行环境。Rust 后端通过 `pi_check_node_environment` 具备 Windows 全域 PATH 与多默认安装路径自适应极速探测能力（`node -v` / `npm -v`），无控制台黑框且带超时与非破坏性借用保护；
     - **友好拦截与一键直达**：用户在扩展组件市场安装单个组件、一键安装推荐插件、更新组件或更新/下载内核时，前端自动执行 Node.js 环境预检。未检测到环境时优雅拦截并弹出手绘风格 `SketchModal` 提示框，支持一键通过外部浏览器（`pi_open_url` / `tauri_plugin_opener`）唤起 Node.js 官方下载页面（`https://nodejs.org/`），杜绝生硬崩溃与晦涩错误；
-    - **无感缓存与动态重试**：已成功检测到环境时无感缓存，未安装时每次操作自动重新探测，允许用户安装好 Node.js 后无需重启即刻继续。
+    - **无感缓存与动态重试**：已成功检测到环境时无感缓存，未安装时每次操作自动重新探测，允许用户安装好 Node.js 后无需重启即刻继续；
+16. **输入历史记录导航与严格时间序规范 (Prompt History Navigation & Chronological Invariance)**：
+    - **严格时间序与最新优先 (LIFO / MRU)**：输入框方向键“↑ / ↓”翻阅历史严格遵循真实时间戳排序与最新项优先。Rust 后端从底层会话中提取每条用户消息真实毫秒时间戳全局排序，采用 LIFO 去重保留最新出现；
+    - **数据合并顺序对齐**：前端合并底层原生会话与本地输入历史时，以底层历史为时间线基座，本地当前会话最新输入置于末尾，严禁旧会话数据覆盖或倒挂；
+    - **重复发送自动晋升**：用户重复发送提问时，自动从旧位置移除并晋升至历史栈末端，保证发送完成后按“↑”100% 稳稳命中上一条发送的消息；
+    - **输入框单行/多行光标敏感感知**：单行文本光标在任意位置按“↑”直接翻阅历史（彻底消除“按一次跳行首、按第二次才出历史”的缺陷）；多行文本仅首行按“↑”、末行按“↓”触发；
+    - **二次编辑草稿保护**：翻阅过程中手动编辑内容时，动态同步更新草稿并适时重置导航态，杜绝用户修改后的文字被上下键冲掉覆盖；
+17. **会话监听与实时记录铁律 (Session Watcher & Real-time Record Invariance)**：
+    - **常驻生命周期托管**：`SessionWatcher` 必须在 Rust 后端 setup 阶段通过 `app.manage(session_watcher)` 注入全局生命周期托管，内部封装 `Arc<Mutex<Option<RecommendedWatcher>>>` 确保线程安全与常驻存活，严禁作为局部变量在 setup 闭包结束时被 RAII Drop 释放导致文件监听器销毁；
+    - **目录精准锁定与递归监听**：默认监听目录严格锁定为 Pi 内核真实会话根目录 `~/.pi/agent/sessions`（二级子目录按 CWD 隔离），初始化时自动 `create_dir_all` 确保存在；
+    - **三重同步与自愈机制**：提供 `pi_refresh_sessions` 主动扫描广播指令；前端切换至设置页「会话记录」Tab 时强制拉取最新数据（`api.loadSessions(true)`）；会话任务终态（`agent_end` / `agent_settled`）时自动延迟触发增量会话同步，形成「实时文件监听 + 终态主动同步 + Tab 切换强刷」三重保证，杜绝会话完成后无法实时进入记录的缺陷。
+18. **模型无痕内置重连铁律 (Model Silent Built-in Reconnect & Invariance)**：
+    - **无痕内置重连 (Silent Reconnect)**：仅在「模型XXX异常」错误窗体本应弹出时触发（设置-模型配置-右上角「自动强制重连」勾选启用）；引擎隐藏错误窗体，自动在后台向模型续发「继续」文本（不生成提问卡、不重复压入 prompt history、不新建 Task，全程不显示），用户无感知；
+    - **写死 10 次与固定退避 (Fixed 10 Attempts & Backoff)**：每次续发计作一次「内置重连」，上限写死 10 次（`maxReconnectAttempts: 10`）；退避序列 2s → 4s → 8s → 16s → 16s…（恒封顶 `maxBackoffMs: 16000`）；轮次顶部进度胶囊恒定以「自动内置重连 N/10 ...」开头（等待中追加「Xs 后重试」，续发中追加「正在重发请求 …」）；**持久化配置迁移**：旧引擎（自动切换模型时代）残留在 `~/.pi-dl/config.json` 的 `modelFailover` 块（含 `maxReconnectAttempts: 24` 等旧值与 `maxSwitchCycles`/`sameErrorTimeoutMs` 等 7 个死字段）与内核 `settings.json` 的 `retry` 注入块，在 `pi_get_app_config` 读取时由 `migrate.rs` 幂等归一化为写死预设（检测旧字段或与预设不一致即整块重写，内核注入块允许完整三键形态覆盖刷新）；
+    - **取消自动切换模型 (No Auto Model Switch)**：引擎不再承担任何自动切换模型职责（候选池解析、MRU 巡检、多轮轮转、临时切换与恢复原模型逻辑已彻底移除）；错误卡上的「切换其他模型」为纯手动入口；
+    - **耗尽才弹窗与耗尽终态锁定 (Give Up After Exhaustion & Terminal Lock)**：仅当 10 次内置重连全部耗尽仍失败时，才渲染既有「模型调用失败 [模型]」错误卡并附摘要「已尝试自动内置重连 N/10 次后仍失败」；弹卡同时引擎立即记录该任务「耗尽终态」（`_exhaustedTaskIds` / 无归属路径 `_unattributedExhausted`）：一次失败的内核 run 会经 `message_end` / `turn_end` / `agent_end` / `agent_settled` 多次重复派发 `agent-error`，耗尽后这些重复错误帧**绝不再次自动冷启动、也不重复渲染错误卡**（TaskManager 侧同步落定 error 终态且 `failTask` 幂等防重复通知），仅用户手动点击「重试当前提问」或发送新提问（`clearTaskAborted` 同步清除耗尽标记）后方可重新发起内置重连；
+    - **过程记录保留铁律**：重发尝试（`resetCurrentTurnForResend`）时**严禁清空步骤容器（`stepsContainerEl.innerHTML`）与工具卡片缓存（`renderedToolCards`）**，必须 100% 完整保留本轮之前已真实执行完毕的 Thinking 切片（已封口/含实质内容）、工具调用卡片与 Point 阶段性输出切片，恢复后增量无缝追加后续因果链条；
+    - **首 token 延迟伪框重建铁律 (First-Token Pseudo Box Rebuild)**：`resetCurrentTurnForResend` 内部必须**先执行 `sealActiveThinkingStep()` 再执行缓冲清理**（`clearStreamTimersAndBuffers` 仅置空 `activeThinkingStep` 引用而不移除 DOM 卡片，顺序颠倒将导致 seal 空转、孤儿伪框残留、步骤容器非空而无法重建读秒伪框）：真实思考切片定格保留，纯首字等待伪框静默移除，随后若步骤容器为空则重建「Thinking (0.0s)...」首 token 延迟读秒伪框，确保重连续发等待期始终有首字延迟状态呈现；
+    - **前后台任务全域覆盖铁律 (Foreground & Background Coverage)**：重连引擎的冷启动、在途热结算与 agent-end 收口结算对**前台活跃任务与后台挂起任务一视同仁**（后台任务错误原被前台门禁拦截导致引擎永不启动，随后被 `agent_end` 误标 completed 且历史归档链路断裂）；引擎判定（`engineOwnsTask`）按 `taskId` 收敛严禁跨任务误结算；前台专属 DOM 操作（`resetCurrentTurnForResend` / `renderErrorCard` / `clearTurnErrorState` / 重连胶囊）一律经 `isForegroundStreamTask` 门禁，后台任务仅做数据层静默续发；`TaskManager.agent_end` 在引擎为本任务退避等待期间（`hasInflightAttempt() === false`）**严禁提前落地 completed**；后台任务 10 次耗尽经 `TaskManager.failTask` 统一落定 error 终态（通知 + 末轮错误标记）；
+    - **纯状态示意条与系统弹窗静默铁律 (Status-Capsule-Only & Notification Silence)**：内置重连期间**严禁触发任何 Windows 原生系统弹窗提醒 (Toast / Notification)**，也**严禁在正文回答区域插入不可撤回的红色错误卡片 (`.sketch-error-card`)**；统一由 Flow 轮次顶部的手绘进度胶囊作为**纯状态示意条**；
+    - **首响应即时结算与终止守则**：模型一旦恢复正常产生响应（Thinking/Text/Toolcall 产生首事件），立即结算成功；胶囊即时显示「自动内置重连成功 · 已恢复正常，继续执行」并于 1.2 秒内快速淡出隐藏，同时调用 `clearTurnErrorState` 原子化清除错误状态；真正的工具卡收起、流式收口与会话归档交由后续 `agent-end` 自然触发；用户显式点击「⏹ 终止」时全链路彻底强杀退出（`isTaskAborted` 门禁），严禁触发任何内置重连；手动终止后引擎对**无任务归属的错误帧**（消息对象不携带 task_id 的旧主会话路径）实施 15 秒保守静默窗口（`hasRecentGlobalAbortion`），杜绝终止后经杂散帧静默复活重连；
+    - **会话重启与追问时错误卡彻底清理铁律 (Error Card Cleanup on Continuation)**：当界面出现模型调用失败诊断卡（`.sketch-error-card`）后，无论用户发送新提问（如“继续”）、还是点击错误卡「重试当前提问」按钮重新发起会话，系统在启动新轮次前必须彻底物理移除 `flowConversation` 与轮次容器中残留的所有 `.sketch-error-card`，重置重连胶囊，并将 `task.turns` 中上一轮次的错误标记（`errorMessage: null`）与合成占位文本清理归位，确保后续流式生成与历史重渲 0 残留；
+19. **中途提问人工回归选择铁律 (Human-in-the-Loop Mid-Run Ask-Back)**：
+    - **协议覆盖范围**：内核 Extension UI 子协议（`docs/rpc.md` §Extension UI Protocol）的**可回写四类方法** `select` / `confirm` / `input` / `editor`（stdout `extension_ui_request` 阻塞等待 stdin `extension_ui_response`）；`notify` / `setStatus` / `setWidget` / `setTitle` / `set_editor_text` 属 fire-and-forget，**绝不建作答卡、绝不置 Task 为 `paused`**；带 `timeout` 的请求由**内核侧**自动按默认值解析，客户端仅呈现读秒示意、**严禁代答**；
+    - **三层属主划分**：未决请求真源归 `TaskManager` 的 `task.pendingUiRequests`（Map<id, request>，随 Task 挂起保留，**不新增 store**）；IPC 转发归 `pi-client.js` 的 `sendExtensionUiResponse(taskId, requestId, payload)`（服务层禁碰 DOM）；呈现与作答归新模块 `src/modules/flow-human-input.js`（横条 / 弹窗 / 读秒 / 失效态，DOM 引用归模块内部缓存，**不入 `flowView`**）；交互判定唯一源归 `src/lib/contracts.js` 的 `isInteractiveExtensionUiRequest`（消除 task-manager 与 flow-pipeline 双份 `INTERACTIVE_METHODS` 常量）；
+    - **新增 IPC `pi_send_command_to_task(task_id, command)`**：`commands/agent.rs` + `PiHostPool::send_command_to_task`（复用 `SessionHost::send_command` 的 fire-and-forget 语义与 aborted 门禁，终止后迟到作答被 Rust 层物理拒绝）；
+    - **作答时序（严格同步判定 + 异步回写）**：① 用户提交 → **先同步** `takePendingUiRequest` 摘除未决请求并定格横条（杜绝双击双答竞态）；② **再异步** `sendExtensionUiResponse`；③ 回写失败（Task 已终止 / 进程已亡）→ 横条转「作答未能送达 · 任务已终止」失效态 + Toast 提示，**不重试轰炸**；
+    - **卡片形态与自动呼出**：待答横条紧接轮次步骤流之后（保持「思维/工具 → 待答横条 → 回答正文」因果时序），三态 `pending`（手绘脉冲）/ `done` / `failed`；`select` → `SketchSelect`、`confirm` → 双按钮互斥、`input`/`editor` → 单行/多行手绘输入框，统一由 `SketchModal` 承载（居中、毛玻璃、焦点陷阱、Esc/右键关闭）；窗口聚焦（`document.hasFocus()`）时收到请求直接呼出作答弹窗，失焦则仅留横条 + 既有失焦 Toast（铁律9）；
+    - **挂起 / 直切 / 终止 / 回退 / 重连对齐**：交互未决时直切 → 原 Task 照常 `isSuspended = true`（`paused` 属待确认态），回入 Flow 由 `renderTurnsIntoFlow → api.restoreHumanInputCards(task.id)` 重建未决横条（请求不丢失）；后台任务只入 TaskManager 数据与抽屉徽标「待确认 (N)」，**绝不渲染前台横条**（前台门禁 `isForegroundStreamTask`）；「⏹ 终止」先 `clearPendingUiRequests` → `Promise.all` best-effort 回写 `{cancelled:true}` → 再走既有强杀链路（`invalidateHumanInputCards` 转失效态，**严禁**触发内置重连）；交互未决 = 生成进行中，`flow-rollback` 的 `isTaskRunning` 已显式纳入 `paused` 阻断回退；`paused`（UI 阻塞）与「模型异常」严格区分，重连引擎仅由错误帧驱动；`input` / `editor` 弹窗文本控件聚焦必须延后一帧（`SketchModal.open()` 的 rAF 会聚焦「提交」按钮抢走焦点）；
+    - **清理时机**：作答回写 / 读秒归零 / `agent_end` / `agent_settled`（`{resume:false}` 防终态前状态抖动）/ abort / `task-removed` / 内核 `kernel-status-change`（`hasKernel === false` 全部失效）；`pendingUiRequests` 清空且 Task 仍 `paused`、`piClient.isStreaming` 为真时回落 `streaming`；
 
 > 📖 **完整功能矩阵与系统特性总览**：详见项目架构总览技能 [`.agents/skills/pi-desktop-overview/SKILL.md`](file:///.agents/skills/pi-desktop-overview/SKILL.md)。
 
@@ -109,30 +147,22 @@
 | :--- | :--- | :--- | :--- |
 | **架构与规范** | **`pi-desktop-overview`** | [`.agents/skills/pi-desktop-overview/SKILL.md`](file:///.agents/skills/pi-desktop-overview/SKILL.md) | 产品定位、四态体系、核心特性与交互流水线总览（触发：项目概述/架构总览/四态界面）。 |
 | | **`pi-ecosystem-configuration`** | [`.agents/skills/pi-ecosystem-configuration/SKILL.md`](file:///.agents/skills/pi-ecosystem-configuration/SKILL.md) | Pi API 鉴权、大模型接入、Packages 扩展包、Skills 规范、TypeScript 扩展与子代理钉住配置全指南（触发：pi配置/模型配置/组件安装/auth.json/models.json/subagents配置/Ollama配置）。 |
-| | **`custom-workspace-pattern`** | [`.agents/skills/custom-workspace-pattern/SKILL.md`](file:///.agents/skills/custom-workspace-pattern/SKILL.md) | 私人定制工作区拓扑、防泄密物理隔离与交付规范（触发：定制工作区/企业交付/隔离）。 |
 | | **`inner-skills-injection`** | [`.agents/skills/inner-skills-injection/SKILL.md`](file:///.agents/skills/inner-skills-injection/SKILL.md) | 运行态内置约束（RULES.md）按需注入架构与流水线（触发：运行态技能/上下文注入/RULES）。 |
 | **手绘 UI 与交互** | **`sketch-drafting-ui`** | [`.agents/skills/sketch-drafting-ui/SKILL.md`](file:///.agents/skills/sketch-drafting-ui/SKILL.md) | Anthropic/Pi.dev 手绘草图美学、简约线条与纸质双模主题（触发：手绘风格/工程绘图风/草图UI）。 |
 | | **`sketch-modal-pattern`** | [`.agents/skills/sketch-modal-pattern/SKILL.md`](file:///.agents/skills/sketch-modal-pattern/SKILL.md) | 手绘素描居中模态弹窗（Pop & Shake、Step Back 优先拦截、焦点陷阱）（触发：模态窗/弹窗/alert替换）。 |
 | | **`sketch-form-autofill-pattern`** | [`.agents/skills/sketch-form-autofill-pattern/SKILL.md`](file:///.agents/skills/sketch-form-autofill-pattern/SKILL.md) | 手绘表单规范、消灭原生变色与 `SketchAutoFill` 智能联想（触发：新增表单/自定义填表/autofill）。 |
 | | **`svg-asset-workflow`** | [`.agents/skills/svg-asset-workflow/SKILL.md`](file:///.agents/skills/svg-asset-workflow/SKILL.md) | 手绘 SVG 图元规范、`currentColor` 主题自适应与内联管理（触发：SVG图标/替换图标/图标规范）。 |
-| | **`flow-interaction-pattern`** | [`.agents/skills/flow-interaction-pattern/SKILL.md`](file:///.agents/skills/flow-interaction-pattern/SKILL.md) | Flow 流式交互（单行紧凑过程卡、因果时序拼接、多轮定位、模型自动重连）（触发：flow交互/思维链/轮次定位）。 |
+| | **`flow-interaction-pattern`** | [`.agents/skills/flow-interaction-pattern/SKILL.md`](file:///.agents/skills/flow-interaction-pattern/SKILL.md) | Flow 流式交互（单行紧凑过程卡、因果时序拼接、多轮定位、模型无痕内置重连、文件变更收纳框、会话回退撤回、状态分仓与自绑定）（触发：flow交互/思维链/轮次定位/文件变更/修改了哪些文件/会话回退/撤回文件）。 |
 | | **`settings-view-pattern`** | [`.agents/skills/settings-view-pattern/SKILL.md`](file:///.agents/skills/settings-view-pattern/SKILL.md) | 设置全屏独立视图（第4态）、5 大 Tab、MRU 模型排序与回退流（触发：设置界面/配置页面/settings）。 |
 | **工程与治理** | **`desktop-kernel-lifecycle`** | [`.agents/skills/desktop-kernel-lifecycle/SKILL.md`](file:///.agents/skills/desktop-kernel-lifecycle/SKILL.md) | Tauri 2 + Rust 内核生命周期管控、多环境寻址与 Release 打包避坑（触发：内核崩溃/进程重启/打包）。 |
-| | **`desktop-rendering-optimization`** | [`.agents/skills/desktop-rendering-optimization/SKILL.md`](file:///.agents/skills/desktop-rendering-optimization/SKILL.md) | Webview 渲染调优、缩放白闪/黑屏排查、动画掉帧与重绘治理（触发：动画卡顿/缩放闪白/掉帧/渲染优化）。 |
-| | **`auto-compile-and-fix`** | [`.agents/skills/auto-compile-and-fix/SKILL.md`](file:///.agents/skills/auto-compile-and-fix/SKILL.md) | 任务完成后自动极速编译与失败自愈闭环（触发：编译校验/自动修复/构建验证）。 |
+| | **`auto-compile-and-fix`** | [`.agents/skills/auto-compile-and-fix/SKILL.md`](file:///.agents/skills/auto-compile-and-fix/SKILL.md) | 任务完成后自动极速编译与失败自愈闭环、前端门禁与度量（触发：编译校验/自动修复/构建验证/门禁）。 |
 | | **`clean-code-refactoring`** | [`.agents/skills/clean-code-refactoring/SKILL.md`](file:///.agents/skills/clean-code-refactoring/SKILL.md) | 桌面端与 Web 混合架构逻辑去重、结构精简与样板消除（触发：代码精简/去冗余/重构优化）。 |
 | | **`iterative-modification-hygiene`** | [`.agents/skills/iterative-modification-hygiene/SKILL.md`](file:///.agents/skills/iterative-modification-hygiene/SKILL.md) | 连续迭代代码卫生、AST 语法静态校验与防幽灵残余（触发：多次修改代码/清理冗余/代码卫生）。 |
-| | **`code-hazards-remediation`** | [`.doc/code-hazards-remediation/SKILL.md`](file:///.doc/code-hazards-remediation/SKILL.md) | 全量代码健康度隐患矩阵（H1~H24）故障排查与自愈核销清零（触发：排查异常/代码隐患/健康度）。 |
-| **通用前端开发** | **`craft-web`** | [`.agents/skills/craft-web/SKILL.md`](file:///.agents/skills/craft-web/SKILL.md) | Web 前端精细化打磨、去 AI 模板味、现代排版动效与规范核查（触发：优化界面/AI味太重/前端打磨）。 |
-| | **`api-integration`** | [`.agents/skills/api-integration/SKILL.md`](file:///.agents/skills/api-integration/SKILL.md) | 规范化后端接口对接、类型化模块封装与加载/异常三态处理（触发：接接口/对接API/接口联调）。 |
-| | **`critical-path-debug-test`** | [`.agents/skills/critical-path-debug-test/SKILL.md`](file:///.agents/skills/critical-path-debug-test/SKILL.md) | 前端关键路径深度分析、状态/竞态/内存审计与测试报告（触发：关键路径测试/debug测试/系统测试）。 |
-| | **`react-mobile-responsive`** | [`.agents/skills/react-mobile-responsive/SKILL.md`](file:///.agents/skills/react-mobile-responsive/SKILL.md) | Web 与 React 全站移动端/响应式适配与触控优化（触发：移动端适配/响应式布局/手机端兼容）。 |
-| | **`ai-export-to-production`** | [`.agents/skills/ai-export-to-production/SKILL.md`](file:///.agents/skills/ai-export-to-production/SKILL.md) | AI 原型平台（v0/bolt/lovable/AI Studio）导出代码生产工程化改造（触发：原型转生产/代码改造/原型上线）。 |
 
 ---
 
 ### 2. 应用内置运行态约束级 Inner-Skills (`src-tauri/inner-skills/`)
-> **作用对象**：桌面端作为 Pi Agent 宿主时，由 Rust 监督器在底层工具调用时进行 Hook 嗅探并按需动态注入。
+> **作用对象**：桌面端作为 Pi Agent 宿主时，由 Rust 监督器在底层工具调用时进行 Hook 嗅探并按需动态注入。全套规则采用纯英文精炼书写，杜绝系统 Emoji 与冗余 Token 损耗。
 
 - **核心机制**：
   1. **RULES 索引映射**：`RULES.md` 为极简映射唯一源（<100 Tokens），无工具调用时零规则零消耗；
@@ -145,12 +175,14 @@
 | :--- | :--- | :--- | :--- |
 | **`RULES.md`** | [`src-tauri/inner-skills/RULES.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/RULES.md) | 工具映射总纲 | 纯英文工具到 Skill 动态映射矩阵与基线总纲。 |
 | **`windows-bash-compatibility`** | [`src-tauri/inner-skills/windows-bash-compatibility/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/windows-bash-compatibility/SKILL.md) | `bash`, `powershell`, `cmd` | 统一正斜杠 `/`、强制 `-y`、禁用 Pager、UTF-8 编码。 |
-| **`document-multimodal-inspection`** | [`src-tauri/inner-skills/document-multimodal-inspection/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/document-multimodal-inspection/SKILL.md) | `read_file`, `docparser`, `ocr`, `pi-ocr` | 主动深度遍历目录、专用解析器提取真实文本、批量汇总。 |
+| **`document-multimodal-inspection`** | [`src-tauri/inner-skills/document-multimodal-inspection/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/document-multimodal-inspection/SKILL.md) | `read_file`, `docparser`, `ocr`, `pi-ocr` | 主动深度遍历目录、优先模型原生视检读图（纯文本模型或失败回退至 OCR）、文档专用解析、批量汇总。 |
 | **`multi-agent-orchestration`** | [`src-tauri/inner-skills/multi-agent-orchestration/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/multi-agent-orchestration/SKILL.md) | `subagent`, `pi-subagents`, `spawn_agent` | 明确任务边界、非阻塞并发派发、超时控制与结果去重。 |
 | **`web-search-silent-access`** | [`src-tauri/inner-skills/web-search-silent-access/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/web-search-silent-access/SKILL.md) | `web_search`, `pi-web-access`, `search_web` | 静默后台执行、禁止弹窗、多源交叉求证与垃圾过滤。 |
 | **`persistent-memory-retrieval`** | [`src-tauri/inner-skills/persistent-memory-retrieval/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/persistent-memory-retrieval/SKILL.md) | `memory_retrieve`, `memory_store`, `pi-memory` | 模糊跨会话查阅、语义相关性匹配、增量安全存储与敏感隔离。 |
 | **`dynamic-workflows-orchestration`** | [`src-tauri/inner-skills/dynamic-workflows-orchestration/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/dynamic-workflows-orchestration/SKILL.md) | `dynamic_workflows`, `execute_workflow` | 分阶段前置校验、单步自愈熔断、执行进度与里程碑追踪。 |
 | **`active-context-pruning`** | [`src-tauri/inner-skills/active-context-pruning/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/active-context-pruning/SKILL.md) | `context_prune`, `prune_context`, `pai-acp` | 渐进修剪冗余工具载荷、保护核心意图与最新代码锚点。 |
+| **`temp-file-hygiene`** | [`src-tauri/inner-skills/temp-file-hygiene/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/temp-file-hygiene/SKILL.md) | `write`, `create_file`, `bash`, `cmd` | 临时文件强制沙盒隔离至 `~/.pi-dl/temp/`，零污染项目与工作区，用后即删。 |
+| **`tool-failure-logging`** | [`src-tauri/inner-skills/tool-failure-logging/SKILL.md`](file:///c:/Users/l4w/source/repos/pi-desktop-lite/src-tauri/inner-skills/tool-failure-logging/SKILL.md) | 工具执行失败 / 异常 | 工具调用失败细节自动结构化整理至 `~/.pi-dl/workspaces/log/<路由工作区名>/` 文件夹（零污染项目根，连续日志与快照归档，豁免清理）。 |
 
 ---
 
@@ -158,11 +190,12 @@
 
 前端按功能域模块化解耦，严禁向入口文件堆砌业务代码：
 
-- **`src/main.js`**：唯一编排入口。负责收集 DOM 引用（`ctx.el`）、构建共享上下文（`ctx.*`）并按依赖顺序初始化各模块；
-- **`src/lib/`**：跨模块共享基础件（`dom-utils.js` 文本转义、`icons.js` 手绘 SVG 图元、`markdown-renderer.js` Markdown 渲染引擎、`view-constants.js` 四态常量）；
-- **`src/modules/`**：按功能域拆分的 UI 业务模块（`view-mode.js`、`settings-navigation.js`、`model-panel.js`、`custom-provider-panel.js`、`kernel-panel.js`、`flow-ui.js`、`flow-stream.js`、`flow-pipeline.js`、`task-panel.js`、`packages-panel.js`、`workspace-panel.js`、`sessions-panel.js`、`global-interactions.js` 等）。跨模块调用一律通过 `ctx.api.<fn>()`，共享状态收敛至 `ctx.*`；
+- **`src/main.js`**：唯一编排入口。**不收集 DOM 引用（`ctx.el` 已彻底废除，各模块经 `src/lib/el-binder.js` 的 `bindAll` 按需自绑定）**，仅构建共享上下文（`ctx.*`：`flowDom` + `viewStore` / `settingsStore` / `attachmentsStore` / `flowStore` store 引用 + `ctx.flowView` 视图派生缓存 + `ctx.api`）并按依赖顺序初始化各模块；
+- **`src/lib/`**：跨模块共享基础件（`dom-utils.js` 文本转义、`icons.js` 手绘 SVG 图元、`markdown-renderer.js` Markdown 渲染引擎、`view-constants.js` 四态常量、`event-bus.js` 极简同步事件总线、`el-binder.js` DOM 按需绑定（`bindAll` 全局按 id / `bindEl` 容器内按 id）、`contracts.js` 事件通道契约表（bus / Store action / `pi:*` 内核桥接三类归口，含 `ui:workspace-changed` 与 `flow:response`（payload 必带 taskId））+ 跨模块显式 import 契约（flow-render 纯渲染接口、flow-state-view 视图层分层、el-binder）+ `ctx.api` 函数槽契约 @typedef 定型（全量槽位按属主模块分组登记 + 三类保留原因注解，新增槽位必须同步登记，严禁幽灵槽/兼容壳复发）。
+- **`src/modules/`**：按功能域拆分的 UI 业务模块（`view-mode.js`、`settings-navigation.js`、`model-panel.js`、`custom-provider-panel.js`、`kernel-panel.js`、`flow-ui.js`、`flow-stream.js`、`flow-pipeline.js`、`flow-human-input.js`、`flow-file-changes.js`、`flow-rollback.js`、`task-panel.js`、`packages-panel.js`、`workspace-panel.js`、`sessions-panel.js`、`global-interactions.js`、`search-input.js`、`file-attachments.js`、`preferences.js`、`window-controls.js` 等；`flow-render.js` 纯渲染层、`flow-dom.js` Flow 域只读 DOM 引用层、`flow-state-view.js` Flow 视图派生缓存唯一属主）。跨模块调用通过 `ctx.api.<fn>()` 与显式 import；**纯渲染助手已迁至 `flow-render.js`（无副作用、无共享状态），其它模块直接 `import { ... } from './flow-render.js'`**；**Flow 视图分层铁律：流式「纯数据」（responseText / thinkingText / errorMessage / lastUserQuery / hasReceivedDelta / interruptSendTaskId / lastSentPrompt / lastSentAttachments / lastImagePayloads / thinkingStartTime 等 11 字段）一律经 `flowStore.for(taskId)` 分仓读写（分仓键经 `resolveStreamTaskId` 解析：显式 id 优先→前台活跃任务→事件帧 task_id→哨兵分仓），严禁 `flow.<纯数据>` 裸写（度量断言 = 0）；视图派生缓存（renderedToolCards / currentSteps / active*Step / 计时器 / activeTurnRefs / followBottom）一律归 `flow-state-view.js` 的 `flowView`（Object.seal 封口，严禁入 store）**；**Flow 域只读 DOM 引用由 `createFlowDom()` 产出挂到 `ctx.flowDom`（内部经 el-binder 自取），flow-* 模块改读 `flowDom.flow*`；其余模块 DOM 引用一律模块内 `bindAll({...})` 自绑定自己的 id 子集，严禁解构 `ctx.el`（已废除）**；横切通知（fire-and-forget，如 `ui:toast`）走 `event-bus.js` 的 `bus.on` / `bus.emit`（事件须在 `contracts.js` 契约表登记）；控制流 / 状态迁移走 Store action（如 `viewStore.morph(mode, opts)`）或显式 import；**共享可变状态一律归 `src/services/stores/` 的唯一属主（`viewStore` / `settingsStore` / `attachmentsStore` / `flowStore`），严禁跨模块直改 `view.x` / `settings.x` / `attachments.x`（含解构后裸名）**；
+- **`src/services/stores/`**：共享可变状态唯一属主（无 DOM、有状态、有行为）。`view-store.js`（四态界面状态机 `morph`/`set`，控制流命令禁上总线）、`settings-store.js`（通道抽屉/官方目录/认证缓存/激活工作区）、`attachments-store.js`（输入框附件胶囊）、`flow-store.js`（Flow 流式纯数据唯一属主，**按 taskId 分仓** `flowStore.for(taskId)`：作用域实例记忆化 + 白名单 `set` + `appendResponse`（同步 + bus.emit `flow:response` 必带 taskId）+ 空键哨兵归一；接管全部 11 个纯数据字段，`flow.*` 裸写度量断言 = 0）。**Store action 一律同步、禁 async/await、禁微任务调度**（同步探测不变量 / 前台门禁 taskId / Task 分仓）；
 - **`src/styles/`**：按功能域拆分的样式文件（`tokens.css`、`base.css`、`layout.css`、`flow.css`、`markdown.css`、`settings.css`、`packages.css`、`overlays.css` 等），`src/styles.css` 仅为 `@import` 聚合入口；
-- **`src/services/`**：与 UI 解耦的前端服务层（IPC 桥接、配置、流式客户端、任务/会话/工作区等），**严禁**在 service 中直接操作 UI DOM。
+- **`src/services/`**：与 UI 解耦的前端服务层（IPC 桥接、配置、流式客户端、任务/会话/工作区等），**严禁**在 service 中直接操作 UI DOM；其中 `src/services/stores/` 为共享可变状态唯一属主（见上）。
 
 ---
 
@@ -170,12 +203,19 @@
 
 ### 常用命令
 - **极速编译检查（首选，~1s）**：`npm run check`
+- **前端静态校验门禁（语法 + import 图 + 循环依赖，重构必做）**：`npm run check:fe`
+- **耦合度量基线检查（裸写断言 = 0 / 契约槽位监控）**：`npm run measure:coupling`
 - **桌面端开发调试**：`npm run dev`
 - **构建测试（生成二进制，不打包）**：`npm run build:check`
 - **正式发布构建（生成安装包）**：`npm run build`
 - **Rust 后端语法检查**：`cargo check`（位于 `src-tauri` 目录）
 
-### 多预设工作区与分层原则
+> 🛡️ **后端命令层规范**：Tauri IPC 命令按领域拆至 `src-tauri/src/commands/`（`file` ↔ 前端文件操作、`window` ↔ 窗口/通知、`agent` ↔ Agent RPC/任务/模型/工作区、`session` ↔ 会话索引、`rollback` ↔ 回退/fork/文件撤回、`workspace_cmd` ↔ 多预设工作区与 code-area 路由、`skills` ↔ 运行态技能规则、`version` ↔ 内核版本检测）；`lib.rs` 仅保留 `invoke_handler!` 汇总与 `run()` 启动；`config_manager.rs` 拆为 `config_manager/{io,schema,migrate,validate}.rs`（`mod.rs` `pub use` 再导出，调用方 `use` 路径不变）。新增/修改 IPC 命令时，应落在对应领域子模块，而非 `lib.rs`。
+
+### 多预设工作区与路由调度中枢
 - **IPC 指令**：`pi_list_workspaces`（列出预设与运行时状态）、`pi_get_active_workspace`（获取当前生效工作区）、`pi_set_active_workspace(id)`（物化副本 ➔ 持久化 ➔ 切换 ➔ 空闲重启重锚 CWD）；
-- **公共预设 (`workspaces/`)**：`default-area`、`code-area`、`research-area`，随安装包公开发布，注册于 `tauri.conf.json` 的 `bundle.resources`；
-- **私人定制工作区 (`custom-workspaces/`)**：专有 Agent 解决方案，作为私有资产物理隔离（`.gitignore` 保护），严禁随安装包打包，由开发者线下加密定向分发交付。
+- **公共预设 (`workspaces/`)**：
+  - `default-area`：默认工作区；
+  - `code-area`：**全局编码技能集与路由调度中枢**（物理 CWD 驻留 `code-area`，经 `rfd` 原生选择器路由外部目标项目，透明注入目标项目 `AGENTS.md` / `README.md`，免污染目标项目）；
+  - `research-area`：深度研究与探索预设；
+- **随安装包分发**：注册于 `tauri.conf.json` 的 `bundle.resources`，首次选中整目录物化复制至 `~/.pi-dl/workspaces/<id>/` 作为运行时副本。

@@ -25,7 +25,7 @@ description: |
        ↓ (聚焦输入框)
 [专注版 (界面2: focus)]     ➔ 居中手绘 Logo + 纯净输入框 + Mini 任务胶囊（右键回退界面1）
        ↓ (回车发送)
-[Flow 交互版 (界面3: flow)] ➔ ReAct 时序步骤流（单行紧凑折叠）、Typedown Markdown 预览、轮次导航、模型自愈
+[Flow 交互版 (界面3: flow)] ➔ ReAct 时序步骤流（单行紧凑折叠）、Typedown Markdown 预览、轮次导航、无痕内置重连
        ↕ (齿轮设置)
 [设置全页面 (界面4: settings)] ➔ 5 大 Tab 导航（常规/模型配置/内核/会话记录/工作区），3 秒指引渐隐，右键/Esc 回退
 ```
@@ -45,7 +45,9 @@ description: |
 - **悬浮提问提示**：滚动溢出时顶部悬浮吸附当前轮提问；
 - **上下轮次导航**：多轮对话时右侧显现，定位到每轮输出内容顶部；「上」两段式优化定位（≤100px 范围回退上一轮，深入输出则定位当前轮顶部）；「下」单击定位下一轮，长按 1.5 秒立即定位到底部；
 - **中断发送流水线**：运行态提交时拦截确认（“终止并发送”），旧轮结算后下发新轮，杜绝串轮；
-- **模型自愈流水线 (`ModelFailoverEngine`)**：瞬态错误 2/4/8s 自动退避重连（上限 24 次），永久错误按 MRU 白名单切换候选模型。手动终止绝对禁止触发重连。
+- **无痕内置重连流水线 (`ModelFailoverEngine`)**：模型调用报错时隐藏「模型XXX异常」窗体，后台静默续发「继续」文本（不生成提问卡、不显示）；**前台活跃任务与后台挂起任务全域覆盖**（后台任务重连仅做数据层静默续发，耗尽经 `failTask` 落定 error）；写死 10 次，退避 2/4/8/16s（恒封顶 16s；旧引擎残留的持久化 `modelFailover` 块在读取时幂等迁移归一）；轮次胶囊实时展示「自动内置重连 N/10 ...」；10 次全部耗尽才渲染错误卡并附摘要，弹卡同时锁定「耗尽终态」——后续重复错误帧绝不再次自动冷启动，仅手动「重试当前提问」/新提问可重新发起。已彻底取消自动切换模型逻辑（候选池、MRU 巡检、多轮轮转、临时 `pi_set_model` 均已移除）。手动终止绝对禁止触发重连（终止后对无归属错误帧另行 15 秒保守静默窗口）。
+- **会话回退与文件撤回**：轮次提问卡悬浮「回退到此处」，可回退到任意一次历史对话（配合 pi 内核原生 RPC fork）：基于工具执行前确定性快照自动还原「已修改/已删除」文件（新增文件永不撤回），SketchModal 确认清单 + 顶部浮窗 3 秒提醒结果，提问回填输入框供编辑重发；
+- **中途提问人工回归选择**：内核 Extension UI 子协议（`extension_ui_request`）的 `select` / `confirm` / `input` / `editor` 在 Flow 中呈现手绘待答横条 + `SketchModal` 作答弹窗（`SketchSelect` / 双按钮 / 单行与多行输入框），作答回写 `extension_ui_response` 解除内核阻塞续跑；`timeout` 由内核自动按默认值解析（卡片读秒示意）、fire-and-forget 方法（notify/setStatus/setWidget 等）不建卡；未决请求随任务挂起保留、回入 Flow 100% 重建、终止 best-effort 回写取消；
 
 ### 4. 设置全页面 (`settings`)
 - **独立全屏视图**：`data-view="settings"`，右上角操作指引 3 秒自动平滑渐隐；
@@ -70,7 +72,31 @@ description: |
   - 物理 CWD 驻留于 `code-area`（感知内置技能），绑定路由目标项目绝对路径；
   - 基于 Rust `rfd` 实现原生 Windows 文件夹选择器；
   - 严格遵守免污染铁律，所有代码读写作用于路由目标项目；
-  - 对话透明注入 `<code_area_routing_context>`、目标项目 `AGENTS.md` / `README.md` 与命中技能（`<routed_project_skills>`）。
+  - 对话透明注入 `<code_area_routing_context>`、目标项目 `AGENTS.md` / `README.md`（`.agents/` 下技能规约遵循 `AGENTS.md` 映射按需查阅，不进行全量强制前置注入）。
+
+---
+
+## 🧩 前端模块化与降耦合架构 (Modular & Decoupled Architecture)
+
+- **功能域模块化编排**：`src/modules/` 按功能域拆分（22 个模块），`src/main.js` 作为轻量唯一编排入口（约 100 行），仅构建共享上下文并按依赖顺序初始化各模块；
+- **共享可变状态唯一属主 (`src/services/stores/`)**：
+  - `viewStore`：四态界面状态机（`morph`/`set`），控制流命令禁上总线；
+  - `settingsStore`：通道抽屉、官方目录、认证缓存与工作区状态；
+  - `attachmentsStore`：输入框附件胶囊与多模态载荷；
+  - `flowStore`：Flow 流式 11 项纯数据唯一属主，**按 `flowStore.for(taskId)` 分仓**；严格遵循 **Store action 一律同步、严禁 async/await/微任务调度**，裸写完全清零（断言 = 0）；
+- **Flow 视图三层解耦与自绑定**：
+  - **纯渲染层 (`src/modules/flow-render.js`)**：无副作用、不读共享状态、不碰视图缓存的纯函数（卡片创建、映射、HTML 格式化等），调用方显式 `import`，彻底清退旧 `ctx.api` 纯渲染槽；
+  - **只读 DOM 引用层 (`src/modules/flow-dom.js`)**：`createFlowDom()` 产出挂载于 `ctx.flowDom`，flow 模块统一只读此引用；
+  - **视图派生缓存唯一属主 (`src/modules/flow-state-view.js`)**：`flowView` 密封对象（`renderedToolCards`、`currentSteps`、读秒计时器、`activeTurnRefs`、`followBottom`），严禁入 store；
+  - **DOM 按需自绑定 (`src/lib/el-binder.js`)**：各业务模块通过 `bindAll` / `bindEl` 按需自绑定自己的 DOM id 子集，**`ctx.el` 已彻底废除**；
+- **契约化通信与事件通道 (`src/lib/contracts.js`)**：
+  - 横切通知（fire-and-forget，如 `ui:toast`、`ui:workspace-changed`、`flow:response`）统一由 `src/lib/event-bus.js` 同步分发；
+  - 控制流与状态迁移走 Store action 或显式 import；
+  - `ctx.api` 函数槽以 JSDoc `@typedef` 全量契约定型（按属主分组登记 + 三类保留原因注解），杜绝幽灵槽与兼容壳复发；
+- **构建与质量度量门禁**：
+  - `npm run check:fe`：前端静态校验门禁（50 个 .js 模块语法 + import 图可解析 + 循环依赖检测）；
+  - `npm run check`：Rust 极速语法与类型校验（~1s）；
+  - `npm run measure:coupling`：耦合度量基线监控（确保共享状态裸写为 0、无超额重复注册）。
 
 ---
 
@@ -81,8 +107,9 @@ description: |
 | **`pi_runner`** | Win32 Job Object 孤儿收割，`\n` 分帧器，内核自动平滑重连（最多 5 次，失败触发闪电提醒） |
 | **`inner_skills`** | 基于 `RULES.md` 极简映射（<100 Tokens）在工具调用时动态 Steer 注入 7 大运行态技能 |
 | **`package_manager`** | 连通 pi.dev/packages，15min TTL 缓存，FIFO 安装队列与 ProgressStepper 步进 |
-| **`session`** | `DashMap` 并发缓存 + `notify` 递归监听 `~/.pi/agent/sessions/`，原生上下文脱敏净化 |
-| **`config_manager`** | 双层持久化：`~/.pi-dl/config.json` 与 `~/.pi/agent/` 下的 `auth.json` / `models.json` / `settings.json` |
+| **`session`** | `DashMap` 并发缓存 + `notify` 递归监听 `~/.pi/agent/sessions/`，原生上下文脱敏净化，精确毫秒时间戳排序与 LIFO 最新提问去重历史栈 |
+| **`config_manager`** | 双层持久化：`~/.pi-dl/config.json` 与 `~/.pi/agent/` 下的 `auth.json` / `models.json` / `settings.json`；已由单文件神对象拆为 `config_manager/{io,schema,migrate,validate}.rs`（阶段 5） |
+| **`commands`** | Tauri IPC 命令层（阶段 5 拆分）：`commands/{file,window,agent,session,rollback,workspace_cmd,skills,version}.rs`，`lib.rs` 仅保留 `invoke_handler!` 汇总与 `app.manage(...)`/`run()` 启动 |
 
 ---
 

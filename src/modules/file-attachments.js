@@ -1,18 +1,35 @@
 import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
-import { invokeTauri } from "../services/tauri-bridge.js";
+import { bus } from "../lib/event-bus.js";
+import { invokeTauri, listenTauri } from "../services/tauri-bridge.js";
+import { bindAll } from "../lib/el-binder.js";
+
+// ==========================================================================
+// 阶段 7 批次 D：纯函数显式化（原 ctx.api 函数槽清退为显式 import）
+// 附件类别 → 手绘 SVG 图标映射（file-attachments 胶囊与 Flow 轮次附件 chip 共用）
+// ==========================================================================
+export const getFileCategoryIcon = (category) => {
+  if (category === "folder" || category === "directory") return ICONS.folder;
+  if (category === "image") return ICONS.image;
+  if (category === "code") return ICONS.code;
+  return ICONS.document;
+};
 
 /**
  * 文件拖入、概述胶囊与多模态路径注入
  */
 export function initFileAttachments(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
-  const flow = ctx.flow;
-  const attachments = ctx.attachments;
-
+  const attachmentsStore = ctx.attachmentsStore;
+  // 批次 B：模块自绑定（searchInput / searchForm 为跨簇共享 id，bindAll 同 id 同元素）
+  const el = bindAll({
+    searchInputWrapper: "search-input-wrapper",
+    searchInput: "search-input",
+    attachedCapsulesContainer: "attached-capsules-container",
+    searchIconBox: "search-icon-box",
+    filePickerInput: "file-picker-input",
+    searchForm: "search-form",
+  });
   const searchInputWrapper = el.searchInputWrapper;
   const searchInput = el.searchInput;
   const attachedCapsulesContainer = el.attachedCapsulesContainer;
@@ -24,18 +41,11 @@ export function initFileAttachments(ctx) {
   // 输入框文件拖入、手绘概述胶囊与多模态文件注入引擎
   // ==========================================================================
 
-  const getFileCategoryIcon = (category) => {
-    if (category === "folder" || category === "directory") return ICONS.folder;
-    if (category === "image") return ICONS.image;
-    if (category === "code") return ICONS.code;
-    return ICONS.document;
-  };
-
   const renderAttachedCapsules = () => {
     if (!attachedCapsulesContainer) return;
     attachedCapsulesContainer.innerHTML = "";
 
-    if (attachments.files.length === 0) {
+    if (attachmentsStore.files.length === 0) {
       searchInputWrapper?.classList.remove("has-capsules");
       api.updateInputState();
       return;
@@ -43,7 +53,7 @@ export function initFileAttachments(ctx) {
 
     searchInputWrapper?.classList.add("has-capsules");
 
-    attachments.files.forEach((file, index) => {
+    attachmentsStore.files.forEach((file, index) => {
       const capsule = document.createElement("div");
       capsule.className = "sketch-file-capsule";
       capsule.title = file.path || file.name;
@@ -124,67 +134,66 @@ export function initFileAttachments(ctx) {
     }
 
     if (inspectedList.length === 0) {
-      api.showGlobalToast?.("未检测到支持解析的文件或目录", 2000);
+      bus.emit("ui:toast", { text: "未检测到支持解析的文件或目录", duration: 2000 });
       return;
     }
 
     let addedCount = 0;
+    const newItems = [];
     for (const fileMeta of inspectedList) {
       if (!fileMeta || !fileMeta.path) continue;
-      if (attachments.files.some((f) => f.path === fileMeta.path)) continue;
-      attachments.files.push(fileMeta);
-      addedCount++;
+      if (attachmentsStore.files.some((f) => f.path === fileMeta.path)) continue;
+      newItems.push(fileMeta);
     }
+    addedCount = attachmentsStore.addFiles(newItems);
 
     if (addedCount > 0) {
       renderAttachedCapsules();
       if (addedCount === 1) {
-        const item = attachments.files[attachments.files.length - 1];
+        const item = attachmentsStore.last();
         if (item?.category === "folder" || item?.category === "directory") {
-          api.showGlobalToast?.(`已关联文件夹「${item.name}」`, 1800);
+          bus.emit("ui:toast", { text: `已关联文件夹「${item.name}」`, duration: 1800 });
         } else {
-          api.showGlobalToast?.(`已添加文件「${item.name}」`, 1800);
+          bus.emit("ui:toast", { text: `已添加文件「${item.name}」`, duration: 1800 });
         }
       } else if (addedCount > 1) {
-        api.showGlobalToast?.(`已添加 ${addedCount} 个关联项`, 1800);
+        bus.emit("ui:toast", { text: `已添加 ${addedCount} 个关联项`, duration: 1800 });
       }
-    } else if (attachments.files.length > 0) {
-      api.showGlobalToast?.("所选项目已在关联列表中", 1500);
+    } else if (attachmentsStore.files.length > 0) {
+      bus.emit("ui:toast", { text: "所选项目已在关联列表中", duration: 1500 });
     }
 
     if (searchInput) searchInput.focus();
   };
 
   const removeAttachedFile = (index) => {
-    if (index >= 0 && index < attachments.files.length) {
-      attachments.files.splice(index, 1);
+    if (index >= 0 && index < attachmentsStore.files.length) {
+      attachmentsStore.removeAt(index);
       renderAttachedCapsules();
     }
   };
 
   const clearAttachedFiles = () => {
-    attachments.files = [];
+    attachmentsStore.clear();
     renderAttachedCapsules();
   };
 
   // 绑定 Tauri 文件拖拽广播事件
-  if (window.__TAURI__?.event?.listen) {
-    window.__TAURI__.event.listen("file-drop-paths", (event) => {
-      const paths = event.payload;
-      if (Array.isArray(paths) && paths.length > 0) {
-        addAttachedFiles(paths);
-      }
-      searchForm?.classList.remove("drag-over", "drag-active");
-    });
+  listenTauri("file-drop-paths", (event) => {
+    const paths = event.payload;
+    if (Array.isArray(paths) && paths.length > 0) {
+      addAttachedFiles(paths);
+    }
+    searchForm?.classList.remove("drag-over", "drag-active");
+  });
 
-    window.__TAURI__.event.listen("file-drag-enter", () => {
-      searchForm?.classList.add("drag-over");
-    });
+  listenTauri("file-drag-enter", () => {
+    searchForm?.classList.add("drag-over");
+  });
 
-    window.__TAURI__.event.listen("file-drag-leave", () => {
-      searchForm?.classList.remove("drag-over", "drag-active");
-    });
-  }
+  listenTauri("file-drag-leave", () => {
+    searchForm?.classList.remove("drag-over", "drag-active");
+  });
 
   // 绑定原生 DOM Drag & Drop 视觉高亮与防止误跳转
   window.addEventListener("dragover", (e) => {
@@ -228,6 +237,6 @@ export function initFileAttachments(ctx) {
     });
   }
 
-  api.getFileCategoryIcon = getFileCategoryIcon;
+  // getFileCategoryIcon 已显式化（模块顶层 export），消费方直接 import
   api.clearAttachedFiles = clearAttachedFiles;
 }

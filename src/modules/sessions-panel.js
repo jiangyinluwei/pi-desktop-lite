@@ -1,21 +1,32 @@
 import { escapeHtml, cleanUserPrompt } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
+import { VIEW_SETTINGS } from "../lib/view-constants.js";
+import { bus } from "../lib/event-bus.js";
 import { sessionService } from "../services/session-service.js";
 import { conversationHistoryService } from "../services/conversation-history.js";
 import { taskManager } from "../services/task-manager.js";
 import { piClient } from "../services/pi-client.js";
 import { sketchConfirm, sketchAlert } from "../services/sketch-modal.js";
 import { enhanceSelect } from "../services/sketch-select.js";
+import { bindAll } from "../lib/el-binder.js";
 
 /**
  * 会话记录面板：内核全量会话列表、搜索 / 时间筛选、进入 Flow 与界面会话清空
  * 硬约束：绝不提供删除 Pi 内核会话文件的能力，清空操作仅作用于 UI 展示层。
  */
 export function initSessionsPanel(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-
+  const viewStore = ctx.viewStore;
+  // 批次 B：模块自绑定（appContainer 跨簇共享 id，同 id 同元素）
+  const el = bindAll({
+    appContainer: "app-container",
+    btnClearUiSessions: "btn-clear-ui-sessions",
+    sessionsSearchInput: "sessions-search-input",
+    sessionsTimeFilter: "sessions-time-filter",
+    sessionsList: "sessions-list",
+    sessionCount: "session-count",
+  });
+  const appContainer = el.appContainer;
   const btnClearUiSessions = el.btnClearUiSessions;
   const sessionsSearchInput = el.sessionsSearchInput;
   const sessionsTimeFilter = el.sessionsTimeFilter;
@@ -149,6 +160,22 @@ export function initSessionsPanel(ctx) {
       }
 
       const convId = `kernel_${s.session_id}`;
+
+      // 智能重定向铁律：若该会话已作为活跃/挂起任务运行在 TaskManager 中，直接接入实时现场，杜绝用静态历史覆写
+      let existingTask = taskManager.getTask(convId);
+      if (existingTask) {
+        const isRunning =
+          existingTask.status === "thinking" ||
+          existingTask.status === "streaming" ||
+          existingTask.status === "tool_exec" ||
+          existingTask.status === "paused";
+        if (isRunning) {
+          api.restoreTaskToFlow(existingTask);
+          viewStore.set({ flowFromSettings: true });
+          return;
+        }
+      }
+
       let turns;
       try {
         const detail = await sessionService.getSessionDetail(s.file_path);
@@ -206,6 +233,8 @@ export function initSessionsPanel(ctx) {
       task.turns = JSON.parse(JSON.stringify(turns));
       task.conversationId = convId;
       task.status = "completed";
+      task.sessionPath = s.file_path;
+      task.sessionId = s.session_id;
       task.thinkingText = lastTurn.thinkingText || "";
       task.responseText = lastTurn.responseText || "";
       task.toolCalls = lastTurn.toolCalls || [];
@@ -213,8 +242,8 @@ export function initSessionsPanel(ctx) {
       task.thinkingDurationText = lastTurn.thinkingDurationText || "已完成思考";
 
       // 直接切 Flow，不调用 closeSettingsView（避免先跳回 previous 的中间态抖动）
-      api.renderTurnsIntoFlow(task, turns, { sessionPath: s.file_path });
-      view.flowFromSettings = true;
+      api.renderTurnsIntoFlow(task, turns, { sessionPath: s.file_path, sessionId: s.session_id });
+      viewStore.set({ flowFromSettings: true });
 
       api.renderConversationMessages();
       api.updateMiniTaskCapsuleUI();
@@ -367,14 +396,38 @@ export function initSessionsPanel(ctx) {
     });
   };
 
-  const loadSessions = async () => {
-    const list = await sessionService.listSessions();
-    allSessions = Array.isArray(list) ? list : [];
+  const isSessionsPanelVisible = () => {
+    const isSettings = viewStore.mode === VIEW_SETTINGS || el.appContainer?.getAttribute("data-view") === "settings";
+    if (!isSettings) return false;
+    const paneSessions = document.getElementById("pane-sessions");
+    const tabBtn = document.querySelector('.settings-tab-btn[data-tab="tab-sessions"]');
+    return Boolean(paneSessions?.classList.contains("active") || tabBtn?.classList.contains("active"));
+  };
+
+  const loadSessions = async (forceFetch = false) => {
+    if (forceFetch) {
+      const list = await sessionService.refreshSessions();
+      allSessions = Array.isArray(list) ? list : [];
+    } else if (!allSessions.length) {
+      const list = sessionService.sessions?.length
+        ? sessionService.sessions
+        : await sessionService.listSessions();
+      allSessions = Array.isArray(list) ? list : [];
+    } else if (sessionService.sessions?.length) {
+      allSessions = [...sessionService.sessions];
+    }
     renderSessions();
   };
 
-  sessionService.addEventListener("sessions-change", () => {
-    loadSessions();
+  sessionService.addEventListener("sessions-change", (e) => {
+    // 1. 直接复用事件 payload 数据，杜绝反向二次发起 listSessions() IPC
+    const list = e.detail || sessionService.sessions || [];
+    allSessions = Array.isArray(list) ? list : [];
+
+    // 2. 仅在处于设置页且激活「会话记录」Tab 时才触发全量 DOM 重绘
+    if (isSessionsPanelVisible()) {
+      renderSessions();
+    }
   });
 
   // ==========================================================================
@@ -407,7 +460,7 @@ export function initSessionsPanel(ctx) {
       );
       if (!confirmed) return;
       conversationHistoryService.clearAllConversations();
-      api.showGlobalToast("已清空界面会话记录");
+      bus.emit("ui:toast", { text: "已清空界面会话记录", duration: 1500 });
       api.renderConversationMessages();
     });
   }

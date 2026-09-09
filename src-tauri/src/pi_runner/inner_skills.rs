@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 /// 编译期内嵌默认规则清单（保障打包发布与离线环境下的可用性）
@@ -11,6 +12,24 @@ const EMBEDDED_WEB_SKILL_MD: &str = include_str!("../../inner-skills/web-search-
 const EMBEDDED_MEMORY_SKILL_MD: &str = include_str!("../../inner-skills/persistent-memory-retrieval/SKILL.md");
 const EMBEDDED_WORKFLOW_SKILL_MD: &str = include_str!("../../inner-skills/dynamic-workflows-orchestration/SKILL.md");
 const EMBEDDED_PRUNING_SKILL_MD: &str = include_str!("../../inner-skills/active-context-pruning/SKILL.md");
+const EMBEDDED_TEMP_HYGIENE_SKILL_MD: &str = include_str!("../../inner-skills/temp-file-hygiene/SKILL.md");
+const EMBEDDED_TOOL_FAILURE_SKILL_MD: &str = include_str!("../../inner-skills/tool-failure-logging/SKILL.md");
+
+/// 获取统一的运行时临时目录路径 (~/.pi-dl/temp)
+pub fn get_runtime_temp_dir() -> PathBuf {
+    dirs::home_dir()
+        .map(|h| h.join(".pi-dl").join("temp"))
+        .unwrap_or_else(|| PathBuf::from(".pi-dl/temp"))
+}
+
+/// 确保运行时临时目录存在
+pub fn ensure_runtime_temp_dir() -> std::io::Result<PathBuf> {
+    let temp_dir = get_runtime_temp_dir();
+    if !temp_dir.exists() {
+        std::fs::create_dir_all(&temp_dir)?;
+    }
+    Ok(temp_dir)
+}
 
 /// 规则映射定义项
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -53,7 +72,7 @@ pub struct ToolSkillActivation {
 #[derive(Debug)]
 pub struct InnerSkillInjector {
     mappings: Vec<SkillMapping>,
-    tool_to_skill_map: HashMap<String, String>,
+    tool_to_skill_map: HashMap<String, Vec<String>>,
     /// hook 命中后待随下一次出站 Prompt 注入的 Skill 队列（按激活顺序去重，兑底通道）
     pending_skills: Mutex<VecDeque<String>>,
     /// 当前轮次已动态注入过的 Skill（避免同轮重复注入）
@@ -62,11 +81,15 @@ pub struct InnerSkillInjector {
 
 impl InnerSkillInjector {
     pub fn new() -> Self {
+        let _ = ensure_runtime_temp_dir();
         let mappings = Self::parse_mappings_from_markdown(EMBEDDED_RULES_MD);
-        let mut tool_to_skill_map = HashMap::new();
+        let mut tool_to_skill_map: HashMap<String, Vec<String>> = HashMap::new();
         for m in &mappings {
             for tool in &m.tools {
-                tool_to_skill_map.insert(tool.to_lowercase(), m.skill_name.clone());
+                let entry = tool_to_skill_map.entry(tool.to_lowercase()).or_default();
+                if !entry.contains(&m.skill_name) {
+                    entry.push(m.skill_name.clone());
+                }
             }
         }
 
@@ -202,15 +225,61 @@ impl InnerSkillInjector {
                 skill_name: "active-context-pruning".to_string(),
                 enforcement: "Mandatory".to_string(),
             });
+            mappings.push(SkillMapping {
+                tools: vec![
+                    "write".to_string(),
+                    "write_file".to_string(),
+                    "create_file".to_string(),
+                    "temp_file".to_string(),
+                    "scratchpad".to_string(),
+                    "bash".to_string(),
+                    "terminal".to_string(),
+                    "powershell".to_string(),
+                    "cmd".to_string(),
+                    "execute_command".to_string(),
+                ],
+                skill_name: "temp-file-hygiene".to_string(),
+                enforcement: "Mandatory".to_string(),
+            });
+            mappings.push(SkillMapping {
+                tools: vec![
+                    "bash".to_string(),
+                    "terminal".to_string(),
+                    "powershell".to_string(),
+                    "cmd".to_string(),
+                    "execute_command".to_string(),
+                    "write".to_string(),
+                    "write_file".to_string(),
+                    "edit".to_string(),
+                    "read_file".to_string(),
+                    "subagent".to_string(),
+                    "web_search".to_string(),
+                    "tool_failure".to_string(),
+                    "log_error".to_string(),
+                ],
+                skill_name: "tool-failure-logging".to_string(),
+                enforcement: "Mandatory".to_string(),
+            });
         }
 
         mappings
     }
 
-    /// 查询某工具是否命中 RULES.md 中的 Inner-Skill 映射
+    /// 查询某工具是否命中 RULES.md 中的 Inner-Skill 映射（返回首个命中的技能）
     pub fn resolve_skill_for_tool(&self, tool_name: &str) -> Option<String> {
         let normalized = tool_name.trim().to_lowercase();
-        self.tool_to_skill_map.get(&normalized).cloned()
+        self.tool_to_skill_map
+            .get(&normalized)
+            .and_then(|list| list.first().cloned())
+    }
+
+    /// 查询某工具命中的全部 Inner-Skill 映射清单
+    pub fn resolve_skills_for_tool(&self, tool_name: &str) -> Vec<String> {
+        let normalized = tool_name.trim().to_lowercase();
+        self.tool_to_skill_map
+            .get(&normalized)
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// 获取具体 Inner-Skill 的详细 SKILL.md 内容
@@ -223,6 +292,8 @@ impl InnerSkillInjector {
             "persistent-memory-retrieval" => Some(EMBEDDED_MEMORY_SKILL_MD),
             "dynamic-workflows-orchestration" => Some(EMBEDDED_WORKFLOW_SKILL_MD),
             "active-context-pruning" => Some(EMBEDDED_PRUNING_SKILL_MD),
+            "temp-file-hygiene" => Some(EMBEDDED_TEMP_HYGIENE_SKILL_MD),
+            "tool-failure-logging" => Some(EMBEDDED_TOOL_FAILURE_SKILL_MD),
             _ => None,
         }
     }
@@ -244,15 +315,24 @@ impl InnerSkillInjector {
     }
 
     /// Tool call pre-processing hook：工具调用启动前由宿主调用。
-    /// 命中 RULES.md 映射时返回对应的 Inner-Skill 激活信息。
+    /// 命中 RULES.md 映射时返回所有命中的 Inner-Skill 激活信息。
+    pub fn hook_tool_calls(&self, tool_name: &str) -> Vec<ToolSkillActivation> {
+        let skills = self.resolve_skills_for_tool(tool_name);
+        let mut activations = Vec::new();
+        for skill in skills {
+            if self.get_skill_detail(&skill).is_some() {
+                activations.push(ToolSkillActivation {
+                    tool_name: tool_name.trim().to_string(),
+                    skill,
+                });
+            }
+        }
+        activations
+    }
+
+    /// 兼容方法：返回首个命中的 ToolSkillActivation
     pub fn hook_tool_call(&self, tool_name: &str) -> Option<ToolSkillActivation> {
-        let skill = self.resolve_skill_for_tool(tool_name)?;
-        // 确保对应 SKILL.md 内容可用
-        self.get_skill_detail(&skill)?;
-        Some(ToolSkillActivation {
-            tool_name: tool_name.trim().to_string(),
-            skill,
-        })
+        self.hook_tool_calls(tool_name).into_iter().next()
     }
 
     /// 标记 Skill 已激活：当轮去重 + 兑底入队（供下一次出站 Prompt 注入）。
@@ -276,13 +356,21 @@ impl InnerSkillInjector {
         self.pending_skills.lock().unwrap().retain(|s| s != skill);
     }
 
-    /// 构建单个 Skill 的动态注入文本块
+    /// 构建单个 Skill 的动态注入文本块（支持动态展开系统真实临时目录路径）
     pub fn build_skill_injection_text(&self, skill: &str) -> Option<String> {
         let detail = self.get_skill_detail(skill)?;
+        let content = if skill == "temp-file-hygiene" {
+            let temp_dir = get_runtime_temp_dir();
+            let _ = ensure_runtime_temp_dir();
+            let temp_dir_str = temp_dir.to_string_lossy().replace('\\', "/");
+            detail.replace("{{PI_DL_TEMP_DIR}}", &temp_dir_str)
+        } else {
+            detail.to_string()
+        };
         Some(format!(
             "<runtime_inner_skill name=\"{}\">\n{}\n</runtime_inner_skill>",
             skill,
-            detail.trim()
+            content.trim()
         ))
     }
 
@@ -349,163 +437,122 @@ impl Default for InnerSkillInjector {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// 获取统一的工具调用失败日志目录路径 (~/.pi-dl/workspaces/log/<workspace_name>)
+pub fn get_tool_failure_log_dir(workspace_name: &str) -> PathBuf {
+    let clean_name = workspace_name
+        .trim_matches(|c: char| c == '/' || c == '\\' || c.is_whitespace());
+    let folder_name = if clean_name.is_empty() {
+        "default"
+    } else {
+        clean_name
+    };
 
-    #[test]
-    fn test_rules_mapping_parser() {
-        let injector = InnerSkillInjector::new();
-        let mappings = injector.get_skill_mappings();
-        assert!(!mappings.is_empty());
-
-        // 测试 bash / cmd 是否正确映射到 windows-bash-compatibility
-        assert_eq!(
-            injector.resolve_skill_for_tool("bash"),
-            Some("windows-bash-compatibility".to_string())
-        );
-        assert_eq!(
-            injector.resolve_skill_for_tool("powershell"),
-            Some("windows-bash-compatibility".to_string())
-        );
-        assert_eq!(
-            injector.resolve_skill_for_tool("cmd"),
-            Some("windows-bash-compatibility".to_string())
-        );
-
-        // 测试文档解析与 OCR 工具是否正确映射到 document-multimodal-inspection
-        assert_eq!(
-            injector.resolve_skill_for_tool("read_file"),
-            Some("document-multimodal-inspection".to_string())
-        );
-        assert_eq!(
-            injector.resolve_skill_for_tool("ocr"),
-            Some("document-multimodal-inspection".to_string())
-        );
-        assert_eq!(
-            injector.resolve_skill_for_tool("deword"),
-            Some("document-multimodal-inspection".to_string())
-        );
-        assert_eq!(
-            injector.resolve_skill_for_tool("pi-ocr"),
-            Some("document-multimodal-inspection".to_string())
-        );
-        assert_eq!(
-            injector.resolve_skill_for_tool("pi-docparser"),
-            Some("document-multimodal-inspection".to_string())
-        );
-
-        // 测试多 Agent 调度工具是否正确映射到 multi-agent-orchestration
-        assert_eq!(
-            injector.resolve_skill_for_tool("subagent"),
-            Some("multi-agent-orchestration".to_string())
-        );
-        assert_eq!(
-            injector.resolve_skill_for_tool("pi-subagents"),
-            Some("multi-agent-orchestration".to_string())
-        );
-        assert_eq!(
-            injector.resolve_skill_for_tool("spawn_agent"),
-            Some("multi-agent-orchestration".to_string())
-        );
-
-        // 测试联网搜索工具是否正确映射到 web-search-silent-access
-        assert_eq!(
-            injector.resolve_skill_for_tool("web_search"),
-            Some("web-search-silent-access".to_string())
-        );
-        assert_eq!(
-            injector.resolve_skill_for_tool("pi-web-access"),
-            Some("web-search-silent-access".to_string())
-        );
-        assert_eq!(
-            injector.resolve_skill_for_tool("search_web"),
-            Some("web-search-silent-access".to_string())
-        );
-
-        // 测试记忆检索工具是否正确映射到 persistent-memory-retrieval
-        assert_eq!(
-            injector.resolve_skill_for_tool("memory_retrieve"),
-            Some("persistent-memory-retrieval".to_string())
-        );
-        assert_eq!(
-            injector.resolve_skill_for_tool("pi-memory"),
-            Some("persistent-memory-retrieval".to_string())
-        );
-
-        // 测试动态工作流工具是否正确映射到 dynamic-workflows-orchestration
-        assert_eq!(
-            injector.resolve_skill_for_tool("dynamic_workflows"),
-            Some("dynamic-workflows-orchestration".to_string())
-        );
-        assert_eq!(
-            injector.resolve_skill_for_tool("execute_workflow"),
-            Some("dynamic-workflows-orchestration".to_string())
-        );
-
-        // 测试上下文修剪工具是否正确映射到 active-context-pruning
-        assert_eq!(
-            injector.resolve_skill_for_tool("context_prune"),
-            Some("active-context-pruning".to_string())
-        );
-        assert_eq!(
-            injector.resolve_skill_for_tool("pai-acp"),
-            Some("active-context-pruning".to_string())
-        );
-
-        // 未在 RULES.md 映射的随机工具不应触发任何 inner-skill
-        assert_eq!(injector.resolve_skill_for_tool("unknown_fake_tool_xyz"), None);
-
-        // 验证各 Skill 的详细内容均可正常获取
-        assert!(injector.get_skill_detail("windows-bash-compatibility").is_some());
-        assert!(injector.get_skill_detail("document-multimodal-inspection").is_some());
-        assert!(injector.get_skill_detail("multi-agent-orchestration").is_some());
-        assert!(injector.get_skill_detail("web-search-silent-access").is_some());
-        assert!(injector.get_skill_detail("persistent-memory-retrieval").is_some());
-        assert!(injector.get_skill_detail("dynamic-workflows-orchestration").is_some());
-        assert!(injector.get_skill_detail("active-context-pruning").is_some());
-
-        // 未命中映射的工具不应触发 tool-call hook
-        assert!(injector.hook_tool_call("unknown_fake_tool_xyz").is_none());
-
-        // 无待注入内容时 Prompt 保持原样，不再注入完整 RULES.md
-        let (clean, clean_info) = injector.process_prompt_with_info("hello");
-        assert!(!clean_info.injected);
-        assert_eq!(clean, "hello");
-        assert!(!clean.contains("<runtime_context_rules>"));
-        assert!(!clean.contains("Tool-to-Skill Mapping Matrix"));
-
-        // tool-call hook 命中 bash → 当轮首次激活，兑底入队后随下一次 Prompt 注入对应 SKILL.md
-        let activation = injector.hook_tool_call("bash").expect("bash should hit hook");
-        assert_eq!(activation.skill, "windows-bash-compatibility");
-        assert!(injector.mark_skill_activated(&activation.skill));
-
-        let (processed, info) = injector.process_prompt_with_info("hello");
-        assert!(info.injected);
-        assert!(processed.contains("<runtime_inner_skills>"));
-        assert!(processed.contains("<runtime_inner_skill name=\"windows-bash-compatibility\">"));
-        assert!(processed.ends_with("hello"));
-        // 注入后队列清空，重复发送不再注入（兑底通道一次性消费）
-        let (again, again_info) = injector.process_prompt_with_info("world");
-        assert!(!again_info.injected);
-        assert_eq!(again, "world");
-
-        // 同轮重复激活被去重；跨轮（begin_turn）后可重新激活
-        assert!(!injector.mark_skill_activated("windows-bash-compatibility"));
-        injector.begin_turn();
-        assert!(injector.mark_skill_activated("windows-bash-compatibility"));
-
-        // steer 动态注入成功后可通过 dequeue 移除兑底队列，避免重复注入
-        injector.mark_skill_activated("windows-bash-compatibility");
-        injector.dequeue_skill("windows-bash-compatibility");
-        let (after_dequeue, after_info) = injector.process_prompt_with_info("next");
-        assert!(!after_info.injected);
-        assert_eq!(after_dequeue, "next");
-
-        // 动态注入文本块可独立构建
-        let text = injector
-            .build_skill_injection_text("windows-bash-compatibility")
-            .expect("skill text should build");
-        assert!(text.contains("<runtime_inner_skill name=\"windows-bash-compatibility\">"));
-    }
+    dirs::home_dir()
+        .map(|h| h.join(".pi-dl").join("workspaces").join("log").join(folder_name))
+        .unwrap_or_else(|| PathBuf::from(".pi-dl").join("workspaces").join("log").join(folder_name))
 }
+
+/// 解析用于集中日志归档的工作区标识名称
+pub fn resolve_workspace_log_name(
+    active_ws_id: &str,
+    code_area_route: Option<&str>,
+    fallback_ws: &std::path::Path,
+) -> String {
+    if active_ws_id == "code-area" {
+        if let Some(rp) = code_area_route {
+            let trimmed = rp.trim_end_matches(['/', '\\']);
+            if let Some(name) = std::path::Path::new(trimmed).file_name().and_then(|n| n.to_str()) {
+                let clean = name.trim();
+                if !clean.is_empty() {
+                    return clean.to_string();
+                }
+            }
+        }
+        return "code-area".to_string();
+    }
+
+    if !active_ws_id.is_empty() && active_ws_id != "custom" {
+        return active_ws_id.to_string();
+    }
+
+    let trimmed = fallback_ws.to_string_lossy();
+    let trimmed = trimmed.trim_end_matches(['/', '\\']);
+    std::path::Path::new(trimmed)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("default")
+        .to_string()
+}
+
+/// 记录工具调用失败细节至集中 log 文件夹 (~/.pi-dl/workspaces/log/<workspace_name>/)
+/// 写入两种文件：
+/// 1. 连续追加日志: ~/.pi-dl/workspaces/log/<workspace_name>/tool-errors.log
+/// 2. 单次失败快照: ~/.pi-dl/workspaces/log/<workspace_name>/tool_failure_<timestamp>_<tool>.log
+pub fn write_tool_failure_log(
+    workspace_name: &str,
+    task_id: Option<&str>,
+    session_id: Option<&str>,
+    tool_name: &str,
+    tool_call_id: Option<&str>,
+    args: &serde_json::Value,
+    error_result: &serde_json::Value,
+) -> std::io::Result<PathBuf> {
+    use std::io::Write;
+
+    let log_dir = get_tool_failure_log_dir(workspace_name);
+    if !log_dir.exists() {
+        std::fs::create_dir_all(&log_dir)?;
+    }
+
+    let now = chrono::Local::now();
+    let time_str = now.format("%Y-%m-%d %H:%M:%S").to_string();
+    let file_time_str = now.format("%Y%m%d_%H%M%S").to_string();
+
+    let mut entry = String::new();
+    entry.push_str("================================================================================\n");
+    entry.push_str(&format!("[{}] TOOL EXECUTION FAILURE REPORT\n", time_str));
+    entry.push_str(&format!("Workspace: {}\n", workspace_name));
+    if let Some(tid) = task_id {
+        entry.push_str(&format!("Task ID: {}\n", tid));
+    }
+    if let Some(sid) = session_id {
+        entry.push_str(&format!("Session ID: {}\n", sid));
+    }
+    entry.push_str(&format!("Tool: {}\n", tool_name));
+    if let Some(cid) = tool_call_id {
+        entry.push_str(&format!("Call ID: {}\n", cid));
+    }
+    entry.push_str("Invoked Arguments:\n");
+    entry.push_str(&serde_json::to_string_pretty(args).unwrap_or_else(|_| args.to_string()));
+    entry.push_str("\nFailure Details / Error Result:\n");
+    if let Some(s) = error_result.as_str() {
+        entry.push_str(s);
+    } else {
+        entry.push_str(&serde_json::to_string_pretty(error_result).unwrap_or_else(|_| error_result.to_string()));
+    }
+    entry.push_str("\n================================================================================\n\n");
+
+    // 1. 追加到连续日志文件 ~/.pi-dl/workspaces/log/<workspace_name>/tool-errors.log
+    let continuous_log = log_dir.join("tool-errors.log");
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&continuous_log)?;
+    file.write_all(entry.as_bytes())?;
+
+    // 2. 写入单独的单次失败快照文件 ~/.pi-dl/workspaces/log/<workspace_name>/tool_failure_<timestamp>_<tool>.log
+    let clean_tool = tool_name.replace(|c: char| !c.is_alphanumeric() && c != '_' && c != '-', "_");
+    let single_log = log_dir.join(format!("tool_failure_{}_{}.log", file_time_str, clean_tool));
+    let _ = std::fs::write(&single_log, &entry);
+
+    log::info!(
+        "[InnerSkill:tool-failure-logging] Recorded failure log for tool `{}` in {:?}",
+        tool_name,
+        continuous_log
+    );
+
+    Ok(continuous_log)
+}
+

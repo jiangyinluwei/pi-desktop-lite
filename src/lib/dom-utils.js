@@ -8,8 +8,8 @@
  * @returns {string}
  */
 export const escapeHtml = (str) => {
-  if (typeof str !== "string") return "";
-  return str
+  if (str === null || str === undefined) return "";
+  return String(str)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -37,16 +37,22 @@ export const cleanUserPrompt = (text) => {
   if (!text || typeof text !== "string") return "";
   let clean = text;
 
-  // 1. 剥离所有已知与通用的注入信封（如 <runtime_context_rules>...</runtime_context_rules>、<code_area_routing_context>...</code_area_routing_context>）
-  clean = clean.replace(/<runtime_context_rules>[\s\S]*?<\/runtime_context_rules>/gi, "");
-  clean = clean.replace(/<runtime_inner_skills>[\s\S]*?<\/runtime_inner_skills>/gi, "");
-  clean = clean.replace(/<runtime_inner_skill[\s\S]*?>[\s\S]*?<\/runtime_inner_skill>/gi, "");
-  clean = clean.replace(/<code_area_routing_context>[\s\S]*?<\/code_area_routing_context>/gi, "");
-  clean = clean.replace(/<routed_agents_md[\s\S]*?>[\s\S]*?<\/routed_agents_md>/gi, "");
-  clean = clean.replace(/<routed_readme_md[\s\S]*?>[\s\S]*?<\/routed_readme_md>/gi, "");
-  clean = clean.replace(/<routed_project_skills[\s\S]*?>[\s\S]*?<\/routed_project_skills>/gi, "");
-  clean = clean.replace(/<routed_skill[\s\S]*?>[\s\S]*?<\/routed_skill>/gi, "");
-  clean = clean.replace(/<[a-zA-Z0-9_-]*(?:context|rules|skill)[a-zA-Z0-9_-]*>[\s\S]*?<\/[a-zA-Z0-9_-]*(?:context|rules|skill)[a-zA-Z0-9_-]*>/gi, "");
+  // 1. 剥离所有已知与通用的注入信封（支持标签属性与未闭合兜底）
+  clean = clean.replace(/<runtime_context_rules(?:\s[^>]*)?>[\s\S]*?<\/runtime_context_rules>/gi, "");
+  clean = clean.replace(/<runtime_inner_skills(?:\s[^>]*)?>[\s\S]*?<\/runtime_inner_skills>/gi, "");
+  clean = clean.replace(/<runtime_inner_skill(?:\s[^>]*)?>[\s\S]*?<\/runtime_inner_skill>/gi, "");
+  clean = clean.replace(/<code_area_routing_context(?:\s[^>]*)?>[\s\S]*?<\/code_area_routing_context>/gi, "");
+  clean = clean.replace(/<routed_agents_md(?:\s[^>]*)?>[\s\S]*?<\/routed_agents_md>/gi, "");
+  clean = clean.replace(/<routed_readme_md(?:\s[^>]*)?>[\s\S]*?<\/routed_readme_md>/gi, "");
+  clean = clean.replace(/<routed_project_skills(?:\s[^>]*)?>[\s\S]*?<\/routed_project_skills>/gi, "");
+  clean = clean.replace(/<routed_skill(?:\s[^>]*)?>[\s\S]*?<\/routed_skill>/gi, "");
+  clean = clean.replace(/<workspace_context(?:\s[^>]*)?>[\s\S]*?<\/workspace_context>/gi, "");
+  clean = clean.replace(/<runtime_rules(?:\s[^>]*)?>[\s\S]*?<\/runtime_rules>/gi, "");
+  clean = clean.replace(/<inner_skills_context(?:\s[^>]*)?>[\s\S]*?<\/inner_skills_context>/gi, "");
+  clean = clean.replace(/<inner_skill_rules(?:\s[^>]*)?>[\s\S]*?<\/inner_skill_rules>/gi, "");
+  clean = clean.replace(/<prompt_context(?:\s[^>]*)?>[\s\S]*?<\/prompt_context>/gi, "");
+  clean = clean.replace(/<([a-zA-Z0-9_-]*(?:context|rules|skill|routing)[a-zA-Z0-9_-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>/gi, "");
+  clean = clean.replace(/<(?:runtime_context_rules|runtime_inner_skills|runtime_inner_skill|code_area_routing_context|routed_agents_md|routed_readme_md|routed_project_skills|routed_skill|workspace_context|runtime_rules|inner_skills_context|inner_skill_rules|prompt_context)(?:\s[^>]*)?>[\s\S]*$/gi, "");
 
   // 2. 查找并截断附带本地文件路径尾注
   const attachmentMarkers = [

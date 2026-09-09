@@ -2,6 +2,7 @@ use crate::pi_runner::framer::{run_stderr_logger, run_stdout_framer};
 use crate::pi_runner::job_object::JobObjectManager;
 use crate::pi_runner::protocol::{FollowUpRequest, PromptRequest, SteerRequest};
 use crate::pi_runner::supervisor::PiSupervisor;
+use crate::session::SessionIndexCache;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -12,6 +13,8 @@ use tauri::{AppHandle, Emitter};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::oneshot;
+use std::time::Duration;
 
 pub const MAX_CONCURRENT_TASKS: usize = 3;
 
@@ -19,6 +22,7 @@ pub const MAX_CONCURRENT_TASKS: usize = 3;
 pub struct SessionHost {
     pub task_id: String,
     pub session_id: String,
+    pub session_path: Arc<RwLock<Option<PathBuf>>>,
     app_handle: AppHandle,
     job_object: Arc<JobObjectManager>,
     stdin_tx: Arc<Mutex<Option<mpsc::Sender<String>>>>,
@@ -27,31 +31,49 @@ pub struct SessionHost {
     provider: Arc<RwLock<Option<String>>>,
     model_id: Arc<RwLock<Option<String>>>,
     child_handle: Arc<Mutex<Option<tokio::process::Child>>>,
+    /// 是否已被显式手动终止（阻断后续任何 prompt 发送与迟到指令）
+    is_aborted: Arc<RwLock<bool>>,
+    /// 带响应 RPC 指令等待表 (请求 id → 响应通道)，供 fork / get_fork_messages 等需回读内核的指令使用
+    pending_responses: Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>>,
 }
 
 impl SessionHost {
     pub fn new(
         task_id: String,
         session_id: String,
+        session_path: Option<PathBuf>,
         app_handle: AppHandle,
         job_object: Arc<JobObjectManager>,
     ) -> Self {
         Self {
             task_id,
             session_id,
+            session_path: Arc::new(RwLock::new(session_path)),
             app_handle,
             job_object,
             stdin_tx: Arc::new(Mutex::new(None)),
             is_active: Arc::new(RwLock::new(false)),
+            is_aborted: Arc::new(RwLock::new(false)),
             started_at: Instant::now(),
             provider: Arc::new(RwLock::new(None)),
             model_id: Arc::new(RwLock::new(None)),
             child_handle: Arc::new(Mutex::new(None)),
+            pending_responses: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
     pub async fn is_running(&self) -> bool {
-        *self.is_active.read().await
+        *self.is_active.read().await && !*self.is_aborted.read().await
+    }
+
+    pub async fn is_aborted(&self) -> bool {
+        *self.is_aborted.read().await
+    }
+
+    pub async fn is_alive(&self) -> bool {
+        let handle_guard = self.child_handle.lock().await;
+        let stdin_guard = self.stdin_tx.lock().await;
+        handle_guard.is_some() && stdin_guard.is_some() && !*self.is_aborted.read().await
     }
 
     pub fn started_at(&self) -> Instant {
@@ -76,10 +98,27 @@ impl SessionHost {
         }
 
         let mut cmd = Command::new(&binary_path);
-        cmd.arg("--mode")
-            .arg("rpc")
-            .arg("--session-id")
-            .arg(&self.session_id);
+        cmd.arg("--mode").arg("rpc");
+
+        let resolved_session_path = {
+            let guard = self.session_path.read().await;
+            guard.clone()
+        };
+
+        if let Some(ref path) = resolved_session_path {
+            if path.exists() {
+                log::info!(
+                    "[SessionHost:{}] Resuming existing session file via --session {:?}",
+                    self.task_id,
+                    path
+                );
+                cmd.arg("--session").arg(path);
+            } else {
+                cmd.arg("--session-id").arg(&self.session_id);
+            }
+        } else {
+            cmd.arg("--session-id").arg(&self.session_id);
+        }
 
         if let Some((ref provider, ref model_id)) = initial_model {
             cmd.arg("--provider").arg(provider).arg("--model").arg(model_id);
@@ -91,6 +130,9 @@ impl SessionHost {
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+
+        // 会话回退快照守卫开关：仅桌面端拉起的内核进程启用内置扩展
+        cmd.env(crate::rollback::ROLLBACK_ENV_KEY, "1");
 
         #[cfg(windows)]
         {
@@ -142,15 +184,31 @@ impl SessionHost {
             }
         });
 
-        // 启动 Stdout 分帧并在事件中注入 task_id
+        // 启动 Stdout 分帧并在事件中注入 task_id 与 session 信息
         let (event_tx, mut event_rx) = mpsc::channel::<Value>(256);
         let app_handle_for_events = self.app_handle.clone();
         let task_id_clone = self.task_id.clone();
+        let session_id_clone = self.session_id.clone();
+        let session_path_clone = self.session_path.clone();
         let is_active_clone = self.is_active.clone();
+        let pending_responses_clone = self.pending_responses.clone();
+        let workspace_for_events = workspace.clone();
 
         tokio::spawn(async move {
             while let Some(mut event_val) = event_rx.recv().await {
-                // 注入 task_id 确保前端路由精准分发
+                // response 响应帧优先唤醒本地等待者（fork / get_fork_messages 等）；
+                // 无等待者（如超时后响应姗姗来迟）直接丢弃，绝不落入广播路径产生杂散 IPC 帧
+                if event_val.get("type").and_then(|v| v.as_str()) == Some("response") {
+                    if let Some(id) = event_val.get("id").and_then(|v| v.as_str()) {
+                        let mut guard = pending_responses_clone.lock().await;
+                        if let Some(tx) = guard.remove(id) {
+                            let _ = tx.send(event_val.clone());
+                        }
+                    }
+                    continue; // 响应帧仅回填等待者，无论有无等待者均不向前端广播
+                }
+
+                // 注入 task_id 与 session 信息确保前端路由精准分发
                 if let Value::Object(ref mut map) = event_val {
                     if !map.contains_key("task_id") {
                         map.insert("task_id".to_string(), Value::String(task_id_clone.clone()));
@@ -158,8 +216,21 @@ impl SessionHost {
                     if !map.contains_key("taskId") {
                         map.insert("taskId".to_string(), Value::String(task_id_clone.clone()));
                     }
+                    if !map.contains_key("session_id") {
+                        map.insert("session_id".to_string(), Value::String(session_id_clone.clone()));
+                    }
+                    if !map.contains_key("sessionId") {
+                        map.insert("sessionId".to_string(), Value::String(session_id_clone.clone()));
+                    }
+                    if !map.contains_key("sessionPath") {
+                        if let Some(ref path) = *session_path_clone.read().await {
+                            let path_str = path.to_string_lossy().to_string();
+                            map.insert("sessionPath".to_string(), Value::String(path_str.clone()));
+                            map.insert("session_path".to_string(), Value::String(path_str));
+                        }
+                    }
 
-                    // 监听 agent 状态变化以更新 is_active
+                    // 监听 agent 状态变化以更新 is_active，并在工具失败时落盘
                     if let Some(event_type) = map.get("type").and_then(|v| v.as_str()) {
                         match event_type {
                             "agent_start" => {
@@ -167,6 +238,36 @@ impl SessionHost {
                             }
                             "agent_end" | "agent_settled" => {
                                 *is_active_clone.write().await = false;
+                            }
+                            "tool_execution_end" => {
+                                let is_error = map.get("isError").and_then(|v| v.as_bool()).unwrap_or(false)
+                                    || map.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+                                if is_error {
+                                    let tool_name = map.get("toolName").and_then(|v| v.as_str()).unwrap_or("unknown");
+                                    let tool_call_id = map.get("toolCallId").and_then(|v| v.as_str());
+                                    let args = map.get("args").unwrap_or(&Value::Null);
+                                    let result = map.get("result").unwrap_or(&Value::Null);
+                                    let active_ws = crate::workspace::read_active_workspace_id();
+                                    let route_path = if active_ws == "code-area" {
+                                        crate::workspace::read_code_area_route_path()
+                                    } else {
+                                        None
+                                    };
+                                    let ws_name = crate::pi_runner::inner_skills::resolve_workspace_log_name(
+                                        &active_ws,
+                                        route_path.as_deref(),
+                                        &workspace_for_events,
+                                    );
+                                    let _ = crate::pi_runner::inner_skills::write_tool_failure_log(
+                                        &ws_name,
+                                        Some(&task_id_clone),
+                                        Some(&session_id_clone),
+                                        tool_name,
+                                        tool_call_id,
+                                        args,
+                                        result,
+                                    );
+                                }
                             }
                             _ => {}
                         }
@@ -263,6 +364,11 @@ impl SessionHost {
 
     /// 向该 Task 子进程发送 JSON RPC 指令
     pub async fn send_command(&self, command_val: Value) -> Result<(), String> {
+        let is_abort_cmd = command_val.get("type").and_then(|v| v.as_str()) == Some("abort");
+        if *self.is_aborted.read().await && !is_abort_cmd {
+            return Err(format!("Task {} has been aborted; command rejected", self.task_id));
+        }
+
         let sender = {
             let guard = self.stdin_tx.lock().await;
             guard.clone()
@@ -282,19 +388,73 @@ impl SessionHost {
         }
     }
 
-    /// 中止该 Task 的当前生成
-    pub async fn abort(&self) -> Result<(), String> {
-        *self.is_active.write().await = false;
-        self.send_command(serde_json::json!({
-            "type": "abort"
-        }))
-        .await
+    /// 向该 Task 子进程发送带 ID 关联并同步等待结果响应的 RPC 指令
+    /// (供 fork / get_fork_messages 等需回读内核结果的会话回退链路使用)
+    pub async fn send_command_with_response(
+        &self,
+        mut command_val: Value,
+        timeout_dur: Duration,
+    ) -> Result<Value, String> {
+        let id = format!(
+            "req_{}_{}",
+            self.task_id,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        );
+
+        if let Some(obj) = command_val.as_object_mut() {
+            obj.insert("id".to_string(), Value::String(id.clone()));
+        } else {
+            return Err("Command must be a JSON object".to_string());
+        }
+
+        let (resp_tx, resp_rx) = oneshot::channel::<Value>();
+        {
+            let mut guard = self.pending_responses.lock().await;
+            guard.insert(id.clone(), resp_tx);
+        }
+
+        if let Err(e) = self.send_command(command_val).await {
+            let mut guard = self.pending_responses.lock().await;
+            guard.remove(&id);
+            return Err(e);
+        }
+
+        match tokio::time::timeout(timeout_dur, resp_rx).await {
+            Ok(Ok(response_val)) => {
+                let success = response_val
+                    .get("success")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                if success {
+                    Ok(response_val.get("data").cloned().unwrap_or(Value::Null))
+                } else {
+                    let err = response_val
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("RPC command returned failure");
+                    Err(err.to_string())
+                }
+            }
+            Ok(Err(_)) => {
+                let mut guard = self.pending_responses.lock().await;
+                guard.remove(&id);
+                Err("Response channel dropped before receiving response".to_string())
+            }
+            Err(_) => {
+                let mut guard = self.pending_responses.lock().await;
+                guard.remove(&id);
+                Err(format!("RPC command timed out after {:?}", timeout_dur))
+            }
+        }
     }
 
-    /// 彻底终止并清理该 Task 子进程
-    pub async fn stop(&self) {
+    /// 强制杀死该 Task 子进程并关闭输入通道
+    pub async fn stop_process(&self) {
+        *self.is_aborted.write().await = true;
         *self.is_active.write().await = false;
-        let _ = self.abort().await;
         {
             let mut w = self.stdin_tx.lock().await;
             *w = None;
@@ -304,6 +464,23 @@ impl SessionHost {
             let _ = child.kill().await;
         }
     }
+
+    /// 中止该 Task 的当前生成（先发 abort 指令再强杀子进程，彻底断绝后台残留）
+    pub async fn abort(&self) -> Result<(), String> {
+        *self.is_aborted.write().await = true;
+        *self.is_active.write().await = false;
+        let _ = self.send_command(serde_json::json!({
+            "type": "abort"
+        }))
+        .await;
+        self.stop_process().await;
+        Ok(())
+    }
+
+    /// 彻底终止并清理该 Task 子进程
+    pub async fn stop(&self) {
+        self.stop_process().await;
+    }
 }
 
 /// Pi 多进程监管池管理器 (`PiHostPool`)
@@ -312,13 +489,18 @@ pub struct PiHostPool {
     app_handle: AppHandle,
     job_object: Arc<JobObjectManager>,
     primary_supervisor: Arc<PiSupervisor>,
+    session_cache: SessionIndexCache,
     hosts: Arc<RwLock<HashMap<String, Arc<SessionHost>>>>,
     active_model: Arc<RwLock<Option<(String, String)>>>,
     active_thinking_level: Arc<RwLock<Option<String>>>,
 }
 
 impl PiHostPool {
-    pub fn new(app_handle: AppHandle, primary_supervisor: Arc<PiSupervisor>) -> Self {
+    pub fn new(
+        app_handle: AppHandle,
+        primary_supervisor: Arc<PiSupervisor>,
+        session_cache: SessionIndexCache,
+    ) -> Self {
         let job_object = Arc::new(JobObjectManager::new().unwrap_or_else(|err| {
             log::warn!("[PiHostPool] JobObject init failed: {}", err);
             JobObjectManager::new().unwrap()
@@ -328,6 +510,7 @@ impl PiHostPool {
             app_handle,
             job_object,
             primary_supervisor,
+            session_cache,
             hosts: Arc::new(RwLock::new(HashMap::new())),
             active_model: Arc::new(RwLock::new(None)),
             active_thinking_level: Arc::new(RwLock::new(None)),
@@ -346,46 +529,12 @@ impl PiHostPool {
 
     /// 从 ~/.pi-dl/config.json 读取持久化选中的模型
     pub async fn get_saved_config_model(&self) -> Option<(String, String)> {
-        let home_dir = dirs::home_dir()?;
-        let config_path = home_dir.join(".pi-dl").join("config.json");
-        if config_path.is_file() {
-            if let Ok(content) = std::fs::read_to_string(config_path) {
-                if let Ok(json_val) = serde_json::from_str::<Value>(&content) {
-                    if let Some(selected) = json_val.get("selectedModel") {
-                        let provider = selected.get("provider").and_then(|v| v.as_str());
-                        let model_id = selected
-                            .get("modelId")
-                            .or_else(|| selected.get("id"))
-                            .or_else(|| selected.get("name"))
-                            .and_then(|v| v.as_str());
-                        if let (Some(p), Some(m)) = (provider, model_id) {
-                            if !p.trim().is_empty() && !m.trim().is_empty() {
-                                return Some((p.to_string(), m.to_string()));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        None
+        crate::config_manager::get_saved_model_and_thinking().0
     }
 
     /// 从 ~/.pi-dl/config.json 读取持久化的思考等级
     pub async fn get_saved_config_thinking_level(&self) -> Option<String> {
-        let home_dir = dirs::home_dir()?;
-        let config_path = home_dir.join(".pi-dl").join("config.json");
-        if config_path.is_file() {
-            if let Ok(content) = std::fs::read_to_string(config_path) {
-                if let Ok(json_val) = serde_json::from_str::<Value>(&content) {
-                    if let Some(level) = json_val.get("defaultThinkingLevel").and_then(|v| v.as_str()) {
-                        if !level.trim().is_empty() {
-                            return Some(level.to_string());
-                        }
-                    }
-                }
-            }
-        }
-        None
+        crate::config_manager::get_saved_model_and_thinking().1
     }
 
     /// 解析当前 Prompt 请求最终应该使用的模型（多级兜底保障）
@@ -472,15 +621,23 @@ impl PiHostPool {
     pub async fn get_or_create_host(
         &self,
         task_id: &str,
+        session_path_opt: Option<&str>,
+        session_id_opt: Option<&str>,
         initial_model: Option<(String, String)>,
         initial_thinking_level: Option<String>,
     ) -> Result<Arc<SessionHost>, String> {
-        {
+        let (existing_session_id, existing_session_path) = {
             let hosts = self.hosts.read().await;
             if let Some(host) = hosts.get(task_id) {
-                return Ok(host.clone());
+                if host.is_alive().await {
+                    return Ok(host.clone());
+                }
+                let sp = host.session_path.read().await.clone();
+                (Some(host.session_id.clone()), sp)
+            } else {
+                (None, None)
             }
-        }
+        };
 
         // 并发上限保护
         let active_count = self.get_active_tasks_count().await;
@@ -491,11 +648,51 @@ impl PiHostPool {
             ));
         }
 
-        // 会话 ID 与任务 ID 解耦：session_id 采用独立 UUID，避免桌面端会话在记录列表中因 task_ 前缀时间戳导致 ID 徽标同质化（如全部显示 task_178）
-        let session_id = uuid::Uuid::new_v4().to_string();
+        // 解析已有会话路径与 ID（多级查找：显式参数 -> SessionHost 历史 -> SessionIndexCache 查找）
+        let mut resolved_path: Option<PathBuf> = session_path_opt
+            .map(PathBuf::from)
+            .filter(|p| p.exists())
+            .or(existing_session_path)
+            .filter(|p| p.exists()); // 兼底分支同样校验磁盘存在性，防范死宿主遗留的已删除路径
+
+        let mut resolved_session_id = session_id_opt
+            .map(|s| s.to_string())
+            .or(existing_session_id);
+
+        // 若传入了 kernel_<sid> 形式的 task_id，去除前缀作为 session_id
+        if resolved_session_id.is_none() && task_id.starts_with("kernel_") {
+            resolved_session_id = Some(task_id.trim_start_matches("kernel_").to_string());
+        }
+
+        // 若已有 session_id 但无 session_path，尝试从 SessionIndexCache 查询真实文件路径
+        if resolved_path.is_none() {
+            if let Some(ref sid) = resolved_session_id {
+                if let Some(meta) = self.session_cache.get_by_id(sid) {
+                    let pb = PathBuf::from(&meta.file_path);
+                    if pb.exists() {
+                        resolved_path = Some(pb);
+                    }
+                }
+            }
+        }
+
+        // 若已有 session_path 但无 session_id，尝试从 SessionIndexCache 反查 session_id
+        if resolved_session_id.is_none() {
+            if let Some(ref path) = resolved_path {
+                let path_str = path.to_string_lossy();
+                let sessions = self.session_cache.list_all();
+                if let Some(meta) = sessions.iter().find(|s| s.file_path == path_str) {
+                    resolved_session_id = Some(meta.session_id.clone());
+                }
+            }
+        }
+
+        // 会话 ID 与任务 ID 解耦：session_id 复用已有 UUID（若已有），避免重启后历史断开
+        let session_id = resolved_session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let host = Arc::new(SessionHost::new(
             task_id.to_string(),
             session_id,
+            resolved_path,
             self.app_handle.clone(),
             self.job_object.clone(),
         ));
@@ -531,13 +728,31 @@ impl PiHostPool {
         let effective_thinking = self.resolve_effective_thinking_level(&request).await;
 
         let host = self
-            .get_or_create_host(&task_id, effective_model.clone(), effective_thinking.clone())
+            .get_or_create_host(
+                &task_id,
+                request.session_path.as_deref(),
+                request.session_id.as_deref(),
+                effective_model.clone(),
+                effective_thinking.clone(),
+            )
             .await?;
+
+        // 门禁 1：检查任务在拉起阶段是否已被用户取消
+        if host.is_aborted().await {
+            log::warn!("[SessionHost:{}] Prompt cancelled: task was aborted during host setup", task_id);
+            return Err(format!("Task {} was aborted", task_id));
+        }
 
         // 确保子进程运行的模型与用户指定的模型保持 100% 严格一致
         if let Some((ref provider, ref model_id)) = effective_model {
             host.ensure_model_and_thinking(provider, model_id, effective_thinking.as_deref())
                 .await?;
+        }
+
+        // 门禁 2：检查在模型配置同步阶段任务是否已被用户取消
+        if host.is_aborted().await {
+            log::warn!("[SessionHost:{}] Prompt cancelled: task was aborted during model sync", task_id);
+            return Err(format!("Task {} was aborted", task_id));
         }
 
         let (processed_message, _info) = self.primary_supervisor.inject_prompt(&request.message);
@@ -555,6 +770,42 @@ impl PiHostPool {
 
         host.send_command(val).await?;
         Ok(task_id)
+    }
+
+    /// 获取指定 Task 的会话 ID（供回退快照定位）
+    pub async fn get_task_session_id(&self, task_id: &str) -> Option<String> {
+        let hosts = self.hosts.read().await;
+        hosts.get(task_id).map(|h| h.session_id.clone())
+    }
+
+    /// 向指定 Task 的内核子进程发送任意 RPC 指令（fire-and-forget，人工交互作答链路）
+    /// 复用 SessionHost::send_command 的 aborted 门禁：终止后迟到作答被 Rust 层物理拒绝
+    pub async fn send_command_to_task(&self, task_id: &str, command: Value) -> Result<(), String> {
+        let host = {
+            let hosts = self.hosts.read().await;
+            hosts
+                .get(task_id)
+                .cloned()
+                .ok_or_else(|| format!("Task {} 不存在或已结束", task_id))?
+        };
+        host.send_command(command).await
+    }
+
+    /// 向指定 Task 的内核子进程发送带响应 RPC 指令（会话回退链路）
+    pub async fn send_command_to_task_with_response(
+        &self,
+        task_id: &str,
+        command: Value,
+        timeout: Duration,
+    ) -> Result<Value, String> {
+        let host = {
+            let hosts = self.hosts.read().await;
+            hosts
+                .get(task_id)
+                .cloned()
+                .ok_or_else(|| format!("Task {} 不存在或已结束", task_id))?
+        };
+        host.send_command_with_response(command, timeout).await
     }
 
     /// 向指定 Task 发送 Steer 指令
@@ -602,15 +853,22 @@ impl PiHostPool {
     /// 中止指定 Task 或中止全部
     pub async fn abort_task(&self, task_id: Option<String>) -> Result<(), String> {
         if let Some(ref id) = task_id {
-            let hosts = self.hosts.read().await;
-            if let Some(host) = hosts.get(id) {
+            let host = {
+                let hosts = self.hosts.read().await;
+                hosts.get(id).cloned()
+            };
+            if let Some(host) = host {
                 return host.abort().await;
             }
+            return Ok(());
         }
 
         // 若未指定 task_id，中止所有活跃子进程与主 supervisor
-        let hosts = self.hosts.read().await;
-        for host in hosts.values() {
+        let hosts = {
+            let hosts = self.hosts.read().await;
+            hosts.values().cloned().collect::<Vec<_>>()
+        };
+        for host in hosts {
             let _ = host.abort().await;
         }
         self.primary_supervisor.abort().await

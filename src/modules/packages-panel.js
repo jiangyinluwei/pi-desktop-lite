@@ -1,7 +1,7 @@
 import { escapeHtml, escapeCss } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { configService } from "../services/config-service.js";
-import { openExternalUrl } from "../services/tauri-bridge.js";
+import { openExternalUrl, listenTauri } from "../services/tauri-bridge.js";
 import { enhanceSelect } from "../services/sketch-select.js";
 import { ProgressStepper } from "../services/progress-stepper.js";
 import { notificationService } from "../services/notification-service.js";
@@ -11,12 +11,7 @@ import { sketchAlert, sketchConfirm } from "../services/sketch-modal.js";
  * 扩展组件市场、安装/更新/卸载队列与推荐插件
  */
 export function initPackagesPanel(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
-  const flow = ctx.flow;
-  const attachments = ctx.attachments;
 
 
 
@@ -287,17 +282,11 @@ export function initPackagesPanel(ctx) {
   };
 
   // 监听 Tauri 派发的 package-progress 事件
-  if (window.__TAURI__?.event?.listen) {
-    try {
-      window.__TAURI__.event.listen("package-progress", (event) => {
-        if (event.payload) {
-          updatePackageProgressUI(event.payload);
-        }
-      });
-    } catch (e) {
-      console.warn("[PackageManager] Failed to register package-progress listener:", e);
+  listenTauri("package-progress", (event) => {
+    if (event.payload) {
+      updatePackageProgressUI(event.payload);
     }
-  }
+  });
 
   // 折叠/展开已安装列表
   if (installedSectionToggle && installedPackagesWrapper) {

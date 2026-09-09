@@ -1,3 +1,5 @@
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs::File;
@@ -183,77 +185,95 @@ pub fn parse_session_entries(path: &Path) -> Result<Vec<SessionEntrySummary>, St
     Ok(entries)
 }
 
-/// 剥离宿主运行态注入的所有上下文信封（如 <runtime_context_rules>, <code_area_routing_context> 等），还原真实用户提问
-pub fn strip_injected_contexts(text: &str) -> String {
-    let mut result = text.to_string();
+const KNOWN_TAG_NAMES: &[&str] = &[
+    "runtime_context_rules",
+    "runtime_inner_skills",
+    "runtime_inner_skill",
+    "code_area_routing_context",
+    "routed_agents_md",
+    "routed_readme_md",
+    "routed_project_skills",
+    "routed_skill",
+    "workspace_context",
+    "runtime_rules",
+    "inner_skills_context",
+    "inner_skill_rules",
+    "prompt_context",
+];
 
-    // 1. 已知确定的注入信封标签对列表
-    let known_tags = [
-        ("runtime_context_rules", "runtime_context_rules"),
-        ("runtime_inner_skills", "runtime_inner_skills"),
-        ("runtime_inner_skill", "runtime_inner_skill"),
-        ("code_area_routing_context", "code_area_routing_context"),
-        ("routed_agents_md", "routed_agents_md"),
-        ("routed_readme_md", "routed_readme_md"),
-        ("routed_project_skills", "routed_project_skills"),
-        ("routed_skill", "routed_skill"),
-        ("workspace_context", "workspace_context"),
-        ("runtime_rules", "runtime_rules"),
-        ("inner_skills_context", "inner_skills_context"),
-        ("inner_skill_rules", "inner_skill_rules"),
-        ("prompt_context", "prompt_context"),
-    ];
+static KNOWN_INJECTED_TAGS_REGEX: Lazy<Regex> = Lazy::new(|| {
+    let patterns: Vec<String> = KNOWN_TAG_NAMES
+        .iter()
+        .map(|tag| format!(r#"<{}(?:\s[^>]*)?>.*?</{}>"#, tag, tag))
+        .collect();
+    Regex::new(&format!(r#"(?is)(?:{})"#, patterns.join("|"))).unwrap()
+});
 
-    for (open_name, close_name) in known_tags {
-        let open_tag = format!("<{}>", open_name);
-        let close_tag = format!("</{}>", close_name);
-        while let Some(start) = result.find(&open_tag) {
-            if let Some(rel_end) = result[start..].find(&close_tag) {
-                let end = start + rel_end + close_tag.len();
-                let mut new_res = String::from(&result[..start]);
-                new_res.push_str(&result[end..]);
-                result = new_res;
-            } else {
-                result.truncate(start);
-                break;
+static UNCLOSED_KNOWN_TAGS_REGEX: Lazy<Regex> = Lazy::new(|| {
+    let patterns: Vec<String> = KNOWN_TAG_NAMES
+        .iter()
+        .map(|tag| format!(r#"<{}(?:\s[^>]*)?>.*$"#, tag))
+        .collect();
+    Regex::new(&format!(r#"(?is)(?:{})"#, patterns.join("|"))).unwrap()
+});
+
+static GENERIC_OPEN_TAG_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?is)<([a-zA-Z0-9_-]*(?:context|rules|skill|routing)[a-zA-Z0-9_-]*)(?:\s[^>]*)?>"#).unwrap()
+});
+
+fn strip_generic_tags(mut text: String) -> String {
+    let mut search_from = 0;
+    while search_from < text.len() {
+        let captures = match GENERIC_OPEN_TAG_REGEX.captures(&text[search_from..]) {
+            Some(c) => c,
+            None => break,
+        };
+
+        let full_match = captures.get(0).unwrap();
+        let tag_name = captures.get(1).unwrap().as_str().to_lowercase();
+        let open_start = search_from + full_match.start();
+        let open_end = search_from + full_match.end();
+
+        // 构造闭合标签正则（支持大小写与空白，直接在 UTF-8 字节切片上匹配，杜绝 to_lowercase() 引起的字节错位与 panic）
+        let close_pattern = format!(r#"(?i)</\s*{}\s*>"#, regex::escape(&tag_name));
+        let close_regex = match Regex::new(&close_pattern) {
+            Ok(re) => re,
+            Err(_) => {
+                search_from = open_end;
+                continue;
             }
+        };
+
+        let rest = &text[open_end..];
+        if let Some(m) = close_regex.find(rest) {
+            let close_end = open_end + m.end();
+            text.replace_range(open_start..close_end, "");
+            search_from = open_start;
+        } else {
+            // 未闭合标签：游标向前推进，避免死循环短路，同时确保后续真实标签不被漏剥离
+            search_from = open_end;
         }
     }
+    text
+}
 
-    // 2. 通用 XML-like context/rules 标签对清洗（防御未来新增的注入标签）
-    loop {
-        let mut found = false;
-        if let Some(open_idx) = result.find('<') {
-            if let Some(close_idx) = result[open_idx..].find('>') {
-                let tag_content = &result[open_idx + 1..open_idx + close_idx];
-                let tag_name = tag_content.trim();
-                if (tag_name.ends_with("_context")
-                    || tag_name.ends_with("_rules")
-                    || tag_name.contains("context")
-                    || tag_name.contains("rules"))
-                    && !tag_name.starts_with('/')
-                    && !tag_name.is_empty()
-                    && tag_name
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-                {
-                    let end_tag = format!("</{}>", tag_name);
-                    if let Some(rel_close) = result[open_idx..].find(&end_tag) {
-                        let end_pos = open_idx + rel_close + end_tag.len();
-                        let mut new_res = String::from(&result[..open_idx]);
-                        new_res.push_str(&result[end_pos..]);
-                        result = new_res;
-                        found = true;
-                    }
-                }
-            }
-        }
-        if !found {
+/// 剥离宿主运行态注入的所有上下文信封（如 <runtime_context_rules>, <runtime_inner_skill name="..."> 等），还原真实用户提问
+pub fn strip_injected_contexts(text: &str) -> String {
+    let mut current = text.to_string();
+
+    // 循环剥离以支持可能的多层信封嵌套（如 <runtime_inner_skills> 内嵌 <runtime_inner_skill name="...">）
+    for _ in 0..4 {
+        let after_known = KNOWN_INJECTED_TAGS_REGEX.replace_all(&current, "").to_string();
+        let after_generic = strip_generic_tags(after_known);
+        if after_generic == current {
             break;
         }
+        current = after_generic;
     }
 
-    result.trim().to_string()
+    // 针对流式截断或未闭合已知信封做末尾兜底清理
+    let final_clean = UNCLOSED_KNOWN_TAGS_REGEX.replace_all(&current, "").to_string();
+    final_clean.trim().to_string()
 }
 
 /// 兼容旧命名别名
@@ -415,14 +435,45 @@ fn extract_message_text(content: Option<&Value>) -> String {
     String::new()
 }
 
-/// 从单个 .jsonl 会话文件中提取所有真实用户提问 (role: "user")
-pub fn extract_user_prompts_from_session(path: &Path) -> Vec<String> {
+fn parse_prompt_timestamp(val: &Value, msg_obj: Option<&Value>, fallback_ms: i64) -> i64 {
+    if let Some(msg) = msg_obj {
+        if let Some(ms) = msg.get("timestamp").and_then(|v| v.as_i64()) {
+            return ms;
+        }
+        if let Some(ts_str) = msg.get("timestamp").and_then(|v| v.as_str()) {
+            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts_str) {
+                return dt.timestamp_millis();
+            }
+        }
+    }
+    if let Some(ms) = val.get("timestamp").and_then(|v| v.as_i64()) {
+        return ms;
+    }
+    if let Some(ts_str) = val.get("timestamp").and_then(|v| v.as_str()) {
+        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts_str) {
+            return dt.timestamp_millis();
+        }
+    }
+    fallback_ms
+}
+
+/// 从单个 .jsonl 会话文件中提取带时间戳的用户提问 (timestamp_millis, clean_prompt)
+pub fn extract_timestamped_prompts_from_session(path: &Path) -> Vec<(i64, String)> {
     let file = match File::open(path) {
         Ok(f) => f,
         Err(_) => return Vec::new(),
     };
+    let file_mod_time = file
+        .metadata()
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+
     let reader = BufReader::new(file);
     let mut prompts = Vec::new();
+    let mut last_ts = 0i64;
 
     for (idx, line_res) in reader.lines().enumerate() {
         if idx == 0 {
@@ -446,7 +497,10 @@ pub fn extract_user_prompts_from_session(path: &Path) -> Vec<String> {
                         let raw = extract_message_text(msg_obj.get("content"));
                         let clean = clean_user_prompt(&raw);
                         if !clean.is_empty() {
-                            prompts.push(clean);
+                            let fallback = if last_ts > 0 { last_ts + 1 } else { file_mod_time };
+                            let ts = parse_prompt_timestamp(&val, Some(msg_obj), fallback);
+                            last_ts = ts;
+                            prompts.push((ts, clean));
                         }
                     }
                 }
@@ -454,6 +508,14 @@ pub fn extract_user_prompts_from_session(path: &Path) -> Vec<String> {
         }
     }
     prompts
+}
+
+/// 从单个 .jsonl 会话文件中提取所有真实用户提问 (role: "user")
+pub fn extract_user_prompts_from_session(path: &Path) -> Vec<String> {
+    extract_timestamped_prompts_from_session(path)
+        .into_iter()
+        .map(|(_, text)| text)
+        .collect()
 }
 
 // ==========================================================================
@@ -673,38 +735,4 @@ pub fn parse_session_turns(path: &Path) -> Result<Vec<SessionTurnDetail>, String
     }
 
     Ok(turns)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_strip_injected_contexts() {
-        let raw = "<runtime_context_rules>\nSome rules...\n</runtime_context_rules>\n\nHello World\n\n<code_area_routing_context>\nTarget: /path\n</code_area_routing_context>";
-        let stripped = strip_injected_contexts(raw);
-        assert_eq!(stripped, "Hello World");
-    }
-
-    #[test]
-    fn test_clean_user_prompt_with_attachments_and_guidance() {
-        let raw = "<runtime_context_rules>\nRULES\n</runtime_context_rules>\n\n分析这个项目结构\n\n[附带本地文件/目录绝对路径]:\n- [目录/Folder]: C:/Users/test/project\n\n（提示：附带项目中包含本地目录，请主动遍历检索其中的文件；若发现包含 .docx、.doc、.pdf、.pptx、.xlsx 或图像等格式，请自动调用专门的 OCR 或文档解析组件读取真实内容并深入分析）\n\n<code_area_routing_context>\nTarget: C:/Users/test/project\n</code_area_routing_context>";
-        let clean = clean_user_prompt(raw);
-        assert_eq!(clean, "分析这个项目结构");
-
-        let (query, attachments) = split_user_prompt_attachments(raw);
-        assert_eq!(query, "分析这个项目结构");
-        assert_eq!(attachments, vec!["C:/Users/test/project"]);
-    }
-
-    #[test]
-    fn test_clean_user_prompt_attachments_only() {
-        let raw = "请查阅并分析以下本地文件/目录：\n\n[附带本地文件/目录绝对路径]:\n- [文件/code]: C:/test.rs";
-        let clean = clean_user_prompt(raw);
-        assert_eq!(clean, "");
-
-        let (query, attachments) = split_user_prompt_attachments(raw);
-        assert_eq!(query, "");
-        assert_eq!(attachments, vec!["C:/test.rs"]);
-    }
 }

@@ -3,7 +3,7 @@
  * 负责与 Rust 后端 supervisor 保持事件同步、分发流式消息、工具调用、模型状态与全链路错误捕获
  */
 
-import { invokeTauri } from "./tauri-bridge.js";
+import { invokeTauri, listenTauri } from "./tauri-bridge.js";
 
 /**
  * 递归解析并提炼复杂的错误信息（支持 JSON 字符串嵌套解析）
@@ -43,77 +43,15 @@ export function parseErrorMessage(err) {
   if (str.includes("CreditsError") || str.includes("No payment method") || str.includes("insufficient_quota")) {
     return "账户额度不足或未绑定有效支付方式，请检查对应服务商账户账单。";
   }
+  if (str.toLowerCase().includes("tpm") || str.toLowerCase().includes("rpm") || str.includes("推理速度") || str.includes("速率限制")) {
+    return "触发模型每分钟推理速率限制 (TPM/RPM)，正在等待恢复...";
+  }
   if (str.includes("rate_limit") || str.includes("429")) {
     return "触发服务商请求速率限制 (429 Rate Limit)，请稍候重试。";
   }
   if (str.includes("Model not found") || str.includes("invalid_model")) {
     return "当前模型不存在或未开通权限，请在设置中选择其他可用模型。";
   }
-
-  return str;
-}
-
-/**
- * 瞬态错误码判定信号 (可自动重连)：HTTP 状态码 / 错误 token / 网络层关键字
- */
-const TRANSIENT_CODES = [
-  "408", "429", "500", "502", "503", "504",
-  "rate_limit", "server_error", "overloaded", "temporarily_unavailable",
-  "timeout", "timed_out", "upstream_error", "gateway_timeout", "bad_gateway",
-  "econnreset", "econnrefused", "etimedout", "enotfound", "eai_again",
-  "socket hang up", "fetch failed", "connection refused", "connection reset",
-  "read econnreset", "network", "请求超时",
-];
-
-/**
- * 永久错误码判定信号 (需自动切换模型)：HTTP 状态码 / 错误 token / 中文信号
- */
-const PERMANENT_CODES = [
-  "400", "401", "403", "404", "405", "406", "409", "415", "422",
-  "authentication_error", "invalid_api_key", "invalid_request_error",
-  "insufficient_quota", "quota_exceeded", "credits", "model_not_found",
-  "invalid_model", "content_policy", "context_length_exceeded", "bad_request",
-  "forbidden", "unauthorized",
-  "鉴权失败", "api key", "额度不足", "模型不存在", "未开通权限", "不支持",
-];
-
-/**
- * 从模型调用错误中提取原始错误码 (HTTP 数字 / 错误 token / 网络层关键字)
- * 必须运行于 parseErrorMessage 友好化之前，优先使用原始 RPC 数据 (detail.raw)
- * @param {any} err agent-error detail 或原始错误对象
- * @returns {string}
- */
-export function extractErrorCode(err) {
-  if (!err) return "";
-  const raw = err?.raw;
-  const candidate =
-    raw?.errorMessage ||
-    raw?.error?.message ||
-    (raw?.error && typeof raw.error === "string" ? raw.error : "") ||
-    raw?.message ||
-    (typeof raw === "string" ? raw : "") ||
-    err?.message ||
-    (typeof err === "string" ? err : "") ||
-    "";
-  let str = String(candidate).toLowerCase();
-
-  // 尝试解析嵌套 JSON 中的 error.code / error.type
-  try {
-    const jsonMatch = str.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (parsed?.error?.code) return String(parsed.error.code).toLowerCase();
-      if (parsed?.error?.type) return String(parsed.error.type).toLowerCase();
-      if (parsed?.code) return String(parsed.code).toLowerCase();
-      if (parsed?.type) return String(parsed.type).toLowerCase();
-    }
-  } catch (_) {
-    // 嵌套 JSON 解析失败则继续关键字匹配
-  }
-
-  // 提取首个 3 位 HTTP 状态码
-  const digits = str.match(/\b(4\d\d|5\d\d)\b/);
-  if (digits) return digits[1];
 
   return str;
 }
@@ -169,22 +107,6 @@ export function isAbortError(err) {
   return ABORT_PATTERNS.some((kw) => str.includes(kw));
 }
 
-/**
- * 判定模型调用错误类别 ("TRANSIENT" | "PERMANENT" | "ABORTED")
- * 铁律：手动终止/中止一律返回 "ABORTED"，绝不归入瞬态重连或永久切换；
- * UNKNOWN 一律保守归永久 (进入切换兜底，切换也失败则输出错误信息)
- * @param {any} err agent-error detail 或原始错误对象
- * @returns {"TRANSIENT" | "PERMANENT" | "ABORTED"}
- */
-export function classifyModelError(err) {
-  if (isAbortError(err)) return "ABORTED";
-  const code = extractErrorCode(err);
-  const s = String(code || "").toLowerCase();
-  if (TRANSIENT_CODES.some((c) => s === c || s.includes(c))) return "TRANSIENT";
-  if (PERMANENT_CODES.some((c) => s === c || s.includes(c))) return "PERMANENT";
-  return "PERMANENT"; // UNKNOWN 保守归永久
-}
-
 class PiClient extends EventTarget {
   constructor() {
     super();
@@ -216,11 +138,6 @@ class PiClient extends EventTarget {
    */
   setHasKernel(val) {
     this._hasKernel = Boolean(val);
-    if (typeof document !== "undefined" && document.body) {
-      document.body.classList.toggle("kernel-missing", !this._hasKernel);
-      const tag = document.getElementById("flow-model-tag");
-      if (tag) tag.classList.toggle("kernel-missing", !this._hasKernel);
-    }
     this.dispatchEvent(
       new CustomEvent("kernel-status-change", { detail: { hasKernel: this._hasKernel } })
     );
@@ -267,25 +184,18 @@ class PiClient extends EventTarget {
    * 监听来自 Rust 后端的事件广播
    */
   async initTauriListeners() {
-    if (!window.__TAURI__?.event?.listen) return;
-
     try {
       // 0. 初始化探测内核可用性
       const hasKernel = await this.invoke("pi_has_kernel");
       if (typeof hasKernel === "boolean") {
         this._hasKernel = hasKernel;
-        if (typeof document !== "undefined" && document.body) {
-          document.body.classList.toggle("kernel-missing", !this._hasKernel);
-          const tag = document.getElementById("flow-model-tag");
-          if (tag) tag.classList.toggle("kernel-missing", !this._hasKernel);
-        }
         this.dispatchEvent(
           new CustomEvent("kernel-status-change", { detail: { hasKernel: this._hasKernel } })
         );
       }
 
       // 1. 监听宿主状态变更
-      const unlistenStatus = await window.__TAURI__.event.listen("pi:status", async (event) => {
+      const unlistenStatus = await listenTauri("pi:status", async (event) => {
         const payload = event.payload;
         this.hostStatus = typeof payload === "string" ? payload : payload?.status || "unknown";
         if (payload?.pi_version) {
@@ -293,11 +203,12 @@ class PiClient extends EventTarget {
         }
         const currentHasKernel = await this.invoke("pi_has_kernel");
         if (typeof currentHasKernel === "boolean") {
+          const changed = this._hasKernel !== currentHasKernel;
           this._hasKernel = currentHasKernel;
-          if (typeof document !== "undefined" && document.body) {
-            document.body.classList.toggle("kernel-missing", !this._hasKernel);
-            const tag = document.getElementById("flow-model-tag");
-            if (tag) tag.classList.toggle("kernel-missing", !this._hasKernel);
+          if (changed) {
+            this.dispatchEvent(
+              new CustomEvent("kernel-status-change", { detail: { hasKernel: this._hasKernel } })
+            );
           }
         }
         this.dispatchEvent(new CustomEvent("status-change", { detail: payload }));
@@ -305,20 +216,20 @@ class PiClient extends EventTarget {
       this.unlistenCallbacks.push(unlistenStatus);
 
       // 2. 监听核心 RPC 数据事件
-      const unlistenEvent = await window.__TAURI__.event.listen("pi:event", (event) => {
+      const unlistenEvent = await listenTauri("pi:event", (event) => {
         const data = event.payload;
         this.handleAgentEvent(data);
       });
       this.unlistenCallbacks.push(unlistenEvent);
 
       // 3. 监听运行态上下文/Inner-Skill 动态注入事件（tool call pre-processing hook 命中）
-      const unlistenInjected = await window.__TAURI__.event.listen("pi:context_injected", (event) => {
+      const unlistenInjected = await listenTauri("pi:context_injected", (event) => {
         this.dispatchEvent(new CustomEvent("context-injected", { detail: event.payload }));
       });
       this.unlistenCallbacks.push(unlistenInjected);
 
       // 3a. 监听 Tool-call Hook 命中的 Inner-Skill 动态激活事件
-      const unlistenSkillActivated = await window.__TAURI__.event.listen(
+      const unlistenSkillActivated = await listenTauri(
         "pi:inner-skill-activated",
         (event) => {
           this.dispatchEvent(new CustomEvent("inner-skill-activated", { detail: event.payload }));
@@ -327,7 +238,7 @@ class PiClient extends EventTarget {
       this.unlistenCallbacks.push(unlistenSkillActivated);
 
       // 4. 监听内核保险自动重连失败事件（5 次重连均失败后触发，驱动左上角红色抖动小闪电提醒）
-      const unlistenReconnectFailed = await window.__TAURI__.event.listen(
+      const unlistenReconnectFailed = await listenTauri(
         "pi:kernel-reconnect-failed",
         (event) => {
           this.dispatchEvent(new CustomEvent("kernel-reconnect-failed", { detail: event.payload }));
@@ -434,10 +345,18 @@ class PiClient extends EventTarget {
         this.dispatchEvent(new CustomEvent("tool-update", { detail: data }));
         break;
 
-      case "tool_execution_end":
+      case "tool_execution_end": {
+        // 内核 end 事件不携带 args（仅 toolCallId/toolName/result/isError），
+        // 合并 start 时缓存的入参后再派发，供文件变更收集等下游消费者读取
+        const startInfo = this.activeTools.get(data.toolCallId);
         this.activeTools.delete(data.toolCallId);
-        this.dispatchEvent(new CustomEvent("tool-end", { detail: data }));
+        this.dispatchEvent(
+          new CustomEvent("tool-end", {
+            detail: startInfo ? { ...startInfo, ...data } : data,
+          })
+        );
         break;
+      }
 
       case "bash_execution_update":
         this.dispatchEvent(new CustomEvent("bash-update", { detail: data }));
@@ -522,8 +441,10 @@ class PiClient extends EventTarget {
    * @param {Array<any>} [images]
    * @param {string} [streamingBehavior]
    * @param {string} [taskId]
+   * @param {string} [sessionPath]
+   * @param {string} [sessionId]
    */
-  async sendPrompt(message, images = null, streamingBehavior = null, taskId = null) {
+  async sendPrompt(message, images = null, streamingBehavior = null, taskId = null, sessionPath = null, sessionId = null) {
     const activeModel = this.currentModel;
     const provider = activeModel?.provider;
     const modelId = activeModel?.id || activeModel?.modelId || activeModel?.name;
@@ -538,6 +459,8 @@ class PiClient extends EventTarget {
         provider: provider || undefined,
         modelId: modelId || undefined,
         thinkingLevel: thinkingLevel || undefined,
+        sessionPath: sessionPath || undefined,
+        sessionId: sessionId || undefined,
       },
     });
   }
@@ -609,6 +532,24 @@ class PiClient extends EventTarget {
       console.error("[PiClient] Failed to set thinking level:", err);
       throw err;
     }
+  }
+
+  /**
+   * 回写人工交互应答（解除内核 Extension UI 阻塞，docs/rpc.md §Extension UI Responses）
+   * 服务层职责：仅做 IPC 转发，严禁操作 DOM。
+   * @param {string} taskId 目标 Task（应答定向回写该 Task 的内核子进程 stdin）
+   * @param {string} requestId 原样回传的 extension_ui_request.id
+   * @param {{ value?: string, confirmed?: boolean, cancelled?: boolean }} payload
+   * @returns {Promise<void>}
+   */
+  async sendExtensionUiResponse(taskId, requestId, payload = {}) {
+    if (!taskId || !requestId) {
+      throw new Error("sendExtensionUiResponse 需要 taskId 与 requestId");
+    }
+    return await this.invoke("pi_send_command_to_task", {
+      taskId,
+      command: { type: "extension_ui_response", id: requestId, ...payload },
+    });
   }
 
   /**

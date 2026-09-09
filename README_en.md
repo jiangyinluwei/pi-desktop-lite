@@ -25,9 +25,9 @@ A desktop research and reasoning application with minimalist hand-drawn sketch &
 ## ✨ Core Features
 
 - **Four-State Interface & Flow Streaming**: Detailed, Focus, Flow stream, and full-page Settings modes with single-line thinking chains and Typedown-grade Markdown rendering;
-- **Background Tasks & Routed Workspaces**: Seamless task background suspension, historical turn restoration, `code-area` non-polluting routing hub, and multi-preset switching;
+- **Background Tasks & Routed Workspaces**: Seamless task background suspension, explicit termination with process hard-kill and anti-resurrection guards, terminal-state task cleanup to prevent phantom "completed" badges, session continuity via `--session <path>` (multi-turn conversations never fragment into separate history records), historical turn restoration, `code-area` non-polluting routing hub, and multi-preset switching;
 - **Hand-Drawn Sketch Aesthetics**: Universal hand-drawn SVG vector icons, paper-texture dual-mode themes, and custom `SketchSelect` / `SketchAutoFill` / `SketchModal` components;
-- **Rust Performance & Self-Healing Core**: Kernel-level orphan process harvesting, smooth auto-reconnect insurance on crashes, Node.js preflight checks, and native desktop integration.
+- **Rust Performance & Self-Healing Core**: Kernel-level orphan process harvesting, smooth auto-reconnect insurance on crashes, silent built-in model reconnect (background re-sends a hidden "continue" prompt, fixed 10 attempts, 2/4/8/16s backoff, live "auto reconnect N/10" capsule, executed-step history preserved, covers both foreground and suspended background tasks, error window shown only after all 10 attempts are exhausted — exhaustion locks a terminal state so duplicate error frames never re-trigger auto reconnect, only a manual retry or a new query can re-arm it; manual termination never revives reconnecting; automatic model switching has been removed), Node.js preflight checks, and native desktop integration.
 
 > 📖 **Full Architecture & Development Specifications**: Refer to [`.agents/skills/pi-desktop-overview/SKILL.md`](.agents/skills/pi-desktop-overview/SKILL.md).
 
@@ -81,15 +81,17 @@ pi-desktop-lite/
 ├── .mytools/pi-body/           # Bundled Pi Agent Release engine (contains pi-windows-x64.7z, extract to pi-windows-x64 before development)
 ├── default-area/               # Default workspace template & runtime isolation sandbox
 ├── workspaces/                 # Public preset workspace templates (code-area hub / research-area)
-├── custom-workspaces/          # [Private] Custom enterprise workspaces (.gitignore isolated, distributed offline)
-├── scripts/                    # Automation and build scripts (tauri.js, check.js)
+├── scripts/                    # Automation and build scripts (tauri.js, check.js, check-frontend.js, measure-coupling.js)
 ├── src/                        # Frontend source code and assets
 │   ├── assets/                 # Static assets (logo.svg, logo.ico, hand-drawn SVG icons)
-│   ├── lib/                    # Shared foundational utilities (dom-utils, icons, markdown-renderer, view-constants)
-│   ├── modules/                # Feature-scoped UI modules orchestrated by main.js
+│   ├── lib/                    # Shared foundational utilities (dom-utils, icons, markdown-renderer, view-constants, event-bus sync event bus, el-binder on-demand DOM binding, contracts event-channel + api-slot contracts)
+│   ├── modules/                # Feature-scoped UI modules orchestrated by main.js (flow-render pure rendering / flow-dom read-only DOM refs / flow-state-view view-cache owner)
 │   │   ├── view-mode.js        # Four-state state machine & settings routing
 │   │   ├── flow-ui.js          # Flow rendering: Markdown, turns DOM, floating tip, turn navigation
-│   │   ├── flow-stream.js      # Stream state machine, error cards, and auto-failover capsules
+│   │   ├── flow-render.js      # Flow pure rendering: card factories, argument/result HTML formatting (side-effect free)
+│   │   ├── flow-dom.js         # Flow read-only DOM references: createFlowDom() -> ctx.flowDom
+│   │   ├── flow-state-view.js  # Flow view-derived cache owner: flowView sealed cache object
+│   │   ├── flow-stream.js      # Stream state machine, error cards, and built-in reconnect capsules
 │   │   ├── flow-pipeline.js    # Prompt dispatch, tool call events, self-healing pipeline
 │   │   ├── task-panel.js       # Background task capsule, sidebar, history restore
 │   │   ├── sessions-panel.js   # Session records, search/filter, enter Flow pipeline
@@ -101,8 +103,8 @@ pi-desktop-lite/
 │   ├── styles.css              # Aggregated style entry (@import to styles/ subfiles)
 │   └── main.js                 # Main orchestrator entry
 ├── src-tauri/                  # High-performance Tauri (Rust) backend
-│   ├── inner-skills/           # Runtime dynamic inner-skills (RULES.md, bash compatibility, OCR inspection, multi-agent, web search, etc.)
-│   └── src/                    # Rust core source (lib.rs, main.rs, config_manager, workspace, pi_runner, security, session)
+│   ├── inner-skills/           # Runtime dynamic inner-skills (RULES.md, bash compatibility, OCR inspection, multi-agent, web search, failure logging, etc.)
+│   └── src/                    # Rust core source (lib.rs, main.rs, commands/, config_manager/, workspace, pi_runner, security, session)
 ├── AGENTS.md                   # Project rules and agent guidelines
 ├── README.md                   # Project overview & configuration guide (Chinese)
 ├── README_en.md                # Project overview & configuration guide (English)

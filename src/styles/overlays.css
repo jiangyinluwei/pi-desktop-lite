@@ -13,13 +13,15 @@
 
 .floating-icon {
   position: absolute;
+  top: 0;
+  left: 0;
   width: 24px;
   height: 24px;
   color: var(--ink-faint);
   opacity: 0;
   pointer-events: auto;
   cursor: default;
-  will-change: transform, opacity, left, top;
+  will-change: transform, opacity;
   transition: filter 0.25s ease, color 0.25s ease;
   filter: drop-shadow(0 0 0 transparent);
 }

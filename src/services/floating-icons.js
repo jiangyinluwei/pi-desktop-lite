@@ -162,11 +162,8 @@ function spawnIcon() {
   // 曲线偏移量（垂直方向的弧度，正负随机）
   const curveAmplitude = useCurve ? randFloat(15, 50) * (Math.random() < 0.5 ? 1 : -1) : 0;
 
-  // 设置初始位置
-  el.style.position = "absolute";
-  el.style.left = `${startX}px`;
-  el.style.top = `${topPos}px`;
-  el.style.transform = `rotate(${initialRotation}deg)`;
+  // 设置初始位置（严格遵循 GPU 合成加速，仅操作 transform 与 opacity，杜绝 Layout Thrashing）
+  el.style.transform = `translate3d(${startX}px, ${topPos}px, 0) rotate(${initialRotation}deg)`;
   el.style.opacity = "0";
 
   container.appendChild(el);
@@ -206,9 +203,7 @@ function spawnIcon() {
       opacity = 1;
     }
 
-    el.style.left = `${currentX}px`;
-    el.style.top = `${currentY}px`;
-    el.style.transform = `rotate(${currentRotation}deg)`;
+    el.style.transform = `translate3d(${currentX}px, ${currentY}px, 0) rotate(${currentRotation}deg)`;
     el.style.opacity = `${opacity}`;
 
     if (progress < 1) {

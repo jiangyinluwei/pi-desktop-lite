@@ -15,16 +15,13 @@ const STORAGE_KEY_IGNORE_UPDATE = "pi_ignore_update_notification";
 const STORAGE_KEY_AUTO_RECONNECT = "pi_auto_reconnect_switch";
 
 /**
- * 模型自动重连切换推荐配置默认值 (覆盖 PI 内核 3 次重连上限)
- * 退避序列: 2s → 4s → 8s → 8s… (恒封顶 8s)，重连上限 24 次
+ * 模型自动强制重连推荐配置默认值 (覆盖 PI 内核 3 次重连上限)
+ * 无痕内置重连: 后台续发「继续」文本，退避序列 2s → 4s → 8s → 16s → 16s… (恒封顶 16s)，写死上限 10 次
  */
 export const DEFAULT_FAILOVER_CONFIG = {
-  maxReconnectAttempts: 24,
-  reconnectBackoffMs: [2000, 4000, 8000],
-  maxBackoffMs: 8000,
-  perCandidateReconnectBudget: 2,
-  escalateToSwitchAfterReconnectExhausted: true,
-  switchOnPermanentError: true,
+  maxReconnectAttempts: 10,
+  reconnectBackoffMs: [2000, 4000, 8000, 16000],
+  maxBackoffMs: 16000,
 };
 
 class ConfigService extends EventTarget {
@@ -182,7 +179,7 @@ class ConfigService extends EventTarget {
   }
 
   /**
-   * 获取「自动重连切换」开关状态 (默认开启)
+   * 获取「自动强制重连」开关状态 (默认开启)
    * @returns {boolean}
    */
   getAutoReconnectSwitch() {
@@ -191,7 +188,7 @@ class ConfigService extends EventTarget {
   }
 
   /**
-   * 设置并持久化「自动重连切换」开关状态
+   * 设置并持久化「自动强制重连」开关状态
    * @param {boolean} value
    * @param {boolean} [persistToFile=true]
    */
@@ -201,13 +198,13 @@ class ConfigService extends EventTarget {
     if (persistToFile) {
       await this.saveAppConfig();
       // 勾选时向 Pi 内核 settings.json best-effort 注入推荐重连配置 (失败静默，不阻断引擎)
-      this.applyModelFailoverPreset(this.getModelFailoverConfig()).catch(() => {});
+      this.applyModelFailoverPreset(this.getModelFailoverConfig()).catch(() => { });
     }
     this.dispatchEvent(new CustomEvent("auto-reconnect-change", { detail: { value: this.autoReconnectSwitch } }));
   }
 
   /**
-   * 获取模型自动重连切换推荐配置 (与 DEFAULT_FAILOVER_CONFIG 合并)
+   * 获取模型自动强制重连推荐配置 (与 DEFAULT_FAILOVER_CONFIG 合并)
    * @returns {Object}
    */
   getModelFailoverConfig() {
@@ -654,7 +651,7 @@ class ConfigService extends EventTarget {
           return this.modelWhitelist;
         }
       }
-    } catch (_) {}
+    } catch (_) { }
 
     return this.modelWhitelist || [];
   }
@@ -833,7 +830,7 @@ class ConfigService extends EventTarget {
           return this.selectedModel;
         }
       }
-    } catch (_) {}
+    } catch (_) { }
     return null;
   }
 

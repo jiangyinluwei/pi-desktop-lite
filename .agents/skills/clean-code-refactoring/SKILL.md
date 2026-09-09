@@ -13,11 +13,12 @@ description: 指导在桌面端（Tauri/Rust）与 Web 前端混合项目中进�
 
 1. **DRY 统一收口**：高频重复逻辑提炼为单一职责的 Helper、Bridge 或 Service；
 2. **零运行时副作用**：精简重构保持对外 API、RPC 指令与事件响应 100% 等价；
-3. **闭环验证**：重构完成后自动执行 `node -c` 与 `npm run check` 验证。
+3. **添加单元测试代码后必须清除**：重构验证期间编写的临时单元测试、断言或测试桩在交付前**必须彻底清除**，保持生产源码纯粹精炼；
+4. **闭环验证**：重构完成后自动执行 `node -c` / `npm run check:fe` 与 `npm run check` 验证；涉及降耦合时对比 `npm run measure:coupling` 量化基线。
 
 ---
 
-## 🛠️ 5 大标准重构设计范式
+## 🛠️ 7 大标准重构设计范式
 
 ### 1. IPC 调用统一桥接模式 (`tauri-bridge.js`)
 
@@ -40,6 +41,23 @@ export async function invokeTauri(command, args = {}) {
   }
   console.warn(`[Tauri IPC] Tauri core is not available for command: ${command}`);
   return null;
+}
+
+/**
+ * 安全监听 Tauri 全局事件并返回取消监听函数
+ * @param {string} event Tauri 事件名
+ * @param {(event: any) => void} handler 事件回调
+ * @returns {Promise<() => void>} 取消监听函数
+ */
+export async function listenTauri(event, handler) {
+  if (window.__TAURI__?.event?.listen) {
+    try {
+      return await window.__TAURI__.event.listen(event, handler);
+    } catch (err) {
+      console.warn(`[Tauri IPC] Failed to listen to ${event}:`, err);
+    }
+  }
+  return () => {};
 }
 ```
 
@@ -123,11 +141,42 @@ fn show_and_focus_main_window(app: &tauri::AppHandle) {
 }
 ```
 
+### 6. 跨模块通知降耦合模式 (`event-bus.js` / `contracts.js`)
+
+**消除跨模块通过 `ctx.api.<slot>` 字符串约定调用横切通知（如 toast）造成的隐式耦合**：
+- 仅收编「fire-and-forget」横切通知（`ui:*`、`flow:*`），**严禁**收编控制流命令 / 状态迁移（后者走 Store action 或显式 import）；
+- 事件注册：`bus.on("ui:toast", ({ text, duration }) => renderToast(text, duration))`；
+- 事件派发：`bus.emit("ui:toast", { text, duration })`，payload 自包含上下文（如必带 taskId）；
+- 同步派发铁律：emit 内严禁任何 await / 微任务 / Promise；on 返回取消函数便于卸载退订；
+- 事件通道须在 `src/lib/contracts.js` 的《事件通道契约表》登记归类（bus / Store action / `pi:*` 内核桥接）。
+
+> **降耦合量化**：用 `npm run measure:coupling` 建立基线（api 调用 / 唯一槽 / api 引用 / bus emit / 共享状态裸写等指标），每阶段重构后对比“在降”。阶段 1 已把 `api.showGlobalToast` 迁至 `bus.emit("ui:toast")`，`task-panel.js` 为唯一 `bus.on` 渲染属主。
+
+---
+
+### 7. 共享可变状态唯一属主模式 (`src/services/stores/*-store.js`)
+
+**消除「神对象 ctx + 多模块直改共享状态」：给 `flow / view / settings / attachments` 建立唯一属主，经 `get/action` 触达。**
+- **分层归位**：Store（无 DOM、有状态、有行为）→ `src/services/stores/`；ctx 只留 `el` + store 引用；模块经解构取 `const viewStore = ctx.viewStore`，禁再解构裸对象 `ctx.view / ctx.settings / ctx.attachments`（阶段 2 已移除）；
+- **四个 store**：`view-store.js`（四态状态机 `morph(mode, {previousMode, shouldFocusInput})` / `set`，**控制流命令禁上总线**）、`settings-store.js`（`setExpandedChannel` / `setOfficialCatalog` / `setCurrentOfficialAuth` / `setActiveWorkspace` / `updateActiveWorkspace(patch)`）、`attachments-store.js`（`addFiles` / `removeAt` / `clear` / `has` / `last`）、`flow-store.js`（纯数据，**按 taskId 分仓** `flowStore.for(taskId)`）；
+- **Store action 硬约束**：一律**同步**、禁 `async/await`、禁微任务调度（同步探测不变量 / 前台门禁 / Task 分仓三铁律）；`bus.emit` 保持同步派发；
+- **视图派生缓存不入 Store**：`renderedToolCards` / `currentSteps` / `active*Step` / `activeTurnRefs` / 计时器 / `followBottom` 属视图层，统一归位为 `src/modules/flow-state-view.js` 的 `flowView` 密封对象（`Object.seal` 保护），严禁入 store；
+- **纯渲染层显式 import**：无副作用、不读共享状态、不碰视图缓存的纯函数（工具/思维/阶段/伪运行卡创建、工具名/图标/摘要映射、入参/结果 HTML 格式化、ANSI 剥离、徽章刷新）统一定义于 `src/modules/flow-render.js`，调用方 `import { ... } from './flow-render.js'` 显式依赖，替代旧 `ctx.api` 字符串槽；
+- **Flow 域只读 DOM 引用层**：`src/modules/flow-dom.js` 的 `createFlowDom()` 从容器中抽出 flow 子集挂 `ctx.flowDom`，flow-* 模块改读 `flowDom.flow*`；
+- **DOM 按需自绑定 (`src/lib/el-binder.js`)**：模块通过 `bindAll` / `bindEl` 按需自绑定自己的 DOM id 子集，`ctx.el` 已彻底废除；
+- **落地方式**：`view.mode === VIEW_FLOW` → `viewStore.mode === VIEW_FLOW`；`api.setViewMode(VIEW_FLOW, true)` → `viewStore.morph(VIEW_FLOW, { shouldFocusInput: true })`；`settings.activeWorkspace.routePath = x` → `settingsStore.updateActiveWorkspace({ routePath: x })`；`attachments.files.push(m)` → `attachmentsStore.addFiles([m])`；
+- **后端命令层解耦（已落地）**：Tauri IPC 命令按领域拆到 `src-tauri/src/commands/`（`file`/`window`/`agent`/`session`/`rollback`/`workspace_cmd`/`skills`/`version`），`lib.rs` 仅保留 `invoke_handler!` 汇总 + `run()` 启动，由 1229 行瘦至 248 行；`config_manager.rs` 拆为 `config_manager/{io,schema,migrate,validate}.rs` 目录（`mod.rs` `pub use` 再导出，调用方 `use` 路径零改动）；
+- **函数槽契约定型（已落地）**：`contracts.js` 以 JSDoc `@typedef` 登记全部保留的 ctx 函数槽（按属主模块分组，标注保留原因：①流式/切换热区 ②拦截语义 ③初始化顺序依赖）；新增槽位必须同步登记。
+
+> **降耦合量化基线**：全量消灭全量 `ctx` 解构，共享状态裸写保持为 **0**（`{"flow":0,"view":0,"settings":0,"attachments":0}`）；函数槽位契约化锁定（当前 61 槽全量定型）；`npm run measure:coupling` 与 `npm run check:fe` 作为常态自动化门禁。
+
 ---
 
 ## 📋 重构交付检查清单
 
 - [ ] **语义等价**：功能、RPC 接口与事件响应严格一致；
 - [ ] **遗留清理**：历史重构（如抽屉变全屏视图）的废弃方法与变量彻底删除；
-- [ ] **编译验证**：`npm run check` 与 `node -c src/modules/*.js` 均 Exit Code 0；
-- [ ] **文档对齐**：同步更新 `AGENTS.md` 与相关 Skill。
+- [ ] **编译验证**：`npm run check:fe`、`npm run check` 与 `node -c src/modules/*.js` 均 Exit Code 0；
+- [ ] **耦合度量**：降耦合重构前后跑 `npm run measure:coupling`，确认指标“在降”（api 引用 / 唯一槽 / api 调用 / bus emit / 共享状态裸写）；
+- [ ] **共享状态属主**：`view.*` / `settings.*` / `attachments.*` 裸写为 **0**（走 Store action）；`flow.*` 纯数据字段归 `flowStore`；
+- [ ] **文档对齐**：同步更新 `AGENTS.md`、`README.md` 与相关 Skill。

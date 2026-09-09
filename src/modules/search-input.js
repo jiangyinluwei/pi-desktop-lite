@@ -1,20 +1,32 @@
 import { VIEW_DETAILED } from "../lib/view-constants.js";
+import { bus } from "../lib/event-bus.js";
 import { configService } from "../services/config-service.js";
 import { promptHistoryNavigator } from "../services/prompt-history.js";
 import { enhanceAllSelects } from "../services/sketch-select.js";
 import { startFloatingIcons, stopFloatingIcons } from "../services/floating-icons.js";
+import { workspaceService } from "../services/workspace-service.js";
+import { bindAll } from "../lib/el-binder.js";
 
 /**
  * 搜索输入、历史翻阅、格言跑马灯与焦点控制
  */
 export function initSearchInput(ctx) {
-  const el = ctx.el;
   const api = ctx.api;
-  const view = ctx.view;
-  const settings = ctx.settings;
-  const flow = ctx.flow;
-  const attachments = ctx.attachments;
-
+  const viewStore = ctx.viewStore;
+  const settingsStore = ctx.settingsStore;
+  const attachmentsStore = ctx.attachmentsStore;
+  // 批次 B：模块自绑定（searchInput / searchForm / appContainer 为跨簇共享 id，同 id 同元素）
+  const el = bindAll({
+    appContainer: "app-container",
+    searchInputWrapper: "search-input-wrapper",
+    searchInput: "search-input",
+    searchMottoLayer: "search-motto-layer",
+    searchMottoTrack: "search-motto-track",
+    searchMottoText1: "search-motto-text-1",
+    searchMottoText2: "search-motto-text-2",
+    clearBtn: "clear-btn",
+    searchForm: "search-form",
+  });
   const appContainer = el.appContainer;
   const searchInputWrapper = el.searchInputWrapper;
   const searchInput = el.searchInput;
@@ -42,7 +54,7 @@ export function initSearchInput(ctx) {
   const updateInputState = () => {
     if (!searchInput) return;
     const hasText = searchInput.value.length > 0;
-    const hasCapsules = attachments.files.length > 0;
+    const hasCapsules = attachmentsStore.files.length > 0;
 
     if (hasText || hasCapsules) {
       clearBtn?.classList.add("visible");
@@ -58,6 +70,7 @@ export function initSearchInput(ctx) {
   };
 
   searchInput.addEventListener("input", () => {
+    promptHistoryNavigator.onUserInput(searchInput.value);
     updateInputState();
     autoResizeSearchInput();
   });
@@ -109,17 +122,15 @@ export function initSearchInput(ctx) {
   const syncWorkspaceInputState = async () => {
     let ws = null;
     try {
-      const { workspaceService } = await import("../services/workspace-service.js");
       ws = await workspaceService.getActiveWorkspace();
-      if (ws) settings.activeWorkspace = ws;
+      if (ws) settingsStore.setActiveWorkspace(ws);
     } catch (_) {
-      ws = settings.activeWorkspace;
+      ws = settingsStore.activeWorkspace;
     }
 
     if (ws && (ws.id === "code-area" || ws.requiresRoute)) {
       let routeInfo = null;
       try {
-        const { workspaceService } = await import("../services/workspace-service.js");
         routeInfo = await workspaceService.getCodeAreaRoute();
       } catch (_) {}
 
@@ -170,24 +181,22 @@ export function initSearchInput(ctx) {
       if (promptFn) {
         const chosen = await promptFn("", "绑定 code-area 路由目标项目");
         if (chosen) {
-          if (settings.activeWorkspace) {
-            settings.activeWorkspace.routePath = chosen;
-            settings.activeWorkspace.routeName = chosen.split("/").pop() || chosen;
-          }
+          settingsStore.updateActiveWorkspace({
+            routePath: chosen,
+            routeName: chosen.split("/").pop() || chosen,
+          });
           await syncWorkspaceInputState();
-          window.dispatchEvent(new CustomEvent("workspace-changed", { detail: { routePath: chosen } }));
+          bus.emit("ui:workspace-changed", { routePath: chosen });
           if (searchInput) {
             searchInput.focus();
           }
-          api.showGlobalToast?.(`已绑定路由工作区：${chosen.split("/").pop() || chosen}`, 1800);
+          bus.emit("ui:toast", { text: `已绑定路由工作区：${chosen.split("/").pop() || chosen}`, duration: 1800 });
         } else {
           // 用户取消绑定：退回界面1（详细版），并确保取消输入框的 focus
           if (searchInput) {
             searchInput.blur();
           }
-          if (typeof api.setViewMode === "function") {
-            api.setViewMode(VIEW_DETAILED, false);
-          }
+          viewStore.morph(VIEW_DETAILED, { shouldFocusInput: false });
         }
       }
     } catch (err) {
@@ -195,9 +204,7 @@ export function initSearchInput(ctx) {
       if (searchInput) {
         searchInput.blur();
       }
-      if (typeof api.setViewMode === "function") {
-        api.setViewMode(VIEW_DETAILED, false);
-      }
+      viewStore.morph(VIEW_DETAILED, { shouldFocusInput: false });
     } finally {
       setTimeout(() => {
         isPromptingRouteModal = false;
@@ -263,7 +270,7 @@ export function initSearchInput(ctx) {
     }
 
     if (e.key === "Escape") {
-      if (searchInput.value.length > 0 || attachments.files.length > 0) {
+      if (searchInput.value.length > 0 || attachmentsStore.files.length > 0) {
         searchInput.value = "";
         api.clearAttachedFiles();
         promptHistoryNavigator.resetIndex();
@@ -273,20 +280,31 @@ export function initSearchInput(ctx) {
         searchInput.blur();
       }
     } else if (e.key === "ArrowUp") {
-      const isCaretAtStart = searchInput.selectionStart === 0 && searchInput.selectionEnd === 0;
-      const isEmpty = searchInput.value.length === 0;
-      const isAllSelected = searchInput.selectionStart === 0 && searchInput.selectionEnd === searchInput.value.length;
+      const val = searchInput.value;
+      const start = searchInput.selectionStart;
+      const end = searchInput.selectionEnd;
+      const isMultiLine = val.includes("\n");
+      const isCaretAtFirstLine = !isMultiLine || !val.slice(0, start).includes("\n");
+      const isAllSelected = start === 0 && end === val.length && val.length > 0;
+      const isEmpty = val.length === 0;
 
-      if (isEmpty || isCaretAtStart || isAllSelected || promptHistoryNavigator.isNavigating) {
-        const res = promptHistoryNavigator.getPrevious(searchInput.value);
+      // 单行输入框、首行光标、全选、或已处于翻阅态时触发向上翻阅历史
+      if (isEmpty || !isMultiLine || isCaretAtFirstLine || isAllSelected || promptHistoryNavigator.isNavigating) {
+        const res = promptHistoryNavigator.getPrevious(val);
         if (res.changed) {
           e.preventDefault();
           applyNavigatedValue(res.value);
         }
       }
     } else if (e.key === "ArrowDown") {
-      if (promptHistoryNavigator.isNavigating) {
-        const res = promptHistoryNavigator.getNext(searchInput.value);
+      const val = searchInput.value;
+      const end = searchInput.selectionEnd;
+      const isMultiLine = val.includes("\n");
+      const isCaretAtLastLine = !isMultiLine || !val.slice(end).includes("\n");
+
+      // 处于翻阅态、或在末行向下翻阅历史/恢复草稿
+      if (promptHistoryNavigator.isNavigating || (isCaretAtLastLine && promptHistoryNavigator.hasHistory())) {
+        const res = promptHistoryNavigator.getNext(val);
         if (res.changed) {
           e.preventDefault();
           applyNavigatedValue(res.value);
@@ -536,15 +554,15 @@ export function initSearchInput(ctx) {
       !e.target.closest(".settings-btn")
     ) {
       if (document.activeElement && typeof document.activeElement.blur === "function") {
-        if (view.mode === VIEW_DETAILED) {
+        if (viewStore.mode === VIEW_DETAILED) {
           document.activeElement.blur();
         }
       }
     }
   });
 
-  // 监听工作区切换事件与应用加载
-  window.addEventListener("workspace-changed", () => {
+  // 监听工作区切换事件与应用加载（阶段 6：workspace-changed 已收编至同步事件总线）
+  bus.on("ui:workspace-changed", () => {
     syncWorkspaceInputState();
   });
 
