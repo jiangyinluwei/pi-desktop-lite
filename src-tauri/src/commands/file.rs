@@ -183,3 +183,102 @@ pub async fn pi_open_url(app: tauri::AppHandle, url: String) -> Result<(), Strin
         .open_url(&url, None::<&str>)
         .map_err(|e| e.to_string())
 }
+
+/// 读取 Windows 系统剪贴板中被复制的文件和文件夹绝对路径（CF_HDROP 格式）
+#[tauri::command]
+pub fn pi_read_clipboard_files() -> Result<Vec<String>, String> {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::System::DataExchange::{
+            CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+        };
+        use windows_sys::Win32::UI::Shell::DragQueryFileW;
+
+        const CF_HDROP_VAL: u32 = 15;
+        let mut paths = Vec::new();
+
+        unsafe {
+            if IsClipboardFormatAvailable(CF_HDROP_VAL) == 0 {
+                return Ok(paths);
+            }
+            if OpenClipboard(std::ptr::null_mut()) == 0 {
+                return Ok(paths);
+            }
+            let handle = GetClipboardData(CF_HDROP_VAL);
+            if !handle.is_null() {
+                let count = DragQueryFileW(handle as _, 0xFFFFFFFF, std::ptr::null_mut(), 0);
+                for i in 0..count {
+                    let len = DragQueryFileW(handle as _, i, std::ptr::null_mut(), 0);
+                    if len > 0 {
+                        let mut buffer: Vec<u16> = vec![0; (len + 1) as usize];
+                        let copied = DragQueryFileW(handle as _, i, buffer.as_mut_ptr(), len + 1);
+                        if copied > 0 {
+                            let path_str = String::from_utf16_lossy(&buffer[..copied as usize]);
+                            if !path_str.is_empty() {
+                                paths.push(path_str);
+                            }
+                        }
+                    }
+                }
+            }
+            CloseClipboard();
+        }
+
+        Ok(paths)
+    }
+
+    #[cfg(not(windows))]
+    {
+        Ok(Vec::new())
+    }
+}
+
+/// 保存剪贴板中的图片 Base64 数据到临时附件目录，返回绝对路径
+#[tauri::command]
+pub fn pi_save_clipboard_image(base64_data: String, ext: Option<String>) -> Result<String, String> {
+    use base64::Engine;
+
+    // 清理可能的 Data URL 前缀（如 "data:image/png;base64,"）
+    let clean_b64 = if let Some(idx) = base64_data.find(";base64,") {
+        &base64_data[idx + 8..]
+    } else if let Some(idx) = base64_data.find(',') {
+        &base64_data[idx + 1..]
+    } else {
+        &base64_data
+    };
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(clean_b64.trim())
+        .map_err(|e| format!("Base64 解码失败: {}", e))?;
+
+    if bytes.is_empty() {
+        return Err("图片数据为空".to_string());
+    }
+
+    let ext_str = ext
+        .unwrap_or_else(|| "png".to_string())
+        .trim()
+        .trim_start_matches('.')
+        .to_lowercase();
+    let safe_ext = if ["png", "jpg", "jpeg", "webp", "gif", "bmp"].contains(&ext_str.as_str()) {
+        ext_str
+    } else {
+        "png".to_string()
+    };
+
+    let home = dirs::home_dir().ok_or_else(|| "无法获取主目录".to_string())?;
+    let attach_dir = home.join(".pi-dl").join("attachments");
+    if !attach_dir.exists() {
+        std::fs::create_dir_all(&attach_dir).map_err(|e| format!("创建附件目录失败: {}", e))?;
+    }
+
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let short_id = &uuid::Uuid::new_v4().to_string()[..8];
+    let file_name = format!("pasted_image_{}_{}.{}", timestamp, short_id, safe_ext);
+    let target_path = attach_dir.join(file_name);
+
+    std::fs::write(&target_path, &bytes).map_err(|e| format!("保存剪贴板图片失败: {}", e))?;
+
+    Ok(target_path.to_string_lossy().to_string())
+}
+

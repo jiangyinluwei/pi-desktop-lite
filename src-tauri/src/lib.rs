@@ -128,6 +128,8 @@ pub fn run() {
             pi_reveal_path,
             pi_path_exists,
             pi_get_home_dir,
+            pi_read_clipboard_files,
+            pi_save_clipboard_image,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

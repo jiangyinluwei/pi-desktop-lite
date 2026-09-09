@@ -115,6 +115,7 @@ export function isInteractiveExtensionUiRequest(data) {
 //  * @typedef {Object} PiApiContracts
 //  * @property {() => void} loadCustomProvidersConfig            custom-provider-panel → 设置页刷新自定义 Provider
 //  * @property {() => void} clearAttachedFiles                   file-attachments → 清空输入框附件胶囊
+//  * @property {(paths: string[]) => Promise<void>} addAttachedFiles file-attachments → 增加多模态路径附件（拖拽/粘贴/选择）
 //  * @property {() => void} showFileChangesBox                   flow-file-changes → 展示文件变更收纳框
 //  * @property {() => void} resetFileChanges                     flow-file-changes → 重置收纳框（任务直切铁律）
 //  * @property {(taskId: string) => void} restoreFileChangesFor  flow-file-changes → 按 Task 恢复会话流缓存仓

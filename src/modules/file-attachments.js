@@ -3,6 +3,7 @@ import { ICONS } from "../lib/icons.js";
 import { bus } from "../lib/event-bus.js";
 import { invokeTauri, listenTauri } from "../services/tauri-bridge.js";
 import { bindAll } from "../lib/el-binder.js";
+import { VIEW_SETTINGS } from "../lib/view-constants.js";
 
 // ==========================================================================
 // 阶段 7 批次 D：纯函数显式化（原 ctx.api 函数槽清退为显式 import）
@@ -20,6 +21,7 @@ export const getFileCategoryIcon = (category) => {
  */
 export function initFileAttachments(ctx) {
   const api = ctx.api;
+  const viewStore = ctx.viewStore;
   const attachmentsStore = ctx.attachmentsStore;
   // 批次 B：模块自绑定（searchInput / searchForm 为跨簇共享 id，bindAll 同 id 同元素）
   const el = bindAll({
@@ -237,6 +239,186 @@ export function initFileAttachments(ctx) {
     });
   }
 
+  // ==========================================================================
+  // 对话框多模态剪贴板粘贴引擎（截图图片 / 系统文件与目录 / 绝对路径文本）
+  // ==========================================================================
+
+  const insertTextAtCursor = (text) => {
+    if (!searchInput) return;
+    const start = searchInput.selectionStart ?? searchInput.value.length;
+    const end = searchInput.selectionEnd ?? searchInput.value.length;
+    const val = searchInput.value;
+    searchInput.value = val.substring(0, start) + text + val.substring(end);
+    const newPos = start + text.length;
+    searchInput.setSelectionRange(newPos, newPos);
+    searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+    if (typeof api.autoResizeSearchInput === "function") {
+      api.autoResizeSearchInput();
+    }
+  };
+
+  const handleClipboardPaste = async (e) => {
+    if (e.__piHandled) return;
+
+    // 门禁：如果在设置页或焦点在其他输入框（非 searchInput），不予拦截
+    const target = e.target;
+    if (viewStore?.mode === VIEW_SETTINGS && target !== searchInput) {
+      return;
+    }
+    if (document.querySelector(".sketch-modal-backdrop") && target !== searchInput) {
+      return;
+    }
+    if (target && target !== searchInput) {
+      const tag = target.tagName ? target.tagName.toLowerCase() : "";
+      if (tag === "input" || tag === "textarea" || target.isContentEditable) {
+        return;
+      }
+    }
+
+    const clipboardData = e.clipboardData || window.clipboardData;
+    if (!clipboardData) return;
+
+    // 1. 优先提取截图/图片位图
+    const items = clipboardData.items ? Array.from(clipboardData.items) : [];
+    const imageItems = items.filter(
+      (it) => it.kind === "file" && it.type && it.type.startsWith("image/")
+    );
+
+    if (imageItems.length > 0) {
+      e.__piHandled = true;
+      e.preventDefault();
+      const savedImagePaths = [];
+      for (const item of imageItems) {
+        const file = item.getAsFile();
+        if (!file) continue;
+        try {
+          const base64Data = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+          const ext = file.type === "image/jpeg" ? "jpg" : "png";
+          const savedPath = await invokeTauri("pi_save_clipboard_image", {
+            base64Data,
+            ext,
+          });
+          if (savedPath) {
+            savedImagePaths.push(savedPath);
+          }
+        } catch (err) {
+          console.warn("[FileAttachments] Save pasted image error:", err);
+        }
+      }
+
+      if (savedImagePaths.length > 0) {
+        await addAttachedFiles(savedImagePaths);
+      }
+      return;
+    }
+
+    // 2. 检查系统文件/文件夹类型（在 Windows 资源管理器中复制的文件或目录）
+    const types = clipboardData.types ? Array.from(clipboardData.types) : [];
+    const hasFilesType = types.includes("Files") || (clipboardData.files && clipboardData.files.length > 0);
+
+    if (hasFilesType) {
+      e.__piHandled = true;
+      e.preventDefault();
+      let paths = [];
+      try {
+        const clipRes = await invokeTauri("pi_read_clipboard_files");
+        if (Array.isArray(clipRes) && clipRes.length > 0) {
+          paths = clipRes;
+        }
+      } catch (err) {
+        console.warn("[FileAttachments] Read clipboard files error:", err);
+      }
+
+      // 若系统接口未读出但 clipboardData.files 有 path 属性，降级读取
+      if (paths.length === 0 && clipboardData.files?.length > 0) {
+        const domPaths = Array.from(clipboardData.files)
+          .map((f) => f.path)
+          .filter(Boolean);
+        if (domPaths.length > 0) {
+          paths = domPaths;
+        }
+      }
+
+      if (paths.length > 0) {
+        await addAttachedFiles(paths);
+        return;
+      }
+
+      // 若系统接口与 DOM 均未提取到有效路径（极少见），尝试读取 plainText 恢复用户粘贴
+      const text = clipboardData.getData ? clipboardData.getData("text/plain") : "";
+      if (text) {
+        insertTextAtCursor(text);
+      }
+      return;
+    }
+
+    // 3. 检查纯文本内容（是否复制了一行或多行纯本地绝对路径）
+    const plainText = clipboardData.getData ? clipboardData.getData("text/plain") : "";
+    if (plainText) {
+      const trimmed = plainText.trim();
+      const lines = trimmed
+        .split(/\r?\n/)
+        .map((l) => l.trim().replace(/^["']|["']$/g, ""))
+        .filter(Boolean);
+
+      // 单行或多行（<=20行），每一行均符合 Windows 绝对路径或 UNC 路径格式
+      const isCandidatePath =
+        lines.length > 0 &&
+        lines.length <= 20 &&
+        lines.every((l) => /^([a-zA-Z]:[\\/]|\\\\)/.test(l) && !l.includes("\n") && l.length < 500);
+
+      if (isCandidatePath) {
+        // 尝试探测全部路径是否存在
+        let allExist = true;
+        for (const line of lines) {
+          try {
+            const exists = await invokeTauri("pi_path_exists", { path: line });
+            if (!exists) {
+              allExist = false;
+              break;
+            }
+          } catch (_) {
+            allExist = false;
+            break;
+          }
+        }
+
+        if (allExist) {
+          // 全部路径真实存在于本地，拦截默认粘贴并添加为多模态附件
+          e.__piHandled = true;
+          e.preventDefault();
+          await addAttachedFiles(lines);
+          return;
+        }
+      }
+    }
+
+    // 4. 普通文本提问或代码：放行原生粘贴，并在宏任务后自适应高度与输入态
+    setTimeout(() => {
+      if (typeof api.autoResizeSearchInput === "function") {
+        api.autoResizeSearchInput();
+      }
+      if (typeof api.updateInputState === "function") {
+        api.updateInputState();
+      }
+    }, 0);
+  };
+
+  // 绑定输入框与全局粘贴事件
+  if (searchInput) {
+    searchInput.addEventListener("paste", handleClipboardPaste);
+  }
+  if (searchForm) {
+    searchForm.addEventListener("paste", handleClipboardPaste);
+  }
+  window.addEventListener("paste", handleClipboardPaste);
+
   // getFileCategoryIcon 已显式化（模块顶层 export），消费方直接 import
   api.clearAttachedFiles = clearAttachedFiles;
+  api.addAttachedFiles = addAttachedFiles;
 }
