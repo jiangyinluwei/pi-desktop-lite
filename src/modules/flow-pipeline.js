@@ -572,22 +572,33 @@ export function initFlowPipeline(ctx) {
   const failoverHooks = {
     // 同 Turn 复用当前轮次：重置流式缓冲但保留既有步骤/工具卡片，后台静默续发「继续」
     // (不重建提问卡、不重复压入 prompt history、不新建 Task，用户全程无感知)
+    // 前后台双轨：前台任务重置轮次容器并重建「首 token 延迟」读秒伪框；
+    // 后台挂起任务无前台轮次 DOM，跳过重置仅做数据层静默续发
     onResendAttempt: (taskId) => {
-      api.resetCurrentTurnForResend(taskId);
+      if (taskManager.isForegroundStreamTask(taskId)) {
+        api.resetCurrentTurnForResend(taskId);
+      }
       const { sessionPath, sessionId } = resolveTaskSessionIdentity(taskManager.getTask(taskId));
       return piClient.sendPrompt("继续", null, null, taskId, sessionPath, sessionId);
     },
-    // 10 次内置重连全部耗尽仍失败：才渲染「模型XXX异常」错误卡并追加内置重连摘要
+    // 10 次内置重连全部耗尽仍失败：前台渲染「模型XXX异常」错误卡并追加内置重连摘要；
+    // 后台挂起任务无前台 Flow DOM，走 TaskManager 统一错误结算通道落定 error 终态
     onGiveUp: (errDetail, summary) => {
       const detail = { ...(errDetail || {}) };
       if (summary && summary.reconnectCount > 0) {
         detail.failoverSummary = summary;
       }
+      const failTaskId = modelFailoverEngine.taskId;
+      if (failTaskId && !taskManager.isForegroundStreamTask(failTaskId)) {
+        taskManager.failTask(failTaskId, detail.message || "模型调用发生异常");
+        return;
+      }
       api.renderErrorCard(detail);
     },
     // 自愈成功：仅清除错误卡片与错误状态，绝不提前结束流式！真正的收尾留给 agent-end 自然触发
-    onSuccess: () => {
-      if (typeof api.clearTurnErrorState === "function") {
+    // （仅前台任务存在可清除的错误状态 DOM；后台任务严禁触碰前台视图缓存）
+    onSuccess: (payload = {}) => {
+      if (taskManager.isForegroundStreamTask(payload.taskId) && typeof api.clearTurnErrorState === "function") {
         api.clearTurnErrorState();
       }
     },
@@ -609,13 +620,13 @@ export function initFlowPipeline(ctx) {
     }
 
     const errTaskId = e.detail?.taskId || e.detail?.raw?.task_id || e.detail?.task_id || piClient.lastEventTaskId;
+    const isForeground = taskManager.isForegroundStreamTask(errTaskId);
+    // 内置重连引擎是否正在服务该任务（后台挂起任务同样需要引擎结算在途尝试）
+    const engineOwnsTask =
+      modelFailoverEngine.isActive() &&
+      (!modelFailoverEngine.taskId || String(modelFailoverEngine.taskId) === String(errTaskId));
 
-    // 后台挂起任务的报错：只由 TaskManager 结算数据与通知，绝不污染前台 Flow
-    if (!taskManager.isForegroundStreamTask(errTaskId)) {
-      return;
-    }
-
-    // 检查所属 Task 是否已处于中止状态或在中止黑名单中
+    // 检查所属 Task 是否已处于中止状态或在中止黑名单中（前后台一致门禁）
     if (modelFailoverEngine.isTaskAborted(errTaskId)) {
       return;
     }
@@ -624,6 +635,17 @@ export function initFlowPipeline(ctx) {
       if (task && (task.status === "aborted" || task.isAborted)) {
         return;
       }
+    }
+
+    // 内置重连耗尽终态：错误卡已弹出后，同任务重复错误帧
+    // (一次失败 run 会经 message_end/turn_end/agent_end/agent_settled 多次派发 agent-error)
+    // 绝不再次自动冷启动、也不重复渲染错误卡；仅用户手动重试/新提问 (clearTaskAborted) 后重置
+    if (modelFailoverEngine.isTaskExhausted(errTaskId)) {
+      return;
+    }
+    // 无归属错误帧：近期发生过手动终止时保守静默 (手动终止全链路禁止触发内置重连)
+    if (!errTaskId && modelFailoverEngine.hasRecentGlobalAbortion()) {
+      return;
     }
 
     // 「终止并发送」进行中：旧轮报错视为已结算，不渲染错误卡、不进入自愈
@@ -640,25 +662,41 @@ export function initFlowPipeline(ctx) {
       isTransientRateLimitMessage(e.detail?.raw?.errorMessage);
 
     if (modelFailoverEngine.isActive()) {
-      // 自愈进行中：该错误即为当前重发尝试的结果 (含 RPC/扩展错误)，一律交由引擎结算，
-      // 避免引擎在途尝试悬空挂起，也绝不提前渲染错误卡打断自愈
+      // 引擎活跃中：仅当错误属于引擎当前任务时热结算该在途尝试（含 RPC/扩展错误）；
+      // 其他任务的错误交由 TaskManager 按其自身状态结算，绝不跨任务误结算、也绝不提前渲染错误卡打断自愈
+      if (engineOwnsTask) {
+        modelFailoverEngine.handleModelError(e.detail, failoverHooks);
+      }
+      return;
+    }
+    if (modelFailoverEngine.canHandle(e.detail) || isRateLimit) {
+      // 冷启动：自动强制重连开启且错误含模型上下文（或命中 TPM/RPM 速率限制）→ 统一交由引擎内置重连，绝不降级渲染错误卡。
+      // 前台与后台挂起任务一视同仁：后台任务错误原被前台门禁拦截导致引擎永不启动，
+      // 随后被 agent_end 误标 completed 且历史归档链路断裂（BUG2 根因）
       modelFailoverEngine.handleModelError(e.detail, failoverHooks);
-    } else if (modelFailoverEngine.canHandle(e.detail) || isRateLimit) {
-      // 冷启动：自动强制重连开启且错误含模型上下文（或命中 TPM/RPM 速率限制）→ 统一交由引擎内置重连，绝不降级渲染错误卡
-      modelFailoverEngine.handleModelError(e.detail, failoverHooks);
-    } else {
+    } else if (isForeground) {
+      // 引擎不接管：仅前台渲染错误卡；后台任务交由 TaskManager 原生错误结算通道
       api.renderErrorCard(e.detail);
     }
   });
 
   piClient.addEventListener("agent-end", (e) => {
-    // 后台挂起任务的结束帧：不触发前台收尾与归档，仅由 TaskManager 结算数据
-    if (!taskManager.isForegroundStreamTask(e.detail?.task_id || e.detail?.taskId || piClient.lastEventTaskId)) {
-      return;
-    }
-    // 引擎自愈若仍活跃（例如模型 0 思考 0 输出直接结束）：兜底结算当前重发尝试为成功
-    if (modelFailoverEngine.isActive()) {
+    const endTaskId = e.detail?.task_id || e.detail?.taskId || piClient.lastEventTaskId;
+    const isForeground = taskManager.isForegroundStreamTask(endTaskId);
+    // 引擎在途重发尝试的收口帧：无论前后台，只要属于引擎当前任务即结算成功
+    // （后台任务结算成功后不做前台收尾与归档，仅由 TaskManager 结算数据）
+    const engineOwnsTask =
+      modelFailoverEngine.isActive() &&
+      (!modelFailoverEngine.taskId || String(modelFailoverEngine.taskId) === String(endTaskId));
+    if (engineOwnsTask) {
       modelFailoverEngine.resolveTurnSuccess();
+      if (!isForeground) {
+        return;
+      }
+    }
+    // 后台挂起任务的结束帧：不触发前台收尾与归档，仅由 TaskManager 结算数据
+    if (!isForeground) {
+      return;
     }
     // 「终止并发送」进行中：旧轮结算由 interrupt-send 流水线接管，跳过收尾与归档
     const endFs = flowStore.for(resolveStreamTaskId(piClient.lastEventTaskId));

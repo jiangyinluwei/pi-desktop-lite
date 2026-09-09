@@ -304,6 +304,16 @@ export function initFlowStream(ctx) {
    * @param {string} [taskId] 自愈引擎重发的任务 id（onResendAttempt 显式传入）
    */
   const resetCurrentTurnForResend = (taskId = null) => {
+    // 后台挂起任务门禁：重连引擎跨前后台运作，但前台 Flow DOM 与视图缓存只属于当前前台任务，
+    // 严禁触碰（后台任务仅由引擎做数据层静默续发，无前台轮次容器可重置）
+    if (taskId && !taskManager.isForegroundStreamTask(taskId)) return;
+
+    // 结算并封口未封口的思考步骤（必须先于缓冲清理：clearStreamTimersAndBuffers 会将
+    // activeThinkingStep 置空但不移除 DOM 卡片，若顺序颠倒 seal 将空转，孤儿伪框永久残留，
+    // 导致 stepsContainer 非空而无法重建「首 token 延迟」读秒伪框）：
+    // 真实思考切片/显式思考事件定格保留为「已完成思考」；纯首字等待伪框静默移除腾位
+    sealActiveThinkingStep();
+
     clearStreamTimersAndBuffers(taskId);
     clearTurnErrorState(taskId);
 
@@ -311,9 +321,6 @@ export function initFlowStream(ctx) {
     if (typeof api.removeActiveToolPseudoStep === "function") {
       api.removeActiveToolPseudoStep();
     }
-
-    // 结算并定格未封口的思考步骤 (避免重发期间计时器空跑，并保留已产生的思考文本与卡片)
-    sealActiveThinkingStep({ preserveForTool: true });
 
     // 移除上一轮临时错误卡片，若正文容器无光标则补齐光标以备后续增量追加
     if (flowView.activeTurnRefs?.responseContentEl) {
@@ -387,6 +394,19 @@ export function initFlowStream(ctx) {
   // 自动强制重连引擎进度事件 → 更新 Flow 进度胶囊
   modelFailoverEngine.addEventListener("failover-status", (e) => {
     const payload = e.detail || {};
+    // 任务归属门禁：引擎正在服务后台挂起任务时，严禁触碰前台轮次胶囊/计时器与视图缓存
+    // （后台任务重连仅由侧边栏徽章实时刷新呈现）
+    const engineTaskId = modelFailoverEngine.taskId;
+    if (engineTaskId && !taskManager.isForegroundStreamTask(engineTaskId)) {
+      if (
+        taskDetailsSidebar &&
+        taskDetailsSidebar.classList.contains("open") &&
+        typeof api.renderTaskSidebarList === "function"
+      ) {
+        api.renderTaskSidebarList();
+      }
+      return;
+    }
     // 退避等待期间停止思考计时，避免耗时位残留「思考中」虚长
     if (payload.status === "reconnecting" && payload.phase === "waiting" && flowView.thinkingTimerInterval) {
       clearInterval(flowView.thinkingTimerInterval);

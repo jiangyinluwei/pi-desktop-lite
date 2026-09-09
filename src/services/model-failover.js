@@ -22,6 +22,8 @@ class ModelFailoverEngine extends EventTarget {
   constructor() {
     super();
     this._abortedTaskIds = new Set();
+    this._exhaustedTaskIds = new Set(); // 内置重连 10 次耗尽终态 (仅手动重试/新提问可解除)
+    this._unattributedExhausted = false; // 无任务归属路径 (旧主会话) 的耗尽终态标记
     this._lastAbortTimestamp = 0;
     this._resetState();
   }
@@ -52,12 +54,15 @@ class ModelFailoverEngine extends EventTarget {
   }
 
   /**
-   * 清除指定任务的中止标记 (新轮次发送时调用)
+   * 清除指定任务的中止与耗尽标记 (新轮次发送/用户手动重试时调用，重新允许内置重连)
    * @param {string} taskId
    */
   clearTaskAborted(taskId) {
     if (taskId && this._abortedTaskIds) {
       this._abortedTaskIds.delete(String(taskId));
+    }
+    if (taskId && this._exhaustedTaskIds) {
+      this._exhaustedTaskIds.delete(String(taskId));
     }
   }
 
@@ -75,6 +80,26 @@ class ModelFailoverEngine extends EventTarget {
       return true;
     }
     return false;
+  }
+
+  /**
+   * 判定指定任务是否已进入「内置重连耗尽」终态 (10 次全部失败、错误卡已弹出)。
+   * 铁律：耗尽后同任务后续重复错误帧绝不再次自动冷启动，仅用户手动干预可解除。
+   * @param {string | null | undefined} [taskId]
+   * @returns {boolean}
+   */
+  isTaskExhausted(taskId = null) {
+    if (taskId) return this._exhaustedTaskIds?.has(String(taskId)) || false;
+    return this._unattributedExhausted || false;
+  }
+
+  /**
+   * 近期是否发生过手动终止 (供无归属错误帧的保守静默判定：手动终止全链路禁止触发内置重连)
+   * @param {number} [ms=15000] 保护窗口毫秒数
+   * @returns {boolean}
+   */
+  hasRecentGlobalAbortion(ms = 15000) {
+    return Boolean(this._lastAbortTimestamp && Date.now() - this._lastAbortTimestamp < ms);
   }
 
   /**
@@ -96,6 +121,12 @@ class ModelFailoverEngine extends EventTarget {
     // 铁律 2：所属 Task 已被手动中止时绝对不接管
     const tid = detail.taskId || detail.task_id || detail.raw?.task_id || detail.raw?.taskId || this.taskId;
     if (this.isTaskAborted(tid)) return false;
+
+    // 铁律 3：所属 Task 已进入「重连耗尽」终态时绝不接管 (错误卡已弹出，等待用户手动干预)
+    if (this.isTaskExhausted(tid)) return false;
+
+    // 铁律 4：无归属错误帧 + 近期发生过手动终止 → 保守拒绝接管 (杜绝终止后经杂散帧静默复活重连)
+    if (!tid && this.hasRecentGlobalAbortion()) return false;
 
     const effProvider =
       detail.provider ||
@@ -130,15 +161,22 @@ class ModelFailoverEngine extends EventTarget {
       return;
     }
 
-    // 热结算：当前有在途尝试，此错误即其结果
+    // 热结算：当前有在途尝试，此错误即其结果。
+    // 铁律：仅当错误属于引擎当前服务任务时才结算，严禁跨任务误结算在途尝试
     if (this.isActive() && this._resolveAttempt) {
-      this.lastError = detail;
-      this._resolveAttempt({ success: false, error: detail });
+      if (!this.taskId || !tid || String(tid) === String(this.taskId)) {
+        this.lastError = detail;
+        this._resolveAttempt({ success: false, error: detail });
+      }
       return;
     }
 
     // 已在流水线中但无在途尝试 (处于退避等待)，忽略杂散错误
     if (this.isActive()) return;
+
+    // 铁律：耗尽终态 / 近期手动终止的无归属错误帧，绝不自动冷启动 (仅用户手动重试/新提问后重置)
+    if (this.isTaskExhausted(tid)) return;
+    if (!tid && this.hasRecentGlobalAbortion()) return;
 
     // 冷启动：任何非中止类模型错误统一进入内置重连通道
     this.taskId = tid || null;
@@ -156,6 +194,14 @@ class ModelFailoverEngine extends EventTarget {
     if (this._resolveAttempt) {
       this._resolveAttempt({ success: true });
     }
+  }
+
+  /**
+   * 当前是否存在在途重发尝试等待结算（引擎活跃且正在等 agent-end/agent-error 收口）。
+   * 供 TaskManager 区分「重发中收口帧」与「退避期失败轮收口帧」，防止误标 completed。
+   */
+  hasInflightAttempt() {
+    return this.isActive() && Boolean(this._resolveAttempt);
   }
 
   // ==========================================================================
@@ -248,9 +294,10 @@ class ModelFailoverEngine extends EventTarget {
   }
 
   /**
-   * 外部显式重置接口 (新轮次发起时安全重置)
+   * 外部显式重置接口 (错误状态清理/新轮次发起时安全重置，同步解除无归属耗尽标记)
    */
   reset() {
+    this._unattributedExhausted = false;
     this._resetState();
   }
 
@@ -259,13 +306,14 @@ class ModelFailoverEngine extends EventTarget {
    */
   _succeed() {
     const reconnectCount = this.attempt;
+    this._unattributedExhausted = false; // 重连成功即解除无归属耗尽标记，后续新错误可正常冷启动
     this.status = "succeeded";
     this._emit({
       status: "succeeded",
       reconnectCount,
       modelName: this._modelName(),
     });
-    this.hooks?.onSuccess?.({ reconnectCount });
+    this.hooks?.onSuccess?.({ reconnectCount, taskId: this.taskId });
     this._resetState();
   }
 
@@ -275,6 +323,15 @@ class ModelFailoverEngine extends EventTarget {
   _giveUp() {
     this.status = "gave_up";
     this._clearTimer();
+    // 铁律：10 次内置重连全部耗尽 → 记录耗尽终态。一次失败的内核 run 会经
+    // message_end / turn_end / agent_end / agent_settled 多次派发 agent-error，
+    // 首帧结算失败并弹出错误卡后，后续重复错误帧绝不允许再次自动冷启动；
+    // 仅用户手动「重试当前提问」/发送新提问 (clearTaskAborted 同步清除) 后方可重新发起
+    if (this.taskId) {
+      this._exhaustedTaskIds.add(String(this.taskId));
+    } else {
+      this._unattributedExhausted = true;
+    }
     const summary = {
       reconnectCount: this.attempt,
       maxAttempts: this.maxAttempts,

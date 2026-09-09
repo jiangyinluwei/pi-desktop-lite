@@ -2,10 +2,58 @@ use serde_json::{json, Value};
 use super::io::{read_pi_dl_json, write_pi_dl_json, read_agent_json, write_agent_json};
 
 
+/// 新「无痕内置重连」引擎写死的推荐配置 (与前端 DEFAULT_FAILOVER_CONFIG 对齐：10 次 / 2-4-8-16s 恒封顶 16s)
+fn model_failover_preset() -> Value {
+    json!({
+        "maxReconnectAttempts": 10,
+        "reconnectBackoffMs": [2000, 4000, 8000, 16000],
+        "maxBackoffMs": 16000
+    })
+}
+
+/// 旧引擎（自动切换模型时代）残留的 modelFailover 死字段
+const LEGACY_FAILOVER_KEYS: [&str; 7] = [
+    "escalateToSwitchAfterReconnectExhausted",
+    "maxSwitchCycles",
+    "maxTotalSwitchAttempts",
+    "perCandidateReconnectBudget",
+    "sameErrorTimeoutMs",
+    "switchBackoffMs",
+    "switchOnPermanentError",
+];
+
+/// modelFailover 配置块迁移：检测旧引擎残留字段或与写死预设不一致的值，
+/// 整块归一化为新「无痕内置重连」预设（写死 10 次 / 2-4-8-16s 恒封顶 16s）。
+/// 幂等：归一化后再次读取命中预设即跳过。返回是否发生了迁移。
+fn migrate_model_failover_block(config: &mut Value) -> bool {
+    let Some(obj) = config.as_object_mut() else { return false; };
+    let Some(block) = obj.get("modelFailover").and_then(|v| v.as_object()) else { return false; };
+    let preset = model_failover_preset();
+    let preset_obj = preset.as_object().expect("preset is object");
+    let needs_migration = LEGACY_FAILOVER_KEYS.iter().any(|k| block.contains_key(*k))
+        || preset_obj
+            .iter()
+            .any(|(k, v)| block.get(k) != Some(v));
+    if !needs_migration {
+        return false;
+    }
+    obj.insert("modelFailover".to_string(), preset);
+    true
+}
+
 /// 读取 ~/.pi-dl/config.json 应用全局持久化配置
 #[tauri::command]
 pub fn pi_get_app_config() -> Result<Value, String> {
-    read_pi_dl_json("config.json", json!({}))
+    let mut config = read_pi_dl_json("config.json", json!({})).unwrap_or_else(|_| json!({}));
+    if migrate_model_failover_block(&mut config) {
+        log::info!("[config_manager] Migrated legacy modelFailover block to silent-reconnect preset (10 attempts / 2-4-8-16s backoff)");
+        if let Err(e) = write_pi_dl_json("config.json", &config) {
+            log::warn!("[config_manager] Failed to persist migrated modelFailover block: {}", e);
+        }
+        // 同步归一化内核 settings.json 的 retry 注入块（历史版本曾用旧引擎值如 24 次注入）
+        let _ = pi_apply_model_failover_preset(model_failover_preset());
+    }
+    Ok(config)
 }
 
 /// 写入 ~/.pi-dl/config.json 应用全局持久化配置 (含主题色、默认思考强度、所选模型、模型列表排序等)
@@ -148,12 +196,23 @@ pub fn pi_apply_model_failover_preset(config: Value) -> Result<(), String> {
 
     if let Some(obj) = settings.as_object_mut() {
         // 仅当内核 settings.json 未显式声明禁用重试时注入推荐值；
-        // 已存在用户自定义 retry 配置则尊重原值不覆盖，避免破坏用户刻意调优。
+        // 已存在「完整三键形态」(maxAttempts/backoff/maxBackoffSeconds) 的 retry 块视为本指令
+        // 历史注入产物（含旧引擎残留值如 24 次），允许覆盖刷新为归一化预设；
+        // 仅部分字段的自定义 retry 配置则尊重原值不覆盖，避免破坏用户刻意调优。
         let has_user_retry = obj
             .get("retry")
             .map(|r| r.is_object())
             .unwrap_or(false);
-        if !has_user_retry {
+        let is_our_preset_block = obj
+            .get("retry")
+            .and_then(|r| r.as_object())
+            .map(|r| {
+                r.contains_key("maxAttempts")
+                    && r.contains_key("backoff")
+                    && r.contains_key("maxBackoffSeconds")
+            })
+            .unwrap_or(false);
+        if !has_user_retry || is_our_preset_block {
             obj.insert("retry".to_string(), retry_block);
         }
     }

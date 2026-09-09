@@ -162,14 +162,16 @@ flowchart TD
 ```
 
 - **无痕内置重连 (Silent Reconnect)**：仅在「模型XXX异常」错误窗体本应弹出时触发（设置-模型配置-右上角「自动强制重连」勾选启用）；引擎隐藏错误窗体，后台静默向模型续发「继续」文本（不生成提问卡、不重复压入 prompt history、不新建 Task，全程不显示）；
-- **写死 10 次与固定退避**：`maxReconnectAttempts: 10`、`reconnectBackoffMs: [2000, 4000, 8000, 16000]`、`maxBackoffMs: 16000`；每次续发计作一次「内置重连」；
+- **写死 10 次与固定退避**：`maxReconnectAttempts: 10`、`reconnectBackoffMs: [2000, 4000, 8000, 16000]`、`maxBackoffMs: 16000`；每次续发计作一次「内置重连」；旧引擎残留的 `modelFailover` 持久化块（旧值如 24 + 7 个死字段）在 `pi_get_app_config` 读取时由 `migrate.rs` 幂等归一化为该预设；
 - **进度胶囊与系统弹窗静默**：内置重连期间**严禁触发 Windows 原生系统弹窗 (Toast)**，也**严禁在回答区插入错误卡片**；胶囊作为**纯状态示意条**，恒定以「自动内置重连 N/10 ...」开头（等待中追加「Xs 后重试」，续发中追加「正在重发请求 …」）；
 - **取消自动切换模型**：引擎不再解析候选池、不做 MRU 巡检、不轮转切换、不临时 `pi_set_model`（相关逻辑已彻底移除）；错误卡上的「切换其他模型」为纯手动入口；
-- **耗尽才弹窗**：仅当 10 次内置重连全部耗尽仍失败时，才渲染「模型调用失败 [模型]」错误卡，并附摘要「已尝试自动内置重连 N/10 次后仍失败」；
+- **耗尽才弹窗与耗尽终态锁定**：仅当 10 次内置重连全部耗尽仍失败时，才渲染「模型调用失败 [模型]」错误卡，并附摘要「已尝试自动内置重连 N/10 次后仍失败」；弹卡同时引擎立即记录该任务「耗尽终态」（`_exhaustedTaskIds`，无归属路径为 `_unattributedExhausted`）：一次失败的内核 run 会经 `message_end` / `turn_end` / `agent_end` / `agent_settled` 多次重复派发 `agent-error`，耗尽后这些重复错误帧**绝不再次自动冷启动、也不重复渲染错误卡**（TaskManager 同步落定 error 终态且 `failTask` 幂等防重复通知），仅用户手动点击「重试当前提问」或发送新提问（`clearTaskAborted` 同步清除耗尽标记）后方可重新发起；
 - **步骤流记录保留铁律**：重发尝试（`resetCurrentTurnForResend`）时**严禁清空步骤容器（`stepsContainerEl.innerHTML`）与工具卡片缓存（`renderedToolCards`）**，必须 100% 完整保留本轮之前已真实执行完毕的 Thinking 切片（已封口/含实质内容）、工具调用卡片与 Point 阶段性输出切片，恢复后增量无缝追加后续步骤；
+- **首 token 延迟伪框重建铁律**：`resetCurrentTurnForResend` 内部必须**先 `sealActiveThinkingStep()` 再缓冲清理**（顺序颠倒将致 seal 空转、孤儿伪框残留、步骤容器非空而无法重建读秒伪框）：真实思考切片定格保留，纯首字等待伪框静默移除，容器为空则重建「Thinking (0.0s)...」首 token 延迟读秒伪框；
+- **前后台任务全域覆盖铁律**：冷启动、在途热结算与 agent-end 收口结算对前台活跃任务与后台挂起任务一视同仁（后台任务错误原被前台门禁拦截导致引擎永不启动，随后被 `agent_end` 误标 completed 且历史归档链路断裂）；引擎判定按 `taskId` 收敛严禁跨任务误结算；前台专属 DOM 操作一律经 `isForegroundStreamTask` 门禁，后台任务仅做数据层静默续发；`TaskManager.agent_end` 在引擎退避等待期严禁提前落地 completed；后台任务 10 次耗尽经 `TaskManager.failTask` 落定 error 终态；
 - **首响应即时结算与胶囊快速淡出**：模型一旦恢复正常产生响应（Thinking/Text/Toolcall 产生首事件），立即结算成功；胶囊即时显示「自动内置重连成功 · 已恢复正常，继续执行」并于 1.2 秒内快速淡出隐藏，绝不滞留屏幕；同时调用 `clearTurnErrorState` 原子化清除错误状态；解耦重连成功与整轮流式结束，真正的工具卡收起、流式收口与会话归档交由后续 `agent-end` 自然触发；
 - **会话重启与追问时错误卡彻底清理铁律 (Error Card Cleanup on Continuation)**：当界面出现模型调用失败诊断卡（`.sketch-error-card`）后，无论用户发送新提问（如“继续”）、还是点击错误卡「重试当前提问」按钮重新发起会话，系统在启动新轮次前必须彻底物理移除 `flowConversation` 与轮次容器中残留的所有 `.sketch-error-card`，重置重连胶囊，并将 `task.turns` 中上一轮次的错误标记（`errorMessage: null`）与合成占位文本清理归位，确保后续流式生成与历史重渲 0 残留；
-- **终止守则**：用户点击「⏹ 终止」立即彻底强杀退出（`isTaskAborted` 门禁），全链路严禁触发任何内置重连；
+- **终止守则与无归属帧静默窗口**：用户点击「⏹ 终止」立即彻底强杀退出（`isTaskAborted` 门禁），全链路严禁触发任何内置重连；终止后引擎对**无任务归属的错误帧**（消息对象不携带 task_id 的旧主会话路径）实施 15 秒保守静默窗口（`hasRecentGlobalAbortion`），杜绝终止后经杂散帧静默复活重连；
 
 ---
 

@@ -292,6 +292,50 @@ export class TaskManager extends EventTarget {
   }
 
   /**
+   * 判定内置重连引擎是否正在服务该任务
+   * （engine.taskId 为空时视为旧版主会话无任务帧，兼容放行；严禁跨任务误判）
+   * @param {string | null | undefined} taskId
+   * @returns {boolean}
+   */
+  _engineOwnedTask(taskId) {
+    return (
+      modelFailoverEngine.isActive() &&
+      (!modelFailoverEngine.taskId || String(modelFailoverEngine.taskId) === String(taskId))
+    );
+  }
+
+  /**
+   * 将指定 Task 统一结算为异常终态（通知 + 状态广播 + 末轮错误标记）。
+   * 供 agent-error 监听与后台任务重连引擎耗尽兑底 (onGiveUp) 复用。
+   * @param {string} taskId
+   * @param {string} [message]
+   */
+  failTask(taskId, message) {
+    const task = this.tasks.get(taskId);
+    if (!task || task.isAborted || task.status === "aborted") return;
+    // 幂等守卫：已处于 error 终态时严禁重复结算 (重复错误帧会重复触发系统通知与广播风暴)
+    if (task.status === "error") return;
+    task.status = "error";
+    task.completedAt = Date.now();
+    task.errorMessage = message || "模型调用发生异常";
+    const lastTurn = task.turns && task.turns.length > 0 ? task.turns[task.turns.length - 1] : null;
+    if (lastTurn && !lastTurn.completedAt) {
+      lastTurn.status = "error";
+      lastTurn.completedAt = Date.now();
+      lastTurn.errorMessage = task.errorMessage;
+    }
+
+    notificationService.notifyError({
+      title: "pi-dl",
+      message: `[${task.title}] 任务异常终止：${task.errorMessage}`,
+      taskId: task.id || taskId,
+    });
+
+    this.dispatchEvent(new CustomEvent("task-updated", { detail: task }));
+    this.dispatchEvent(new CustomEvent("tasks-changed", { detail: { tasks: this.getAllTasks() } }));
+  }
+
+  /**
    * 判定流式事件帧是否归属于当前前台活跃任务 (串轮过滤铁律)
    * 后台挂起任务 (currentActiveTaskId 为 null 或不匹配) 的事件只入 Task 数据缓冲，
    * 绝不允许触碰前台 Flow DOM 与流式状态，杜绝后台任务输出拼进历史会话轮次
@@ -481,12 +525,19 @@ export class TaskManager extends EventTarget {
       if (task.status === "aborted" || task.isAborted) return;
 
       // 自动强制重连进行中 或 将被引擎接管冷启动 (内置重连开启且含模型上下文) 或 瞬态速率限制：
-      // 错误一律由 ModelFailoverEngine 结算，绝不提前置 Task 为 error / 弹错误通知
+      // 错误一律由 ModelFailoverEngine 结算，绝不提前置 Task 为 error / 弹错误通知。
+      // 引擎占用判定按任务收敛：引擎正服务其他任务时，本任务错误仍走正常 error 结算通道
       // (注：taskManager 监听器先于 main.js 注册，故冷启动时引擎尚未激活，需以 canHandle 预判接管)
+      const engineOwned = this._engineOwnedTask(taskId);
+      // 耗尽终态 (10 次重连全部失败、错误卡已弹出) 的任务不视为引擎可接管：
+      // 后续重复错误帧 (message_end/turn_end/agent_end/agent_settled 各派发一次)
+      // 必须落入 failTask 终态收口，而非被误判为引擎将接管而永久悬空
+      const engineAvailable =
+        !modelFailoverEngine.isActive() && !modelFailoverEngine.isTaskExhausted(taskId);
       if (
-        modelFailoverEngine.isActive() ||
-        modelFailoverEngine.canHandle(detail) ||
-        isTransientRateLimitMessage(detail.message)
+        engineOwned ||
+        (engineAvailable &&
+          (modelFailoverEngine.canHandle(detail) || isTransientRateLimitMessage(detail.message)))
       ) {
         return;
       }
@@ -502,18 +553,7 @@ export class TaskManager extends EventTarget {
         }
         return;
       }
-      task.status = "error";
-      task.completedAt = Date.now();
-      task.errorMessage = detail.message || "模型调用发生异常";
-
-      notificationService.notifyError({
-        title: "pi-dl",
-        message: `[${task.title}] 任务异常终止：${task.errorMessage}`,
-        taskId: task.id || taskId,
-      });
-
-      this.dispatchEvent(new CustomEvent("task-updated", { detail: task }));
-      this.dispatchEvent(new CustomEvent("tasks-changed", { detail: { tasks: this.getAllTasks() } }));
+      this.failTask(task.id || taskId, detail.message || "模型调用发生异常");
     });
   }
 
@@ -700,16 +740,17 @@ export class TaskManager extends EventTarget {
       case "turn_end":
       case "message_start":
       case "message_end":
-        // 自动强制重连进行中：错误分支交由引擎结算，不提前置 Task 为 error
-        if (modelFailoverEngine.isActive()) break;
+        // 自动强制重连进行中（且引擎正服务本任务）：错误分支交由引擎结算，不提前置 Task 为 error
+        if (this._engineOwnedTask(taskId)) break;
         // 「终止并发送」流程中旧轮错误已由 interrupt-send 流水线结算
         if (task.pendingInterruptSend) break;
         if (data.message && (data.message.stopReason === "error" || data.message.errorMessage)) {
           const rawErrMsg = data.message.errorMessage || "";
           if (
-            modelFailoverEngine.canHandle({ raw: data.message, message: rawErrMsg }) ||
-            isTransientRateLimitMessage(rawErrMsg) ||
-            isTransientRateLimitMessage(parseErrorMessage(rawErrMsg))
+            (!modelFailoverEngine.isActive() &&
+              (modelFailoverEngine.canHandle({ raw: data.message, message: rawErrMsg }) ||
+                isTransientRateLimitMessage(rawErrMsg) ||
+                isTransientRateLimitMessage(parseErrorMessage(rawErrMsg))))
           ) {
             break;
           }
@@ -725,8 +766,8 @@ export class TaskManager extends EventTarget {
         break;
 
       case "extension_error":
-        // 自动强制重连进行中：错误分支交由引擎结算
-        if (modelFailoverEngine.isActive()) break;
+        // 自动强制重连进行中（且引擎正服务本任务）：错误分支交由引擎结算
+        if (this._engineOwnedTask(taskId)) break;
         // 「终止并发送」流程中旧轮错误已由 interrupt-send 流水线结算
         if (task.pendingInterruptSend) break;
         task.status = "error";
@@ -758,13 +799,14 @@ export class TaskManager extends EventTarget {
             (m) => m.stopReason === "error" || m.errorMessage
           );
           if (errMessage) {
-            // 自动强制重连进行中：错误分支交由引擎结算，不提前置 Task 为 error
-            if (modelFailoverEngine.isActive()) break;
+            // 自动强制重连进行中（且引擎正服务本任务）：错误分支交由引擎结算，不提前置 Task 为 error
+            if (this._engineOwnedTask(taskId)) break;
             const rawErrMsg = errMessage.errorMessage || "";
             if (
-              modelFailoverEngine.canHandle({ raw: errMessage, message: rawErrMsg }) ||
-              isTransientRateLimitMessage(rawErrMsg) ||
-              isTransientRateLimitMessage(parseErrorMessage(rawErrMsg))
+              (!modelFailoverEngine.isActive() &&
+                (modelFailoverEngine.canHandle({ raw: errMessage, message: rawErrMsg }) ||
+                  isTransientRateLimitMessage(rawErrMsg) ||
+                  isTransientRateLimitMessage(parseErrorMessage(rawErrMsg))))
             ) {
               break;
             }
@@ -787,6 +829,13 @@ export class TaskManager extends EventTarget {
           }
           scheduleSessionRefresh();
           break; // 若已处于终态或异常状态则不重复覆盖
+        }
+        // 内置重连引擎正为此任务退避等待（上一失败尝试已被引擎结算，无在途重发）：
+        // 本帧属于已被引擎接管的失败轮收口，严禁提前落地 completed 造成幽灵已完成胶囊与历史归档断裂；
+        // 引擎成功后由恢复运行的真实完成帧自然收口，10 次耗尽则经 failTask 落定 error 终态
+        if (this._engineOwnedTask(taskId) && !modelFailoverEngine.hasInflightAttempt()) {
+          scheduleSessionRefresh();
+          break;
         }
         task.status = "completed";
         task.completedAt = Date.now();
