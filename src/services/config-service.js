@@ -198,8 +198,12 @@ class ConfigService extends EventTarget {
     localStorage.setItem(STORAGE_KEY_AUTO_RECONNECT, String(this.autoReconnectSwitch));
     if (persistToFile) {
       await this.saveAppConfig();
-      // 勾选时向 Pi 内核 settings.json best-effort 注入推荐重连配置 (失败静默，不阻断引擎)
-      this.applyModelFailoverPreset(this.getModelFailoverConfig()).catch(() => { });
+      // 开关双向同步：勾选时注入推荐重连配置，取消勾选时物理清退内核 retry 块，杜绝内核在后台自行重连
+      if (this.autoReconnectSwitch) {
+        this.applyModelFailoverPreset(this.getModelFailoverConfig()).catch(() => { });
+      } else {
+        this.clearModelFailoverPreset().catch(() => { });
+      }
     }
     this.dispatchEvent(new CustomEvent("auto-reconnect-change", { detail: { value: this.autoReconnectSwitch } }));
   }
@@ -223,6 +227,18 @@ class ConfigService extends EventTarget {
       });
     } catch (e) {
       console.warn("[ConfigService] Failed to apply model failover preset to Pi settings.json:", e);
+      return null;
+    }
+  }
+
+  /**
+   * 从 Pi 内核 ~/.pi/agent/settings.json 物理清退推荐重连配置 (用户关闭「自动强制重连」时调用)
+   */
+  async clearModelFailoverPreset() {
+    try {
+      return await this.invoke("pi_clear_model_failover_preset");
+    } catch (e) {
+      console.warn("[ConfigService] Failed to clear model failover preset from Pi settings.json:", e);
       return null;
     }
   }

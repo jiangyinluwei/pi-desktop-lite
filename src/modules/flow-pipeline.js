@@ -642,6 +642,7 @@ export function initFlowPipeline(ctx) {
       }
     }
 
+    const autoReconnectEnabled = configService.getAutoReconnectSwitch();
     const isRateLimit =
       isTransientRateLimitMessage(e.detail?.message) ||
       isTransientRateLimitMessage(e.detail?.raw?.errorMessage);
@@ -654,7 +655,8 @@ export function initFlowPipeline(ctx) {
       }
       return;
     }
-    if (modelFailoverEngine.canHandle(e.detail) || isRateLimit) {
+    // 铁律：自动强制重连未勾选时，一票否决！任何错误（含速率限制）一律严禁进入重连流水线，直接渲染错误卡
+    if (autoReconnectEnabled && (modelFailoverEngine.canHandle(e.detail) || isRateLimit)) {
       // 冷启动：自动强制重连开启且错误含模型上下文（或命中 TPM/RPM 速率限制）→ 统一交由引擎内置重连，绝不降级渲染错误卡。
       // 前台与后台挂起任务一视同仁：后台任务错误原被前台门禁拦截导致引擎永不启动，
       // 随后被 agent_end 误标 completed 且历史归档链路断裂（BUG2 根因）

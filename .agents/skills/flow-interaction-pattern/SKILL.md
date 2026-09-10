@@ -162,7 +162,7 @@ flowchart TD
     Next -->|否 耗尽| Fallback[渲染「模型调用失败」错误卡 + 内置重连摘要]
 ```
 
-- **无痕内置重连 (Silent Reconnect)**：仅在「模型XXX异常」错误窗体本应弹出时触发（设置-模型配置-右上角「自动强制重连」勾选启用）；引擎隐藏错误窗体，后台静默向模型续发「继续」文本（不生成提问卡、不重复压入 prompt history、不新建 Task，全程不显示）；
+- **无痕内置重连 (Silent Reconnect)**：仅在「模型XXX异常」错误窗体本应弹出时触发（设置-模型配置-右上角「自动强制重连」勾选启用）；**总开关绝对一票否决铁律**：未勾选/关闭「自动强制重连」时，全链路严禁触发任何内置重连或自动重试，速率限制（TPM/RPM/429）等瞬态错误一律一票否决、严禁进入 ModelFailoverEngine 且直接弹出错误诊断卡；同时关闭开关时同步调用 `pi_clear_model_failover_preset` 物理清退 Pi 内核 `~/.pi/agent/settings.json` 中的 `retry` 注入块，杜绝内核在底层子进程自行重试并刷屏“自动重试中”；开启时引擎隐藏错误窗体，后台静默向模型续发「继续」文本（不生成提问卡、不重复压入 prompt history、不新建 Task，全程不显示）；
 - **写死 10 次与全部 16 秒延迟 + 续发后再延迟 16 秒**：`maxReconnectAttempts: 10`、`reconnectBackoffMs: [16000]`、`maxBackoffMs: 16000`、`postReconnectDelayMs: 16000`；每次续发计作一次「内置重连」，单轮重连周期为 16s + 16s = 32s，写死 10 次共 32s * 10 = 320 秒；旧引擎残留的 `modelFailover` 持久化块在 `pi_get_app_config` 读取时由 `migrate.rs` 幂等归一化为该预设；
 - **提醒文本框置底与系统弹窗静默**：内置重连期间**严禁触发 Windows 原生系统弹窗 (Toast)**，也**严禁在回答区插入错误卡片**；提醒文本框作为**纯状态示意条**恒定置于当前会话流最下方（`flow-response-card` 正文回答卡下方），并随内容吸底定位；文案恒定以「自动内置重连 N/10 ...」开头（等待中与续发后延迟均动态倒数「Xs 后重试」，续发中追加「正在重发请求 …」）；
 - **延迟期直接彻底中断一切铁律 (Delay Interruption & Direct Abort Invariance)**：允许用户在 16 秒等待退避与续发后延迟过程中直接中断会话；胶囊内提供手绘「⏹ 中断」按钮（`.failover-abort-btn`），同时主界面输入栏 `#flow-btn-abort` 在重连与等待全周期保持可见可用；用户点击胶囊内「中断」或点击 `#flow-btn-abort` 将**直接中断一切**（统一调用 `api.abortCurrentSession`）：立即清退 `_backoffTimer` 定时器并强制解除 `await this._sleep` 挂起，切断重连循环（杜绝触发 `_giveUp` 弹错误卡），物理强杀 Rust 内核子进程（`SessionHost.abort()`），定格轮次为已中断，回答区追加「刚刚会话已手动终止」，隐藏胶囊并清除倒数，归档历史快照，全链路杜绝任何后续复活与再次尝试；

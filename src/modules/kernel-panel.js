@@ -36,7 +36,6 @@ export function initKernelPanel(ctx) {
     changelogVersionTag: "changelog-version-tag",
     btnCloseChangelog: "btn-close-changelog",
     kernelChangelogContent: "kernel-changelog-content",
-    autoReconnectSwitch: "auto-reconnect-switch",
     kernelPackagesArea: "kernel-packages-area",
     kernelAlert: "kernel-alert",
     kernelAlertText: "kernel-alert-text",
@@ -292,18 +291,6 @@ export function initKernelPanel(ctx) {
     });
   }
 
-  // 模型配置「自动强制重连」开关 (默认勾选，全局持久化)
-  if (autoReconnectSwitch) {
-    autoReconnectSwitch.checked = configService.getAutoReconnectSwitch();
-    autoReconnectSwitch.addEventListener("change", () => {
-      configService.setAutoReconnectSwitch(autoReconnectSwitch.checked, true);
-    });
-  }
-  configService.addEventListener("auto-reconnect-change", (e) => {
-    if (autoReconnectSwitch && e.detail?.value !== undefined) {
-      autoReconnectSwitch.checked = e.detail.value;
-    }
-  });
 
   // 取消内核更新
   if (btnCancelUpdate) {

@@ -46,13 +46,25 @@ fn migrate_model_failover_block(config: &mut Value) -> bool {
 #[tauri::command]
 pub fn pi_get_app_config() -> Result<Value, String> {
     let mut config = read_pi_dl_json("config.json", json!({})).unwrap_or_else(|_| json!({}));
+    let auto_reconnect_enabled = config
+        .get("autoReconnectSwitch")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
     if migrate_model_failover_block(&mut config) {
         log::info!("[config_manager] Migrated legacy modelFailover block to silent-reconnect preset (10 attempts / 16s pre-delay + 16s post-delay, 32s*10)");
         if let Err(e) = write_pi_dl_json("config.json", &config) {
             log::warn!("[config_manager] Failed to persist migrated modelFailover block: {}", e);
         }
-        // 同步归一化内核 settings.json 的 retry 注入块（历史版本曾用旧引擎值如 24 次注入）
-        let _ = pi_apply_model_failover_preset(model_failover_preset());
+        // 仅当用户未显式关闭自动重连开关时，同步归一化内核 settings.json 的 retry 注入块
+        if auto_reconnect_enabled {
+            let _ = pi_apply_model_failover_preset(model_failover_preset());
+        } else {
+            let _ = pi_clear_model_failover_preset();
+        }
+    } else if !auto_reconnect_enabled {
+        // 即使未触发模型块迁移，也确保内核 settings.json 与关闭的 autoReconnectSwitch 保持同步清退
+        let _ = pi_clear_model_failover_preset();
     }
     Ok(config)
 }
@@ -221,6 +233,22 @@ pub fn pi_apply_model_failover_preset(config: Value) -> Result<(), String> {
     // 写回为 best-effort：失败仅记录日志，返回 Ok 绝不阻断前端引擎
     if let Err(e) = pi_save_settings_config(settings) {
         log::warn!("[config_manager] Failed to apply model failover preset: {}", e);
+    }
+    Ok(())
+}
+
+/// 从 Pi 内核 ~/.pi/agent/settings.json 物理清退模型自动重连配置 (用户关闭「自动强制重连」时调用)
+#[tauri::command]
+pub fn pi_clear_model_failover_preset() -> Result<(), String> {
+    let mut settings = pi_get_settings_config().unwrap_or_else(|_| json!({}));
+    if let Some(obj) = settings.as_object_mut() {
+        if obj.remove("retry").is_some() {
+            if let Err(e) = pi_save_settings_config(settings) {
+                log::warn!("[config_manager] Failed to clear retry block from settings.json: {}", e);
+            } else {
+                log::info!("[config_manager] Successfully cleared retry block from settings.json");
+            }
+        }
     }
     Ok(())
 }

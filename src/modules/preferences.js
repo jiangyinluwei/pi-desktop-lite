@@ -174,9 +174,11 @@ export function initPreferences(ctx) {
   // 2. 异步预加载 ~/.pi-dl/config.json 深度校验配置并注入重连预设
   (async () => {
     await configService.loadAppConfig();
-    // 启动时 best-effort 向 Pi 内核注入推荐重连配置 (仅当自动重连开启时，失败静默不阻断)
+    // 启动时 best-effort 同步 Pi 内核重连配置：开启时注入推荐重连预设，关闭时物理清退 retry 块
     if (configService.getAutoReconnectSwitch()) {
       configService.applyModelFailoverPreset().catch(() => {});
+    } else {
+      configService.clearModelFailoverPreset().catch(() => {});
     }
   })();
 

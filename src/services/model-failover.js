@@ -146,6 +146,14 @@ class ModelFailoverEngine extends EventTarget {
    * · 热结算 (活跃)：该错误为当前在途尝试的结果 → 结算为失败并继续流水线。
    */
   handleModelError(detail, hooks = {}) {
+    // 铁律：自动强制重连开关关闭时，严禁冷启动重连流水线（硬性一票否决防御）
+    if (!configService.getAutoReconnectSwitch()) {
+      if (this.isActive()) {
+        this.cancel("switch-disabled");
+      }
+      return;
+    }
+
     // 铁律：若到达的错误属于手动中止，立即取消在途自愈并退出，严禁启动重连
     if (isAbortError(detail)) {
       if (this.isActive()) {

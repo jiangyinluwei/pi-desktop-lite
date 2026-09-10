@@ -5,6 +5,7 @@
 
 import { piClient, parseErrorMessage, isAbortError } from "./pi-client.js";
 import { notificationService, isTransientRateLimitMessage } from "./notification-service.js";
+import { configService } from "./config-service.js";
 import { modelFailoverEngine } from "./model-failover.js";
 import { sessionService } from "./session-service.js";
 import {
@@ -664,11 +665,13 @@ export class TaskManager extends EventTarget {
       // 耗尽终态 (10 次重连全部失败、错误卡已弹出) 的任务不视为引擎可接管：
       // 后续重复错误帧 (message_end/turn_end/agent_end/agent_settled 各派发一次)
       // 必须落入 failTask 终态收口，而非被误判为引擎将接管而永久悬空
+      const autoReconnectEnabled = configService.getAutoReconnectSwitch();
       const engineAvailable =
         !modelFailoverEngine.isActive() && !modelFailoverEngine.isTaskExhausted(taskId);
       if (
         engineOwned ||
         (engineAvailable &&
+          autoReconnectEnabled &&
           (modelFailoverEngine.canHandle(detail) || isTransientRateLimitMessage(detail.message)))
       ) {
         return;
@@ -888,6 +891,7 @@ export class TaskManager extends EventTarget {
           const rawErrMsg = data.message.errorMessage || "";
           if (
             (!modelFailoverEngine.isActive() &&
+              configService.getAutoReconnectSwitch() &&
               (modelFailoverEngine.canHandle({ raw: data.message, message: rawErrMsg }) ||
                 isTransientRateLimitMessage(rawErrMsg) ||
                 isTransientRateLimitMessage(parseErrorMessage(rawErrMsg))))
@@ -946,6 +950,7 @@ export class TaskManager extends EventTarget {
             const rawErrMsg = errMessage.errorMessage || "";
             if (
               (!modelFailoverEngine.isActive() &&
+                configService.getAutoReconnectSwitch() &&
                 (modelFailoverEngine.canHandle({ raw: errMessage, message: rawErrMsg }) ||
                   isTransientRateLimitMessage(rawErrMsg) ||
                   isTransientRateLimitMessage(parseErrorMessage(rawErrMsg))))

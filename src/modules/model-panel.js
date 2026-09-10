@@ -563,6 +563,19 @@ export function initModelPanel(ctx) {
     });
   }
 
+  // 模型配置「自动强制重连」开关 (全局持久化与状态双向同步)
+  if (autoReconnectSwitch) {
+    autoReconnectSwitch.checked = configService.getAutoReconnectSwitch();
+    autoReconnectSwitch.addEventListener("change", () => {
+      configService.setAutoReconnectSwitch(autoReconnectSwitch.checked, true);
+    });
+  }
+  configService.addEventListener("auto-reconnect-change", (e) => {
+    if (autoReconnectSwitch && e.detail?.value !== undefined) {
+      autoReconnectSwitch.checked = e.detail.value;
+    }
+  });
+
   api.renderWhitelistModels = renderWhitelistModels;
   api.loadModelsAndState = loadModelsAndState;
   api.renderOfficialProviderDetails = renderOfficialProviderDetails;
