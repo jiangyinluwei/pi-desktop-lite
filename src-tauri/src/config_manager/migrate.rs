@@ -2,13 +2,13 @@ use serde_json::{json, Value};
 use super::io::{read_pi_dl_json, write_pi_dl_json, read_agent_json, write_agent_json};
 
 
-/// 新「无痕内置重连」引擎写死的推荐配置 (与前端 DEFAULT_FAILOVER_CONFIG 对齐：10 次 / 全部 16s 延迟 + 续发后延迟 16s，即 32s * 10)
+/// 新「无痕内置重连」引擎写死的推荐配置 (与前端 DEFAULT_FAILOVER_CONFIG 对齐：10 次 / 全部 60s 延迟 + 续发后延迟 60s，即 120s * 10)
 fn model_failover_preset() -> Value {
     json!({
         "maxReconnectAttempts": 10,
-        "reconnectBackoffMs": [16000],
-        "maxBackoffMs": 16000,
-        "postReconnectDelayMs": 16000
+        "reconnectBackoffMs": [60000],
+        "maxBackoffMs": 60000,
+        "postReconnectDelayMs": 60000
     })
 }
 
@@ -24,7 +24,7 @@ const LEGACY_FAILOVER_KEYS: [&str; 7] = [
 ];
 
 /// modelFailover 配置块迁移：检测旧引擎残留字段或与写死预设不一致的值，
-/// 整块归一化为新「无痕内置重连」预设（写死 10 次 / 2-4-8-16s 恒封顶 16s）。
+/// 整块归一化为新「无痕内置重连」预设（写死 10 次 / 全部 60s 延迟恒封顶 60s）。
 /// 幂等：归一化后再次读取命中预设即跳过。返回是否发生了迁移。
 fn migrate_model_failover_block(config: &mut Value) -> bool {
     let Some(obj) = config.as_object_mut() else { return false; };
@@ -52,7 +52,7 @@ pub fn pi_get_app_config() -> Result<Value, String> {
         .unwrap_or(true);
 
     if migrate_model_failover_block(&mut config) {
-        log::info!("[config_manager] Migrated legacy modelFailover block to silent-reconnect preset (10 attempts / 16s pre-delay + 16s post-delay, 32s*10)");
+        log::info!("[config_manager] Migrated legacy modelFailover block to silent-reconnect preset (10 attempts / 60s pre-delay + 60s post-delay, 120s*10)");
         if let Err(e) = write_pi_dl_json("config.json", &config) {
             log::warn!("[config_manager] Failed to persist migrated modelFailover block: {}", e);
         }
@@ -166,7 +166,7 @@ pub fn pi_save_settings_config(settings_data: Value) -> Result<(), String> {
 
 /// 向 Pi 内核 ~/.pi/agent/settings.json 探测式注入模型自动重连推荐配置 (best-effort, 失败静默)
 ///
-/// 轨道 A (内核参数注入)：若内核识别重试键则让其自身按推荐值 (10 次 / 16s 退避) 重连；
+/// 轨道 A (内核参数注入)：若内核识别重试键则让其自身按推荐值 (10 次 / 60s 退避) 重连；
 /// 轨道 B (桌面 ModelFailoverEngine) 为行为主实现，无论本指令是否生效均能保证「恰好 10 次」语义。
 /// 本指令对未知 schema 安全跳过、绝不报错，绝不阻断引擎内置重连流水线。
 #[tauri::command]
@@ -183,18 +183,18 @@ pub fn pi_apply_model_failover_preset(config: Value) -> Result<(), String> {
         .map(|arr| {
             arr.iter()
                 .map(|ms| {
-                    let s = ms.as_u64().unwrap_or(16000) / 1000;
+                    let s = ms.as_u64().unwrap_or(60000) / 1000;
                     Value::from(s.max(1))
                 })
                 .collect()
         })
-        .unwrap_or_else(|| vec![Value::from(16u64)]);
+        .unwrap_or_else(|| vec![Value::from(60u64)]);
 
     let max_backoff_secs = config
         .get("maxBackoffMs")
         .and_then(|v| v.as_u64())
         .map(|ms| (ms / 1000).max(1))
-        .unwrap_or(16);
+        .unwrap_or(60);
 
     let mut settings = pi_get_settings_config().unwrap_or_else(|_| json!({}));
     if !settings.is_object() {

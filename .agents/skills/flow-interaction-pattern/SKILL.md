@@ -152,27 +152,27 @@ flowchart TD
     Err[模型调用报错] --> Gate{自动强制重连开启且非手动终止}
     Gate -->|否| Fallback[直接渲染错误卡]
     Gate -->|是| Silent[隐藏错误窗体 · 后台静默续发「继续」]
-    Silent --> Wait[重试等待 16s]
+    Silent --> Wait[重试等待 60s]
     Wait --> Capsule[轮次胶囊: 自动内置重连 N/10 · Xs 后重试]
     Capsule --> Send[静默发送「继续」]
     Send -->|首响应恢复| Succeed[结算成功 · 胶囊 1.2s 淡出]
-    Send -->|再次报错| PostWait[续发后再延迟 16s · 动态倒数]
+    Send -->|再次报错| PostWait[续发后再延迟 60s · 动态倒数]
     PostWait --> Next{N < 10 ?}
     Next -->|是| Wait
     Next -->|否 耗尽| Fallback[渲染「模型调用失败」错误卡 + 内置重连摘要]
 ```
 
 - **无痕内置重连 (Silent Reconnect)**：仅在「模型XXX异常」错误窗体本应弹出时触发（设置-模型配置-右上角「自动强制重连」勾选启用）；**总开关绝对一票否决铁律**：未勾选/关闭「自动强制重连」时，全链路严禁触发任何内置重连或自动重试，速率限制（TPM/RPM/429）等瞬态错误一律一票否决、严禁进入 ModelFailoverEngine 且直接弹出错误诊断卡；同时关闭开关时同步调用 `pi_clear_model_failover_preset` 物理清退 Pi 内核 `~/.pi/agent/settings.json` 中的 `retry` 注入块，杜绝内核在底层子进程自行重试并刷屏“自动重试中”；开启时引擎隐藏错误窗体，后台静默向模型续发「继续」文本（不生成提问卡、不重复压入 prompt history、不新建 Task，全程不显示）；
-- **写死 10 次与全部 16 秒延迟 + 续发后再延迟 16 秒**：`maxReconnectAttempts: 10`、`reconnectBackoffMs: [16000]`、`maxBackoffMs: 16000`、`postReconnectDelayMs: 16000`；每次续发计作一次「内置重连」，单轮重连周期为 16s + 16s = 32s，写死 10 次共 32s * 10 = 320 秒；旧引擎残留的 `modelFailover` 持久化块在 `pi_get_app_config` 读取时由 `migrate.rs` 幂等归一化为该预设；
+- **写死 10 次与全部 60 秒延迟 + 续发后再延迟 60 秒**：`maxReconnectAttempts: 10`、`reconnectBackoffMs: [60000]`、`maxBackoffMs: 60000`、`postReconnectDelayMs: 60000`；每次续发计作一次「内置重连」，单轮重连周期为 60s + 60s = 120s，写死 10 次共 120s * 10 = 1200 秒；旧引擎残留的 `modelFailover` 持久化块在 `pi_get_app_config` 读取时由 `migrate.rs` 幂等归一化为该预设；
 - **提醒文本框置底与系统弹窗静默**：内置重连期间**严禁触发 Windows 原生系统弹窗 (Toast)**，也**严禁在回答区插入错误卡片**；提醒文本框作为**纯状态示意条**恒定置于当前会话流最下方（`flow-response-card` 正文回答卡下方），并随内容吸底定位；文案恒定以「自动内置重连 N/10 ...」开头（等待中与续发后延迟均动态倒数「Xs 后重试」，续发中追加「正在重发请求 …」）；
-- **延迟期直接彻底中断一切铁律 (Delay Interruption & Direct Abort Invariance)**：允许用户在 16 秒等待退避与续发后延迟过程中直接中断会话；胶囊内提供手绘「⏹ 中断」按钮（`.failover-abort-btn`），同时主界面输入栏 `#flow-btn-abort` 在重连与等待全周期保持可见可用；用户点击胶囊内「中断」或点击 `#flow-btn-abort` 将**直接中断一切**（统一调用 `api.abortCurrentSession`）：立即清退 `_backoffTimer` 定时器并强制解除 `await this._sleep` 挂起，切断重连循环（杜绝触发 `_giveUp` 弹错误卡），物理强杀 Rust 内核子进程（`SessionHost.abort()`），定格轮次为已中断，回答区追加「刚刚会话已手动终止」，隐藏胶囊并清除倒数，归档历史快照，全链路杜绝任何后续复活与再次尝试；
+- **延迟期直接彻底中断一切铁律 (Delay Interruption & Direct Abort Invariance)**：允许用户在 60 秒等待退避与续发后延迟过程中直接中断会话；胶囊内提供手绘「⏹ 中断」按钮（`.failover-abort-btn`），同时主界面输入栏 `#flow-btn-abort` 在重连与等待全周期保持可见可用；用户点击胶囊内「中断」或点击 `#flow-btn-abort` 将**直接中断一切**（统一调用 `api.abortCurrentSession`）：立即清退 `_backoffTimer` 定时器并强制解除 `await this._sleep` 挂起，切断重连循环（杜绝触发 `_giveUp` 弹错误卡），物理强杀 Rust 内核子进程（`SessionHost.abort()`），定格轮次为已中断，回答区追加「刚刚会话已手动终止」，隐藏胶囊并清除倒数，归档历史快照，全链路杜绝任何后续复活与再次尝试；
 - **取消自动切换模型**：引擎不再解析候选池、不做 MRU 巡检、不轮转切换、不临时 `pi_set_model`（相关逻辑已彻底移除）；错误卡上的「切换其他模型」为纯手动入口；
 - **耗尽才弹窗与耗尽终态锁定**：仅当 10 次内置重连全部耗尽仍失败时，才渲染「模型调用失败 [模型]」错误卡，并附摘要「已尝试自动内置重连 N/10 次后仍失败」；弹卡同时引擎立即记录该任务「耗尽终态」（`_exhaustedTaskIds`，无归属路径为 `_unattributedExhausted`）：一次失败的内核 run 会经 `message_end` / `turn_end` / `agent_end` / `agent_settled` 多次重复派发 `agent-error`，耗尽后这些重复错误帧**绝不再次自动冷启动、也不重复渲染错误卡**（TaskManager 同步落定 error 终态且 `failTask` 幂等防重复通知），仅用户手动点击「重试当前提问」（自动向模型发送「继续」文本续发生成，而非完全复用上一轮长提问）或发送新提问（`clearTaskAborted` 同步清除耗尽标记）后方可重新发起；
 - **步骤流记录保留铁律**：重发尝试（`resetCurrentTurnForResend`）时**严禁清空步骤容器（`stepsContainerEl.innerHTML`）与工具卡片缓存（`renderedToolCards`）**，必须 100% 完整保留本轮之前已真实执行完毕的 Thinking 切片（已封口/含实质内容）、工具调用卡片与 Point 阶段性输出切片，恢复后增量无缝追加后续步骤；
 - **首 token 延迟伪框重建铁律**：`resetCurrentTurnForResend` 内部必须**先 `sealActiveThinkingStep()` 再缓冲清理**（顺序颠倒将致 seal 空转、孤儿伪框残留、步骤容器非空而无法重建读秒伪框）：真实思考切片定格保留，纯首字等待伪框静默移除，容器为空则重建「Thinking (0.0s)...」首 token 延迟读秒伪框；
-- **前后台任务全域覆盖与失败轮收口拦截铁律**：冷启动、在途热结算与 agent-end 收口结算对前台活跃任务与后台挂起任务一视同仁（后台任务错误原被前台门禁拦截导致引擎永不启动，随后被 `agent_end` 误标 completed 且历史归档链路断裂）；引擎判定按 `taskId` 收敛严禁跨任务误结算；**残余收口帧拦截**：当自愈引擎处于活跃接管状态时（无论是 16s 等待、续发中、还是续发后 16s 延迟），到达的 `agent-end` 无论前台后台均**必须立即 return 拦截**（无在途尝试时属失败轮残余帧，有在途尝试时仅结算引擎），**绝对不能流向 `api.finalizeStream`、`api.collapseAllToolCards` 与历史归档**，彻底根治前台流式被失败轮收口帧瞬间终结导致会话流直接中断的致命缺陷；前台专属 DOM 操作一律经 `isForegroundStreamTask` 门禁，后台任务仅做数据层静默续发；`TaskManager.agent_end` 在引擎退避等待期严禁提前落地 completed；后台任务 10 次耗尽经 `TaskManager.failTask` 落定 error 终态；
+- **前后台任务全域覆盖与失败轮收口拦截铁律**：冷启动、在途热结算与 agent-end 收口结算对前台活跃任务与后台挂起任务一视同仁（后台任务错误原被前台门禁拦截导致引擎永不启动，随后被 `agent_end` 误标 completed 且历史归档链路断裂）；引擎判定按 `taskId` 收敛严禁跨任务误结算；**残余收口帧拦截**：当自愈引擎处于活跃接管状态时（无论是 60s 等待、续发中、还是续发后 60s 延迟），到达的 `agent-end` 无论前台后台均**必须立即 return 拦截**（无在途尝试时属失败轮残余帧，有在途尝试时仅结算引擎），**绝对不能流向 `api.finalizeStream`、`api.collapseAllToolCards` 与历史归档**，彻底根治前台流式被失败轮收口帧瞬间终结导致会话流直接中断的致命缺陷；前台专属 DOM 操作一律经 `isForegroundStreamTask` 门禁，后台任务仅做数据层静默续发；`TaskManager.agent_end` 在引擎退避等待期严禁提前落地 completed；后台任务 10 次耗尽经 `TaskManager.failTask` 落定 error 终态；
 - **isAbortError 精准判定铁律**：`isAbortError` 严格排除包含 `rate limit`、`429`、`500`、`502`、`503`、`504`、`timeout`、`timed out`、`connection`、`socket`、`econnreset`、`etimedout`、`fetch failed` 等网络/服务端瞬态错误，仅匹配明确的用户手动取消关键字（如 `user cancelled`、`手动终止`、`用户终止` 等）或纯短词短语，彻底杜绝远端连接断开或超时被误判为手动中止而直接静默丢弃；
-- **首响应即时结算、等待期拿到输出立即自愈与胶囊快速淡出**：无论自愈引擎当前正处于 16 秒等待退避（`phase: "waiting"`）、续发中（`phase: "sending"`）、还是续发后 16 秒延迟期（`phase: "post_waiting"`），只要模型恢复正常产生响应（Thinking/Text/Toolcall 产生首事件），`resolveTurnSuccess` 立即唤醒并清退 `_backoffTimer` 休眠，直接结算为成功（`_succeed`）并提前安全退出重连流水线，**彻底杜绝在等待重连倒计时跑完后再次盲目向模型补发「继续」提示词或进入二次循环**；胶囊即时显示「自动内置重连成功 · 已恢复正常，继续执行」并于 1.2 秒内快速淡出隐藏，绝不滞留屏幕；同时调用 `clearTurnErrorState` 原子化清除错误状态；解耦重连成功与整轮流式结束，真正的工具卡收起、流式收口与会话归档交由后续 `agent-end` 自然触发；
+- **首响应即时结算、等待期拿到输出立即自愈与胶囊快速淡出**：无论自愈引擎当前正处于 60 秒等待退避（`phase: "waiting"`）、续发中（`phase: "sending"`）、还是续发后 60 秒延迟期（`phase: "post_waiting"`），只要模型恢复正常产生响应（Thinking/Text/Toolcall 产生首事件），`resolveTurnSuccess` 立即唤醒并清退 `_backoffTimer` 休眠，直接结算为成功（`_succeed`）并提前安全退出重连流水线，**彻底杜绝在等待重连倒计时跑完后再次盲目向模型补发「继续」提示词或进入二次循环**；胶囊即时显示「自动内置重连成功 · 已恢复正常，继续执行」并于 1.2 秒内快速淡出隐藏，绝不滞留屏幕；同时调用 `clearTurnErrorState` 原子化清除错误状态；解耦重连成功与整轮流式结束，真正的工具卡收起、流式收口与会话归档交由后续 `agent-end` 自然触发；
 - **会话重启与追问时错误卡彻底清理铁律 (Error Card Cleanup on Continuation)**：当界面出现模型调用失败诊断卡（`.sketch-error-card`）后，无论用户发送新提问、还是点击错误卡「重试当前提问」按钮重新发起会话（自动向模型下发「继续」），系统在启动新轮次前必须彻底物理移除 `flowConversation` 与轮次容器中残留的所有 `.sketch-error-card`，重置重连胶囊，并将 `task.turns` 中上一轮次的错误标记（`errorMessage: null`）与合成占位文本清理归位，确保后续流式生成与历史重渲 0 残留；
 - **终止守则与无归属帧静默窗口**：用户点击「⏹ 终止」立即彻底强杀退出（`isTaskAborted` 门禁），全链路严禁触发任何内置重连；终止后引擎对**无任务归属的错误帧**（消息对象不携带 task_id 的旧主会话路径）实施 15 秒保守静默窗口（`hasRecentGlobalAbortion`），杜绝终止后经杂散帧静默复活重连；
 
