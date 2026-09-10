@@ -595,9 +595,7 @@ export function initFlowStream(ctx) {
       if (btnRetry) {
         btnRetry.addEventListener("click", () => {
           clearTurnErrorState(bucketId);
-          if (fs.lastUserQuery) {
-            api.handleFlowQuery(fs.lastUserQuery, fs.lastSentAttachments);
-          }
+          api.handleFlowQuery("继续");
         });
       }
 
