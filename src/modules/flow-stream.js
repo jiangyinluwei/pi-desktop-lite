@@ -870,7 +870,7 @@ export function initFlowStream(ctx) {
   piClient.addEventListener("thinking-start", () => {
     if (!isForegroundStreamEvent()) return;
     if (modelFailoverEngine.isActive()) {
-      modelFailoverEngine.resolveTurnSuccess();
+      modelFailoverEngine.resolveTurnSuccess(piClient.lastEventTaskId);
     }
     streamData(piClient.lastEventTaskId).set({ hasReceivedDelta: true });
     // 阶段性输出判定铁律：模型输出一段文字后再次进入 Thinking 状态，
@@ -888,7 +888,7 @@ export function initFlowStream(ctx) {
   piClient.addEventListener("thinking-delta", (e) => {
     if (!isForegroundStreamEvent()) return;
     if (modelFailoverEngine.isActive()) {
-      modelFailoverEngine.resolveTurnSuccess();
+      modelFailoverEngine.resolveTurnSuccess(piClient.lastEventTaskId);
     }
     const fs = streamData(piClient.lastEventTaskId);
     fs.set({ hasReceivedDelta: true });
@@ -927,7 +927,7 @@ export function initFlowStream(ctx) {
   piClient.addEventListener("text-start", () => {
     if (!isForegroundStreamEvent()) return;
     if (modelFailoverEngine.isActive()) {
-      modelFailoverEngine.resolveTurnSuccess();
+      modelFailoverEngine.resolveTurnSuccess(piClient.lastEventTaskId);
     }
     streamData(piClient.lastEventTaskId).set({ hasReceivedDelta: true });
     // 新一段文本开始：若上一段阶段性输出尚未封口（无工具调用边界），先封口
@@ -944,7 +944,7 @@ export function initFlowStream(ctx) {
   piClient.addEventListener("text-delta", (e) => {
     if (!isForegroundStreamEvent()) return;
     if (modelFailoverEngine.isActive()) {
-      modelFailoverEngine.resolveTurnSuccess();
+      modelFailoverEngine.resolveTurnSuccess(piClient.lastEventTaskId);
     }
     const fs = streamData(piClient.lastEventTaskId);
     // appendResponse 同步累积响应文本并置 hasReceivedDelta（流式热路径）

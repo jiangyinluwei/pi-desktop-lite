@@ -594,7 +594,7 @@ export function initFlowPipeline(ctx) {
    */
   const checkResolveFailoverSuccess = () => {
     if (modelFailoverEngine.isActive() && isForegroundStreamEvent()) {
-      modelFailoverEngine.resolveTurnSuccess();
+      modelFailoverEngine.resolveTurnSuccess(piClient.lastEventTaskId);
     }
   };
 
@@ -678,7 +678,7 @@ export function initFlowPipeline(ctx) {
       (!modelFailoverEngine.taskId || String(modelFailoverEngine.taskId) === String(endTaskId));
     if (engineOwnsTask) {
       if (modelFailoverEngine.hasInflightAttempt()) {
-        modelFailoverEngine.resolveTurnSuccess();
+        modelFailoverEngine.resolveTurnSuccess(endTaskId);
       }
       return;
     }

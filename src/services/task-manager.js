@@ -713,6 +713,22 @@ export class TaskManager extends EventTarget {
     // 压入事件缓冲区
     task.events.push(data);
 
+    // 自动强制重连自愈成功探测：当前 Task 只要开始产生响应输出（思维/正文/工具调用），
+    // 且引擎正在为此任务重连，立即通知引擎自愈成功，彻底掐死等待期定时器与后续静默续发
+    if (this._engineOwnedTask(taskId)) {
+      const evtType = data.assistantMessageEvent?.type;
+      if (
+        data.type === "tool_execution_start" ||
+        evtType === "thinking_start" ||
+        evtType === "thinking_delta" ||
+        evtType === "text_start" ||
+        evtType === "text_delta" ||
+        evtType === "toolcall_start"
+      ) {
+        modelFailoverEngine.resolveTurnSuccess(taskId);
+      }
+    }
+
     if (!Array.isArray(task.turns)) {
       task.turns = [];
     }

@@ -189,12 +189,32 @@ class ModelFailoverEngine extends EventTarget {
   }
 
   /**
-   * 全局 agent-end 在引擎活跃时调用：结算当前在途尝试为成功。
+   * 模型输出到达或全局 agent-end 在引擎活跃时调用：结算当前自愈为成功。
+   * 铁律：无论当前处于退避等待 (phase: "waiting")、续发后延迟 (phase: "post_waiting")、
+   * 还是在途重发 (phase: "sending")，只要模型恢复正常产生响应输出，立即终止倒计时并结算成功，
+   * 彻底杜绝在等待重连期间拿到输出后仍继续盲目强行续发「继续」与二次循环。
+   * @param {string | null} [taskId] 事件帧所属任务 ID (可选)
    */
-  resolveTurnSuccess() {
+  resolveTurnSuccess(taskId = null) {
+    if (!this.isActive()) return;
+
+    // 跨任务隔离：若显式指定 taskId 且与引擎当前服务任务不匹配，严禁误结算其他任务
+    if (taskId && this.taskId && String(taskId) !== String(this.taskId)) {
+      return;
+    }
+
+    // 1. 若当前在途有重发网络请求（phase: "sending" 期间），结算该尝试为成功，
+    // 由 _runReconnect() 内部的 await _sendAttempt() 自然唤醒并调用 _succeed()
     if (this._resolveAttempt) {
       this._resolveAttempt({ success: true });
+      return;
     }
+
+    // 2. 若当前正处于 16 秒等待退避 (waiting) 或续发后延迟 (post_waiting)：
+    // 此时 _resolveAttempt 为 null，正处于 await this._sleep()。
+    // 模型在此期间正常产出内容，说明链路已恢复正常，立即终止倒计时并结算成功。
+    // _succeed() 内部通过 _clearTimer() 唤醒 _sleep，随后的 _runReconnect() 判定状态安全退出。
+    this._succeed();
   }
 
   /**
@@ -327,6 +347,7 @@ class ModelFailoverEngine extends EventTarget {
    * 内置重连成功：结算胶囊并清除错误状态
    */
   _succeed() {
+    if (!this.isActive()) return;
     const reconnectCount = this.attempt;
     this._unattributedExhausted = false; // 重连成功即解除无归属耗尽标记，后续新错误可正常冷启动
     this.status = "succeeded";
