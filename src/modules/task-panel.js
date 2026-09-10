@@ -169,12 +169,7 @@ export function initTaskPanel(ctx) {
 
     tasks.forEach((task) => {
       // 含 paused（人工交互待确认）：终止按钮必须可见，用户方可强制终止阻塞中的任务（铁律19/TC8）
-      const isRunning =
-        task.status === "thinking" ||
-        task.status === "streaming" ||
-        task.status === "tool_exec" ||
-        task.status === "paused" ||
-        (modelFailoverEngine.isActive() && (!modelFailoverEngine.taskId || modelFailoverEngine.taskId === task.id));
+      const isRunning = taskManager.isTaskRunning(task);
       const isCurrent = taskManager.currentActiveTaskId === task.id;
 
       // 自动强制重连进行中：该 Task 绑定引擎内置重连流水线时展示专属状态徽章
@@ -368,12 +363,33 @@ export function initTaskPanel(ctx) {
     }, 180);
   };
 
+  // 同步 Flow 模式下终止方块按钮的可见性（铁律3：前台活跃任务运行中时显现，否则隐藏）
+  const syncFlowAbortButtonVisibility = () => {
+    if (!flowBtnAbort) return;
+    if (viewStore.mode !== VIEW_FLOW) {
+      flowBtnAbort.classList.add("hidden");
+      return;
+    }
+    const isRunning = taskManager.isTaskRunning();
+    if (isRunning) {
+      flowBtnAbort.classList.remove("hidden");
+    } else {
+      flowBtnAbort.classList.add("hidden");
+    }
+  };
+  api.syncFlowAbortButtonVisibility = syncFlowAbortButtonVisibility;
+
+  taskManager.addEventListener("active-task-changed", () => {
+    syncFlowAbortButtonVisibility();
+  });
+
   taskManager.addEventListener("tasks-changed", () => {
     updateMiniTaskCapsuleUI();
     scheduleConversationMessagesRender();
     if (taskDetailsSidebar && taskDetailsSidebar.classList.contains("open")) {
       renderTaskSidebarList();
     }
+    syncFlowAbortButtonVisibility();
   });
 
   taskManager.addEventListener("task-updated", () => {
@@ -382,6 +398,7 @@ export function initTaskPanel(ctx) {
     if (taskDetailsSidebar && taskDetailsSidebar.classList.contains("open")) {
       renderTaskSidebarList();
     }
+    syncFlowAbortButtonVisibility();
   });
 
   // ==========================================================================
@@ -508,6 +525,9 @@ export function initTaskPanel(ctx) {
 
     viewStore.morph(VIEW_FLOW, { shouldFocusInput: true });
 
+    // 二次确认：在 viewStore.morph 状态迁移后再次确保终止按钮可见性对齐运行态（铁律3）
+    syncFlowAbortButtonVisibility();
+
     // 同步切换底层 Pi 会话
     if (sessionPath) {
       sessionService.switchSession(sessionPath).catch((err) => {
@@ -526,8 +546,12 @@ export function initTaskPanel(ctx) {
   const restoreTaskToFlow = (task) => {
     if (!task) return;
 
+    // paused（人工交互待确认）同样视为「进行中」：保留流式末尾渲染与终止按钮可见性
+    const isRunning = taskManager.isTaskRunning(task);
+
     // H25 防重入铁律：如果已经在 Flow 模式且当前前台活跃任务正是此任务，直接返回，严禁清空 DOM 与截断流式
     if (viewStore.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id === task.id) {
+      syncFlowAbortButtonVisibility();
       return;
     }
 
@@ -563,14 +587,6 @@ export function initTaskPanel(ctx) {
           errorMessage: task.errorMessage || (task.status === "error" ? "模型调用发生异常终止" : null),
         },
       ];
-
-    // paused（人工交互待确认）同样视为「进行中」：保留流式末尾渲染与终止按钮可见性
-    const isRunning =
-      task.status === "thinking" ||
-      task.status === "streaming" ||
-      task.status === "tool_exec" ||
-      task.status === "paused" ||
-      (modelFailoverEngine.isActive() && (!modelFailoverEngine.taskId || modelFailoverEngine.taskId === task.id));
 
     renderTurnsIntoFlow(task, turns, { isRunning, syncModelName: true });
   };
@@ -1029,4 +1045,5 @@ export function initTaskPanel(ctx) {
   api.renderTurnsIntoFlow = renderTurnsIntoFlow;
   api.archiveCurrentFlowToHistory = archiveCurrentFlowToHistory;
   api.renderConversationMessages = renderConversationMessages;
+  api.syncFlowAbortButtonVisibility = syncFlowAbortButtonVisibility;
 }

@@ -221,6 +221,7 @@ export function initSessionsPanel(ctx) {
 
       // 绑定 TaskManager 活跃 Task，后续追问接入同一 Pi 会话
       let task = taskManager.getTask(convId);
+      const isExistingRunning = Boolean(task && taskManager.isTaskRunning(task));
       if (!task) {
         task = taskManager.createTask({
           id: convId,
@@ -230,9 +231,11 @@ export function initSessionsPanel(ctx) {
           isSuspended: false,
         });
       }
-      task.turns = JSON.parse(JSON.stringify(turns));
-      task.conversationId = convId;
-      task.status = "completed";
+      if (!isExistingRunning) {
+        task.turns = JSON.parse(JSON.stringify(turns));
+        task.conversationId = convId;
+        task.status = "completed";
+      }
       task.sessionPath = s.file_path;
       task.sessionId = s.session_id;
       task.thinkingText = lastTurn.thinkingText || "";
@@ -242,7 +245,11 @@ export function initSessionsPanel(ctx) {
       task.thinkingDurationText = lastTurn.thinkingDurationText || "已完成思考";
 
       // 直接切 Flow，不调用 closeSettingsView（避免先跳回 previous 的中间态抖动）
-      api.renderTurnsIntoFlow(task, turns, { sessionPath: s.file_path, sessionId: s.session_id });
+      api.renderTurnsIntoFlow(task, turns, {
+        isRunning: isExistingRunning,
+        sessionPath: s.file_path,
+        sessionId: s.session_id,
+      });
       viewStore.set({ flowFromSettings: true });
 
       api.renderConversationMessages();

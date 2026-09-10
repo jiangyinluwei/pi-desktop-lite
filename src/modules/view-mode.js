@@ -1,7 +1,5 @@
 import { VIEW_DETAILED, VIEW_FOCUS, VIEW_FLOW, VIEW_SETTINGS } from "../lib/view-constants.js";
 import { bus } from "../lib/event-bus.js";
-import { taskManager } from "../services/task-manager.js";
-import { piClient } from "../services/pi-client.js";
 import { listenTauri } from "../services/tauri-bridge.js";
 import { bindAll } from "../lib/el-binder.js";
 
@@ -48,8 +46,10 @@ export function initViewMode(ctx) {
     if (appContainer) {
       appContainer.setAttribute("data-view", mode);
     }
-    // 确保任何时候进入详细或专注视图时，终止方块按钮绝对隐藏
-    if (mode !== VIEW_FLOW && flowBtnAbort) {
+    // 确保终止方块按钮在 Flow 模式且活跃任务运行中时显现，非 Flow 模式绝对隐藏（铁律3）
+    if (typeof api.syncFlowAbortButtonVisibility === "function") {
+      api.syncFlowAbortButtonVisibility();
+    } else if (mode !== VIEW_FLOW && flowBtnAbort) {
       flowBtnAbort.classList.add("hidden");
     }
     if (shouldFocusInput && searchInput) {

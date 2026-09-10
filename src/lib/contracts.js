@@ -168,6 +168,7 @@ export function isInteractiveExtensionUiRequest(data) {
 //  * @property {(task: object) => void} renderTurnsIntoFlow      task-panel → 轮次回填（切换铁律热区）
 //  * @property {() => void} archiveCurrentFlowToHistory          task-panel → 终态归档历史
 //  * @property {() => void} renderConversationMessages           task-panel → 历史讯息渲染
+//  * @property {() => void} syncFlowAbortButtonVisibility        task-panel → Flow 终止按钮显隐同步（铁律3）
 //  * @property {() => Promise<void>} abortCurrentSession         task-panel → 彻底中止当前会话与任务（直接中断一切）
 //  * @property {() => void} openSettingsView                     view-mode → 进入设置页（第 4 态）
 //  * @property {() => void} closeSettingsView                    view-mode → 退出设置页

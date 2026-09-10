@@ -237,10 +237,14 @@ flowchart TD
      - `flowView.currentSteps = []`：重置步骤快照，杜绝跨会话残留；
    - **末轮工具卡自愈回填**：`renderTurnsIntoFlow` 在创建末轮 DOM 后，遍历其中的 `.flow-step-tool` 节点回填至 `flowView.renderedToolCards`，并在 `flow-pipeline.js` 的 `tool-update` / `tool-end` 中结合 DOM ID 动态检索与读秒更新兜底，保证切回运行中任务后工具卡绝不永久卡死在 `running`；末轮纯数据回填写入当前任务分仓（`flowStore.for(task.id).set(...)`）；
 3. **Flow DOM 防重入与历史记录智能重定向**：
-   - **防重入铁律**：`restoreTaskToFlow` 与 `restoreConversationToFlow` 在首行校验 `if (viewStore.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id === targetId) return;`，已在 Flow 查看当前任务时绝不重复清空 DOM，防止流式截断与界面闪烁；
+   - **防重入铁律**：`restoreTaskToFlow` 与 `restoreConversationToFlow` 在首行校验 `if (viewStore.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id === targetId) return;`，已在 Flow 查看当前任务时绝不重复清空 DOM，防止流式截断与界面闪烁；在防重入返回前同样确保终止按钮显隐与任务运行态对齐；
    - **历史入口智能重定向**：用户从界面1历史讯息抽屉点击卡片时，优先探测该会话是否在 `TaskManager` 中作为活跃/挂起任务存在。若存在，全链路直接重定向至 `restoreTaskToFlow`，严禁用静态历史旧 turns 覆写实时 live turns，严禁强行覆盖 `task.status = "completed"`；
    - **视觉标识互斥**：历史抽屉卡片探测后台运行态，当会话处于运行中时在 meta 区呈现手绘脉冲「运行中」微动效徽章；
-4. **收纳框与 Mini 胶囊自愈更新**：
+4. **终止按钮显隐双向同步铁律 (Abort Button Visibility Invariance)**：
+   - 非 Flow 模式（Detailed / Focus / Settings）下 `#flow-btn-abort` 绝对隐藏（`classList.add("hidden")`）；
+   - 从任务抽屉、通知、会话记录或历史进入 Flow 时，由 `syncFlowAbortButtonVisibility()` 结合 `view:changed` 与 `TaskManager` 活跃任务事件，依据 `taskManager.isTaskRunning()` 判定前台活跃任务运行态（思考/流式/工具执行/待确认/自愈重连），运行中同步移除 `.hidden` 恢复可见；
+   - 彻底杜绝任务转入后台挂起后重新回入 Flow 导致终止按钮消失、只能被迫退回抽屉终止的缺陷；
+5. **收纳框与 Mini 胶囊自愈更新**：
    - 由 `api.restoreFileChangesFor(task.id)` 恢复目标任务在生命周期内累积的文件变更；
    - 切换完成后即时调用 `updateMiniTaskCapsuleUI()`，确保右上角 Mini 胶囊数字与后台挂起任务数量 100% 精确吻合。
 

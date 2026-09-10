@@ -470,18 +470,34 @@ export class TaskManager extends EventTarget {
   }
 
   /**
+   * 判定指定任务（或当前活跃任务）是否处于运行/流式/工具执行/待确认/自愈重连态
+   * @param {TaskItem | null | undefined} [task]
+   * @returns {boolean}
+   */
+  isTaskRunning(task = null) {
+    const t = task || this.getCurrentActiveTask();
+    if (!t) {
+      return Boolean(piClient.isStreaming || modelFailoverEngine.isActive());
+    }
+    return (
+      t.status === "thinking" ||
+      t.status === "streaming" ||
+      t.status === "tool_exec" ||
+      t.status === "paused" ||
+      t.status === "running" ||
+      (this.currentActiveTaskId === t.id && piClient.isStreaming) ||
+      this._engineOwnedTask(t.id)
+    );
+  }
+
+  /**
    * 获取所有活跃中（思考、流式、工具执行、待确认）的任务
    * @returns {Array<TaskItem>}
    */
   getActiveTasks() {
     const active = [];
     for (const task of this.tasks.values()) {
-      if (
-        task.status === "thinking" ||
-        task.status === "streaming" ||
-        task.status === "tool_exec" ||
-        task.status === "paused"
-      ) {
+      if (this.isTaskRunning(task)) {
         active.push(task);
       }
     }
@@ -503,13 +519,7 @@ export class TaskManager extends EventTarget {
    * @returns {Array<TaskItem>}
    */
   getActiveSuspendedTasks() {
-    return this.getSuspendedTasks().filter(
-      (t) =>
-        t.status === "thinking" ||
-        t.status === "streaming" ||
-        t.status === "tool_exec" ||
-        t.status === "paused"
-    );
+    return this.getSuspendedTasks().filter((t) => this.isTaskRunning(t));
   }
 
   /**
