@@ -415,14 +415,14 @@ export function initFlowStream(ctx) {
     } else if (phase === "post_waiting" && payload.nextDelayMs) {
       clearFailoverCountdown();
       let secs = Math.max(1, Math.round(payload.nextDelayMs / 1000));
-      textEl.textContent = `自动内置重连 ${progress} · 已续发“继续”，${secs}s 后重试`;
+      textEl.textContent = `自动内置重连 ${progress} · 已续发... · ${secs}s 后重试`;
       failoverCountdownInterval = setInterval(() => {
         secs--;
         if (secs <= 0) {
           clearFailoverCountdown();
           return;
         }
-        textEl.textContent = `自动内置重连 ${progress} · 已续发“继续”，${secs}s 后重试`;
+        textEl.textContent = `自动内置重连 ${progress} · 已续发... · ${secs}s 后重试`;
       }, 1000);
     } else if (phase === "sending") {
       clearFailoverCountdown();

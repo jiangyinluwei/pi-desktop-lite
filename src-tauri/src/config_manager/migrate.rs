@@ -1,6 +1,5 @@
+use super::io::{read_agent_json, read_pi_dl_json, write_agent_json, write_pi_dl_json};
 use serde_json::{json, Value};
-use super::io::{read_pi_dl_json, write_pi_dl_json, read_agent_json, write_agent_json};
-
 
 /// 新「无痕内置重连」引擎写死的推荐配置 (与前端 DEFAULT_FAILOVER_CONFIG 对齐：10 次 / 全部 60s 延迟 + 续发后延迟 60s，即 120s * 10)
 fn model_failover_preset() -> Value {
@@ -27,14 +26,16 @@ const LEGACY_FAILOVER_KEYS: [&str; 7] = [
 /// 整块归一化为新「无痕内置重连」预设（写死 10 次 / 全部 60s 延迟恒封顶 60s）。
 /// 幂等：归一化后再次读取命中预设即跳过。返回是否发生了迁移。
 fn migrate_model_failover_block(config: &mut Value) -> bool {
-    let Some(obj) = config.as_object_mut() else { return false; };
-    let Some(block) = obj.get("modelFailover").and_then(|v| v.as_object()) else { return false; };
+    let Some(obj) = config.as_object_mut() else {
+        return false;
+    };
+    let Some(block) = obj.get("modelFailover").and_then(|v| v.as_object()) else {
+        return false;
+    };
     let preset = model_failover_preset();
     let preset_obj = preset.as_object().expect("preset is object");
     let needs_migration = LEGACY_FAILOVER_KEYS.iter().any(|k| block.contains_key(*k))
-        || preset_obj
-            .iter()
-            .any(|(k, v)| block.get(k) != Some(v));
+        || preset_obj.iter().any(|(k, v)| block.get(k) != Some(v));
     if !needs_migration {
         return false;
     }
@@ -54,7 +55,10 @@ pub fn pi_get_app_config() -> Result<Value, String> {
     if migrate_model_failover_block(&mut config) {
         log::info!("[config_manager] Migrated legacy modelFailover block to silent-reconnect preset (10 attempts / 60s pre-delay + 60s post-delay, 120s*10)");
         if let Err(e) = write_pi_dl_json("config.json", &config) {
-            log::warn!("[config_manager] Failed to persist migrated modelFailover block: {}", e);
+            log::warn!(
+                "[config_manager] Failed to persist migrated modelFailover block: {}",
+                e
+            );
         }
         // 仅当用户未显式关闭自动重连开关时，同步归一化内核 settings.json 的 retry 注入块
         if auto_reconnect_enabled {
@@ -101,7 +105,10 @@ pub fn pi_save_app_config(config_data: Value) -> Result<(), String> {
 /// 检查用户是否配置了“不再提醒更新”（若为 true 则直接跳过启动自检与后台自动轮询）
 pub fn is_update_notification_ignored() -> bool {
     if let Ok(config) = read_pi_dl_json("config.json", json!({})) {
-        if let Some(ignored) = config.get("ignoreUpdateNotification").and_then(|v| v.as_bool()) {
+        if let Some(ignored) = config
+            .get("ignoreUpdateNotification")
+            .and_then(|v| v.as_bool())
+        {
             return ignored;
         }
     }
@@ -212,10 +219,7 @@ pub fn pi_apply_model_failover_preset(config: Value) -> Result<(), String> {
         // 已存在「完整三键形态」(maxAttempts/backoff/maxBackoffSeconds) 的 retry 块视为本指令
         // 历史注入产物（含旧引擎残留值如 24 次），允许覆盖刷新为归一化预设；
         // 仅部分字段的自定义 retry 配置则尊重原值不覆盖，避免破坏用户刻意调优。
-        let has_user_retry = obj
-            .get("retry")
-            .map(|r| r.is_object())
-            .unwrap_or(false);
+        let has_user_retry = obj.get("retry").map(|r| r.is_object()).unwrap_or(false);
         let is_our_preset_block = obj
             .get("retry")
             .and_then(|r| r.as_object())
@@ -232,7 +236,10 @@ pub fn pi_apply_model_failover_preset(config: Value) -> Result<(), String> {
 
     // 写回为 best-effort：失败仅记录日志，返回 Ok 绝不阻断前端引擎
     if let Err(e) = pi_save_settings_config(settings) {
-        log::warn!("[config_manager] Failed to apply model failover preset: {}", e);
+        log::warn!(
+            "[config_manager] Failed to apply model failover preset: {}",
+            e
+        );
     }
     Ok(())
 }
@@ -244,7 +251,10 @@ pub fn pi_clear_model_failover_preset() -> Result<(), String> {
     if let Some(obj) = settings.as_object_mut() {
         if obj.remove("retry").is_some() {
             if let Err(e) = pi_save_settings_config(settings) {
-                log::warn!("[config_manager] Failed to clear retry block from settings.json: {}", e);
+                log::warn!(
+                    "[config_manager] Failed to clear retry block from settings.json: {}",
+                    e
+                );
             } else {
                 log::info!("[config_manager] Successfully cleared retry block from settings.json");
             }
@@ -296,7 +306,14 @@ pub fn sync_subagent_pinned_model_if_enabled(model_id: &str) -> Result<bool, Str
         return Ok(false);
     }
 
-    let roles = ["oracle", "worker", "reviewer", "researcher", "planner", "scout"];
+    let roles = [
+        "oracle",
+        "worker",
+        "reviewer",
+        "researcher",
+        "planner",
+        "scout",
+    ];
 
     if let Some(obj) = settings.as_object_mut() {
         let mut subagents_obj = match obj.get("subagents").and_then(|v| v.as_object()).cloned() {
@@ -308,7 +325,11 @@ pub fn sync_subagent_pinned_model_if_enabled(model_id: &str) -> Result<bool, Str
         subagents_obj.insert("defaultModel".to_string(), json!(clean_model));
 
         // 2. 钉住各主要角色的 overrides
-        let mut overrides_obj = match subagents_obj.get("agentOverrides").and_then(|v| v.as_object()).cloned() {
+        let mut overrides_obj = match subagents_obj
+            .get("agentOverrides")
+            .and_then(|v| v.as_object())
+            .cloned()
+        {
             Some(map) => map,
             None => serde_json::Map::new(),
         };
@@ -327,11 +348,17 @@ pub fn sync_subagent_pinned_model_if_enabled(model_id: &str) -> Result<bool, Str
     }
 
     if let Err(e) = pi_save_settings_config(settings) {
-        log::warn!("[SubagentsSync] Failed to write pinned subagents model to settings.json: {}", e);
+        log::warn!(
+            "[SubagentsSync] Failed to write pinned subagents model to settings.json: {}",
+            e
+        );
         return Err(e);
     }
 
-    log::info!("[SubagentsSync] Pinned pi-subagents model to `{}` in ~/.pi/agent/settings.json", clean_model);
+    log::info!(
+        "[SubagentsSync] Pinned pi-subagents model to `{}` in ~/.pi/agent/settings.json",
+        clean_model
+    );
     Ok(true)
 }
 
