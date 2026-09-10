@@ -33,7 +33,7 @@
 
 ## 📌 核心准则三：桌面端交互铁律与手势约束
 
-本项目前端作为轻量桌面应用，**所有 UI 与交互修改必须严格遵守以下 19 项核心铁律**：
+本项目前端作为轻量桌面应用，**所有 UI 与交互修改必须严格遵守以下 20 项核心铁律**：
 
 1. **拖拽区域限制**：全窗口仅顶部约 **30px** 标题栏支持拖拽（`-webkit-app-region: drag` / `data-tauri-drag-region`），内容主体、背景与品牌区严禁开启拖拽；
 2. **焦点释放与消除高亮**：输入框高亮在点击外部空白区、非输入元素或右键点击时，必须立即失焦（`blur()`）并消除高亮；
@@ -133,6 +133,12 @@
     - **卡片形态与自动呼出**：待答横条紧接轮次步骤流之后（保持「思维/工具 → 待答横条 → 回答正文」因果时序），三态 `pending`（手绘脉冲）/ `done` / `failed`；`select` → `SketchSelect`、`confirm` → 双按钮互斥、`input`/`editor` → 单行/多行手绘输入框，统一由 `SketchModal` 承载（居中、毛玻璃、焦点陷阱、Esc/右键关闭）；窗口聚焦（`document.hasFocus()`）时收到请求直接呼出作答弹窗，失焦则仅留横条 + 既有失焦 Toast（铁律9）；
     - **挂起 / 直切 / 终止 / 回退 / 重连对齐**：交互未决时直切 → 原 Task 照常 `isSuspended = true`（`paused` 属待确认态），回入 Flow 由 `renderTurnsIntoFlow → api.restoreHumanInputCards(task.id)` 重建未决横条（请求不丢失）；后台任务只入 TaskManager 数据与抽屉徽标「待确认 (N)」，**绝不渲染前台横条**（前台门禁 `isForegroundStreamTask`）；「⏹ 终止」先 `clearPendingUiRequests` → `Promise.all` best-effort 回写 `{cancelled:true}` → 再走既有强杀链路（`invalidateHumanInputCards` 转失效态，**严禁**触发内置重连）；交互未决 = 生成进行中，`flow-rollback` 的 `isTaskRunning` 已显式纳入 `paused` 阻断回退；`paused`（UI 阻塞）与「模型异常」严格区分，重连引擎仅由错误帧驱动；`input` / `editor` 弹窗文本控件聚焦必须延后一帧（`SketchModal.open()` 的 rAF 会聚焦「提交」按钮抢走焦点）；
     - **清理时机**：作答回写 / 读秒归零 / `agent_end` / `agent_settled`（`{resume:false}` 防终态前状态抖动）/ abort / `task-removed` / 内核 `kernel-status-change`（`hasKernel === false` 全部失效）；`pendingUiRequests` 清空且 Task 仍 `paused`、`piClient.isStreaming` 为真时回落 `streaming`；
+20. **内核工具入参自愈解包铁律 (Tool Call Argument Auto-Unwrap & Self-Healing Invariance)**：
+    - **痛点与背景**：特定模型（如 DeepSeek-V4 系列在 OpenAI Completions 协议或部分反代渠道中）高频将实际工具入参包裹在冗余外壳（如 `{"arguments": {"command": "..."}}`、`{"parameters": {"path": "..."}}`、`{"args": {...}}` 或同名属性嵌套 `path: { path: "..." }`），导致内核 TypeBox / AJV 参数校验报错 `Validation failed: must have required properties`；错误文本回显给模型后极易诱发模型误判并逐轮叠加嵌套外壳（最高达 5 层深），陷入严重自激死循环；
+    - **双层防御自愈流水线**：系统通过内置内核扩展 `src-tauri/extensions/pi-tool-sanitizer.ts`（应用启动时由 `rollback::materialize_extension()` 幂等物化至全局扩展目录 `~/.pi/agent/extensions/`）：
+      ① **前置拦截（主防线）**：在 `message_end` 阶段（模型输出完成、内核参数校验执行之前）拦截助手消息，无损剥离外壳并就地规范化恢复扁平结构，阻断校验报错产生；
+      ② **底层清洗（第二防线）**：在 `tool_call` 阶段进行二次兜底清洗，确保 100% 消除由于入参嵌套引发的报错；
+    - **非侵入与零负担**：纯内存对象剥离，无冗余外壳时 100% 原样直通，全流程安全降级保护，绝不阻塞会话或篡改模型原本正确的工具参数。
 
 > 📖 **完整功能矩阵与系统特性总览**：详见项目架构总览技能 [`.agents/skills/pi-desktop-overview/SKILL.md`](file:///.agents/skills/pi-desktop-overview/SKILL.md)。
 

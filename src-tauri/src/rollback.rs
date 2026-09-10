@@ -23,6 +23,10 @@ pub const ROLLBACK_ENV_KEY: &str = "PI_DL_ROLLBACK";
 pub const ROLLBACK_EXTENSION_SRC: &str = include_str!("../extensions/pi-rollback-guard.ts");
 pub const ROLLBACK_EXTENSION_FILENAME: &str = "pi-rollback-guard.ts";
 
+/// 内置工具调用参数净化扩展源码（编译期嵌入二进制，启动时物化到全局扩展目录）
+pub const SANITIZER_EXTENSION_SRC: &str = include_str!("../extensions/pi-tool-sanitizer.ts");
+pub const SANITIZER_EXTENSION_FILENAME: &str = "pi-tool-sanitizer.ts";
+
 /// 单个待还原目标：文件路径 + 触发该变更的工具调用 ID
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RollbackTarget {
@@ -173,23 +177,38 @@ fn load_snapshots(session_id: &str) -> Vec<SnapshotLine> {
     out
 }
 
-/// 物化内置快照扩展至全局扩展目录（内容变化时覆盖，幂等）
+/// 物化内置内核扩展（快照守卫与工具参数自愈净化器）至全局扩展目录（内容变化时覆盖，幂等）
 pub fn materialize_extension() -> Result<(), String> {
     let Some(home) = dirs::home_dir() else {
         return Err("无法定位用户主目录".to_string());
     };
     let ext_dir = home.join(".pi").join("agent").join("extensions");
     std::fs::create_dir_all(&ext_dir).map_err(|e| format!("创建扩展目录失败: {}", e))?;
-    let target = ext_dir.join(ROLLBACK_EXTENSION_FILENAME);
-    let needs_write = match std::fs::read_to_string(&target) {
+
+    // 1. 快照守卫扩展 (pi-rollback-guard.ts)
+    let rollback_target = ext_dir.join(ROLLBACK_EXTENSION_FILENAME);
+    let needs_rollback_write = match std::fs::read_to_string(&rollback_target) {
         Ok(existing) => existing != ROLLBACK_EXTENSION_SRC,
         Err(_) => true,
     };
-    if needs_write {
-        std::fs::write(&target, ROLLBACK_EXTENSION_SRC)
+    if needs_rollback_write {
+        std::fs::write(&rollback_target, ROLLBACK_EXTENSION_SRC)
             .map_err(|e| format!("写入快照扩展失败: {}", e))?;
-        log::info!("[Rollback] Materialized extension: {:?}", target);
+        log::info!("[Extension] Materialized rollback guard: {:?}", rollback_target);
     }
+
+    // 2. 工具调用参数自愈解包净化扩展 (pi-tool-sanitizer.ts)
+    let sanitizer_target = ext_dir.join(SANITIZER_EXTENSION_FILENAME);
+    let needs_sanitizer_write = match std::fs::read_to_string(&sanitizer_target) {
+        Ok(existing) => existing != SANITIZER_EXTENSION_SRC,
+        Err(_) => true,
+    };
+    if needs_sanitizer_write {
+        std::fs::write(&sanitizer_target, SANITIZER_EXTENSION_SRC)
+            .map_err(|e| format!("写入工具参数净化扩展失败: {}", e))?;
+        log::info!("[Extension] Materialized tool sanitizer: {:?}", sanitizer_target);
+    }
+
     Ok(())
 }
 

@@ -103,6 +103,7 @@ pi-desktop-lite/
 │   ├── styles.css              # Aggregated style entry (@import to styles/ subfiles)
 │   └── main.js                 # Main orchestrator entry
 ├── src-tauri/                  # High-performance Tauri (Rust) backend
+│   ├── extensions/             # Built-in kernel extensions (pi-rollback-guard.ts snapshot guard, pi-tool-sanitizer.ts tool arguments auto-unwrapper)
 │   ├── inner-skills/           # Runtime dynamic inner-skills (RULES.md, bash compatibility, OCR inspection, multi-agent, web search, failure logging, etc.)
 │   └── src/                    # Rust core source (lib.rs, main.rs, commands/, config_manager/, workspace, pi_runner, security, session)
 ├── AGENTS.md                   # Project rules and agent guidelines

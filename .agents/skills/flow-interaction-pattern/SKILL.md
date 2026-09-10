@@ -252,7 +252,7 @@ Flow 支持回退到任意一次历史对话（配合 pi 内核原生历史节�
 
 ### 11.1 内核侧确定性快照（工具执行前，杜绝竞态）
 - **启用开关**：桌面端拉起 pi 内核进程时注入环境变量 `PI_DL_ROLLBACK=1`（Supervisor 主进程与 SessionHost 任务进程双侧注入；扩展未检测到该变量时完全静默退出，不影响原生 pi 使用场景）；
-- **物化机制**：`rollback::materialize_extension()` 在应用启动时把编译期内嵌源码（`include_str!`）幂等写入 `~/.pi/agent/extensions/pi-rollback-guard.ts`（全局扩展目录，免项目信任门禁）；
+- **物化机制**：`rollback::materialize_extension()` 在应用启动时把编译期内嵌源码（`include_str!`）幂等写入全局扩展目录 `~/.pi/agent/extensions/`（包括 `pi-rollback-guard.ts` 会话回退快照守卫与 `pi-tool-sanitizer.ts` 工具入参自愈解包净化器，免项目信任门禁）；
 - **快照时机铁律**：扩展监听 `tool_call` 事件（pi 扩展体系中先于工具 `execute` 执行、可阻塞），在工具真正落盘前读取目标文件内容 → 保证快照一定是「执行前状态」，彻底消除前端 tool-start 事件与工具执行之间的竞态；
 - **路径提取**：与前端收纳框同源的 `PATH_KEYS` / `edits/files/changes` 多文件结构 + Shell `rm / del / Remove-Item` 家族启发式解析（`cd` 链路 + `~` 展开 + MSYS 盘符转换 + `ctx.cwd` 兑底归一化）；
 - **落盘格式**：JSONL 追加至 `~/.pi-dl/rollback/<sessionId>/snapshots.jsonl`，每行 `{ ts, sessionId, toolCallId, toolName, path, contentB64, tooLarge? }`；单文件 > 8MB 只记存在标记不落内容；单会话总量 64MB 封顶；文件不存在（新增场景）不写行；

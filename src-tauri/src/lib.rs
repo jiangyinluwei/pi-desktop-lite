@@ -153,9 +153,9 @@ pub fn run() {
             app.manage(supervisor.clone());
             app.manage(host_pool);
 
-            // 2b. 物化会话回退快照守卫扩展至全局扩展目录（幂等，内容变更时覆盖）
+            // 2b. 物化内置内核扩展（快照守卫与工具参数自愈净化器）至全局扩展目录（幂等，内容变更时覆盖）
             if let Err(e) = rollback::materialize_extension() {
-                log::warn!("[Setup] Failed to materialize rollback extension: {}", e);
+                log::warn!("[Setup] Failed to materialize kernel extensions: {}", e);
             }
 
             // 3. 初始化 Version Scheduler
