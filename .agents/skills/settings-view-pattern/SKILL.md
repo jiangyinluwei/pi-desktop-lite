@@ -35,7 +35,7 @@ graph TD
 
 ### 应用全局配置 (`~/.pi-dl/config.json`)
 - `autoReconnectSwitch`（默认 `true`）：模型调用报错时进入无痕内置重连流水线（后台静默续发「继续」，写死 10 次）；
-- `modelFailover`：`maxReconnectAttempts: 10`，退避序列 `[2000, 4000, 8000, 16000]`（恒封顶 16s）；
+- `modelFailover`：`maxReconnectAttempts: 10`，重试延迟全部为 16 秒延迟（`[16000]`），续发“继续”后再延迟 16 秒（`postReconnectDelayMs: 16000`），单轮 32 秒（即 32s * 10 = 320 秒）；
 - **内核辅助注入**：启动与勾选时通过 `pi_apply_model_failover_preset` 探测式写入 `settings.json`（已存在自定义配置时不覆盖）。
 
 ---

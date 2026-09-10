@@ -32,6 +32,14 @@ export function initFlowStream(ctx) {
   const flowBtnAbort = flowDom.flowBtnAbort;
   const taskDetailsSidebar = flowDom.taskDetailsSidebar;
 
+  let failoverCountdownInterval = null;
+  const clearFailoverCountdown = () => {
+    if (failoverCountdownInterval) {
+      clearInterval(failoverCountdownInterval);
+      failoverCountdownInterval = null;
+    }
+  };
+
   /** 事件帧归属任务的纯数据分仓（事件处理器内调用；调用点均已过前台门禁）。 */
   const streamData = (explicit) => flowStore.for(resolveStreamTaskId(explicit));
 
@@ -254,6 +262,7 @@ export function initFlowStream(ctx) {
    * @param {string} [taskId]
    */
   const clearTurnErrorState = (taskId = null) => {
+    clearFailoverCountdown();
     const bucketId = resolveStreamTaskId(taskId);
     const fs = flowStore.for(bucketId);
     fs.set({ errorMessage: null });
@@ -360,6 +369,7 @@ export function initFlowStream(ctx) {
     const capsule = flowView.activeTurnRefs.failoverCapsuleEl;
 
     if (payload.status === "succeeded") {
+      clearFailoverCountdown();
       clearTurnErrorState();
       textEl.textContent = "自动内置重连成功 · 已恢复正常，继续执行";
       capsule.classList.remove("hidden");
@@ -371,21 +381,49 @@ export function initFlowStream(ctx) {
       return;
     }
     if (payload.status === "gave_up" || payload.status === "cancelled") {
+      clearFailoverCountdown();
       capsule.classList.add("hidden");
       capsule.classList.remove("ok");
       return;
     }
-    if (payload.status !== "reconnecting") return;
+    if (payload.status !== "reconnecting") {
+      clearFailoverCountdown();
+      return;
+    }
 
-    // 内置重连等待中 / 续发中：恒定以「自动内置重连 N/10 ...」开头
+    // 内置重连等待中 / 续发中 / 续发后延迟中：恒定以「自动内置重连 N/10 ...」开头
     capsule.classList.remove("ok");
     const progress = `${payload.attempt || 0}/${payload.maxAttempts || 0}`;
+
     if (phase === "waiting" && payload.nextDelayMs) {
-      const secs = Math.max(1, Math.round(payload.nextDelayMs / 1000));
+      clearFailoverCountdown();
+      let secs = Math.max(1, Math.round(payload.nextDelayMs / 1000));
       textEl.textContent = `自动内置重连 ${progress} · ${secs}s 后重试`;
+      failoverCountdownInterval = setInterval(() => {
+        secs--;
+        if (secs <= 0) {
+          clearFailoverCountdown();
+          return;
+        }
+        textEl.textContent = `自动内置重连 ${progress} · ${secs}s 后重试`;
+      }, 1000);
+    } else if (phase === "post_waiting" && payload.nextDelayMs) {
+      clearFailoverCountdown();
+      let secs = Math.max(1, Math.round(payload.nextDelayMs / 1000));
+      textEl.textContent = `自动内置重连 ${progress} · 已续发“继续”，${secs}s 后重试`;
+      failoverCountdownInterval = setInterval(() => {
+        secs--;
+        if (secs <= 0) {
+          clearFailoverCountdown();
+          return;
+        }
+        textEl.textContent = `自动内置重连 ${progress} · 已续发“继续”，${secs}s 后重试`;
+      }, 1000);
     } else if (phase === "sending") {
+      clearFailoverCountdown();
       textEl.textContent = `自动内置重连 ${progress} · 正在重发请求 …`;
     } else {
+      clearFailoverCountdown();
       textEl.textContent = `自动内置重连 ${progress} ...`;
     }
     capsule.classList.remove("hidden");
@@ -408,11 +446,19 @@ export function initFlowStream(ctx) {
       return;
     }
     // 退避等待期间停止思考计时，避免耗时位残留「思考中」虚长
-    if (payload.status === "reconnecting" && payload.phase === "waiting" && flowView.thinkingTimerInterval) {
+    if (
+      payload.status === "reconnecting" &&
+      (payload.phase === "waiting" || payload.phase === "post_waiting") &&
+      flowView.thinkingTimerInterval
+    ) {
       clearInterval(flowView.thinkingTimerInterval);
       flowView.thinkingTimerInterval = null;
     }
-    if (payload.status === "reconnecting" && payload.phase === "waiting" && flowView.textTimerInterval) {
+    if (
+      payload.status === "reconnecting" &&
+      (payload.phase === "waiting" || payload.phase === "post_waiting") &&
+      flowView.textTimerInterval
+    ) {
       clearInterval(flowView.textTimerInterval);
       flowView.textTimerInterval = null;
     }

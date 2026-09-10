@@ -3,8 +3,8 @@
  *
  * 在 Flow 流程中模型调用返回错误时，提供「无痕内置重连」自愈流水线：
  *   · 隐藏「模型XXX异常」错误窗体，后台静默向模型续发「继续」文本，用户无感知；
+ *   · 自动内置重连全部为 16 秒延迟，并且发送“继续”提示词重连后再延迟 16 秒，一共内置 10 次（即 32 秒 * 10）；
  *   · 每次续发计作一次「内置重连」，写死上限 10 次；
- *   · 退避序列 2s → 4s → 8s → 16s → 16s…（恒封顶 16s）；
  *   · 重连期间仅在轮次顶部展示进度胶囊「自动内置重连 N/10 ...」；
  *   · 10 次重连全部耗尽仍失败 → 才渲染既有错误卡（「模型调用失败 [模型]」窗体）。
  *
@@ -37,6 +37,7 @@ class ModelFailoverEngine extends EventTarget {
     this.lastError = null; // 最后一次失败详情 (供兜底渲染)
     this.hooks = null;
     this._resolveAttempt = null; // 当前在途尝试的结算回调
+    this._resolveSleep = null;
     this._backoffTimer = null;
     this._currentPhase = "";
   }
@@ -205,7 +206,7 @@ class ModelFailoverEngine extends EventTarget {
   }
 
   // ==========================================================================
-  // 内置重连流水线：2/4/8/16s 退避，写死上限 10 次
+  // 内置重连流水线：全部 16s 延迟 + 续发后延迟 16s，写死 10 次 (即 32秒 * 10)
   // ==========================================================================
 
   async _runReconnect() {
@@ -220,7 +221,7 @@ class ModelFailoverEngine extends EventTarget {
       this.attempt++;
       const delay = this._backoffDelay(this.attempt, cfg);
 
-      // 等待退避：轮次顶部胶囊提示「自动内置重连 N/10 · Xs 后重试」
+      // 阶段 1：自动内置重连 16 秒延迟（等待退避重试）
       this._currentPhase = "waiting";
       this._emit({
         status: "reconnecting",
@@ -234,7 +235,7 @@ class ModelFailoverEngine extends EventTarget {
       await this._sleep(delay);
       if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId)) return;
 
-      // 后台静默续发「继续」文本（不生成提问卡、不显示）
+      // 阶段 2：后台静默续发「继续」文本（不生成提问卡、不显示）
       this._currentPhase = "sending";
       this._emit({
         status: "reconnecting",
@@ -258,6 +259,21 @@ class ModelFailoverEngine extends EventTarget {
       }
 
       this.lastError = result.error || this.lastError;
+
+      // 阶段 3：发送“继续”提示词重连后再延迟 16 秒（一共内置 10 次，即 32 秒 * 10）
+      const postDelay = cfg.postReconnectDelayMs || 16000;
+      this._currentPhase = "post_waiting";
+      this._emit({
+        status: "reconnecting",
+        phase: "post_waiting",
+        attempt: this.attempt,
+        maxAttempts,
+        nextDelayMs: postDelay,
+        modelName: this._modelName(),
+      });
+
+      await this._sleep(postDelay);
+      if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId)) return;
     }
 
     if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId)) return;
@@ -372,20 +388,23 @@ class ModelFailoverEngine extends EventTarget {
   // ==========================================================================
 
   /**
-   * 退避延迟：2s → 4s → 8s → 16s → 16s… (恒封顶 maxBackoffMs)
-   * delay(attempt) = min(reconnectBackoffMs[attempt-1] ?? maxBackoffMs, maxBackoffMs)
+   * 退避延迟：全部为 16s 延迟 (恒封顶 16s)
    */
   _backoffDelay(attempt, cfg) {
-    const seq = Array.isArray(cfg.reconnectBackoffMs) ? cfg.reconnectBackoffMs : [2000, 4000, 8000, 16000];
-    const cap = cfg.maxBackoffMs || 16000;
+    const seq = Array.isArray(cfg?.reconnectBackoffMs) && cfg.reconnectBackoffMs.length > 0
+      ? cfg.reconnectBackoffMs
+      : [16000];
+    const cap = cfg?.maxBackoffMs || 16000;
     const v = seq[attempt - 1];
     return Math.min(v === undefined ? cap : v, cap);
   }
 
   _sleep(ms) {
     return new Promise((resolve) => {
+      this._resolveSleep = resolve;
       this._backoffTimer = setTimeout(() => {
         this._backoffTimer = null;
+        this._resolveSleep = null;
         resolve();
       }, ms);
     });
@@ -395,6 +414,11 @@ class ModelFailoverEngine extends EventTarget {
     if (this._backoffTimer) {
       clearTimeout(this._backoffTimer);
       this._backoffTimer = null;
+    }
+    if (this._resolveSleep) {
+      const r = this._resolveSleep;
+      this._resolveSleep = null;
+      r();
     }
   }
 

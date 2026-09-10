@@ -16,12 +16,13 @@ const STORAGE_KEY_AUTO_RECONNECT = "pi_auto_reconnect_switch";
 
 /**
  * 模型自动强制重连推荐配置默认值 (覆盖 PI 内核 3 次重连上限)
- * 无痕内置重连: 后台续发「继续」文本，退避序列 2s → 4s → 8s → 16s → 16s… (恒封顶 16s)，写死上限 10 次
+ * 无痕内置重连: 后台续发「继续」文本，全部 16 秒延迟重试，发送“继续”重连后再延迟 16 秒，写死上限 10 次 (即 32秒 * 10)
  */
 export const DEFAULT_FAILOVER_CONFIG = {
   maxReconnectAttempts: 10,
-  reconnectBackoffMs: [2000, 4000, 8000, 16000],
+  reconnectBackoffMs: [16000],
   maxBackoffMs: 16000,
+  postReconnectDelayMs: 16000,
 };
 
 class ConfigService extends EventTarget {
