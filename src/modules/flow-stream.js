@@ -367,16 +367,19 @@ export function initFlowStream(ctx) {
     const phase = payload.phase || "";
     const textEl = flowView.activeTurnRefs.failoverTextEl;
     const capsule = flowView.activeTurnRefs.failoverCapsuleEl;
+    const abortBtn = flowView.activeTurnRefs.failoverAbortBtn || capsule.querySelector(".failover-abort-btn");
 
     if (payload.status === "succeeded") {
       clearFailoverCountdown();
       clearTurnErrorState();
+      if (abortBtn) abortBtn.classList.add("hidden");
       textEl.textContent = "自动内置重连成功 · 已恢复正常，继续执行";
       capsule.classList.remove("hidden");
       capsule.classList.add("ok");
       setTimeout(() => {
         capsule.classList.add("hidden");
         capsule.classList.remove("ok");
+        if (abortBtn) abortBtn.classList.remove("hidden");
       }, 1200);
       return;
     }
@@ -390,6 +393,8 @@ export function initFlowStream(ctx) {
       clearFailoverCountdown();
       return;
     }
+
+    if (abortBtn) abortBtn.classList.remove("hidden");
 
     // 内置重连等待中 / 续发中 / 续发后延迟中：恒定以「自动内置重连 N/10 ...」开头
     capsule.classList.remove("ok");
@@ -427,6 +432,9 @@ export function initFlowStream(ctx) {
       textEl.textContent = `自动内置重连 ${progress} ...`;
     }
     capsule.classList.remove("hidden");
+    if (flowScrollArea && flowView.followBottom !== false) {
+      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    }
   };
 
   // 自动强制重连引擎进度事件 → 更新 Flow 进度胶囊
@@ -445,6 +453,18 @@ export function initFlowStream(ctx) {
       }
       return;
     }
+
+    // 延迟等待与重连全周期内，确保 Flow 模式中止按钮可见可用（支持随时中断一切）
+    if (payload.status === "reconnecting") {
+      if (flowBtnAbort) {
+        flowBtnAbort.classList.remove("hidden");
+      }
+    } else if (payload.status === "cancelled" || payload.status === "gave_up") {
+      if (flowBtnAbort && !piClient.isStreaming) {
+        flowBtnAbort.classList.add("hidden");
+      }
+    }
+
     // 退避等待期间停止思考计时，避免耗时位残留「思考中」虚长
     if (
       payload.status === "reconnecting" &&

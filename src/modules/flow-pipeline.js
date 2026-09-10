@@ -766,7 +766,8 @@ export function initFlowPipeline(ctx) {
           return t.status === "thinking" ||
             t.status === "streaming" ||
             t.status === "tool_exec" ||
-            t.status === "paused"
+            t.status === "paused" ||
+            (modelFailoverEngine.isActive() && (!modelFailoverEngine.taskId || modelFailoverEngine.taskId === t.id))
             ? t
             : null;
         })()

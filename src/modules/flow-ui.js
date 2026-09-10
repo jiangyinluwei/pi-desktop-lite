@@ -189,7 +189,7 @@ export function initFlowUi(ctx) {
     `;
     groupEl.appendChild(routeCapsuleEl);
 
-    // 2b. 无痕内置重连进度胶囊 (手绘草图风格，运行态瞬态展示，不沉淀历史)
+    // 2b. 无痕内置重连进度胶囊 (手绘草图风格，置于会话流最下方，运行态瞬态展示，不沉淀历史)
     const failoverCapsuleEl = document.createElement("div");
     failoverCapsuleEl.className = "flow-failover-capsule hidden";
     failoverCapsuleEl.setAttribute("role", "status");
@@ -197,8 +197,21 @@ export function initFlowUi(ctx) {
     failoverCapsuleEl.innerHTML = `
       <span class="capsule-icon" aria-hidden="true">${ICONS.bolt}</span>
       <span class="capsule-text">自动内置重连中</span>
+      <button type="button" class="failover-abort-btn" title="中断当前重连与会话" aria-label="中断会话">
+        <span class="abort-icon" aria-hidden="true">${ICONS.stop}</span>
+        <span class="abort-text">中断</span>
+      </button>
     `;
-    groupEl.appendChild(failoverCapsuleEl);
+    const failoverAbortBtn = failoverCapsuleEl.querySelector(".failover-abort-btn");
+    if (failoverAbortBtn) {
+      failoverAbortBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (typeof api.abortCurrentSession === "function") {
+          await api.abortCurrentSession();
+        }
+      });
+    }
 
     // 3. 【时序步骤流容器】：按时间拼接思维切片与工具切片 (思维1-工具1-思维2-工具2...)
     const stepsContainerEl = document.createElement("div");
@@ -374,6 +387,9 @@ export function initFlowUi(ctx) {
     responseCardEl.appendChild(responseContentEl);
     groupEl.appendChild(responseCardEl);
 
+    // 自动内置重连提醒文本框置于会话流最下方（原本是最上方）
+    groupEl.appendChild(failoverCapsuleEl);
+
     const userTextEl = userPromptCard.querySelector(".prompt-content");
     const promptAttachmentsEl = userPromptCard.querySelector(".flow-prompt-attachments");
     const failoverTextEl = failoverCapsuleEl.querySelector(".capsule-text");
@@ -384,6 +400,7 @@ export function initFlowUi(ctx) {
       promptAttachmentsEl,
       failoverCapsuleEl,
       failoverTextEl,
+      failoverAbortBtn,
       stepsContainerEl,
       thinkingCardEl: firstThinkingRef?.cardEl || null,
       thinkingToggleBtn: firstThinkingRef?.headerEl || null,

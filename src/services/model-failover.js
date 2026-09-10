@@ -212,10 +212,16 @@ class ModelFailoverEngine extends EventTarget {
   async _runReconnect() {
     const cfg = configService.getModelFailoverConfig();
     const maxAttempts = Math.max(1, Number(cfg.maxReconnectAttempts) || 10);
+    const runTaskId = this.taskId;
     this.maxAttempts = maxAttempts;
 
+    const isAborted = () => {
+      const tid = runTaskId || this.taskId;
+      return this.status !== "reconnecting" || this.isTaskAborted(tid);
+    };
+
     while (this.status === "reconnecting") {
-      if (this.isTaskAborted(this.taskId)) return;
+      if (isAborted()) return;
       if (this.attempt >= maxAttempts) break;
 
       this.attempt++;
@@ -233,7 +239,7 @@ class ModelFailoverEngine extends EventTarget {
       });
 
       await this._sleep(delay);
-      if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId)) return;
+      if (isAborted()) return;
 
       // 阶段 2：后台静默续发「继续」文本（不生成提问卡、不显示）
       this._currentPhase = "sending";
@@ -246,7 +252,7 @@ class ModelFailoverEngine extends EventTarget {
       });
 
       const result = await this._sendAttempt();
-      if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId) || result?.cancelled) return;
+      if (isAborted() || result?.cancelled) return;
 
       if (result.success) {
         this._succeed();
@@ -273,10 +279,10 @@ class ModelFailoverEngine extends EventTarget {
       });
 
       await this._sleep(postDelay);
-      if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId)) return;
+      if (isAborted()) return;
     }
 
-    if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId)) return;
+    if (isAborted()) return;
 
     // 10 次内置重连全部耗尽仍失败 → 弹回「模型XXX异常」窗体文本
     this._giveUp();

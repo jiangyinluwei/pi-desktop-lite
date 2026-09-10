@@ -22,13 +22,13 @@ description: |
   │                   ├─ flow-user-prompt-card       用户提问卡（支持多行换行 pre-wrap，右侧 prompt-copy-btn 一键复制提问，事件委托于 flow-conversation）
   │                   ├─ flow-route-capsule          路由目标项目胶囊
   │                   ├─ flow-injection-notice        「注入提示」信息框 (路由胶囊下方；直角简洁风，默认收起显示「注入提示」与注入数量，点击展开全部注入条目清单)
-  │                   ├─ flow-failover-capsule       无痕内置重连进度胶囊
   │                   ├─ flow-steps-container        【时序步骤流容器】
   │                   │    ├─ flow-step-thinking     思维切片 (单行刷新，常态折叠，绝不自动展开)
   │                   │    ├─ flow-step-phase        阶段性输出 Point 切片 (读秒+折叠内容，绝不自动展开)
   │                   │    ├─ flow-step-tool         工具切片 (单行状态徽章+读秒，常态折叠，绝不自动展开)
   │                   │    └─ tool-pseudo-card      伪工具运行框 (参数流式期占位，虚线边框，真实卡就位即移除)
-  │                   └─ flow-response-card          最终输出正文 (Typedown 质感 Markdown，永不折叠)
+  │                   ├─ flow-response-card          最终输出正文 (Typedown 质感 Markdown，永不折叠)
+  │                   └─ flow-failover-capsule       无痕内置重连提醒文本框 (会话流最下方，含手绘「⏹ 中断」按钮，支持延迟期直接彻底中断一切)
   ├─ flow-turn-nav        ← 右侧上下轮次定位导航 (多轮 >= 2 显现，右移至内容区外)
   └─ search-section       ← 底部输入区
 ```
@@ -164,7 +164,8 @@ flowchart TD
 
 - **无痕内置重连 (Silent Reconnect)**：仅在「模型XXX异常」错误窗体本应弹出时触发（设置-模型配置-右上角「自动强制重连」勾选启用）；引擎隐藏错误窗体，后台静默向模型续发「继续」文本（不生成提问卡、不重复压入 prompt history、不新建 Task，全程不显示）；
 - **写死 10 次与全部 16 秒延迟 + 续发后再延迟 16 秒**：`maxReconnectAttempts: 10`、`reconnectBackoffMs: [16000]`、`maxBackoffMs: 16000`、`postReconnectDelayMs: 16000`；每次续发计作一次「内置重连」，单轮重连周期为 16s + 16s = 32s，写死 10 次共 32s * 10 = 320 秒；旧引擎残留的 `modelFailover` 持久化块在 `pi_get_app_config` 读取时由 `migrate.rs` 幂等归一化为该预设；
-- **进度胶囊与系统弹窗静默**：内置重连期间**严禁触发 Windows 原生系统弹窗 (Toast)**，也**严禁在回答区插入错误卡片**；胶囊作为**纯状态示意条**，恒定以「自动内置重连 N/10 ...」开头（等待中与续发后延迟均动态倒数「Xs 后重试」，续发中追加「正在重发请求 …」）；
+- **提醒文本框置底与系统弹窗静默**：内置重连期间**严禁触发 Windows 原生系统弹窗 (Toast)**，也**严禁在回答区插入错误卡片**；提醒文本框作为**纯状态示意条**恒定置于当前会话流最下方（`flow-response-card` 正文回答卡下方），并随内容吸底定位；文案恒定以「自动内置重连 N/10 ...」开头（等待中与续发后延迟均动态倒数「Xs 后重试」，续发中追加「正在重发请求 …」）；
+- **延迟期直接彻底中断一切铁律 (Delay Interruption & Direct Abort Invariance)**：允许用户在 16 秒等待退避与续发后延迟过程中直接中断会话；胶囊内提供手绘「⏹ 中断」按钮（`.failover-abort-btn`），同时主界面输入栏 `#flow-btn-abort` 在重连与等待全周期保持可见可用；用户点击胶囊内「中断」或点击 `#flow-btn-abort` 将**直接中断一切**（统一调用 `api.abortCurrentSession`）：立即清退 `_backoffTimer` 定时器并强制解除 `await this._sleep` 挂起，切断重连循环（杜绝触发 `_giveUp` 弹错误卡），物理强杀 Rust 内核子进程（`SessionHost.abort()`），定格轮次为已中断，回答区追加「刚刚会话已手动终止」，隐藏胶囊并清除倒数，归档历史快照，全链路杜绝任何后续复活与再次尝试；
 - **取消自动切换模型**：引擎不再解析候选池、不做 MRU 巡检、不轮转切换、不临时 `pi_set_model`（相关逻辑已彻底移除）；错误卡上的「切换其他模型」为纯手动入口；
 - **耗尽才弹窗与耗尽终态锁定**：仅当 10 次内置重连全部耗尽仍失败时，才渲染「模型调用失败 [模型]」错误卡，并附摘要「已尝试自动内置重连 N/10 次后仍失败」；弹卡同时引擎立即记录该任务「耗尽终态」（`_exhaustedTaskIds`，无归属路径为 `_unattributedExhausted`）：一次失败的内核 run 会经 `message_end` / `turn_end` / `agent_end` / `agent_settled` 多次重复派发 `agent-error`，耗尽后这些重复错误帧**绝不再次自动冷启动、也不重复渲染错误卡**（TaskManager 同步落定 error 终态且 `failTask` 幂等防重复通知），仅用户手动点击「重试当前提问」（自动向模型发送「继续」文本续发生成，而非完全复用上一轮长提问）或发送新提问（`clearTaskAborted` 同步清除耗尽标记）后方可重新发起；
 - **步骤流记录保留铁律**：重发尝试（`resetCurrentTurnForResend`）时**严禁清空步骤容器（`stepsContainerEl.innerHTML`）与工具卡片缓存（`renderedToolCards`）**，必须 100% 完整保留本轮之前已真实执行完毕的 Thinking 切片（已封口/含实质内容）、工具调用卡片与 Point 阶段性输出切片，恢复后增量无缝追加后续步骤；

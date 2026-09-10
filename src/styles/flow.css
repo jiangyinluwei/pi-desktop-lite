@@ -1039,7 +1039,7 @@
   align-self: flex-start;
   gap: 6px;
   padding: 4px 11px;
-  margin: 0 0 10px 2px;
+  margin: 8px 0 12px 2px;
   font-size: 11.5px;
   font-family: inherit;
   color: var(--ink-primary);
@@ -1074,6 +1074,61 @@
 .flow-failover-capsule .capsule-text {
   font-weight: 500;
   letter-spacing: 0.01em;
+}
+
+/* 胶囊内手绘风格中断按钮 (常态透明无边框，悬停显手绘红框) */
+.flow-failover-capsule .failover-abort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  margin-left: 6px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--ink-secondary, #b91c1c);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+}
+.flow-failover-capsule .failover-abort-btn.hidden {
+  display: none !important;
+}
+.flow-failover-capsule .failover-abort-btn .abort-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.flow-failover-capsule .failover-abort-btn:hover {
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.35);
+}
+.flow-failover-capsule .failover-abort-btn:active {
+  transform: scale(0.96);
+}
+:root[data-theme="dark"] .flow-failover-capsule .failover-abort-btn {
+  color: #f87171;
+}
+:root[data-theme="dark"] .flow-failover-capsule .failover-abort-btn:hover {
+  color: #fca5a5;
+  background: rgba(248, 113, 113, 0.14);
+  border-color: rgba(248, 113, 113, 0.45);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .flow-failover-capsule .failover-abort-btn,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .flow-failover-capsule .failover-abort-btn {
+    color: #f87171;
+  }
+  :root[data-theme="system"] .flow-failover-capsule .failover-abort-btn:hover,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .flow-failover-capsule .failover-abort-btn:hover {
+    color: #fca5a5;
+    background: rgba(248, 113, 113, 0.14);
+    border-color: rgba(248, 113, 113, 0.45);
+  }
 }
 .flow-failover-capsule.ok {
   border-color: rgba(21, 128, 61, 0.45);

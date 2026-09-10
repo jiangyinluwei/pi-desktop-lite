@@ -2,6 +2,7 @@ import { VIEW_DETAILED, VIEW_FOCUS, VIEW_FLOW } from "../lib/view-constants.js";
 import { bus } from "../lib/event-bus.js";
 import { piClient } from "../services/pi-client.js";
 import { taskManager } from "../services/task-manager.js";
+import { modelFailoverEngine } from "../services/model-failover.js";
 import { openExternalUrl } from "../services/tauri-bridge.js";
 import { bindAll } from "../lib/el-binder.js";
 
@@ -67,8 +68,11 @@ export function initGlobalInteractions(ctx) {
 
       const activeTask = taskManager.getCurrentActiveTask();
       const isRunning = activeTask
-        ? (activeTask.status === "thinking" || activeTask.status === "streaming" || activeTask.status === "tool_exec")
-        : piClient.isStreaming;
+        ? (activeTask.status === "thinking" ||
+           activeTask.status === "streaming" ||
+           activeTask.status === "tool_exec" ||
+           (modelFailoverEngine.isActive() && (!modelFailoverEngine.taskId || modelFailoverEngine.taskId === activeTask.id)))
+        : (piClient.isStreaming || modelFailoverEngine.isActive());
       const isPaused = activeTask ? activeTask.status === "paused" : false;
 
       if (flowFromSettings && !isRunning && !isPaused) {

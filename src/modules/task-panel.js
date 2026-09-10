@@ -173,7 +173,8 @@ export function initTaskPanel(ctx) {
         task.status === "thinking" ||
         task.status === "streaming" ||
         task.status === "tool_exec" ||
-        task.status === "paused";
+        task.status === "paused" ||
+        (modelFailoverEngine.isActive() && (!modelFailoverEngine.taskId || modelFailoverEngine.taskId === task.id));
       const isCurrent = taskManager.currentActiveTaskId === task.id;
 
       // 自动强制重连进行中：该 Task 绑定引擎内置重连流水线时展示专属状态徽章
@@ -298,25 +299,33 @@ export function initTaskPanel(ctx) {
     });
   }
 
+  /**
+   * 彻底中止当前会话与任务（直接中断一切：取消内置重连与定时器、物理强杀子进程、定格轮次、归档历史）
+   */
+  const abortCurrentSession = async () => {
+    const current = taskManager.getCurrentActiveTask();
+    const currentTaskId = current ? current.id : (modelFailoverEngine.taskId || null);
+    if (currentTaskId) {
+      modelFailoverEngine.markTaskAborted(currentTaskId);
+    }
+    // 立即终止引擎待执行的退避定时器与重连流水线 (绝对不触发重连)
+    modelFailoverEngine.cancel("user");
+    if (currentTaskId && taskManager.getTask(currentTaskId)) {
+      await taskManager.abortTask(currentTaskId);
+    } else {
+      await piClient.abort();
+    }
+    api.finalizeStream(currentTaskId);
+    api.appendFlowAbortNotice();
+    showGlobalToast("当前任务已手动终止", 1200);
+    archiveCurrentFlowToHistory();
+  };
+  api.abortCurrentSession = abortCurrentSession;
+
   if (flowBtnAbort) {
     flowBtnAbort.addEventListener("click", async (e) => {
       e.stopPropagation();
-      const current = taskManager.getCurrentActiveTask();
-      const currentTaskId = current ? current.id : null;
-      if (currentTaskId) {
-        modelFailoverEngine.markTaskAborted(currentTaskId);
-      }
-      // 立即终止引擎待执行的退避定时器与切换流水线 (绝对不触发重连)
-      modelFailoverEngine.cancel("user");
-      if (current) {
-        await taskManager.abortTask(current.id);
-      } else {
-        await piClient.abort();
-      }
-      api.finalizeStream();
-      api.appendFlowAbortNotice();
-      showGlobalToast("当前任务已手动终止", 1200);
-      archiveCurrentFlowToHistory();
+      await abortCurrentSession();
     });
   }
 
@@ -560,7 +569,8 @@ export function initTaskPanel(ctx) {
       task.status === "thinking" ||
       task.status === "streaming" ||
       task.status === "tool_exec" ||
-      task.status === "paused";
+      task.status === "paused" ||
+      (modelFailoverEngine.isActive() && (!modelFailoverEngine.taskId || modelFailoverEngine.taskId === task.id));
 
     renderTurnsIntoFlow(task, turns, { isRunning, syncModelName: true });
   };
