@@ -65,8 +65,8 @@ export function isAbortError(err) {
   if (!err) return false;
   if (err.cancelled === true || err.isAborted === true || err.aborted === true) return true;
   const raw = err?.raw;
-  if (raw?.cancelled === true || raw?.isAborted === true || raw?.aborted === true || raw?.interrupted === true) return true;
-  if (raw?.stopReason === "abort" || raw?.stopReason === "interrupted" || raw?.stopReason === "cancelled" || raw?.stopReason === "canceled") return true;
+  if (raw?.cancelled === true || raw?.isAborted === true || raw?.aborted === true) return true;
+  if (raw?.stopReason === "abort" || raw?.stopReason === "cancelled" || raw?.stopReason === "canceled") return true;
 
   const candidate =
     raw?.errorMessage ||
@@ -79,32 +79,57 @@ export function isAbortError(err) {
     "";
   const str = String(candidate).toLowerCase();
 
-  // 匹配常见中断/手动终止关键字
+  // 排除明确的网络/服务端瞬态错误（即使包含 abort/terminated 等词汇，如 connection terminated / socket reset / timeout aborted）
+  const NETWORK_TRANSIENT_PATTERNS = [
+    "rate limit",
+    "429",
+    "500",
+    "502",
+    "503",
+    "504",
+    "econnreset",
+    "etimedout",
+    "econnrefused",
+    "enotfound",
+    "timeout",
+    "timed out",
+    "connection",
+    "socket",
+    "network error",
+    "fetch failed",
+    "load failed",
+    "status code",
+    "overloaded",
+  ];
+  if (NETWORK_TRANSIENT_PATTERNS.some((kw) => str.includes(kw))) {
+    return false;
+  }
+
+  // 匹配明确的用户手动终止/取消关键字
   const ABORT_PATTERNS = [
-    "abort",
-    "aborted",
-    "aborterror",
-    "interrupted",
-    "cancelled",
-    "canceled",
     "user_abort",
     "manual_abort",
-    "terminated",
     "user cancelled",
     "user aborted",
-    "request was aborted",
-    "the user aborted a request",
     "session aborted",
-    "process terminated",
+    "process terminated by user",
     "请求已被中止",
     "手动终止",
-    "已取消",
     "用户终止",
     "操作已取消",
     "刚刚会话已手动终止",
   ];
+  if (ABORT_PATTERNS.some((kw) => str.includes(kw))) {
+    return true;
+  }
 
-  return ABORT_PATTERNS.some((kw) => str.includes(kw));
+  // 若文本纯粹为短词标识（如单纯的 "abort" / "aborted" / "aborterror" / "cancelled" / "canceled"），则认定为主动中断
+  const trimmed = str.trim();
+  if (["abort", "aborted", "aborterror", "cancelled", "canceled", "interrupted"].includes(trimmed)) {
+    return true;
+  }
+
+  return false;
 }
 
 class PiClient extends EventTarget {

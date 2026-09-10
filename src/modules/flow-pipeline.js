@@ -668,16 +668,19 @@ export function initFlowPipeline(ctx) {
   piClient.addEventListener("agent-end", (e) => {
     const endTaskId = e.detail?.task_id || e.detail?.taskId || piClient.lastEventTaskId;
     const isForeground = taskManager.isForegroundStreamTask(endTaskId);
-    // 引擎在途重发尝试的收口帧：无论前后台，只要属于引擎当前任务即结算成功
-    // （后台任务结算成功后不做前台收尾与归档，仅由 TaskManager 结算数据）
+    // 自动重连引擎接管铁律：若自愈引擎当前正服务该任务（处于退避等待、后台续发或失败延迟）：
+    // 1. 若无在途重发尝试（!hasInflightAttempt），本帧属于刚刚被引擎接管的失败轮次的残余收口帧；
+    // 2. 若存在在途重发尝试（hasInflightAttempt），由引擎结算该尝试结果；
+    // 无论前台还是后台，只要引擎处于活跃接管状态，本帧绝不能穿透流向 api.finalizeStream 与归档，
+    // 必须立即拦截 return，杜绝失败轮次 agent-end 误将前台流式界面瞬间终结并切断会话流！
     const engineOwnsTask =
       modelFailoverEngine.isActive() &&
       (!modelFailoverEngine.taskId || String(modelFailoverEngine.taskId) === String(endTaskId));
     if (engineOwnsTask) {
-      modelFailoverEngine.resolveTurnSuccess();
-      if (!isForeground) {
-        return;
+      if (modelFailoverEngine.hasInflightAttempt()) {
+        modelFailoverEngine.resolveTurnSuccess();
       }
+      return;
     }
     // 后台挂起任务的结束帧：不触发前台收尾与归档，仅由 TaskManager 结算数据
     if (!isForeground) {
