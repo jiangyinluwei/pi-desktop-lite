@@ -941,6 +941,15 @@ class ConfigService extends EventTarget {
   }
 
   /**
+   * 为指定组件应用缺陷补丁（修复第三方组件在本机环境上的源码级缺陷）
+   * @param {string} packageName
+   * @returns {Promise<boolean>}
+   */
+  async applyPackagePatches(packageName) {
+    return this.invoke("pi_apply_package_patches", { packageName });
+  }
+
+  /**
    * 获取内嵌的推荐扩展组件列表
    * @returns {Promise<Array<{name: string, description?: string, source?: string}>>}
    */

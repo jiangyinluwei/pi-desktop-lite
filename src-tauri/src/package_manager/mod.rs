@@ -1,6 +1,7 @@
 pub mod catalog;
 pub mod installer;
 pub mod models;
+pub mod patches;
 pub mod presets;
 
 pub use catalog::search_catalog;
@@ -16,6 +17,10 @@ pub use presets::{
     apply_preset_for_package, find_preset_for_package, get_recommended_plugins, is_preset_applied,
     PackagePreset,
 };
+pub use patches::{
+    apply_patches_for_package, find_patch_set_for_package, is_patch_set_applied,
+    resolve_installed_package, PatchSet,
+};
 
 #[tauri::command]
 pub async fn pi_check_node_environment() -> Result<NodeEnvironmentInfo, String> {
@@ -30,6 +35,12 @@ pub fn pi_get_recommended_plugins() -> Result<Vec<RecommendedPlugin>, String> {
 #[tauri::command]
 pub fn pi_apply_package_preset(package_name: String) -> Result<bool, String> {
     apply_preset_for_package(&package_name)
+}
+
+/// 为指定组件应用缺陷补丁（修复第三方组件在本机环境上的源码级缺陷，幂等且带版本闸门）
+#[tauri::command]
+pub fn pi_apply_package_patches(package_name: String) -> Result<bool, String> {
+    apply_patches_for_package(&package_name)
 }
 
 

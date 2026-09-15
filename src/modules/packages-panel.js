@@ -434,11 +434,19 @@ export function initPackagesPanel(ctx) {
         `;
       } else {
         const hasUnappliedPreset = pkg.hasPreset && !pkg.isPresetApplied;
+        const hasUnappliedPatches = pkg.hasPatches && !pkg.isPatchesApplied;
         actionsHtml = `
           ${
             hasUnappliedPreset
               ? `<button type="button" class="flat-btn flat-btn-secondary mini btn-preset-pkg" data-name="${escapeHtml(pkg.name)}" title="应用推荐配置：${escapeHtml(pkg.presetTitle || '推荐配置')}">
                    推荐配置
+                 </button>`
+              : ""
+          }
+          ${
+            hasUnappliedPatches
+              ? `<button type="button" class="flat-btn flat-btn-secondary mini btn-patch-pkg" data-name="${escapeHtml(pkg.name)}" title="应用缺陷修复：${escapeHtml(pkg.patchTitle || '缺陷修复')}">
+                   修复补丁
                  </button>`
               : ""
           }
@@ -474,6 +482,15 @@ export function initPackagesPanel(ctx) {
         btnPreset.addEventListener("click", (e) => {
           e.stopPropagation();
           handleApplyPackagePreset(pkg.name, btnPreset);
+        });
+      }
+
+      // 绑定应用缺陷补丁
+      const btnPatch = item.querySelector(".btn-patch-pkg");
+      if (btnPatch) {
+        btnPatch.addEventListener("click", (e) => {
+          e.stopPropagation();
+          handleApplyPackagePatches(pkg.name, btnPatch);
         });
       }
 
@@ -866,6 +883,28 @@ export function initPackagesPanel(ctx) {
       if (btnElement) {
         btnElement.disabled = false;
         btnElement.textContent = "推荐配置";
+      }
+    }
+  };
+
+  // 应用缺陷补丁（修复第三方组件在本机环境上的源码级缺陷，如 pi-ocr 在 Windows 上的 Python 解析）
+  const handleApplyPackagePatches = async (packageName, btnElement) => {
+    if (btnElement) {
+      btnElement.disabled = true;
+      btnElement.textContent = "修复中...";
+    }
+    try {
+      await configService.applyPackagePatches(packageName);
+      await loadInstalledPackages();
+    } catch (err) {
+      console.error(`[PackageManager] Failed to apply patches for ${packageName}:`, err);
+      await sketchAlert(`应用组件【${packageName}】缺陷修复失败：\n${err?.toString() || "未知错误"}`, {
+        type: "error",
+        title: "应用缺陷修复失败"
+      });
+      if (btnElement) {
+        btnElement.disabled = false;
+        btnElement.textContent = "修复补丁";
       }
     }
   };

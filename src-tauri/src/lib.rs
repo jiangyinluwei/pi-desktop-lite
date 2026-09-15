@@ -19,9 +19,9 @@ use config_manager::{
     pi_sync_subagent_pinned_model,
 };
 use package_manager::{
-    pi_apply_package_preset, pi_check_node_environment, pi_check_package_updates,
-    pi_get_installed_packages, pi_get_recommended_plugins, pi_install_package,
-    pi_search_packages, pi_uninstall_package, pi_update_package,
+    pi_apply_package_patches, pi_apply_package_preset, pi_check_node_environment,
+    pi_check_package_updates, pi_get_installed_packages, pi_get_recommended_plugins,
+    pi_install_package, pi_search_packages, pi_uninstall_package, pi_update_package,
 };
 use pi_runner::{PiHostPool, PiSupervisor};
 use session::{SessionIndexCache, SessionWatcher};
@@ -122,6 +122,7 @@ pub fn run() {
             pi_check_package_updates,
             pi_update_package,
             pi_apply_package_preset,
+            pi_apply_package_patches,
             pi_inspect_paths,
             pi_inspect_file,
             pi_read_file_text_preview,
@@ -160,11 +161,14 @@ pub fn run() {
                 log::warn!("[Setup] Failed to materialize kernel extensions: {}", e);
             }
 
-            // 2c. 启动时自愈已安装组件的推荐配置（应对组件升级后配置路径迁移，
-            //     如 pi-web-access 0.29.0 将 web-search.json 由 ~/.pi/ 迁移至 ~/.pi/agent/
-            //     导致既有「后台静默执行」配置被忽略、联网搜索重新弹出网页端人工确认）
+            // 2c. 启动时自愈已安装组件的推荐配置与缺陷补丁（应对组件升级后配置路径迁移
+            //     或 npm 覆盖 node_modules 导致补丁丢失，如 pi-web-access 0.29.0 将
+            //     web-search.json 由 ~/.pi/ 迁移至 ~/.pi/agent/ 导致既有「后台静默执行」
+            //     配置被忽略、联网搜索重新弹出网页端人工确认；pi-ocr 1.4.x 在 Windows
+            //     上的 python3 占位 stub 缺陷需重打补丁）
             tauri::async_runtime::spawn(async move {
                 package_manager::presets::self_heal_installed_package_presets();
+                package_manager::patches::self_heal_installed_package_patches();
             });
 
             // 3. 初始化 Version Scheduler

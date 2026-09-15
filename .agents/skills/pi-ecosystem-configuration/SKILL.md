@@ -232,6 +232,25 @@ pi -e git:github.com/user/repo
 >
 > 手动确认当前生效配置：读取 `~/.pi/agent/web-search.json`，应包含 `"workflow": "auto-summary"`。修改后需**新开一会话 / 重启内核**生效（扩展在进程加载时缓存配置路径常量）。
 
+#### ⑤ 桌面端组件缺陷补丁预设（源码级修复，重要）
+
+推荐配置预设只能写「配置键」；当第三方组件的缺陷在**源码层面**（如 Windows 兼容 bug、缺平台分支）时，配置救不回来，走本条。
+
+| 组件 | 缺陷 | 补丁文件（内嵌于 `src-tauri/presets/patches/pi-ocr/`，物化到组件 `extensions/`） |
+| :--- | :--- | :--- |
+| `pi-ocr` 1.4.x | ① `mineru.ts` / `pix2text.ts` / `ollama.ts` 三处硬编码 `spawn("python3")`，Windows 上命中 Microsoft Store 占位 stub（退出码 49 + Store 推销语，真正解释器是 `python`）→ 图片 OCR 必失败；② `getPdfPageCount` 无 win32 分支恒返回 1 → >20 页 PDF 整包直发 MinerU 免费档被拒 | 新增 `python.ts`（候选命令探测 + 实跑验活 + 进程级缓存，跳过 Store stub）+ 三处改用 `getPythonCmd()` + `getPdfPageCount` 补 win32 分支（pypdfium2 数页数，失败保守回落 1） |
+
+清单唯一源 `src-tauri/presets/package-patches.json` + 修复源码 `src-tauri/presets/patches/<包>/`，均 `include_str!` 编译期内嵌进 exe，由 `package_manager/patches.rs` 在**组件安装 / 更新 / 应用启动**三个时机物化到已安装组件目录（`~/.pi/agent/npm/node_modules/<包>/`）。
+
+> ⚠️ **三道安全闸门（改动补丁表必须遵守）**：
+1. **版本闸门** `versionPrefixes`：仅当已安装版本匹配验证过的 `major.minor`（如 `["1.4"]` 命中 1.4.0/1.4.7）才应用。组件升级换版（如 1.5.0）后**绝不盲目覆盖**——上游可能已修复或已调整文件布局；
+2. **存在性闸门** `create`：`false` 仅覆盖已存在文件（版本闸门放行却找不到目标 = 上游改了布局，直接 `Err` 暴露漂移，严禁静默跳过），`true` 才允许新增文件；
+3. **幂等 + 回读校验**：内容与内嵌源一致跳过写入，写入后 `is_patch_set_applied` 比对全部文件。
+>
+> npm 更新会**整体覆盖 `node_modules`**，所以更新钩子必须重打补丁（`installer.rs` 更新完成分支）。
+>
+> 新增组件补丁流程：修复后的完整文件入 `presets/patches/<包>/` → `package-patches.json` 追加条目（`source` 相对 `presets/patches/`，`target` 相对组件根）→ `patches.rs` 的 `patch_source_by_name` 追加 `include_str!` 映射 → `npm run check` + `npm run check:fe`。**严禁**为未验证版本放宽 `versionPrefixes`。
+
 ---
 
 ### 2. 技能组件 (Skills - 遵循 Agent Skills 规范)

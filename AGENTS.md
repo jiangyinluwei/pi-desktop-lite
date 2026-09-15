@@ -33,7 +33,7 @@
 
 ## 📌 核心准则三：桌面端交互铁律与手势约束
 
-本项目前端作为轻量桌面应用，**所有 UI 与交互修改必须严格遵守以下 20 项核心铁律**：
+本项目前端作为轻量桌面应用，**所有 UI 与交互修改必须严格遵守以下 22 项核心铁律**：
 
 1. **拖拽区域限制**：全窗口仅顶部约 **30px** 标题栏支持拖拽（`-webkit-app-region: drag` / `data-tauri-drag-region`），内容主体、背景与品牌区严禁开启拖拽；
 2. **焦点释放与消除高亮**：输入框高亮在点击外部空白区、非输入元素或右键点击时，必须立即失焦（`blur()`）并消除高亮；
@@ -145,6 +145,13 @@
     - **多路径双写覆盖组件升级迁移**：预设表支持 `configFiles` 数组（为空时回退单个 `configFile`），`resolve_preset_config_paths` 去重展开后 `apply_preset` **逐一写入全部路径**、`is_preset_applied` 要求**全部路径均生效**（任一缺失即视为未生效）。典型范例 `pi-web-access`：`workflow: "auto-summary"` + `autoOpenBrowser: false` 同时写入 `~/.pi/agent/web-search.json`（≥0.29.0 默认路径）与 `~/.pi/web-search.json`（旧版 / XDG 回退路径），杜绝组件升级更改默认配置路径后「静默配置写过但被忽略」导致联网搜索重新弹出网页端人工确认；
     - **三时机自动应用**：组件安装（`installer.rs` 安装完成钩子）、组件更新（`installer.rs` 更新完成钩子，`is_preset_applied` 为假时补写）、**应用启动自愈**（`lib.rs` setup 阶段 `package_manager::presets::self_heal_installed_package_presets()` 异步遍历已安装组件补齐未生效预设，应对已装组件静默升级后路径迁移、无需用户重装）；前端组件面板「应用推荐配置」按钮经 `pi_apply_package_preset` 手动触发同一链路；
     - **配置变更生效时机**：扩展在进程加载时缓存配置路径常量（如 `pi-web-access` 的 `const WEB_SEARCH_CONFIG_PATH`），配置写入后需**新开一会话或重启内核**才对后续工具调用生效。
+22. **组件缺陷补丁预设与版本闸门铁律 (Package Patch Preset & Version Gate Invariance)**：
+    - **定位与分工**：铁律 21 的「推荐配置预设」只能向组件配置文件合并键值；当第三方组件的缺陷在**源码层面**（如 Windows 兼容 bug）时，配置救不了，必须走本条。清单唯一源 `src-tauri/presets/package-patches.json`，修复后的完整源码文件收纳于 `src-tauri/presets/patches/<组件>/`，两者均以 `include_str!` 编译期内嵌进 exe；
+    - **三道安全闸门（缺一不可）**：① **版本闸门**——仅当已安装组件版本匹配清单 `versionPrefixes`（`major.minor` 精确匹配，如 `["1.4"]` 命中 1.4.0/1.4.7；`["*"]` 表示任意）时才应用，组件升级换版后**绝不盲目覆盖**可能已重排或上游已修复的文件；② **存在性闸门**——`create: false` 条目仅在目标文件已存在时覆盖，版本闸门已放行却找不到目标文件说明上游改了布局，直接 `Err` 暴露漂移（严禁静默跳过），`create: true` 才允许新增文件；③ **幂等 + 回读校验**——内容与内嵌源一致时跳过写入，写入后 `is_patch_set_applied` 严格回读比对全部文件；
+    - **三时机自动应用**（与铁律 21 完全对齐）：组件安装完成（`installer.rs` 安装钩子）、组件更新完成（`installer.rs` 更新钩子——npm 会整体覆盖 `node_modules`，补丁必须重打）、**应用启动自愈**（`lib.rs` setup 步骤 2c 与 `self_heal_installed_package_presets()` 并联调用 `self_heal_installed_package_patches()`）；前端组件面板在 `hasPatches && !isPatchesApplied` 时显示「修复补丁」按钮，经 `pi_apply_package_patches` 触发同一链路；
+    - **状态透出**：`InstalledPackage` 增 `hasPatches` / `isPatchesApplies` / `patchTitle` 三字段，与 preset 三字段同源同构（`get_installed_packages` 统一计算）；
+    - **典型范例 `pi-ocr` 1.4.x**：Windows 上 `mineru.ts`/`pix2text.ts`/`ollama.ts` 三处硬编码 `spawn("python3")` 命中 Microsoft Store 占位 stub（退出码 49 + Store 推销语，真正的解释器是 `python`），且 `getPdfPageCount` 无 win32 分支恒返回 1 导致 >20 页 PDF 整包直发 MinerU 免费档被拒。补丁 = 新增 `extensions/python.ts`（候选命令探测 + 实跑验活 + 进程级缓存，跳过 Store stub）+ 三处改用 `getPythonCmd()` + `getPdfPageCount` 补 win32 分支（pypdfium2 数页数，失败保守回落 1）；
+    - **新增组件补丁流程**：把修复后的完整文件放入 `src-tauri/presets/patches/<包>/` → 在 `package-patches.json` 追加条目（`source` 相对 `presets/patches/`，`target` 相对组件根）→ 在 `patches.rs` 的 `patch_source_by_name` 追加 `include_str!` 映射 → `npm run check` + `npm run check:fe` 验证。**严禁**为未验证的版本放宽 `versionPrefixes`。
 
 > 📖 **完整功能矩阵与系统特性总览**：详见项目架构总览技能 [`.agents/skills/pi-desktop-overview/SKILL.md`](file:///.agents/skills/pi-desktop-overview/SKILL.md)。
 

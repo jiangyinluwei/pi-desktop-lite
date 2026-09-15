@@ -138,6 +138,21 @@ pub fn get_installed_packages() -> Result<Vec<InstalledPackage>, String> {
                 None => (false, false, None),
             };
 
+        let (has_patches, is_patches_applied, patch_title) =
+            match super::patches::find_patch_set_for_package(&pkg_name) {
+                Some(patch_set) => {
+                    let applied =
+                        match super::patches::resolve_installed_package(&pkg_name) {
+                            Some((root, _version)) => {
+                                super::patches::is_patch_set_applied(&patch_set, &root)
+                            }
+                            None => false,
+                        };
+                    (true, applied, Some(patch_set.title))
+                }
+                None => (false, false, None),
+            };
+
         installed_list.push(InstalledPackage {
             name: pkg_name,
             version,
@@ -146,6 +161,9 @@ pub fn get_installed_packages() -> Result<Vec<InstalledPackage>, String> {
             has_preset,
             is_preset_applied,
             preset_title,
+            has_patches,
+            is_patches_applied,
+            patch_title,
         });
     }
 
@@ -493,8 +511,45 @@ pub async fn install_package(
             false
         };
 
-    let completed_msg = if auto_preset_applied {
+    // 检查并自动应用缺陷补丁（修复第三方组件在本机环境上的源码级缺陷，幂等 + 版本闸门）
+    let auto_patch_applied =
+        if let Some(patch_set) = super::patches::find_patch_set_for_package(&pkg_name) {
+            if let Some((package_root, version)) =
+                super::patches::resolve_installed_package(&pkg_name)
+            {
+                match super::patches::apply_patch_set(&patch_set, &package_root, &version) {
+                    Ok(_) => {
+                        log::info!(
+                            "[PackageManager] Auto-applied patch '{}' for package '{}' v{}",
+                            patch_set.title,
+                            pkg_name,
+                            version
+                        );
+                        true
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[PackageManager] Skipped patch for package '{}' v{}: {}",
+                            pkg_name,
+                            version,
+                            e
+                        );
+                        false
+                    }
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+    let completed_msg = if auto_preset_applied && auto_patch_applied {
+        format!("组件 {} 安装成功，已自动应用推荐配置与缺陷修复！", pkg_name)
+    } else if auto_preset_applied {
         format!("组件 {} 安装成功，已自动应用推荐配置！", pkg_name)
+    } else if auto_patch_applied {
+        format!("组件 {} 安装成功，已自动应用缺陷修复！", pkg_name)
     } else {
         format!("组件 {} 安装成功！", pkg_name)
     };
@@ -854,6 +909,17 @@ pub async fn update_package(
     if let Some(preset) = super::presets::find_preset_for_package(&pkg_name) {
         if !super::presets::is_preset_applied(&preset) {
             let _ = super::presets::apply_preset(&preset);
+        }
+    }
+
+    // npm 更新会整体覆盖 node_modules，缺陷补丁需重新打回（幂等 + 版本闸门保护）
+    if let Some(patch_set) = super::patches::find_patch_set_for_package(&pkg_name) {
+        if let Some((package_root, version)) =
+            super::patches::resolve_installed_package(&pkg_name)
+        {
+            if !super::patches::is_patch_set_applied(&patch_set, &package_root) {
+                let _ = super::patches::apply_patch_set(&patch_set, &package_root, &version);
+            }
         }
     }
 

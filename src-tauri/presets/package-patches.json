@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Pi 扩展组件缺陷补丁映射表 (打包时通过 include_str! 内嵌至二进制 exe)。与 package-presets.json 的「推荐配置」互补：后者写配置键，本表把应用层修复过的组件源码文件物化到已安装组件目录，修复第三方组件在本机环境上的缺陷。",
+  "patches": [
+    {
+      "id": "pi-ocr-windows-python",
+      "packageNames": [
+        "pi-ocr",
+        "npm:pi-ocr"
+      ],
+      "title": "Windows Python 解析与 PDF 页数修复",
+      "description": "pi-ocr 1.4.x 在 Windows 上硬编码 spawn(\"python3\")，命中 Microsoft Store 占位 stub（退出码 49 并打印 Store 推销语）导致图片 OCR 必失败；getPdfPageCount 无 win32 分支恒返回 1，>20 页 PDF 整包直发 MinerU 免费档被拒。修复：新增 python.ts 探测可用解释器（跳过 Store stub），mineru/pix2text/ollama 改用解析结果，ollama 补 win32 页数分支（pypdfium2）。",
+      "versionPrefixes": [
+        "1.4"
+      ],
+      "files": [
+        {
+          "source": "pi-ocr/python.ts",
+          "target": "extensions/python.ts",
+          "create": true
+        },
+        {
+          "source": "pi-ocr/mineru.ts",
+          "target": "extensions/mineru.ts",
+          "create": false
+        },
+        {
+          "source": "pi-ocr/pix2text.ts",
+          "target": "extensions/pix2text.ts",
+          "create": false
+        },
+        {
+          "source": "pi-ocr/ollama.ts",
+          "target": "extensions/ollama.ts",
+          "create": false
+        }
+      ]
+    }
+  ]
+}
