@@ -305,6 +305,10 @@ export function initTaskPanel(ctx) {
     }
     // 立即终止引擎待执行的退避定时器与重连流水线 (绝对不触发重连)
     modelFailoverEngine.cancel("user");
+    // 撤销流中断宽容期等待胶囊（手动终止全链路杜绝任何残留倒计时与超时弹卡）
+    if (typeof api.cancelStreamInterruption === "function") {
+      api.cancelStreamInterruption(currentTaskId);
+    }
     if (currentTaskId && taskManager.getTask(currentTaskId)) {
       await taskManager.abortTask(currentTaskId);
     } else {

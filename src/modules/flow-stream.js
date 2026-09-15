@@ -40,6 +40,129 @@ export function initFlowStream(ctx) {
     }
   };
 
+  /**
+   * 流中断宽容期（Stream Interruption Grace Period）
+   *
+   * 内核回显 `Stream ended without finish_reason` 时，通常只是远端 SSE 流提前关闭，
+   * 并非真正的模型调用失败。此时严禁立即弹出红色错误卡惊扰用户，改为在会话流最下方
+   * 呈现「黄色倒计时等待消息框」，给模型 STREAM_INTERRUPT_GRACE_MS 毫秒恢复窗口：
+   *   - 期间模型恢复任何输出（思维 / 正文 / 工具）或会话正常收口 / 被终止 → 静默撤销等待；
+   *   - 仅当超时仍未恢复 → 才渲染既有红色错误诊断卡（renderErrorCard）。
+   */
+  const STREAM_INTERRUPT_GRACE_MS = 300000;
+  let streamPauseTimer = null;
+  let streamPauseInterval = null;
+  let streamPauseTaskId = null;
+  let streamPauseDetail = null;
+
+  const clearStreamPauseTimers = () => {
+    if (streamPauseTimer) {
+      clearTimeout(streamPauseTimer);
+      streamPauseTimer = null;
+    }
+    if (streamPauseInterval) {
+      clearInterval(streamPauseInterval);
+      streamPauseInterval = null;
+    }
+  };
+
+  /** 隐藏黄色等待胶囊并还原胶囊图标（内置重连场景复用同一胶囊，须还原 bolt 图标） */
+  const hideStreamPauseCapsule = () => {
+    const capsule = flowView.activeTurnRefs?.failoverCapsuleEl;
+    if (!capsule) return;
+    capsule.classList.add("hidden");
+    capsule.classList.remove("waiting");
+    const iconEl = capsule.querySelector(".capsule-icon");
+    if (iconEl) iconEl.innerHTML = ICONS.bolt;
+    const abortBtn = flowView.activeTurnRefs?.failoverAbortBtn || capsule.querySelector(".failover-abort-btn");
+    if (abortBtn) abortBtn.classList.remove("hidden");
+  };
+
+  /**
+   * 撤销流中断宽容期：清退倒计时并隐藏黄色等待胶囊。
+   * 模型恢复输出、会话被手动终止、重发或重新提问时调用（幂等）。
+   * @param {string} [taskId] 传入时仅当与等待中的任务一致才撤销（杜绝跨任务误撤销）
+   */
+  const cancelStreamInterruption = (taskId = null) => {
+    if (!streamPauseTimer) return;
+    if (taskId && streamPauseTaskId && String(taskId) !== String(streamPauseTaskId)) return;
+    clearStreamPauseTimers();
+    streamPauseTaskId = null;
+    streamPauseDetail = null;
+    hideStreamPauseCapsule();
+  };
+
+  /**
+   * 模型恢复输出时撤销流中断宽容期：热路径零负担（无等待时立即返回），
+   * 有等待时经 clearTurnErrorState 一并清除任务错误态与残留错误卡（含取消宽容期）。
+   * @param {string} [taskId]
+   */
+  const resolveStreamInterruption = (taskId = null) => {
+    if (!streamPauseTimer) return;
+    clearTurnErrorState(taskId);
+  };
+
+  /**
+   * 启动流中断宽容期（幂等：同一任务等待期间重复错误帧不重置倒计时）。
+   * @param {{ message: string, model?: string, taskId?: string, raw?: object }} errDetail agent-error detail
+   */
+  const handleStreamInterruption = (errDetail) => {
+    const taskId = errDetail?.taskId || errDetail?.raw?.task_id || piClient.lastEventTaskId || null;
+    // 一次失败 run 会经 message_end / turn_end / agent_end 多次派发 agent-error：
+    // 同任务重复帧保持既有倒计时，绝不重置 300 秒窗口；前台已切到别的任务则先撤销旧等待
+    if (streamPauseTimer) {
+      if (!streamPauseTaskId || String(streamPauseTaskId) === String(taskId)) return;
+      clearStreamPauseTimers();
+    }
+
+    const capsule = flowView.activeTurnRefs?.failoverCapsuleEl;
+    const textEl = flowView.activeTurnRefs?.failoverTextEl;
+    if (!capsule || !textEl) return;
+
+    streamPauseTaskId = taskId;
+    streamPauseDetail = errDetail;
+
+    // 纯状态示意条：切换为黄色等待态，隐藏胶囊内中断按钮
+    // （主界面 #flow-btn-abort 在等待全周期保持可用，用户仍可随时彻底终止）
+    clearFailoverCountdown();
+    capsule.classList.remove("ok");
+    capsule.classList.add("waiting");
+    capsule.classList.remove("hidden");
+    const iconEl = capsule.querySelector(".capsule-icon");
+    if (iconEl) iconEl.innerHTML = ICONS.hourglass;
+    const abortBtn = flowView.activeTurnRefs?.failoverAbortBtn || capsule.querySelector(".failover-abort-btn");
+    if (abortBtn) abortBtn.classList.add("hidden");
+
+    let secs = Math.max(1, Math.round(STREAM_INTERRUPT_GRACE_MS / 1000));
+    textEl.textContent = `等待模型响应中 · ${secs}s`;
+    streamPauseInterval = setInterval(() => {
+      secs--;
+      if (secs <= 0) return;
+      textEl.textContent = `等待模型响应中 · ${secs}s`;
+    }, 1000);
+
+    streamPauseTimer = setTimeout(() => {
+      streamPauseTimer = null;
+      clearStreamPauseTimers();
+      const detail = streamPauseDetail || errDetail;
+      const expiredTaskId = streamPauseTaskId;
+      streamPauseDetail = null;
+      streamPauseTaskId = null;
+      // 任务已挂起或切走：错误卡严禁落入其他会话，静默放弃
+      if (expiredTaskId && !taskManager.isForegroundStreamTask(expiredTaskId)) {
+        hideStreamPauseCapsule();
+        return;
+      }
+      // 超时仍未恢复：才弹出红色错误提醒卡
+      hideStreamPauseCapsule();
+      api.renderErrorCard(detail);
+    }, STREAM_INTERRUPT_GRACE_MS);
+
+    if (flowScrollArea && flowView.followBottom !== false) {
+      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    }
+  };
+
   /** 事件帧归属任务的纯数据分仓（事件处理器内调用；调用点均已过前台门禁）。 */
   const streamData = (explicit) => flowStore.for(resolveStreamTaskId(explicit));
 
@@ -263,6 +386,8 @@ export function initFlowStream(ctx) {
    */
   const clearTurnErrorState = (taskId = null) => {
     clearFailoverCountdown();
+    // 流中断宽容期同步撤销（重发 / 新提问 / 自愈成功 / 终止 等错误状态清除场景统一收口）
+    cancelStreamInterruption(taskId);
     const bucketId = resolveStreamTaskId(taskId);
     const fs = flowStore.for(bucketId);
     fs.set({ errorMessage: null });
@@ -436,6 +561,17 @@ export function initFlowStream(ctx) {
       flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
     }
   };
+
+  // 任务转入后台挂起或被移除：其流中断宽容期同步撤销（黄色等待胶囊与倒计时仅属于
+  // 前台活跃任务，挂起/移除后由 TaskManager 统一结算，杜绝残留倒计时与跨会话超时弹卡）
+  taskManager.addEventListener("flow-suspended", (e) => {
+    const suspendedTaskId = e.detail?.id || null;
+    if (suspendedTaskId) cancelStreamInterruption(suspendedTaskId);
+  });
+  taskManager.addEventListener("task-removed", (e) => {
+    const removedTaskId = e.detail?.taskId || null;
+    if (removedTaskId) cancelStreamInterruption(removedTaskId);
+  });
 
   // 自动强制重连引擎进度事件 → 更新 Flow 进度胶囊
   modelFailoverEngine.addEventListener("failover-status", (e) => {
@@ -869,6 +1005,8 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("thinking-start", () => {
     if (!isForegroundStreamEvent()) return;
+    // 模型恢复输出：立即撤销流中断宽容期（若有）
+    resolveStreamInterruption(piClient.lastEventTaskId);
     if (modelFailoverEngine.isActive()) {
       modelFailoverEngine.resolveTurnSuccess(piClient.lastEventTaskId);
     }
@@ -887,6 +1025,7 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("thinking-delta", (e) => {
     if (!isForegroundStreamEvent()) return;
+    resolveStreamInterruption(piClient.lastEventTaskId);
     if (modelFailoverEngine.isActive()) {
       modelFailoverEngine.resolveTurnSuccess(piClient.lastEventTaskId);
     }
@@ -926,6 +1065,7 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("text-start", () => {
     if (!isForegroundStreamEvent()) return;
+    resolveStreamInterruption(piClient.lastEventTaskId);
     if (modelFailoverEngine.isActive()) {
       modelFailoverEngine.resolveTurnSuccess(piClient.lastEventTaskId);
     }
@@ -943,6 +1083,7 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("text-delta", (e) => {
     if (!isForegroundStreamEvent()) return;
+    resolveStreamInterruption(piClient.lastEventTaskId);
     if (modelFailoverEngine.isActive()) {
       modelFailoverEngine.resolveTurnSuccess(piClient.lastEventTaskId);
     }
@@ -975,4 +1116,7 @@ export function initFlowStream(ctx) {
   api.appendFlowAbortNotice = appendFlowAbortNotice;
   api.renderErrorCard = renderErrorCard;
   api.clearTurnErrorState = clearTurnErrorState;
+  api.handleStreamInterruption = handleStreamInterruption;
+  api.cancelStreamInterruption = cancelStreamInterruption;
+  api.resolveStreamInterruption = resolveStreamInterruption;
 }

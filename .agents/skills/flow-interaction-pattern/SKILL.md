@@ -176,6 +176,32 @@ flowchart TD
 - **会话重启与追问时错误卡彻底清理铁律 (Error Card Cleanup on Continuation)**：当界面出现模型调用失败诊断卡（`.sketch-error-card`）后，无论用户发送新提问、还是点击错误卡「重试当前提问」按钮重新发起会话（自动向模型下发「继续」），系统在启动新轮次前必须彻底物理移除 `flowConversation` 与轮次容器中残留的所有 `.sketch-error-card`，重置重连胶囊，并将 `task.turns` 中上一轮次的错误标记（`errorMessage: null`）与合成占位文本清理归位，确保后续流式生成与历史重渲 0 残留；
 - **终止守则与无归属帧静默窗口**：用户点击「⏹ 终止」立即彻底强杀退出（`isTaskAborted` 门禁），全链路严禁触发任何内置重连；终止后引擎对**无任务归属的错误帧**（消息对象不携带 task_id 的旧主会话路径）实施 15 秒保守静默窗口（`hasRecentGlobalAbortion`），杜绝终止后经杂散帧静默复活重连；
 
+### 6.1 流中断宽容期 · 黄色倒计时等待消息框 (Stream Interruption Grace Period)
+
+与内置重连引擎**互补而非重叠**的另一条降级通道，针对内核高频回显的瞬态流截断错误：
+
+```mermaid
+flowchart TD
+    Err[agent-error] --> Abort{手动终止类?}
+    Abort -->|是| Drop[静默丢弃]
+    Abort -->|否| Engine{内置重连引擎活跃或可接管?}
+    Engine -->|是| Failover[走 §6 引擎流水线 · 琥珀胶囊倒数]
+    Engine -->|否| Stream{isStreamInterruptionError 命中?<br/>Stream ended without finish_reason}
+    Stream -->|否| Red[直接渲染红色错误卡]
+    Stream -->|是| Yellow[黄色倒计时等待消息框<br/>.flow-failover-capsule.waiting · 沙漏图标<br/>「等待模型响应中 · 300s」逐秒倒数]
+    Yellow -->|模型恢复输出<br/>thinking/text/toolcall/tool-start| Recover[resolveStreamInterruption<br/>清除错误态 · 静默撤销等待]
+    Yellow -->|agent-end 且本轮已产出内容| Normal[撤销等待 · 正常收尾归档]
+    Yellow -->|终止 / 挂起 / 移除 / 重发 / 新提问| Cancel[cancelStreamInterruption 清退定时器]
+    Yellow -->|300s 超时仍未恢复| Red
+```
+
+- **判定唯一源**：`src/lib/contracts.js` 的 `isStreamInterruptionError(errDetail)`（正则 `/stream\s+ended\s+without\s+finish_reason/i`，同时检查 `errDetail.message` 与 `errDetail.raw.errorMessage/.message/.error`）；判定点位于 `flow-pipeline.js` 的 `agent-error` 监听器**末端**（手动终止门禁、aborted/exhausted/interrupt-send 守则之后，引擎活跃分支之后），仅当「引擎不接管 + 前台任务」时才可能进入；
+- **写死 300 秒**（`STREAM_INTERRUPT_GRACE_MS = 300000`，`src/modules/flow-stream.js`）：胶囊文案「等待模型响应中 · Ns」逐秒递减；等待期间 `piClient.isStreaming` 保持 `true`，主界面 `#flow-btn-abort` 全周期可见可用，胶囊内 `.failover-abort-btn` 隐藏（纯状态示意条，零系统通知、零红色错误卡）；
+- **恢复即撤销（热路径零负担）**：`api.resolveStreamInterruption(taskId)` 在「无等待」时立即返回；有等待时经 `clearTurnErrorState` 一并清除 `errorMessage`、Task `error→running` 状态回退与残留错误卡，撤销点覆盖 `thinking-start/delta`、`text-start/delta`（`flow-stream.js`）、`toolcall-delta-start`、`tool-start`（`flow-pipeline.js`）；`agent-end` 仅当本轮已真实产出（`responseText` 或 `hasReceivedDelta`）才撤销——空轮保持等待，把 300 秒窗口完整留给模型；
+- **全生命周期撤销**：`api.cancelStreamInterruption(taskId)` 清退定时器并隐藏胶囊，调用点 = 手动终止（`task-panel.abortCurrentSession`）、任务挂起（`flow-suspended`）、任务移除（`task-removed`）、重发与新提问（`clearTurnErrorState` 内置调用）；跨任务 `taskId` 校验杜绝误撤销；
+- **超时才弹红框**：倒计时走完调 `api.renderErrorCard(detail)` 渲染红色错误卡，且触发前二次校验该任务仍为前台活跃任务（`isForegroundStreamTask`），杜绝挂起/切换后跨会话误弹；**幂等**：同任务重复错误帧（一次失败 run 经 `message_end`/`turn_end`/`agent_end` 多次派发 `agent-error`）不重置倒计时，前台已切任务则先撤销旧等待；
+- **样式**：`.flow-failover-capsule.waiting`（`src/styles/flow.css`）= 实线琥珀边 + 黄色微填充 + 沙漏手绘图标 `ICONS.hourglass`，复用既有胶囊 DOM（`createFlowTurnGroupElement` 创建的 `.flow-failover-capsule`），撤销时还原 bolt 图标供内置重连场景复用；
+
 ---
 
 ## 📌 7. Typedown 质感 Markdown 与超链接

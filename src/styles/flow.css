@@ -1147,6 +1147,22 @@
   }
 }
 
+/* 流中断宽容期：黄色倒计时等待消息框（纯状态示意，实线琥珀边 + 沙漏图标，无中断按钮） */
+.flow-failover-capsule.waiting {
+  border-style: solid;
+  border-color: rgba(217, 119, 6, 0.7);
+  background: rgba(251, 191, 36, 0.14);
+}
+:root[data-theme="dark"] .flow-failover-capsule.waiting {
+  background: rgba(251, 191, 36, 0.1);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .flow-failover-capsule.waiting,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .flow-failover-capsule.waiting {
+    background: rgba(251, 191, 36, 0.1);
+  }
+}
+
 @keyframes failoverPulse {
   0%,
   100% {

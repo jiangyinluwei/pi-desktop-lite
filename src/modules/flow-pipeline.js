@@ -2,7 +2,7 @@ import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
 import { bus } from "../lib/event-bus.js";
-import { isInteractiveExtensionUiRequest } from "../lib/contracts.js";
+import { isInteractiveExtensionUiRequest, isStreamInterruptionError } from "../lib/contracts.js";
 import { piClient, isAbortError } from "../services/pi-client.js";
 import { configService } from "../services/config-service.js";
 import { promptHistoryNavigator } from "../services/prompt-history.js";
@@ -295,6 +295,10 @@ export function initFlowPipeline(ctx) {
 
   piClient.addEventListener("toolcall-delta-start", (e) => {
     if (!isForegroundStreamEvent()) return;
+    // 模型恢复输出：立即撤销流中断宽容期并清除错误态（若有）
+    if (typeof api.resolveStreamInterruption === "function") {
+      api.resolveStreamInterruption(piClient.lastEventTaskId);
+    }
     checkResolveFailoverSuccess();
     // 阶段性输出判定铁律：模型输出一段文字后进入工具调用状态（工具参数流式开始即视为进入），
     // 先封口该段文字为 Point 卡，再进入工具调用切片（tool-start 处的封口为幂等兜底）
@@ -319,6 +323,10 @@ export function initFlowPipeline(ctx) {
 
   piClient.addEventListener("tool-start", (e) => {
     if (!isForegroundStreamEvent()) return;
+    // 模型恢复输出：立即撤销流中断宽容期并清除错误态（若有）
+    if (typeof api.resolveStreamInterruption === "function") {
+      api.resolveStreamInterruption(piClient.lastEventTaskId);
+    }
     checkResolveFailoverSuccess();
     streamData(piClient.lastEventTaskId).set({ hasReceivedDelta: true });
     const data = e.detail;
@@ -663,7 +671,13 @@ export function initFlowPipeline(ctx) {
       modelFailoverEngine.handleModelError(e.detail, failoverHooks);
     } else if (isForeground) {
       // 引擎不接管：仅前台渲染错误卡；后台任务交由 TaskManager 原生错误结算通道
-      api.renderErrorCard(e.detail);
+      // 流中断宽容期：`Stream ended without finish_reason` 属瞬态截断，不弹红色错误卡，
+      // 改走「黄色倒计时等待消息框」（300 秒，超时仍未恢复才弹错误卡）
+      if (isStreamInterruptionError(e.detail)) {
+        api.handleStreamInterruption(e.detail);
+      } else {
+        api.renderErrorCard(e.detail);
+      }
     }
   });
 
@@ -695,6 +709,12 @@ export function initFlowPipeline(ctx) {
       if (!endTaskId || endTaskId === endFs.interruptSendTaskId) {
         return;
       }
+    }
+    // 流中断宽容期收口：模型流虽无 finish_reason 但已真实产出内容（正文/思维/工具），
+    // 视为已恢复正常——撤销黄色等待胶囊，交由下方正常收尾与归档，杜绝无谓的 300 秒空等；
+    // 未产出任何内容的空轮保持等待，留给宽容期超时后再弹出红色提醒卡
+    if (typeof api.resolveStreamInterruption === "function" && (endFs.responseText || endFs.hasReceivedDelta)) {
+      api.resolveStreamInterruption(e.detail?.task_id || e.detail?.taskId || piClient.lastEventTaskId);
     }
     // 完成后收起所有工具卡片（最终输出卡不收起）
     api.collapseAllToolCards();

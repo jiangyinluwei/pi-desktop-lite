@@ -103,6 +103,34 @@ export function isInteractiveExtensionUiRequest(data) {
   );
 }
 
+/**
+ * 流中断宽容期判定关键词：内核回显的「流提前关闭且无 finish_reason」错误文案。
+ * 该错误通常只是远端 SSE 流异常截断（内容往往已基本到位），并非真正的模型调用失败。
+ */
+const STREAM_INTERRUPTED_RE = /stream\s+ended\s+without\s+finish_reason/i;
+
+/**
+ * 判定一条 agent-error 是否属于「流中断但无致命错误」的瞬态截断（典型表现：
+ * `Stream ended without finish_reason`）。
+ *
+ * 命中时前端严禁立即弹出红色错误卡，改走「黄色倒计时等待消息框」宽容期
+ * （见 flow-stream.js 的 handleStreamInterruption）：给模型固定 300 秒恢复窗口，
+ * 期间模型恢复输出或会话正常收口即静默撤销等待；仅当超时仍未恢复才弹出红色提醒卡。
+ *
+ * @param {Record<string, any>} errDetail pi-client 派发的 agent-error detail
+ * @returns {boolean}
+ */
+export function isStreamInterruptionError(errDetail) {
+  if (!errDetail || typeof errDetail !== "object") return false;
+  const candidates = [
+    errDetail.message,
+    errDetail.raw?.errorMessage,
+    errDetail.raw?.message,
+    errDetail.error,
+  ];
+  return candidates.some((v) => typeof v === "string" && STREAM_INTERRUPTED_RE.test(v));
+}
+
 // =====================================================================
 // 【ctx.api 函数槽契约 · 阶段 6 定型】
 // =====================================================================
@@ -138,6 +166,9 @@ export function isInteractiveExtensionUiRequest(data) {
 //  * @property {(html: string) => void} appendFlowAbortNotice    flow-stream → 追加中断提示卡
 //  * @property {(err: object) => object} renderErrorCard         flow-stream → 错误卡渲染
 //  * @property {(taskId?: string) => void} clearTurnErrorState      flow-stream → 彻底清除轮次错误状态与卡片
+//  * @property {(err: object) => void} handleStreamInterruption  flow-stream → 流中断宽容期：黄色倒计时等待消息框（300s，超时才弹错误卡）
+//  * @property {(taskId?: string) => void} cancelStreamInterruption flow-stream → 撤销流中断宽容期（会话终止 / 挂起 / 移除）
+//  * @property {(taskId?: string) => void} resolveStreamInterruption flow-stream → 模型恢复输出时撤销流中断宽容期并清除错误态（热路径零负担）
 //  * @property {(md: string) => string} renderMarkdown           flow-ui → Markdown 渲染引擎
 //  * @property {() => void} collapseAllDoneToolCards             flow-ui → 折叠全部已完成工具卡
 //  * @property {() => void} collapseAllToolCards                 flow-ui → 折叠全部工具卡
