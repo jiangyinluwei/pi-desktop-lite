@@ -160,6 +160,13 @@ pub fn run() {
                 log::warn!("[Setup] Failed to materialize kernel extensions: {}", e);
             }
 
+            // 2c. 启动时自愈已安装组件的推荐配置（应对组件升级后配置路径迁移，
+            //     如 pi-web-access 0.29.0 将 web-search.json 由 ~/.pi/ 迁移至 ~/.pi/agent/
+            //     导致既有「后台静默执行」配置被忽略、联网搜索重新弹出网页端人工确认）
+            tauri::async_runtime::spawn(async move {
+                package_manager::presets::self_heal_installed_package_presets();
+            });
+
             // 3. 初始化 Version Scheduler
             let version_scheduler = Arc::new(VersionScheduler::new(app.handle().clone()));
             app.manage(version_scheduler.clone());

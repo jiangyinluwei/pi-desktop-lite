@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// 静态内嵌在二进制 exe 中的插件推荐配置映射表
 const PACKAGE_PRESETS_RAW: &str = include_str!("../../presets/package-presets.json");
@@ -15,7 +15,30 @@ pub struct PackagePreset {
     pub title: String,
     pub description: String,
     pub config_file: String,
+    /// 额外的目标配置文件路径（兼容组件升级后的配置路径迁移，例如 pi-web-access 0.29.0
+    /// 将默认配置由 `~/.pi/web-search.json` 迁移至 `~/.pi/agent/web-search.json`）。
+    /// 为空时仅写入 `config_file`；非空时对全部路径写入并逐一校验。
+    #[serde(default)]
+    pub config_files: Vec<String>,
     pub settings: serde_json::Map<String, Value>,
+}
+
+/// 解析预设的全部目标配置文件绝对路径（`config_files` 优先且去重，为空时回退到 `config_file`）
+pub fn resolve_preset_config_paths(preset: &PackagePreset) -> Result<Vec<PathBuf>, String> {
+    let raw_paths: Vec<&str> = if preset.config_files.is_empty() {
+        vec![preset.config_file.as_str()]
+    } else {
+        preset.config_files.iter().map(|s| s.as_str()).collect()
+    };
+
+    let mut resolved: Vec<PathBuf> = Vec::with_capacity(raw_paths.len());
+    for raw in raw_paths {
+        let path = resolve_preset_config_path(raw)?;
+        if !resolved.contains(&path) {
+            resolved.push(path);
+        }
+    }
+    Ok(resolved)
 }
 
 /// 预设配置 JSON 根对象
@@ -64,18 +87,13 @@ pub fn resolve_preset_config_path(config_file: &str) -> Result<PathBuf, String> 
     Ok(path)
 }
 
-/// 校验指定预设配置是否已经在目标配置文件中完整生效且键值匹配
-pub fn is_preset_applied(preset: &PackagePreset) -> bool {
-    let path = match resolve_preset_config_path(&preset.config_file) {
-        Ok(p) => p,
-        Err(_) => return false,
-    };
-
+/// 校验单个配置文件中预设键值是否完全生效
+fn is_preset_applied_at_path(preset: &PackagePreset, path: &Path) -> bool {
     if !path.exists() {
         return false;
     }
 
-    let content = match fs::read_to_string(&path) {
+    let content = match fs::read_to_string(path) {
         Ok(c) => c,
         Err(_) => return false,
     };
@@ -105,10 +123,23 @@ pub fn is_preset_applied(preset: &PackagePreset) -> bool {
     true
 }
 
-/// 应用预设配置到目标配置文件，保留用户已有的其他字段，并写入后进行严格回读校验
-pub fn apply_preset(preset: &PackagePreset) -> Result<(), String> {
-    let path = resolve_preset_config_path(&preset.config_file)?;
+/// 校验指定预设配置是否已经在全部目标配置文件中完整生效且键值匹配
+pub fn is_preset_applied(preset: &PackagePreset) -> bool {
+    let paths = match resolve_preset_config_paths(preset) {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
 
+    if paths.is_empty() {
+        return false;
+    }
+
+    // 全部目标路径都必须存在且键值一致，任一缺失即视为未生效（需补写）
+    paths.iter().all(|path| is_preset_applied_at_path(preset, path))
+}
+
+/// 应用预设配置到单个目标配置文件，保留用户已有的其他字段
+fn apply_preset_at_path(preset: &PackagePreset, path: &Path) -> Result<(), String> {
     // 确保目标配置文件的父级目录递归存在
     if let Some(parent) = path.parent() {
         if !parent.exists() {
@@ -119,7 +150,7 @@ pub fn apply_preset(preset: &PackagePreset) -> Result<(), String> {
 
     // 读取已有配置或初始化新字典
     let mut current_obj = if path.exists() {
-        let content = fs::read_to_string(&path)
+        let content = fs::read_to_string(path)
             .map_err(|e| format!("Failed to read existing config {:?}: {}", path, e))?;
         serde_json::from_str::<Value>(&content)
             .unwrap_or_else(|_| Value::Object(serde_json::Map::new()))
@@ -138,24 +169,77 @@ pub fn apply_preset(preset: &PackagePreset) -> Result<(), String> {
     // 格式化输出写入文件
     let serialized = serde_json::to_string_pretty(&Value::Object(current_obj))
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
-    fs::write(&path, format!("{}\n", serialized))
+    fs::write(path, format!("{}\n", serialized))
         .map_err(|e| format!("Failed to write config {:?}: {}", path, e))?;
 
-    // 写入后即刻执行严格回读校验
+    Ok(())
+}
+
+/// 应用预设配置到全部目标配置文件，保留用户已有的其他字段，并写入后进行严格回读校验
+pub fn apply_preset(preset: &PackagePreset) -> Result<(), String> {
+    let paths = resolve_preset_config_paths(preset)?;
+
+    if paths.is_empty() {
+        return Err(format!(
+            "No config file paths resolved for preset '{}'",
+            preset.title
+        ));
+    }
+
+    // 逐一写入全部目标路径（兼容组件升级后的配置路径迁移）
+    for path in &paths {
+        apply_preset_at_path(preset, path)?;
+    }
+
+    // 写入后即刻执行严格回读校验（覆盖全部路径）
     if !is_preset_applied(preset) {
         return Err(format!(
             "Configuration verification failed after writing to {:?}",
-            path
+            paths
         ));
     }
 
     log::info!(
         "[PackagePresets] Successfully applied and verified preset '{}' to {:?}",
         preset.title,
-        path
+        paths
     );
 
     Ok(())
+}
+
+/// 启动时自愈已安装组件的推荐配置：遍历已安装组件，将未生效的预设自动补写。
+/// 应对组件升级后配置文件路径迁移导致既有静默配置被忽略的情形
+/// （如 pi-web-access 0.29.0 将默认配置由 `~/.pi/web-search.json` 迁移至 `~/.pi/agent/web-search.json`）。
+pub fn self_heal_installed_package_presets() {
+    let installed = match super::installer::get_installed_packages() {
+        Ok(list) => list,
+        Err(e) => {
+            log::warn!("[PackagePresets] Self-heal skipped: failed to list installed packages: {}", e);
+            return;
+        }
+    };
+
+    for pkg in installed {
+        let Some(preset) = find_preset_for_package(&pkg.name) else {
+            continue;
+        };
+        if is_preset_applied(&preset) {
+            continue;
+        }
+        match apply_preset(&preset) {
+            Ok(_) => log::info!(
+                "[PackagePresets] Self-healed preset '{}' for installed package '{}'",
+                preset.title,
+                pkg.name
+            ),
+            Err(e) => log::warn!(
+                "[PackagePresets] Self-heal failed for installed package '{}': {}",
+                pkg.name,
+                e
+            ),
+        }
+    }
 }
 
 /// 根据包名匹配预设并执行应用

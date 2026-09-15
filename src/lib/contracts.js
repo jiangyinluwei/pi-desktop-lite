@@ -104,14 +104,18 @@ export function isInteractiveExtensionUiRequest(data) {
 }
 
 /**
- * 流中断宽容期判定关键词：内核回显的「流提前关闭且无 finish_reason」错误文案。
- * 该错误通常只是远端 SSE 流异常截断（内容往往已基本到位），并非真正的模型调用失败。
+ * 黄色倒计时宽容期判定关键词。以下两类错误均属「瞬态、很可能自行恢复」，
+ * 不应立即弹出红色错误卡惊扰用户：
+ *   1. 远端 SSE 流提前关闭且无 finish_reason（输出内容往往已基本到位）；
+ *   2. 服务商推理请求瞬时失败（如 Atria 等预览模型回显 `Inference request failed.`）。
  */
 const STREAM_INTERRUPTED_RE = /stream\s+ended\s+without\s+finish_reason/i;
+const INFERENCE_FAILED_RE = /inference\s+request\s+failed/i;
 
 /**
- * 判定一条 agent-error 是否属于「流中断但无致命错误」的瞬态截断（典型表现：
- * `Stream ended without finish_reason`）。
+ * 判定一条 agent-error 是否属于「瞬态可恢复错误」而应进入黄色倒计时宽容期
+ * （典型表现：`Stream ended without finish_reason` 的流截断，或服务商回显
+ * `Inference request failed.` 的推理请求瞬时失败）。
  *
  * 命中时前端严禁立即弹出红色错误卡，改走「黄色倒计时等待消息框」宽容期
  * （见 flow-stream.js 的 handleStreamInterruption）：给模型固定 300 秒恢复窗口，
@@ -120,7 +124,7 @@ const STREAM_INTERRUPTED_RE = /stream\s+ended\s+without\s+finish_reason/i;
  * @param {Record<string, any>} errDetail pi-client 派发的 agent-error detail
  * @returns {boolean}
  */
-export function isStreamInterruptionError(errDetail) {
+export function isGracePeriodError(errDetail) {
   if (!errDetail || typeof errDetail !== "object") return false;
   const candidates = [
     errDetail.message,
@@ -128,7 +132,9 @@ export function isStreamInterruptionError(errDetail) {
     errDetail.raw?.message,
     errDetail.error,
   ];
-  return candidates.some((v) => typeof v === "string" && STREAM_INTERRUPTED_RE.test(v));
+  return candidates.some(
+    (v) => typeof v === "string" && (STREAM_INTERRUPTED_RE.test(v) || INFERENCE_FAILED_RE.test(v))
+  );
 }
 
 // =====================================================================

@@ -215,6 +215,23 @@ pi -e npm:@foo/bar
 pi -e git:github.com/user/repo
 ```
 
+#### ④ 桌面端推荐配置预设与路径迁移自愈（重要）
+
+桌面端在 `src-tauri/presets/package-presets.json` 内嵌了「推荐配置映射表」，在**组件安装 / 更新 / 应用启动**三个时机自动把静默配置合并写入组件配置文件（保留用户其余字段，写入后严格回读校验）：
+
+| 组件 | 配置文件 | 预设内容 | 作用 |
+| :--- | :--- | :--- | :--- |
+| `pi-web-access` | `~/.pi/agent/web-search.json`（新）+ `~/.pi/web-search.json`（旧版回退，双写） | `{ "workflow": "auto-summary", "autoOpenBrowser": false }` | 联网搜索全后台静默执行 + 大模型自动摘要，**禁止自动弹出浏览器网页端夺取焦点** |
+
+> ⚠️ **路径迁移踩坑（pi-web-access ≥ 0.29.0）**：`pi-web-access` 0.29.0（2026-09-10）将默认配置读取路径由旧的 `~/.pi/web-search.json` 迁移至 `~/.pi/agent/web-search.json`（`getWebSearchConfigDir()` 默认返回 `~/.pi/agent`，旧路径仅在设置了 `XDG_CONFIG_HOME` 时才回退）。**若升级后新路径配置文件不存在，`workflow` 落回默认值 `"summary-review"` → 自动打开交互式浏览器 Curator 网页端 → 联网搜索重新需要人工点击确认。** 表现就是「静默配置明明写过、但又失效了」。
+>
+> 桌面端对策（三重保障）：
+1. 预设表 `configFiles` **双写**新 / 旧两个路径，覆盖所有版本；
+2. `presets.rs` 的 `is_preset_applied` 要求**全部路径都生效**，任一缺失即触发补写；
+3. `lib.rs` 启动钩子 `self_heal_installed_package_presets()` 遍历已安装组件自动补齐未生效的预设（`cargo check` 级自愈，无需用户重装组件）。
+>
+> 手动确认当前生效配置：读取 `~/.pi/agent/web-search.json`，应包含 `"workflow": "auto-summary"`。修改后需**新开一会话 / 重启内核**生效（扩展在进程加载时缓存配置路径常量）。
+
 ---
 
 ### 2. 技能组件 (Skills - 遵循 Agent Skills 规范)

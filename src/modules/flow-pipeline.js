@@ -2,7 +2,7 @@ import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
 import { bus } from "../lib/event-bus.js";
-import { isInteractiveExtensionUiRequest, isStreamInterruptionError } from "../lib/contracts.js";
+import { isInteractiveExtensionUiRequest, isGracePeriodError } from "../lib/contracts.js";
 import { piClient, isAbortError } from "../services/pi-client.js";
 import { configService } from "../services/config-service.js";
 import { promptHistoryNavigator } from "../services/prompt-history.js";
@@ -671,9 +671,10 @@ export function initFlowPipeline(ctx) {
       modelFailoverEngine.handleModelError(e.detail, failoverHooks);
     } else if (isForeground) {
       // 引擎不接管：仅前台渲染错误卡；后台任务交由 TaskManager 原生错误结算通道
-      // 流中断宽容期：`Stream ended without finish_reason` 属瞬态截断，不弹红色错误卡，
+      // 流中断宽容期：`Stream ended without finish_reason` / `Inference request failed.`
+      // 属瞬态截断或推理请求瞬时失败，不弹红色错误卡，
       // 改走「黄色倒计时等待消息框」（300 秒，超时仍未恢复才弹错误卡）
-      if (isStreamInterruptionError(e.detail)) {
+      if (isGracePeriodError(e.detail)) {
         api.handleStreamInterruption(e.detail);
       } else {
         api.renderErrorCard(e.detail);

@@ -186,7 +186,7 @@ flowchart TD
     Abort -->|是| Drop[静默丢弃]
     Abort -->|否| Engine{内置重连引擎活跃或可接管?}
     Engine -->|是| Failover[走 §6 引擎流水线 · 琥珀胶囊倒数]
-    Engine -->|否| Stream{isStreamInterruptionError 命中?<br/>Stream ended without finish_reason}
+    Engine -->|否| Stream{isGracePeriodError 命中?<br/>Stream ended without finish_reason<br/>Inference request failed.}
     Stream -->|否| Red[直接渲染红色错误卡]
     Stream -->|是| Yellow[黄色倒计时等待消息框<br/>.flow-failover-capsule.waiting · 沙漏图标<br/>「等待模型响应中 · 300s」逐秒倒数]
     Yellow -->|模型恢复输出<br/>thinking/text/toolcall/tool-start| Recover[resolveStreamInterruption<br/>清除错误态 · 静默撤销等待]
@@ -195,7 +195,7 @@ flowchart TD
     Yellow -->|300s 超时仍未恢复| Red
 ```
 
-- **判定唯一源**：`src/lib/contracts.js` 的 `isStreamInterruptionError(errDetail)`（正则 `/stream\s+ended\s+without\s+finish_reason/i`，同时检查 `errDetail.message` 与 `errDetail.raw.errorMessage/.message/.error`）；判定点位于 `flow-pipeline.js` 的 `agent-error` 监听器**末端**（手动终止门禁、aborted/exhausted/interrupt-send 守则之后，引擎活跃分支之后），仅当「引擎不接管 + 前台任务」时才可能进入；
+- **判定唯一源**：`src/lib/contracts.js` 的 `isGracePeriodError(errDetail)`（双正则：`/stream\s+ended\s+without\s+finish_reason/i` 流截断 + `/inference\s+request\s+failed/i` 推理请求瞬时失败，同时检查 `errDetail.message` 与 `errDetail.raw.errorMessage/.message/.error`）；判定点位于 `flow-pipeline.js` 的 `agent-error` 监听器**末端**（手动终止门禁、aborted/exhausted/interrupt-send 守则之后，引擎活跃分支之后），仅当「引擎不接管 + 前台任务」时才可能进入；
 - **写死 300 秒**（`STREAM_INTERRUPT_GRACE_MS = 300000`，`src/modules/flow-stream.js`）：胶囊文案「等待模型响应中 · Ns」逐秒递减；等待期间 `piClient.isStreaming` 保持 `true`，主界面 `#flow-btn-abort` 全周期可见可用，胶囊内 `.failover-abort-btn` 隐藏（纯状态示意条，零系统通知、零红色错误卡）；
 - **恢复即撤销（热路径零负担）**：`api.resolveStreamInterruption(taskId)` 在「无等待」时立即返回；有等待时经 `clearTurnErrorState` 一并清除 `errorMessage`、Task `error→running` 状态回退与残留错误卡，撤销点覆盖 `thinking-start/delta`、`text-start/delta`（`flow-stream.js`）、`toolcall-delta-start`、`tool-start`（`flow-pipeline.js`）；`agent-end` 仅当本轮已真实产出（`responseText` 或 `hasReceivedDelta`）才撤销——空轮保持等待，把 300 秒窗口完整留给模型；
 - **全生命周期撤销**：`api.cancelStreamInterruption(taskId)` 清退定时器并隐藏胶囊，调用点 = 手动终止（`task-panel.abortCurrentSession`）、任务挂起（`flow-suspended`）、任务移除（`task-removed`）、重发与新提问（`clearTurnErrorState` 内置调用）；跨任务 `taskId` 校验杜绝误撤销；
