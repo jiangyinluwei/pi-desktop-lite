@@ -107,15 +107,18 @@ export function isInteractiveExtensionUiRequest(data) {
  * 黄色倒计时宽容期判定关键词。以下两类错误均属「瞬态、很可能自行恢复」，
  * 不应立即弹出红色错误卡惊扰用户：
  *   1. 远端 SSE 流提前关闭且无 finish_reason（输出内容往往已基本到位）；
- *   2. 服务商推理请求瞬时失败（如 Atria 等预览模型回显 `Inference request failed.`）。
+ *   2. 服务商推理请求瞬时失败（如 Atria 等预览模型回显 `Inference request failed.`）；
+ *   3. 网关/代理回显 `upstream failure`（上游服务瞬时不可用，常自行恢复）。
  */
 const STREAM_INTERRUPTED_RE = /stream\s+ended\s+without\s+finish_reason/i;
 const INFERENCE_FAILED_RE = /inference\s+request\s+failed/i;
+const UPSTREAM_FAILURE_RE = /upstream\s+failure/i;
 
 /**
  * 判定一条 agent-error 是否属于「瞬态可恢复错误」而应进入黄色倒计时宽容期
  * （典型表现：`Stream ended without finish_reason` 的流截断，或服务商回显
- * `Inference request failed.` 的推理请求瞬时失败）。
+ * `Inference request failed.` 的推理请求瞬时失败，或网关回显 `upstream failure`
+ * 的上游瞬时不可用）。
  *
  * 命中时前端严禁立即弹出红色错误卡，改走「黄色倒计时等待消息框」宽容期
  * （见 flow-stream.js 的 handleStreamInterruption）：给模型固定 300 秒恢复窗口，
@@ -133,7 +136,9 @@ export function isGracePeriodError(errDetail) {
     errDetail.error,
   ];
   return candidates.some(
-    (v) => typeof v === "string" && (STREAM_INTERRUPTED_RE.test(v) || INFERENCE_FAILED_RE.test(v))
+    (v) =>
+      typeof v === "string" &&
+      (STREAM_INTERRUPTED_RE.test(v) || INFERENCE_FAILED_RE.test(v) || UPSTREAM_FAILURE_RE.test(v))
   );
 }
 

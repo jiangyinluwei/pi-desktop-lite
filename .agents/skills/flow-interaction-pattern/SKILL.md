@@ -186,7 +186,7 @@ flowchart TD
     Abort -->|是| Drop[静默丢弃]
     Abort -->|否| Engine{内置重连引擎活跃或可接管?}
     Engine -->|是| Failover[走 §6 引擎流水线 · 琥珀胶囊倒数]
-    Engine -->|否| Stream{isGracePeriodError 命中?<br/>Stream ended without finish_reason<br/>Inference request failed.}
+    Engine -->|否| Stream{isGracePeriodError 命中?<br/>Stream ended without finish_reason<br/>Inference request failed.<br/>upstream failure}
     Stream -->|否| Red[直接渲染红色错误卡]
     Stream -->|是| Yellow[黄色倒计时等待消息框<br/>.flow-failover-capsule.waiting · 沙漏图标<br/>「等待模型响应中 · 300s」逐秒倒数]
     Yellow -->|模型恢复输出<br/>thinking/text/toolcall/tool-start| Recover[resolveStreamInterruption<br/>清除错误态 · 静默撤销等待]
