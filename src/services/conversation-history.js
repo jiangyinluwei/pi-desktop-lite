@@ -12,6 +12,9 @@
  *    数 MB；一旦总序列化体积超配额，`setItem` 会抛 QuotaExceededError 且被 try/catch 吞掉，
  *    表现为「新会话界面内可见、重启后永久消失」。因此写入前主动预算控制并自最旧会话起降级，
  *    保证最新一条记录永远优先完整落盘。
+ * 6. 30 天未打开自动归档清除（Archive & Evict Stale Conversations）：最后一次打开时间
+ *    （lastViewedAt）距今超过 30 天的会话快照，在启动加载与每次持久化时自动从内存与
+ *    localStorage 归档清除（仅清理 UI 层快照，绝不触碰 ~/.pi 底层 Pi 会话 JSONL 文件）。
  */
 
 import { cleanUserPrompt } from "../lib/dom-utils.js";
@@ -19,6 +22,12 @@ import { cleanUserPrompt } from "../lib/dom-utils.js";
 const STORAGE_KEY_HISTORY = "pi_conversation_history";
 const STORAGE_KEY_HIDDEN = "pi_hidden_conversation_ids";
 const MAX_STORED_CONVERSATIONS = 60;
+
+// —— 30 天未打开自动归档清除（Archive & Evict Stale Conversations）——
+// 最后一次打开（lastViewedAt）距今超过该天数的会话快照，在启动加载与每次持久化时
+// 自动从内存与 localStorage 归档清除（仅清理 UI 层快照，绝不触碰 ~/.pi 底层会话 JSONL）。
+const ARCHIVE_RETENTION_DAYS = 30;
+const ARCHIVE_RETENTION_MS = ARCHIVE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
 // —— 持久化尺寸预算（防御 localStorage 静默 QuotaExceeded 丢失）——
 // 全列表序列化字符预算：×2 字节 (UTF-16) ≈ 8MB 落盘，为其他 key（遥测/输入历史等）留出配额余量；
@@ -125,6 +134,11 @@ class ConversationHistoryService extends EventTarget {
               lastViewedAt: item.lastViewedAt || item.createdAt || Date.now(),
             };
           });
+          // 30 天未打开的会话快照在启动加载时自动归档清除并立即回写，
+          // 保证磁盘持久化与内存一致（底层 Pi 会话文件不受影响）
+          if (this.purgeArchivedConversations() > 0) {
+            this.saveToStorage();
+          }
         }
       }
     } catch (err) {
@@ -135,12 +149,37 @@ class ConversationHistoryService extends EventTarget {
   }
 
   /**
+   * 30 天未打开自动归档清除：移除最后一次打开时间（lastViewedAt，缺省回退 createdAt）
+   * 距今超过 ARCHIVE_RETENTION_DAYS 的会话快照；无任何时间戳的损坏记录不予清除（无法判定）。
+   * @returns {number} 本次清除的会话数量
+   */
+  purgeArchivedConversations() {
+    const now = Date.now();
+    const before = this.conversations.length;
+    this.conversations = this.conversations.filter((conv) => {
+      if (!conv || typeof conv !== "object") return false;
+      const lastOpened = conv.lastViewedAt || conv.createdAt || 0;
+      if (!lastOpened) return true;
+      return now - lastOpened <= ARCHIVE_RETENTION_MS;
+    });
+    if (this.conversations.length === before) return 0;
+    // 同步清掉已不存在会话的隐藏标记，避免隐藏列表残留幽灵 ID
+    const aliveIds = new Set(this.conversations.map((c) => c.id));
+    for (const id of Array.from(this.hiddenIds)) {
+      if (!aliveIds.has(id)) this.hiddenIds.delete(id);
+    }
+    return before - this.conversations.length;
+  }
+
+  /**
    * 持久化保存至 LocalStorage（带尺寸预算与优雅降级）
+   * 0. 写入前先执行 30 天未打开自动归档清除；
    * 1. 写入前执行 trimHistoryToFit 预算瘦身；
    * 2. setItem 仍失败（如被其他 key 挤占配额）时逐级降级重试：
    *    物理丢弃最旧会话 → 极限压缩最新会话，保证最新记录永远优先落盘且绝不静默丢失。
    */
   saveToStorage() {
+    this.purgeArchivedConversations();
     this.trimHistoryToFit();
     let attempt = 0;
     while (attempt < 4) {
