@@ -6,6 +6,7 @@ import { enhanceSelect } from "../services/sketch-select.js";
 import { ProgressStepper } from "../services/progress-stepper.js";
 import { notificationService } from "../services/notification-service.js";
 import { sketchAlert, sketchConfirm } from "../services/sketch-modal.js";
+import { bindAll } from "../lib/el-binder.js";
 
 /**
  * 扩展组件市场、安装/更新/卸载队列与推荐插件
@@ -18,35 +19,61 @@ export function initPackagesPanel(ctx) {
   // ==========================================================================
   // 8. 扩展组件管理与 Package Catalog 市场 (Installed & Catalog Market)
   // ==========================================================================
-  const installedPackagesWrapper = document.getElementById("installed-packages-wrapper");
-  const installedSectionToggle = document.getElementById("installed-section-toggle");
-  const installedPackagesCount = document.getElementById("installed-packages-count");
-  const installedPackagesList = document.getElementById("installed-packages-list");
-  const btnInstallRecommendedPackages = document.getElementById("btn-install-recommended-packages");
-  const btnUpdateAllPackages = document.getElementById("btn-update-all-packages");
-  const btnCheckAllPackageUpdates = document.getElementById("btn-check-all-package-updates");
-
-  const packagesSearchInput = document.getElementById("packages-search-input");
-  const btnClearPackageSearch = document.getElementById("btn-clear-package-search");
-  const packagesTypeSelect = document.getElementById("packages-type-select");
-  const packagesSortSelect = document.getElementById("packages-sort-select");
-  const btnSearchPackages = document.getElementById("btn-search-packages");
-
-  const packagesTotalInfo = document.getElementById("packages-total-info");
-  const packagesCatalogGrid = document.getElementById("packages-catalog-grid");
-  const packagesPagination = document.getElementById("packages-pagination");
-  const btnPackagesPrevPage = document.getElementById("btn-packages-prev-page");
-  const btnPackagesNextPage = document.getElementById("btn-packages-next-page");
-  const packagesPageIndicator = document.getElementById("packages-page-indicator");
-
-  const packageProgressFloatCard = document.getElementById("package-progress-float-card");
-  const packageProgressTitle = document.getElementById("package-progress-title");
-  const packageProgressPkgName = document.getElementById("package-progress-pkg-name");
-  const packageProgressPercent = document.getElementById("package-progress-percent");
-  const packageProgressFill = document.getElementById("package-progress-fill");
-  const packageProgressMessage = document.getElementById("package-progress-message");
-  const packageQueueBadge = document.getElementById("package-queue-badge");
-  const btnClosePackageProgress = document.getElementById("btn-close-package-progress");
+  const {
+    installedPackagesWrapper,
+    installedSectionToggle,
+    installedPackagesCount,
+    installedPackagesList,
+    btnInstallRecommendedPackages,
+    btnUpdateAllPackages,
+    btnCheckAllPackageUpdates,
+    packagesSearchInput,
+    btnClearPackageSearch,
+    packagesTypeSelect,
+    packagesSortSelect,
+    btnSearchPackages,
+    packagesTotalInfo,
+    packagesCatalogGrid,
+    packagesPagination,
+    btnPackagesPrevPage,
+    btnPackagesNextPage,
+    packagesPageIndicator,
+    packageProgressFloatCard,
+    packageProgressTitle,
+    packageProgressPkgName,
+    packageProgressPercent,
+    packageProgressFill,
+    packageProgressMessage,
+    packageQueueBadge,
+    btnClosePackageProgress,
+  } = bindAll({
+    installedPackagesWrapper: "installed-packages-wrapper",
+    installedSectionToggle: "installed-section-toggle",
+    installedPackagesCount: "installed-packages-count",
+    installedPackagesList: "installed-packages-list",
+    btnInstallRecommendedPackages: "btn-install-recommended-packages",
+    btnUpdateAllPackages: "btn-update-all-packages",
+    btnCheckAllPackageUpdates: "btn-check-all-package-updates",
+    packagesSearchInput: "packages-search-input",
+    btnClearPackageSearch: "btn-clear-package-search",
+    packagesTypeSelect: "packages-type-select",
+    packagesSortSelect: "packages-sort-select",
+    btnSearchPackages: "btn-search-packages",
+    packagesTotalInfo: "packages-total-info",
+    packagesCatalogGrid: "packages-catalog-grid",
+    packagesPagination: "packages-pagination",
+    btnPackagesPrevPage: "btn-packages-prev-page",
+    btnPackagesNextPage: "btn-packages-next-page",
+    packagesPageIndicator: "packages-page-indicator",
+    packageProgressFloatCard: "package-progress-float-card",
+    packageProgressTitle: "package-progress-title",
+    packageProgressPkgName: "package-progress-pkg-name",
+    packageProgressPercent: "package-progress-percent",
+    packageProgressFill: "package-progress-fill",
+    packageProgressMessage: "package-progress-message",
+    packageQueueBadge: "package-queue-badge",
+    btnClosePackageProgress: "btn-close-package-progress",
+  });
 
   let installedPackages = [];
   let recommendedPlugins = [];

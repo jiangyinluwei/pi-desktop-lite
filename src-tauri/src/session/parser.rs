@@ -276,12 +276,6 @@ pub fn strip_injected_contexts(text: &str) -> String {
     final_clean.trim().to_string()
 }
 
-/// 兼容旧命名别名
-#[inline]
-pub fn strip_runtime_context_rules(text: &str) -> String {
-    strip_injected_contexts(text)
-}
-
 const ATTACHMENT_MARKERS: &[&str] = &[
     "[附带本地文件/目录绝对路径]:",
     "[附带本地文件绝对路径]:",
