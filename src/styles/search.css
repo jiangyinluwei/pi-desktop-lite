@@ -249,7 +249,7 @@
   color: var(--ink-primary);
 }
 
-/* 缩略实时仪表：24×24 原生双弧 + 速率闪电 + 刻度，直观映射大面板指标 */
+/* 缩略实时仪表：24×24 原生两个同心缺口圆弧 + 速率闪电，直观映射大面板指标 */
 .telemetry-btn .ttg-bg,
 .telemetry-btn .ttg-speed-num,
 .telemetry-btn .ttg-speed-unit,

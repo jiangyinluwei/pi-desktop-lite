@@ -1,7 +1,7 @@
 ---
 name: flow-interaction-pattern
 description: |
-  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/阶段性输出 Point 切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-Point1-工具1-Point2-工具2...」真实因果链条一段一段拼接；③伪框占位机制（首 token 延迟期「Thinking (0.0s)...」伪思考框；工具参数流式期「工具调用(edit)... + 读秒 + running」伪工具运行框，真实卡就位即移除）；④Flow 界面任意区域滚轮事件委托至最外层滚动容器；⑤多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑥多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑦模型无痕内置重连流水线 (ModelFailoverEngine)；⑧输出卡底部手绘风格的保存操作栏；⑨会话完成后「文件变更」收纳框（flow-file-changes，收集新增/修改/删除的文件、点击条目在资源管理器中定位其所在文件夹；按 Task 会话流缓存至程序生命周期结束，右键退出再经历史/Task 记录回入 Flow 一致恢复）；⑩用户提问卡右侧一键复制提问按钮（prompt-copy-btn：常态透明无边框、悬浮显手绘边框，点击复制净化后原始提问并短暂变绿反馈，静态初始模板与动态历史轮次均生效）；⑪多任务直切自动挂起、历史记录智能重定向与状态隔离（任务直切原活跃任务无缝转入后台挂起、历史进入智能重定向至 restoreTaskToFlow 杜绝静态快照覆写实时 live turns、Flow DOM 防重入与工具切片引用自愈回填）；⑫会话回退与文件撤回（flow-rollback：轮次提问卡悬浮「回退到此处」→ SketchModal 确认 → 工具执行前快照还原「已修改/已删除」文件（新增文件永不撤回）→ 内核原生 RPC fork 历史节点回退 → 本地剪枝重渲 + 提问回填输入框 + 顶部浮窗 3 秒提醒结果）；⑬前端解耦分层架构（flowStore.for(taskId) 纯数据分仓、flowView 视图密封缓存、flow-render 纯渲染显式依赖、flow-dom 只读 DOM 引用与 el-binder 按需自绑定，严禁解构已废除的 ctx.el）；⑭中途提问人工回归选择（flow-human-input：内核 Extension UI 子协议 extension_ui_request 的 select/confirm/input/editor 在 Flow 中呈现手绘待答横条 + SketchModal 作答弹窗，作答回写 extension_ui_response 解除内核阻塞；timeout 由内核自动解析、fire-and-forget 方法不建卡；未决请求随 Task 挂起保留、终止 best-effort 回写 cancelled）；⑮额度图标步骤弧光高亮联动（取消中间小闪电图标常态模糊光晕，新一轮 thinking/point/工具调用 触发 1 秒弧光高亮脉冲）。当用户提出"flow界面交互"、"思维链流式展示"、"阶段性输出"、"Point卡"、"工具调用简略"、"单行思维"、"步骤切片"、"伪思考框"、"伪运行框"、"工具调用读秒"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"、"自动强制重连"、"内置重连"、"无痕重连"、"文件变更"、"修改了哪些文件"、"多任务直切"、"任务切换"、"自动挂起"、"历史记录重定向"、"防重入"、"会话回退"、"对话回退"、"回退到此处"、"文件撤回"、"撤销修改"、"中途提问"、"人工选择"、"人工介入"、"extension_ui"、"等待用户作答"、"ask_question"、"额度图标"、"弧光高亮"时使用此技能。
+  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/阶段性输出 Point 切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-Point1-工具1-Point2-工具2...」真实因果链条一段一段拼接；③伪框占位机制（首 token 延迟期「Thinking (0.0s)...」伪思考框；工具参数流式期「工具调用(edit)... + 读秒 + running」伪工具运行框，真实卡就位即移除）；④Flow 界面任意区域滚轮事件委托至最外层滚动容器；⑤多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑥多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑦模型无痕内置重连流水线 (ModelFailoverEngine)；⑧输出卡底部手绘风格的保存操作栏；⑨会话完成后「文件变更」收纳框（flow-file-changes，收集新增/修改/删除的文件、点击条目在资源管理器中定位其所在文件夹；按 Task 会话流缓存至程序生命周期结束，右键退出再经历史/Task 记录回入 Flow 一致恢复）；⑩用户提问卡右侧一键复制提问按钮（prompt-copy-btn：常态透明无边框、悬浮显手绘边框，点击复制净化后原始提问并短暂变绿反馈，静态初始模板与动态历史轮次均生效）；⑪多任务直切自动挂起、历史记录智能重定向与状态隔离（任务直切原活跃任务无缝转入后台挂起、历史进入智能重定向至 restoreTaskToFlow 杜绝静态快照覆写实时 live turns、Flow DOM 防重入与工具切片引用自愈回填）；⑫会话回退与文件撤回（flow-rollback：轮次提问卡悬浮「回退到此处」→ SketchModal 确认 → 工具执行前快照还原「已修改/已删除」文件（新增文件永不撤回）→ 内核原生 RPC fork 历史节点回退 → 本地剪枝重渲 + 提问回填输入框 + 顶部浮窗 3 秒提醒结果）；⑬前端解耦分层架构（flowStore.for(taskId) 纯数据分仓、flowView 视图密封缓存、flow-render 纯渲染显式依赖、flow-dom 只读 DOM 引用与 el-binder 按需自绑定，严禁解构已废除的 ctx.el）；⑭中途提问人工回归选择（flow-human-input：内核 Extension UI 子协议 extension_ui_request 的 select/confirm/input/editor 在 Flow 中呈现手绘待答横条 + SketchModal 作答弹窗，作答回写 extension_ui_response 解除内核阻塞；timeout 由内核自动解析、fire-and-forget 方法不建卡；未决请求随 Task 挂起保留、终止 best-effort 回写 cancelled）；⑮额度图标纯粹设计与步骤弧光高亮联动（无刻度表，两个同心缺口圆弧加粗 + 中心小闪电标识，取消常态模糊光晕，新一轮 thinking/point/工具调用 触发 1 秒弧光高亮脉冲）。当用户提出"flow界面交互"、"思维链流式展示"、"阶段性输出"、"Point卡"、"工具调用简略"、"单行思维"、"步骤切片"、"伪思考框"、"伪运行框"、"工具调用读秒"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"、"自动强制重连"、"内置重连"、"无痕重连"、"文件变更"、"修改了哪些文件"、"多任务直切"、"任务切换"、"自动挂起"、"历史记录重定向"、"防重入"、"会话回退"、"对话回退"、"回退到此处"、"文件撤回"、"撤销修改"、"中途提问"、"人工选择"、"人工介入"、"extension_ui"、"等待用户作答"、"ask_question"、"额度图标"、"弧光高亮"时使用此技能。
 ---
 
 # Flow 交互界面规范 (Flow Interaction Pattern)
@@ -376,12 +376,13 @@ SessionHost::send_command → 内核 stdin → 解除阻塞续跑
 ## ⚡ 13. 额度图标步骤弧光高亮联动规范 (Token Telemetry Arc Flash)
 
 ### 13.1 交互规范与视觉设计
-1. **取消常态模糊光晕**：小闪电图标在运行期（`spd-active`）取消常态呼吸模糊光晕（彻底移除 `ttg-mini-pulse` 与 `ttg-pulse` 的 `filter: drop-shadow(...)`），保持手绘素描矢量线条的清晰与纯粹；
-2. **新步骤瞬态弧光高亮（1 秒）**：每次触发新一轮「thinking / point / 工具调用」时，额度图标触发 1 秒高能电弧脉冲动画（`.ttg-arc-flash`）：
+1. **纯粹同心缺口圆弧 + 小闪电**：对话框左侧额度小图标（Mini 布局）不设刻度表，采用纯粹的「两个同心缺口圆弧 + 小闪电标识」组合；外环上下文消耗比值弧（`R=9.5`, 宽 `2.4`）与内环已消耗 Token 比值弧（`R=6.5`, 宽 `2.0`）适当加粗，下方保持 120° 开放缺口（240° 环周），中心内嵌手绘速率小闪电（`ttg-mini-bolt`），兼具清晰辨识度与极简手绘质感；
+2. **取消常态模糊光晕**：小闪电图标在运行期（`spd-active`）取消常态呼吸模糊光晕（彻底移除 `ttg-mini-pulse` 与 `ttg-pulse` 的 `filter: drop-shadow(...)`），保持手绘素描矢量线条的清晰与纯粹；
+3. **新步骤瞬态弧光高亮（1 秒）**：每次触发新一轮「thinking / point / 工具调用」时，额度图标触发 1 秒高能电弧脉冲动画（`.ttg-arc-flash`）：
    - 中心手绘闪电（`ttg-mini-bolt`）瞬时高亮着色（`brightness(1.75)`）；
-   - 上下文外弧与配额内弧（`ttg-mini-arc-ctx` / `ttg-mini-arc-tok`）同步微扩充线宽并泛起高能电弧光亮；
+   - 上下文外弧与配额内弧（`ttg-mini-arc-ctx` / `ttg-mini-arc-tok`）同步微扩充线宽（扩至 3.0 / 2.5）并泛起高能电弧光亮；
    - 1s 后平滑定格回落当前状态。
-3. **事件通道契约（contracts.js）**：
+4. **事件通道契约（contracts.js）**：
    - 广播通道：`bus.emit("flow:step-start", { type: "thinking" | "point" | "tool", taskId })`；
    - 监听通道：`token-telemetry.js` 通过 `bus.on("flow:step-start")` 统一接收，经 `taskManager.isForegroundStreamTask(tid)` 前台门禁校验，调用 `miniGauge.triggerArcFlash()` 与 `gauge.triggerArcFlash()`；
    - 工具调用防重：流式参数阶段 `toolcall-delta-start` 先触发时记录 `lastAnnouncedToolCallId`，后续 `tool-start` 不重复触发；直接执行阶段（无 delta）由 `tool-start` 补发。

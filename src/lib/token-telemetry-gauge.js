@@ -27,6 +27,8 @@
 
 const ARC_ANGLE = 240;
 const ARC_START_ANGLE = 150; // 顺时针旋转起始角度 (对应 150° ~ 390°/30°，下方留 120° 开放缺口)
+const MINI_R_OUTER = 9.5;
+const MINI_R_INNER = 6.5;
 
 /**
  * 限制数值在 [min, max] 范围
@@ -462,15 +464,15 @@ function renderRadialSvg(metrics, options, id) {
 
 /**
  * 渲染形态 4：Mini 单图标模式 (原生 24×24 viewBox，专为对话框左侧「额度」按钮设计)
- * 直观呈现：外环上下文消耗比例 + 内环已消耗 Token 比例 + 中心手绘速度闪电
+ * 纯粹设计：两个同心缺口圆弧（外环上下文消耗比值 + 内环已消耗 Token 比值，适当加粗）+ 中心手绘小闪电标识（随推理速率着色与步骤弧光联动）
  */
 function renderMiniSvg(metrics, options, id) {
   const size = options.size || 20;
 
-  const R_OUTER = 9.2;
-  const R_INNER = 6.8;
-  const maxOuterLen = 2 * Math.PI * R_OUTER * (ARC_ANGLE / 360); // ~38.54
-  const maxInnerLen = 2 * Math.PI * R_INNER * (ARC_ANGLE / 360); // ~28.48
+  const R_OUTER = MINI_R_OUTER;
+  const R_INNER = MINI_R_INNER;
+  const maxOuterLen = 2 * Math.PI * R_OUTER * (ARC_ANGLE / 360);
+  const maxInnerLen = 2 * Math.PI * R_INNER * (ARC_ANGLE / 360);
 
   const ctxDash = (maxOuterLen * metrics.ctxRatio).toFixed(2);
   const tokDash = (maxInnerLen * metrics.tokRatio).toFixed(2);
@@ -491,28 +493,28 @@ function renderMiniSvg(metrics, options, id) {
       #${id} .ttg-mini-track-out {
         fill: none;
         stroke: var(--sketch-border-subtle, #d6cfc4);
-        stroke-width: 1.8;
+        stroke-width: 2.4;
         stroke-linecap: round;
         opacity: 0.35;
       }
       #${id} .ttg-mini-track-in {
         fill: none;
         stroke: var(--sketch-border-subtle, #d6cfc4);
-        stroke-width: 1.4;
+        stroke-width: 2.0;
         stroke-linecap: round;
         opacity: 0.3;
       }
       #${id} .ttg-mini-arc-ctx {
         fill: none;
         stroke: var(--color-ctx, #6d5f8a);
-        stroke-width: 1.8;
+        stroke-width: 2.4;
         stroke-linecap: round;
         transition: stroke-dasharray 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), stroke-width 0.45s ease-out;
       }
       #${id} .ttg-mini-arc-tok {
         fill: none;
         stroke: var(--color-token, #d97706);
-        stroke-width: 1.4;
+        stroke-width: 2.0;
         stroke-linecap: round;
         transition: stroke-dasharray 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), stroke-width 0.45s ease-out;
       }
@@ -550,10 +552,10 @@ function renderMiniSvg(metrics, options, id) {
         opacity: 1 !important;
       }
       #${id}.ttg-arc-flash .ttg-mini-arc-ctx {
-        stroke-width: 2.3;
+        stroke-width: 3.0;
       }
       #${id}.ttg-arc-flash .ttg-mini-arc-tok {
-        stroke-width: 1.8;
+        stroke-width: 2.5;
       }
       @keyframes ttg-mini-arc-flash-${id} {
         0% {
@@ -569,14 +571,7 @@ function renderMiniSvg(metrics, options, id) {
     </style>
   </defs>
 
-  <!-- 3 点精简工程微刻度 -->
-  <g class="ttg-mini-ticks" stroke="currentColor" opacity="0.38" stroke-linecap="round">
-    <line x1="12" y1="0.8" x2="12" y2="2.0" stroke-width="0.9" />
-    <line x1="2.2" y1="8.0" x2="3.1" y2="8.5" stroke-width="0.8" />
-    <line x1="21.8" y1="8.0" x2="20.9" y2="8.5" stroke-width="0.8" />
-  </g>
-
-  <!-- 外环：当前上下文消耗比值 (R=9.2, 宽 1.8) -->
+  <!-- 外环：当前上下文消耗比值 (R=${R_OUTER}, 宽 2.4) -->
   <circle class="ttg-mini-track-out" cx="12" cy="12" r="${R_OUTER}"
           stroke-dasharray="${maxOuterLen.toFixed(2)} 100"
           transform="rotate(${ARC_START_ANGLE} 12 12)" />
@@ -584,7 +579,7 @@ function renderMiniSvg(metrics, options, id) {
           stroke-dasharray="${ctxDash} 100"
           transform="rotate(${ARC_START_ANGLE} 12 12)" />
 
-  <!-- 内环：已消耗 Token 比值 (R=6.8, 宽 1.4) -->
+  <!-- 内环：已消耗 Token 比值 (R=${R_INNER}, 宽 2.0) -->
   <circle class="ttg-mini-track-in" cx="12" cy="12" r="${R_INNER}"
           stroke-dasharray="${maxInnerLen.toFixed(2)} 100"
           transform="rotate(${ARC_START_ANGLE} 12 12)" />
@@ -596,7 +591,7 @@ function renderMiniSvg(metrics, options, id) {
   <g class="ttg-mini-core ${boltStateClass}" id="${id}-core-bolt">
     <path class="ttg-mini-bolt" id="${id}-bolt"
           d="M12.3 7.2 L9.8 11.2 L11.8 11.2 L11.2 16.5 L14.2 11.8 L12.2 11.8 Z"
-          stroke-width="0.9" stroke-linejoin="round" stroke-linecap="round" />
+          stroke-width="1.0" stroke-linejoin="round" stroke-linecap="round" />
   </g>
 </svg>
 `.trim();
@@ -659,8 +654,8 @@ export function createTokenTelemetryGauge(initialOptions = {}) {
 
   // 弧长计算参数
   const isMini = layout === 'mini' || layout === 'icon';
-  const rOuter = isMini ? 9.2 : (layout === 'radial' ? 38 : 34);
-  const rInner = isMini ? 6.8 : (layout === 'radial' ? 28 : 25);
+  const rOuter = isMini ? MINI_R_OUTER : (layout === 'radial' ? 38 : 34);
+  const rInner = isMini ? MINI_R_INNER : (layout === 'radial' ? 28 : 25);
   const maxOuterLen = 2 * Math.PI * rOuter * (ARC_ANGLE / 360);
   const maxInnerLen = 2 * Math.PI * rInner * (ARC_ANGLE / 360);
   const dashModulo = isMini ? 100 : 300;
