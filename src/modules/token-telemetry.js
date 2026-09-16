@@ -26,13 +26,20 @@
  *     （host_pool 仅唤醒 pending_responses 等待者），故由后端 `pi_get_session_stats`
  *     以 with_response 语义同步取回；本模块仅在面板可见时低频轮询。
  *
- * 推理速度全局动态均值算法（杜绝「偶尔归零」）：
- *   speed = 当前任务累计推理 output ÷ 当前任务有效生成耗时（agent run 墙钟总时长剔除工具调用窗口）。
+ * 推理速度全局动态均值算法（杜绝「偶尔归零」与「触发期持续衰减」）：
+ *   speed = 当前任务累计推理 output ÷ 当前任务有效生成耗时（agent run 墙钟剔除工具窗口与产出停摆期）。
  *   与旧的「相邻 usage 帧差分 + EMA + 2.5s 空闲归零」不同，全局均值只随真实产出的 token
  *   与真实非工具耗时单调收敛，帧间停顿、思考静默、工具长耗时均不再把速度打成 0：
  *   - 任务分仓：Map<taskId, sample>，跨任务直切各自保留均值（前台渲染当前任务的仓）；
- *   - run 括号：`agent-start` 开括号记 runStartTs，`agent-end` / `agent-error` 收口把
- *     (now - runStartTs - 工具耗时) 折算入 genElapsedMs；进行中工具窗口经 activeTools 实时剔除；
+ *   - run 括号：`agent-start` 开括号，`agent-end` / `agent-error` 收口；有效生成时长采用
+ *     「事件边界惰性入账（bankResidual）+ 读时封顶残差」模型：工具窗口（首个 tool-start
+ *     暂停计时、末个 tool-end 恢复，重叠工具不双计）与产出停摆期不计入；
+ *   - 产出停摆冻结（触发动作延迟期暂停计时）：run 活跃但累计 output 超过 SPEED_STALL_FREEZE_MS
+ *     未增长（thinking 静默期 / point 与 toolcall 参数流式生成期 provider 不增量上报 usage /
+ *     工具结束后下一消息首 token 延迟期）时，未入账残差在读取侧封顶于「最近一次产出增长
+ *     (outTs) + 宽限」，速度定格不再随墙钟持续衰减；usage 恢复增长时残差全额入账——停摆
+ *     时长计入诚实均值（仅呈现层冻结、不做会计层豁免，杜绝批式 usage 上报场景的分母塌缩
+ *     导致速度虚高）；
  *   - 计数入账：provider 上报 usage 为「最近一次累计」，跨消息可能回绕归零，
  *     检测到 output / total 下降即把旧消息产出 / 累计入账（分别并入 tokensBanked /
  *     totalBanked，速度与已耗 token 分仓互不污染）后重新计数，兼容单调累计与逐消息
@@ -72,6 +79,13 @@ const STATS_BACKGROUND_INTERVAL_MS = 15000;
 const SPEED_SCALE_MAX = 250;
 /** 有效生成时长下限（ms）：低于该值视为预热期暂不出速度，杜绝首帧除零尖峰 */
 const SPEED_MIN_EFFECTIVE_MS = 250;
+/**
+ * 产出停摆冻结宽限（ms）：run 活跃但累计 output 超过该时长未增长，即把速度的未入账
+ * 残差计时定格（呈现层暂停），杜绝 thinking / point / toolcall 参数生成 / 首 token 延迟
+ * 期间「分子停滞而分母空转」导致 tok/s 持续衰减。取值需大于正常流式 usage 帧的到达
+ * 间隔（逐 delta 上报时为亚秒级），避免把真实生成期误判为停摆。
+ */
+const SPEED_STALL_FREEZE_MS = 3000;
 /** 采样仓数量上限（防任务风暴内存膨胀；task-removed / kernel 下线时逐仓清理） */
 const MAX_SAMPLES = 32;
 /** stats 分仓数量上限（与采样仓同界，防内存膨胀） */
@@ -105,7 +119,7 @@ export function initTokenTelemetry(ctx) {
 
   // ---- 遥测采样缓存（按任务分仓，跨任务直切保留各自均值）----
   /** Map<taskId, sample>；sample = { tokensBanked, totalBanked, msgBase, output, total, ts,
-   *  genElapsedMs, runStartTs, toolElapsedMs, activeTools, isGenerating } */
+   *  genElapsedMs, runStartTs, accrualTs, outTs, activeTools, isGenerating } */
   const samples = new Map();
   /**
    * Map<taskId, stats>：按任务分仓保留「最近一次 get_session_stats 结果」
@@ -171,7 +185,8 @@ export function initTokenTelemetry(ctx) {
         ts: 0,
         genElapsedMs: 0,
         runStartTs: null,
-        toolElapsedMs: 0,
+        accrualTs: null,
+        outTs: null,
         activeTools: new Map(),
         isGenerating: false,
       };
@@ -199,42 +214,52 @@ export function initTokenTelemetry(ctx) {
   }
 
   /**
-   * 任务推理速度（tok/s）：累计推理 output ÷ 有效生成时长（run 墙钟剔除工具调用窗口）。
-   * 只随真实产出与真实非工具耗时收敛，帧间停顿 / 工具长耗时不再归零。
+   * 残差全额入账：把自上次事件边界（accrualTs）以来的墙钟时长计入 genElapsedMs。
+   * 仅在事件边界（产出增长 / 工具启停 / run 开闭）调用——停摆冻结只作用于读取侧的
+   * 残差封顶，入账侧始终全额，保证会话均值保持诚实墙钟口径。
+   */
+  function bankResidual(s, now) {
+    if (s.accrualTs != null) {
+      s.genElapsedMs += Math.max(0, now - s.accrualTs);
+      s.accrualTs = now;
+    }
+  }
+
+  /**
+   * 任务推理速度（tok/s）：累计推理 output ÷ 有效生成时长。
+   * 有效生成时长 = 已入账非工具墙钟 + 未入账残差；残差在读取侧封顶于「最近一次产出
+   * 增长 (outTs) + SPEED_STALL_FREEZE_MS」——run 活跃但产出停滞（thinking / point /
+   * toolcall 参数生成 / 首 token 延迟等触发动作延迟期）时速度定格不再随墙钟衰减。
    */
   function computeTaskSpeed(s) {
     if (!s || s.output == null) return 0;
     const totalOut = s.tokensBanked + Math.max(0, s.output - s.msgBase);
     if (totalOut <= 0) return 0;
-    const now = performance.now();
     let effMs = s.genElapsedMs;
-    if (s.runStartTs != null) {
-      let toolMs = s.toolElapsedMs;
-      for (const t0 of s.activeTools.values()) toolMs += Math.max(0, now - t0);
-      effMs += Math.max(0, now - s.runStartTs - toolMs);
+    if (s.accrualTs != null) {
+      const cap = s.outTs != null ? s.outTs + SPEED_STALL_FREEZE_MS : Infinity;
+      effMs += Math.max(0, Math.min(performance.now(), cap) - s.accrualTs);
     }
     if (effMs < SPEED_MIN_EFFECTIVE_MS) return 0;
     return totalOut / (effMs / 1000);
   }
 
-  /** run 收口：把当前 run 的非工具耗时折算入账并定格均值（幂等，无进行中 run 时空转） */
+  /** run 收口：残差全额入账并定格均值（终态均值含停摆与首 token 延迟，诚实墙钟口径；幂等，无进行中 run 时空转） */
   function closeRun(s) {
     if (!s) return;
     if (s.runStartTs == null) {
       s.isGenerating = false;
       return;
     }
-    const now = performance.now();
-    let toolMs = s.toolElapsedMs;
-    for (const t0 of s.activeTools.values()) toolMs += Math.max(0, now - t0);
+    bankResidual(s, performance.now());
     s.activeTools.clear();
-    s.genElapsedMs += Math.max(0, now - s.runStartTs - toolMs);
     s.runStartTs = null;
-    s.toolElapsedMs = 0;
+    s.accrualTs = null;
     s.isGenerating = false;
   }
 
-  /** agent-start：开 run 括号（同 run 重复帧幂等） */
+  /** agent-start：开 run 括号（同 run 重复帧幂等）；起表并以括号起点为初始停摆锚点，
+   *  新 run 首 token 延迟超过宽限期即冻结，不随墙钟衰减 */
   function handleAgentStart(detail) {
     const tid = resolveEventTaskId(detail, currentTaskId());
     if (!tid) return;
@@ -242,29 +267,34 @@ export function initTokenTelemetry(ctx) {
     if (!s) return;
     if (s.runStartTs == null) {
       s.runStartTs = performance.now();
-      s.toolElapsedMs = 0;
+      s.accrualTs = s.runStartTs;
+      s.outTs = s.runStartTs;
       s.activeTools.clear();
     }
     s.isGenerating = true;
     applyGauges();
   }
 
-  /** tool-start：登记进行中工具窗口（仅既有 run 内生效，跨任务按仓隔离） */
+  /** tool-start：登记进行中工具窗口并暂停计时（首个工具启停切换，重叠工具不双计；
+   *  仅既有 run 内生效，跨任务按仓隔离） */
   function handleToolStart(detail) {
     const s = samples.get(resolveEventTaskId(detail, piClient.lastEventTaskId));
-    if (!s || s.runStartTs == null) return;
-    if (detail?.toolCallId) s.activeTools.set(detail.toolCallId, performance.now());
+    if (!s || s.runStartTs == null || !detail?.toolCallId) return;
+    const now = performance.now();
+    if (s.activeTools.size === 0 && s.accrualTs != null) {
+      bankResidual(s, now);
+      s.accrualTs = null;
+    }
+    s.activeTools.set(detail.toolCallId, now);
   }
 
-  /** tool-end：闭合工具窗口并累计其耗时 */
+  /** tool-end：闭合工具窗口；末个工具收尾时恢复计时（后续首 token 延迟由停摆冻结兜底） */
   function handleToolEnd(detail) {
     const s = samples.get(resolveEventTaskId(detail, piClient.lastEventTaskId));
     const toolCallId = detail?.toolCallId;
     if (!s || !toolCallId) return;
-    const t0 = s.activeTools.get(toolCallId);
-    if (t0 != null) {
-      s.toolElapsedMs += Math.max(0, performance.now() - t0);
-      s.activeTools.delete(toolCallId);
+    if (s.activeTools.delete(toolCallId) && s.activeTools.size === 0 && s.accrualTs == null) {
+      s.accrualTs = performance.now();
     }
   }
 
@@ -278,7 +308,7 @@ export function initTokenTelemetry(ctx) {
   }
 
   /**
-   * 处理 message_update 顶层 usage：产出入账 + run 括号兜底。
+   * 处理 message_update 顶层 usage：产出入账 + 停摆锚点推进/解冻 + run 括号兜底。
    * 既有仓可继续吸收各自任务帧（含挂起任务，均值后台保温），新建仅限前台任务。
    */
   function handleUsage(detail) {
@@ -298,6 +328,7 @@ export function initTokenTelemetry(ctx) {
 
     // provider 计数回绕入账：output / total 任一下降即判定跨消息重置，旧消息累计
     // 入账后重新计数（total 并入 totalBanked，与速度专用的 tokensBanked 分仓，互不污染）
+    const prevTotalOut = s.output == null ? null : s.tokensBanked + Math.max(0, s.output - s.msgBase);
     if (output != null) {
       if (s.output != null && output < s.output) {
         s.tokensBanked += s.output;
@@ -311,10 +342,22 @@ export function initTokenTelemetry(ctx) {
     }
     s.ts = now;
 
+    // 产出真实增长：残差全额入账（含刚经历的停摆/延迟期，诚实均值）后推进停摆锚点，
+    // 并在停摆冻结期解冻恢复计时。空转 usage 帧（output 未增长）不解冻、不重锚。
+    if (output != null) {
+      const totalOut = s.tokensBanked + Math.max(0, s.output - s.msgBase);
+      if (prevTotalOut == null || totalOut > prevTotalOut) {
+        bankResidual(s, now);
+        s.outTs = now;
+        if (s.accrualTs == null && s.activeTools.size === 0) s.accrualTs = now;
+      }
+    }
+
     // run 括号兜底：错过 agent-start（模块冷启动 / 任务直切入场）时从本帧起记时，随帧收敛
     if (s.runStartTs == null) {
       s.runStartTs = now;
-      s.toolElapsedMs = 0;
+      s.accrualTs = now;
+      s.outTs = now;
       s.activeTools.clear();
       s.isGenerating = true;
     }
