@@ -10,7 +10,11 @@
  *    配额分母不走固定值，而是动态量级阶梯（resolveTokenQuota）：
  *    从 1M 起，累计用量满足当前量级后分母自动增长十倍（1M → 10M → 100M → 1B → 10B → …），
  *    量级档位分别以绿色（1M 档）/ 橙色（10M 档）/ 红色（100M 及以后全部）呈现。
- * 
+ * 4. 推理速度四档阈值着色（速度唯一解析源 resolveSpeedLevel）：
+ *    < 50 红 / < 100 橙 / < 200 绿 / ≥ 200 蓝；速度 > 0 时闪电与 SPD 行整体跟随档位换色，
+ *    生成进行中（speedActive）附加流光呼吸脉冲，生成结束后定格为静态着色「均值」读数，
+ *    速度为 0（空闲）时闪电回落灰色、档位类摘除。
+ *
  * 特性：
  * - 纯矢量 SVG，零外部依赖，极速轻量
  * - 支持三种精巧布局形态：
@@ -66,6 +70,22 @@ export function resolveTokenQuota(usedTokens) {
 }
 
 /**
+ * 推理速度阈值分档唯一源（tok/s）：
+ *   0 = 红（< 50）/ 1 = 橙（< 100）/ 2 = 绿（< 200）/ 3 = 蓝（≥ 200）。
+ * 速度 ≤ 0（空闲 / 无数据）返回 -1，调用方据此摘除档位类回落中性默认色。
+ * @param {number} speed 推理速度 tok/s
+ * @returns {number} 档位 -1..3
+ */
+export function resolveSpeedLevel(speed) {
+  const v = Math.max(0, parseFloat(speed) || 0);
+  if (v <= 0) return -1;
+  if (v < 50) return 0;
+  if (v < 100) return 1;
+  if (v < 200) return 2;
+  return 3;
+}
+
+/**
  * 解析并归一化传入的指标参数
  */
 function resolveMetrics(options = {}) {
@@ -96,10 +116,12 @@ function resolveMetrics(options = {}) {
     }
   }
 
-  // 3. 速度 token/s
+  // 3. 速度 token/s（全局动态均值；四档阈值着色 + 生成中脉冲 / 静态定格 / 空闲灰三态）
   const speed = Math.max(0, parseFloat(options.speed) || 0);
   const speedMax = Math.max(10, parseFloat(options.speedMax) || 100);
   const speedRatio = clamp(speed / speedMax);
+  const speedActive = options.speedActive !== undefined ? !!options.speedActive : speed > 0;
+  const speedLevel = resolveSpeedLevel(speed);
   const speedSub = options.speedText || (speed > 0 ? '推理中' : '空闲');
 
   return {
@@ -113,6 +135,8 @@ function resolveMetrics(options = {}) {
     speed,
     speedMax,
     speedRatio,
+    speedActive,
+    speedLevel,
     speedSub,
   };
 }
@@ -179,6 +203,10 @@ function getSharedStyles(id) {
     #${id}.ttg-quota-l0 { --color-token: var(--ttg-quota-green, #4a7c59); }
     #${id}.ttg-quota-l1 { --color-token: var(--ttg-quota-orange, #d97706); }
     #${id}.ttg-quota-l2 { --color-token: var(--ttg-quota-red, #c2413c); }
+    #${id}.ttg-speed-s0 { --color-speed: var(--ttg-speed-red, #c2413c); }
+    #${id}.ttg-speed-s1 { --color-speed: var(--ttg-speed-orange, #d97706); }
+    #${id}.ttg-speed-s2 { --color-speed: var(--ttg-speed-green, #4a7c59); }
+    #${id}.ttg-speed-s3 { --color-speed: var(--ttg-speed-blue, #2563eb); }
     #${id} .ttg-bolt {
       fill: none;
       stroke: currentColor;
@@ -190,12 +218,15 @@ function getSharedStyles(id) {
       stroke: var(--color-speed, #2563eb);
       animation: ttg-pulse-${id} 1.6s ease-in-out infinite alternate;
     }
+    #${id} .spd-valued .ttg-bolt {
+      stroke: var(--color-speed, #2563eb);
+    }
     #${id} .spd-idle .ttg-bolt {
       stroke: var(--ink-faint, #a69f94);
     }
     #${id} .ttg-speed-num {
       font-weight: 700;
-      fill: var(--ink-primary, #1c1a17);
+      fill: var(--color-speed, var(--ink-primary, #1c1a17));
       text-anchor: middle;
     }
     #${id} .ttg-speed-unit {
@@ -227,8 +258,8 @@ function getSharedStyles(id) {
       transition: width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
     }
     @keyframes ttg-pulse-${id} {
-      0% { filter: drop-shadow(0 0 1px rgba(37, 99, 235, 0.25)); opacity: 0.85; }
-      100% { filter: drop-shadow(0 0 4.5px rgba(37, 99, 235, 0.7)); opacity: 1; }
+      0% { filter: drop-shadow(0 0 1px var(--color-speed, #2563eb)); opacity: 0.85; }
+      100% { filter: drop-shadow(0 0 4.5px var(--color-speed, #2563eb)); opacity: 1; }
     }
   `.trim();
 }
@@ -254,11 +285,12 @@ function renderCapsuleSvg(metrics, options, id) {
   const tokBarW = (barMaxW * metrics.tokRatio).toFixed(1);
 
   const ticksSvg = generateDraftingTicks(52, 48, R_OUTER, 9);
-  const boltStateClass = metrics.speed > 0 ? 'spd-active' : 'spd-idle';
+  const boltStateClass = metrics.speedActive ? 'spd-active' : metrics.speed > 0 ? 'spd-valued' : 'spd-idle';
+  const speedTierClass = metrics.speedLevel >= 0 ? ` ttg-speed-s${metrics.speedLevel}` : '';
 
   return `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}"
-     class="token-telemetry-gauge ttg-layout-capsule ttg-quota-l${metrics.tokLevel}" id="${id}" role="img"
+     class="token-telemetry-gauge ttg-layout-capsule ttg-quota-l${metrics.tokLevel}${speedTierClass}" id="${id}" role="img"
      aria-label="Token 遥测：上下文 ${metrics.ctxLabel}, 速度 ${metrics.speed.toFixed(1)} tok/s, 已消耗 ${metrics.tokLabel}">
   <defs>
     <style>${getSharedStyles(id)}</style>
@@ -359,11 +391,12 @@ function renderRadialSvg(metrics, options, id) {
   const tokDash = (maxInnerLen * metrics.tokRatio).toFixed(2);
 
   const ticksSvg = generateDraftingTicks(cx, cy, R_OUTER, 9);
-  const boltStateClass = metrics.speed > 0 ? 'spd-active' : 'spd-idle';
+  const boltStateClass = metrics.speedActive ? 'spd-active' : metrics.speed > 0 ? 'spd-valued' : 'spd-idle';
+  const speedTierClass = metrics.speedLevel >= 0 ? ` ttg-speed-s${metrics.speedLevel}` : '';
 
   return `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}"
-     class="token-telemetry-gauge ttg-layout-radial ttg-quota-l${metrics.tokLevel}" id="${id}" role="img"
+     class="token-telemetry-gauge ttg-layout-radial ttg-quota-l${metrics.tokLevel}${speedTierClass}" id="${id}" role="img"
      aria-label="Token 遥测：上下文 ${metrics.ctxLabel}, 速度 ${metrics.speed.toFixed(1)} tok/s, 已消耗 ${metrics.tokLabel}">
   <defs>
     <style>${getSharedStyles(id)}</style>
@@ -422,11 +455,12 @@ function renderMiniSvg(metrics, options, id) {
 
   const ctxDash = (maxOuterLen * metrics.ctxRatio).toFixed(2);
   const tokDash = (maxInnerLen * metrics.tokRatio).toFixed(2);
-  const boltStateClass = metrics.speed > 0 ? 'spd-active' : 'spd-idle';
+  const boltStateClass = metrics.speedActive ? 'spd-active' : metrics.speed > 0 ? 'spd-valued' : 'spd-idle';
+  const speedTierClass = metrics.speedLevel >= 0 ? ` ttg-speed-s${metrics.speedLevel}` : '';
 
   return `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}"
-     class="token-telemetry-gauge ttg-layout-mini ttg-quota-l${metrics.tokLevel}" id="${id}" role="img" aria-hidden="true">
+     class="token-telemetry-gauge ttg-layout-mini ttg-quota-l${metrics.tokLevel}${speedTierClass}" id="${id}" role="img" aria-hidden="true">
   <defs>
     <style>
       #${id} {
@@ -466,6 +500,10 @@ function renderMiniSvg(metrics, options, id) {
       #${id}.ttg-quota-l0 { --color-token: var(--ttg-quota-green, #4a7c59); }
       #${id}.ttg-quota-l1 { --color-token: var(--ttg-quota-orange, #d97706); }
       #${id}.ttg-quota-l2 { --color-token: var(--ttg-quota-red, #c2413c); }
+      #${id}.ttg-speed-s0 { --color-speed: var(--ttg-speed-red, #c2413c); }
+      #${id}.ttg-speed-s1 { --color-speed: var(--ttg-speed-orange, #d97706); }
+      #${id}.ttg-speed-s2 { --color-speed: var(--ttg-speed-green, #4a7c59); }
+      #${id}.ttg-speed-s3 { --color-speed: var(--ttg-speed-blue, #2563eb); }
       #${id} .ttg-mini-bolt {
         transition: fill 0.2s ease, stroke 0.2s ease, filter 0.2s ease;
       }
@@ -474,14 +512,19 @@ function renderMiniSvg(metrics, options, id) {
         stroke: var(--color-speed, #2563eb);
         animation: ttg-mini-pulse-${id} 1.4s ease-in-out infinite alternate;
       }
+      #${id} .ttg-mini-core.spd-valued .ttg-mini-bolt {
+        fill: var(--color-speed, #2563eb);
+        stroke: var(--color-speed, #2563eb);
+        opacity: 0.8;
+      }
       #${id} .ttg-mini-core.spd-idle .ttg-mini-bolt {
         fill: none;
         stroke: var(--ink-faint, #a69f94);
         opacity: 0.55;
       }
       @keyframes ttg-mini-pulse-${id} {
-        0% { filter: drop-shadow(0 0 0.8px rgba(37, 99, 235, 0.3)); opacity: 0.85; }
-        100% { filter: drop-shadow(0 0 2.5px rgba(37, 99, 235, 0.85)); opacity: 1; }
+        0% { filter: drop-shadow(0 0 0.8px var(--color-speed, #2563eb)); opacity: 0.85; }
+        100% { filter: drop-shadow(0 0 2.5px var(--color-speed, #2563eb)); opacity: 1; }
       }
     </style>
   </defs>
@@ -596,6 +639,19 @@ export function createTokenTelemetryGauge(initialOptions = {}) {
       svgEl.classList.add(levelClass);
     }
 
+    // 0.5 速度四档阈值换色（<50 红 / <100 橙 / <200 绿 / ≥200 蓝）：重定义 --color-speed，
+    //     SPD 行点标/徽标/进度条与中心速度读数、闪电整体跟随；空闲（-1）时摘档回落默认色
+    const speedClass = m.speedLevel >= 0 ? `ttg-speed-s${m.speedLevel}` : null;
+    if (speedClass) {
+      if (!svgEl.classList.contains(speedClass)) {
+        svgEl.classList.remove('ttg-speed-s0', 'ttg-speed-s1', 'ttg-speed-s2', 'ttg-speed-s3');
+        svgEl.classList.add(speedClass);
+      }
+    } else if (svgEl.classList.contains('ttg-speed-s0') || svgEl.classList.contains('ttg-speed-s1') ||
+               svgEl.classList.contains('ttg-speed-s2') || svgEl.classList.contains('ttg-speed-s3')) {
+      svgEl.classList.remove('ttg-speed-s0', 'ttg-speed-s1', 'ttg-speed-s2', 'ttg-speed-s3');
+    }
+
     // 1. 上下文消耗比值 (CTX)
     if (arcCtx) {
       const len = (maxOuterLen * m.ctxRatio).toFixed(2);
@@ -614,12 +670,11 @@ export function createTokenTelemetryGauge(initialOptions = {}) {
     if (barSpd) barSpd.setAttribute('width', (barMaxW * m.speedRatio).toFixed(1));
 
     if (coreBolt) {
-      if (m.speed > 0) {
-        coreBolt.classList.add('spd-active');
-        coreBolt.classList.remove('spd-idle');
-      } else {
-        coreBolt.classList.remove('spd-active');
-        coreBolt.classList.add('spd-idle');
+      // 闪电三态：生成中脉冲（spd-active）/ 结束定格静态着色（spd-valued）/ 空闲灰（spd-idle）
+      const boltCls = m.speedActive ? 'spd-active' : m.speed > 0 ? 'spd-valued' : 'spd-idle';
+      if (!coreBolt.classList.contains(boltCls)) {
+        coreBolt.classList.remove('spd-active', 'spd-valued', 'spd-idle');
+        coreBolt.classList.add(boltCls);
       }
     }
 
