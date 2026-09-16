@@ -34,7 +34,13 @@
  *   - run 括号：`agent-start` 开括号记 runStartTs，`agent-end` / `agent-error` 收口把
  *     (now - runStartTs - 工具耗时) 折算入 genElapsedMs；进行中工具窗口经 activeTools 实时剔除；
  *   - 计数入账：provider 上报 usage 为「最近一次累计」，跨消息可能回绕归零，
- *     检测到 output 下降即把旧消息产出入账 tokensBanked 后重新计数，兼容单调累计与逐消息重置两种语义；
+ *     检测到 output / total 下降即把旧消息产出 / 累计入账（分别并入 tokensBanked /
+ *     totalBanked，速度与已耗 token 分仓互不污染）后重新计数，兼容单调累计与逐消息
+ *     重置两种语义——会话累计 total 单调不归零，新的工具调用消息起始不再把 TOK 弧打成 0；
+ *   - 已知良好值保留（last-known-good）：stats 分仓经 mergeStats 合并新一轮响应，
+ *     contextUsage / 累计 token 的单次瞬时空帧（压缩后等待新响应、首消息未上报 usage、
+ *     工具执行期间 get_session_stats 4s 超时后的首轮空帧）不把已稳定的读数打回零；
+ *     磁盘快照同理，captureSnapshot 已有字段不被新一轮空值降级；
  *   - 括号兜底：错过 agent-start（模块冷启动 / 任务直切入场）时由首个 usage 帧惰性开括号，随帧收敛；
  *   - 预热下限：有效时长 < 250ms 视为预热期暂不出速度，杜绝首帧除零尖峰。
  *
@@ -97,7 +103,7 @@ export function initTokenTelemetry(ctx) {
   if (!el.telemetryBtn) return;
 
   // ---- 遥测采样缓存（按任务分仓，跨任务直切保留各自均值）----
-  /** Map<taskId, sample>；sample = { tokensBanked, msgBase, output, total, ts,
+  /** Map<taskId, sample>；sample = { tokensBanked, totalBanked, msgBase, output, total, ts,
    *  genElapsedMs, runStartTs, toolElapsedMs, activeTools, isGenerating } */
   const samples = new Map();
   /**
@@ -157,6 +163,7 @@ export function initTokenTelemetry(ctx) {
       s = {
         taskId: tid,
         tokensBanked: 0,
+        totalBanked: 0,
         msgBase: 0,
         output: null,
         total: null,
@@ -183,6 +190,16 @@ export function initTokenTelemetry(ctx) {
   /** 事件帧任务归属解析（与 flow-pipeline 同源回退链） */
   function resolveEventTaskId(detail) {
     return detail?.task_id || detail?.taskId || piClient.lastEventTaskId || null;
+  }
+
+  /**
+   * 会话累计已耗 token（采样仓口径）：跨消息回绕入账后的 total，单调不归零。
+   * provider 逐消息重置 usage，新消息起始 total 回落时旧消息累计已并入 totalBanked。
+   */
+  function sampleTotalTokens(s) {
+    if (!s) return null;
+    if (typeof s.total !== "number") return s.totalBanked > 0 ? s.totalBanked : null;
+    return s.totalBanked + s.total;
   }
 
   /**
@@ -283,7 +300,8 @@ export function initTokenTelemetry(ctx) {
           ? u.input + u.output
           : null;
 
-    // provider 计数回绕入账：检测到 output 下降即判定跨消息重置，旧消息产出入账后重新计数
+    // provider 计数回绕入账：output / total 任一下降即判定跨消息重置，旧消息累计
+    // 入账后重新计数（total 并入 totalBanked，与速度专用的 tokensBanked 分仓，互不污染）
     if (output != null) {
       if (s.output != null && output < s.output) {
         s.tokensBanked += s.output;
@@ -291,7 +309,10 @@ export function initTokenTelemetry(ctx) {
       }
       s.output = output;
     }
-    if (total != null) s.total = total;
+    if (total != null) {
+      if (s.total != null && total < s.total) s.totalBanked += s.total;
+      s.total = total;
+    }
     s.ts = now;
 
     // run 括号兜底：错过 agent-start（模块冷启动 / 任务直切入场）时从本帧起记时，随帧收敛
@@ -361,7 +382,8 @@ export function initTokenTelemetry(ctx) {
 
   /**
    * 采集前台任务当前遥测快照并按 sessionPath 持久化（收口 / stats 刷新成功时调用）。
-   * 三项数据均缺失时跳过，杜绝写入空快照污染历史会话回填。
+   * 三项数据均缺失时跳过；已有快照的字段不被新一轮空值降级（杜绝工具调用消息
+   * 收口时把磁盘快照的 ctx 污染成 null，致 CTX 弧归零）。
    */
   function captureSnapshot(tid) {
     if (!tid) return;
@@ -370,11 +392,39 @@ export function initTokenTelemetry(ctx) {
     if (!sp) return;
     const st = statsByTask.get(tid);
     const s = samples.get(tid);
-    const ctx = st?.contextUsage || null;
-    const usedTotal = st?.tokens?.total ?? s?.total ?? null;
+    let ctx = st?.contextUsage || null;
+    // stats 仓暂不可用（工具执行期间内核常 4s 内不响应 get_session_stats）时，
+    // 退回采样仓的会话累计口径，绝不用「逐消息重置」的 s.total 冒充会话累计
+    let usedTotal = st?.tokens?.total ?? sampleTotalTokens(s);
     const speed = Math.max(0, computeTaskSpeed(s));
+    // 已持久化的已知良好字段不被本轮空值降级
+    const stored = snapshotCache.get(sp) || null;
+    if (stored) {
+      if (!ctx && stored.ctx) ctx = stored.ctx;
+      if (usedTotal == null && stored.usedTotal != null) usedTotal = stored.usedTotal;
+    }
     if (!ctx && usedTotal == null && speed <= 0) return;
     storeSnapshot(sp, { ctx, usedTotal, speed, savedAt: Date.now() });
+  }
+
+  /**
+   * 合并新一轮会话统计：单项字段缺失 / 置空时保留上一轮已知良好值，
+   * 杜绝遥测弧因单次瞬时不完整响应（压缩后 contextUsage 暂为 null、
+   * 首消息 usage 未上报、工具执行期间响应超时后的首轮空帧）「突然归零」。
+   */
+  function mergeStats(prev, next) {
+    if (!prev || typeof prev !== "object") return next;
+    if (!next || typeof next !== "object") return prev;
+    const merged = { ...next };
+    if (!merged.contextUsage && prev.contextUsage) merged.contextUsage = prev.contextUsage;
+    if (prev.tokens) {
+      const prevTotal = typeof prev.tokens.total === "number" ? prev.tokens.total : null;
+      const nextTotal = merged.tokens && typeof merged.tokens.total === "number" ? merged.tokens.total : null;
+      if (nextTotal == null || (prevTotal != null && prevTotal > 0 && nextTotal === 0)) {
+        merged.tokens = { ...prev.tokens, ...(merged.tokens || {}) };
+      }
+    }
+    return merged;
   }
 
   /** 拉取一次内核会话统计（静默降级，不报错）；成功时入前台任务分仓并顺手持久化快照 */
@@ -383,8 +433,8 @@ export function initTokenTelemetry(ctx) {
     if (!tid || !piClient.hasKernel()) return;
     const data = await piClient.getSessionStats(tid);
     if (data) {
-      statsByTask.delete(tid);
-      statsByTask.set(tid, data);
+      // 已知良好值保留：瞬时不完整响应不把已稳定的上下文 / 累计读数打回零
+      statsByTask.set(tid, mergeStats(statsByTask.get(tid) || null, data));
       while (statsByTask.size > MAX_STATS_BINS) {
         const oldest = statsByTask.keys().next().value;
         if (oldest === tid) break; // 保留当前前台任务仓，淘汰次旧
@@ -434,7 +484,11 @@ export function initTokenTelemetry(ctx) {
     // 已消耗 token（累计 total）：配额分母走动态量级阶梯（resolveTokenQuota）——
     // 从 1M 起，用量满足当前量级后分母自动 ×10（1M → 10M → 100M → 1B → 10B → …），
     // 档位 0/1/≥2 分别以绿/橙/红着色（tokensLevel 驱动 gauge 换色）。
-    const usedTotal = live?.tokens?.total ?? s?.total ?? snapshot?.usedTotal ?? null;
+    // 回退顺序：stats 仓（会话累计）→ 采样仓累计口径（跨消息回绕入账，单调）
+    //          → 磁盘快照（历史会话还原）。绝不直接用逐消息的 s.total，
+    //          否则每次新的工具调用消息起始 usage 重置会把 TOK 弧瞬间打成 0。
+    const usedTotal =
+      live?.tokens?.total ?? sampleTotalTokens(s) ?? snapshot?.usedTotal ?? null;
     if (usedTotal != null) {
       const quota = resolveTokenQuota(usedTotal);
       opts.tokensUsed = usedTotal;
