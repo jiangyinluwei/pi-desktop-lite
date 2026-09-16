@@ -292,25 +292,31 @@ const ATTACHMENT_MARKERS: &[&str] = &[
     "[附带文件路径]:",
 ];
 
+/// 纯附件对话时系统默认的占位前缀（全角/半角冒号变体），命中即还原为空字符串以触发前端 "[附带 N 个文件/图片]" 展示
+const PURE_ATTACHMENT_PLACEHOLDERS: &[&str] = &[
+    "请查阅并分析以下本地文件/目录：",
+    "请查阅并分析以下本地文件/目录:",
+    "请查阅并分析以下本地文件：",
+    "请查阅并分析以下本地文件:",
+    "请查阅并分析以下本地目录：",
+    "请查阅并分析以下本地目录:",
+];
+
+/// 在文本中定位最早出现的附件 marker，返回 (字节偏移, marker 字节长度)；无命中时为 None
+fn find_earliest_marker(text: &str) -> Option<(usize, usize)> {
+    ATTACHMENT_MARKERS
+        .iter()
+        .filter_map(|marker| text.find(marker).map(|pos| (pos, marker.len())))
+        .min_by_key(|(pos, _)| *pos)
+}
+
 /// 清洗用户提问文本：剥离注入信封、附件清单以及引导提示语
 pub fn clean_user_prompt(text: &str) -> String {
     let text_no_contexts = strip_injected_contexts(text);
-    let mut raw = text_no_contexts.as_str();
-    let mut earliest_pos = None;
-
-    for marker in ATTACHMENT_MARKERS {
-        if let Some(pos) = raw.find(marker) {
-            match earliest_pos {
-                Some(p) if pos < p => earliest_pos = Some(pos),
-                None => earliest_pos = Some(pos),
-                _ => {}
-            }
-        }
-    }
-
-    if let Some(pos) = earliest_pos {
-        raw = &raw[..pos];
-    }
+    let raw = match find_earliest_marker(&text_no_contexts) {
+        Some((pos, _)) => &text_no_contexts[..pos],
+        None => text_no_contexts.as_str(),
+    };
 
     let mut cleaned = raw.trim().to_string();
 
@@ -325,13 +331,7 @@ pub fn clean_user_prompt(text: &str) -> String {
     }
 
     // 针对纯附件对话时的系统默认占位前缀，还原为空字符串以触发前端 "[附带 N 个文件/图片]" 展示
-    if cleaned == "请查阅并分析以下本地文件/目录："
-        || cleaned == "请查阅并分析以下本地文件/目录:"
-        || cleaned == "请查阅并分析以下本地文件："
-        || cleaned == "请查阅并分析以下本地文件:"
-        || cleaned == "请查阅并分析以下本地目录："
-        || cleaned == "请查阅并分析以下本地目录:"
-    {
+    if PURE_ATTACHMENT_PLACEHOLDERS.contains(&cleaned.as_str()) {
         cleaned.clear();
     }
 
@@ -341,27 +341,9 @@ pub fn clean_user_prompt(text: &str) -> String {
 /// 从用户提问尾注中提取附带本地文件/目录路径列表
 pub fn split_user_prompt_attachments(text: &str) -> (String, Vec<String>) {
     let text_no_contexts = strip_injected_contexts(text);
-    let mut earliest_pos = None;
-    let mut marker_len = 0;
 
-    for marker in ATTACHMENT_MARKERS {
-        if let Some(pos) = text_no_contexts.find(marker) {
-            match earliest_pos {
-                Some(p) if pos < p => {
-                    earliest_pos = Some(pos);
-                    marker_len = marker.len();
-                }
-                None => {
-                    earliest_pos = Some(pos);
-                    marker_len = marker.len();
-                }
-                _ => {}
-            }
-        }
-    }
-
-    let attachments: Vec<String> = match earliest_pos {
-        Some(pos) => {
+    let attachments: Vec<String> = match find_earliest_marker(&text_no_contexts) {
+        Some((pos, marker_len)) => {
             let after_marker = &text_no_contexts[pos + marker_len..];
             let mut paths = Vec::new();
             for line in after_marker.lines() {

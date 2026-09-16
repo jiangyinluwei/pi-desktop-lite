@@ -34,6 +34,7 @@ import { piClient } from "../services/pi-client.js";
 import { taskManager } from "../services/task-manager.js";
 import { SketchModal } from "../services/sketch-modal.js";
 import { SketchSelect } from "../services/sketch-select.js";
+import { isTaskStatusTerminal } from "../lib/contracts.js";
 
 /** 已渲染的交互横条（taskId → Map<requestId, barEl>），仅本模块可见。 */
 const barRegistry = new Map();
@@ -398,7 +399,7 @@ export function initHumanInput(ctx) {
   taskManager.addEventListener("task-updated", (e) => {
     const task = e.detail;
     if (!task?.id) return;
-    if (task.status === "completed" || task.status === "error" || task.status === "aborted") {
+    if (isTaskStatusTerminal(task)) {
       invalidateHumanInputCards(task.id, "本轮已结束");
     }
   });

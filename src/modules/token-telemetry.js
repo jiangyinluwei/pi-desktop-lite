@@ -653,7 +653,8 @@ export function initTokenTelemetry(ctx) {
     applyGauges();
   });
 
-  // run 括号与工具窗口采样：agent-start 开括号 / 工具窗口剔除 / agent-end + agent-error 收口
+  // run 括号与工具窗口采样：agent-start 开括号 / 工具窗口剔除 / agent-error 收口
+  // （agent-end 结算入口统一在下方「轮次收口」块注册，杜绝同帧双份快照采集）
   piClient.addEventListener("agent-start", (e) => handleAgentStart(e.detail));
   piClient.addEventListener("tool-start", (e) => {
     handleToolStart(e.detail);
@@ -663,7 +664,6 @@ export function initTokenTelemetry(ctx) {
     handleToolEnd(e.detail);
     applyGauges();
   });
-  piClient.addEventListener("agent-end", (e) => handleAgentEnd(e.detail));
   piClient.addEventListener("agent-error", (e) => handleAgentEnd(e.detail));
 
   // 内核下线：全部采样仓与内存 stats 清空，杜绝幽灵读数复活（磁盘快照保留，供历史会话还原）
@@ -677,17 +677,29 @@ export function initTokenTelemetry(ctx) {
 
   // 轮次 / 会话收口时保留遥测数据并落盘快照（上下文窗口在收口后才稳定）；
   // 面板可见时刷新一次实时统计覆盖，不可见时仅持久化 + 刷新缩略仪表（数据保留，下次点开即展示）
-  const refreshOnSettle = () => {
-    captureSnapshot(currentTaskId());
+  /** 收口刷新：面板可见时拉取实时 stats 覆盖，不可见时仅重绘缩略仪表 */
+  const refreshAfterSettle = () => {
     if (popup && popup.classList.contains("visible")) {
       void refreshStats().then(() => applyGauges());
     } else {
       applyGauges();
     }
   };
+  /** message-end / agent-settled 无归属收口帧：对前台任务补采快照后统一刷新 */
+  const refreshOnSettle = () => {
+    captureSnapshot(currentTaskId());
+    refreshAfterSettle();
+  };
   piClient.addEventListener("message-end", refreshOnSettle);
-  piClient.addEventListener("agent-end", refreshOnSettle);
   piClient.addEventListener("agent-settled", refreshOnSettle);
+  // agent-end 单一结算入口：handleAgentEnd 已按事件归属任务采集快照（含后台任务仓），
+  // 仅当本帧任务非前台任务时才对前台任务补采快照，杜绝同帧双份 captureSnapshot 热路径冗余
+  piClient.addEventListener("agent-end", (e) => {
+    const tid = resolveEventTaskId(e.detail, piClient.lastEventTaskId);
+    handleAgentEnd(e.detail);
+    if (tid !== currentTaskId()) captureSnapshot(currentTaskId());
+    refreshAfterSettle();
+  });
 
   // 任务被移除 / 归档时清理其采样仓与 stats 分仓并同步缩略仪表，杜绝幽灵读数
   taskManager.addEventListener("task-removed", (e) => {

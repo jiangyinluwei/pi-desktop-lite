@@ -527,30 +527,30 @@ export function initFlowStream(ctx) {
     capsule.classList.remove("ok");
     const progress = `${payload.attempt || 0}/${payload.maxAttempts || 0}`;
 
+    /**
+     * 重连倒计时统一驱动（waiting / post_waiting 双分支收敛）：逐秒递减，归零即清退，
+     * 两分支仅文案前缀不同（waiting 空前缀 / post_waiting 「已续发... · 」）
+     * @param {string} labelPrefix 倒计时行文案前缀
+     * @param {number} delayMs 倒计时总时长（ms）
+     */
+    const startFailoverCountdown = (labelPrefix, delayMs) => {
+      clearFailoverCountdown();
+      let secs = Math.max(1, Math.round(delayMs / 1000));
+      textEl.textContent = `自动内置重连 ${progress} · ${labelPrefix}${secs}s 后重试`;
+      failoverCountdownInterval = setInterval(() => {
+        secs--;
+        if (secs <= 0) {
+          clearFailoverCountdown();
+          return;
+        }
+        textEl.textContent = `自动内置重连 ${progress} · ${labelPrefix}${secs}s 后重试`;
+      }, 1000);
+    };
+
     if (phase === "waiting" && payload.nextDelayMs) {
-      clearFailoverCountdown();
-      let secs = Math.max(1, Math.round(payload.nextDelayMs / 1000));
-      textEl.textContent = `自动内置重连 ${progress} · ${secs}s 后重试`;
-      failoverCountdownInterval = setInterval(() => {
-        secs--;
-        if (secs <= 0) {
-          clearFailoverCountdown();
-          return;
-        }
-        textEl.textContent = `自动内置重连 ${progress} · ${secs}s 后重试`;
-      }, 1000);
+      startFailoverCountdown("", payload.nextDelayMs);
     } else if (phase === "post_waiting" && payload.nextDelayMs) {
-      clearFailoverCountdown();
-      let secs = Math.max(1, Math.round(payload.nextDelayMs / 1000));
-      textEl.textContent = `自动内置重连 ${progress} · 已续发... · ${secs}s 后重试`;
-      failoverCountdownInterval = setInterval(() => {
-        secs--;
-        if (secs <= 0) {
-          clearFailoverCountdown();
-          return;
-        }
-        textEl.textContent = `自动内置重连 ${progress} · 已续发... · ${secs}s 后重试`;
-      }, 1000);
+      startFailoverCountdown("已续发... · ", payload.nextDelayMs);
     } else if (phase === "sending") {
       clearFailoverCountdown();
       textEl.textContent = `自动内置重连 ${progress} · 正在重发请求 …`;

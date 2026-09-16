@@ -172,6 +172,24 @@ export function isTaskStatusActive(task) {
 }
 
 // =====================================================================
+// 【任务终态判定 · 唯一源】
+// =====================================================================
+// Task 状态机（task-manager.js TaskItem.status）中的终态全集：
+//   completed —— 正常完成；aborted —— 手动终止；error —— 模型调用失败/异常终态。
+// 终态结算（切换清理 / 挂起计数 / 收口落定 / 历史归档）等判定一律引用本常量，
+// 严禁模块自维护终态字面量数组或三连 === 链（防顺序变体漂移致判定分裂）。
+export const TASK_TERMINAL_STATUSES = Object.freeze(["completed", "aborted", "error"]);
+
+/**
+ * 判定任务是否处于终态（completed / aborted / error）。
+ * @param {{ status?: string } | null | undefined} task
+ * @returns {boolean}
+ */
+export function isTaskStatusTerminal(task) {
+  return Boolean(task && TASK_TERMINAL_STATUSES.includes(task.status));
+}
+
+// =====================================================================
 // 【内核事件帧归属 taskId 解析 · 唯一源】
 // =====================================================================
 // pi-client 派发的事件 detail 统一携带规范化 taskId（camelCase，取自帧 task_id/taskId），

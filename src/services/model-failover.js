@@ -16,7 +16,7 @@
  */
 
 import { piClient, isAbortError } from "./pi-client.js";
-import { configService } from "./config-service.js";
+import { configService, DEFAULT_FAILOVER_CONFIG } from "./config-service.js";
 import { resolveEventTaskId } from "../lib/contracts.js";
 
 class ModelFailoverEngine extends EventTarget {
@@ -296,7 +296,7 @@ class ModelFailoverEngine extends EventTarget {
       this.lastError = result.error || this.lastError;
 
       // 阶段 3：发送“继续”提示词重连后再延迟 60 秒（一共内置 10 次，即 120 秒 * 10）
-      const postDelay = cfg.postReconnectDelayMs || 60000;
+      const postDelay = cfg.postReconnectDelayMs || DEFAULT_FAILOVER_CONFIG.postReconnectDelayMs;
       this._currentPhase = "post_waiting";
       this._emit({
         status: "reconnecting",
@@ -429,8 +429,8 @@ class ModelFailoverEngine extends EventTarget {
   _backoffDelay(attempt, cfg) {
     const seq = Array.isArray(cfg?.reconnectBackoffMs) && cfg.reconnectBackoffMs.length > 0
       ? cfg.reconnectBackoffMs
-      : [60000];
-    const cap = cfg?.maxBackoffMs || 60000;
+      : DEFAULT_FAILOVER_CONFIG.reconnectBackoffMs;
+    const cap = cfg?.maxBackoffMs || DEFAULT_FAILOVER_CONFIG.maxBackoffMs;
     const v = seq[attempt - 1];
     return Math.min(v === undefined ? cap : v, cap);
   }

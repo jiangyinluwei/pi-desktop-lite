@@ -12,6 +12,7 @@ import {
   EXTENSION_UI_RESPONDABLE_METHODS,
   isInteractiveExtensionUiRequest,
   isTaskStatusActive,
+  isTaskStatusTerminal,
   resolveEventTaskId,
 } from "../lib/contracts.js";
 
@@ -262,8 +263,8 @@ export class TaskManager extends EventTarget {
    * @param {TaskItem} prevTask
    */
   _settlePrevTaskOnSwitch(prevTask) {
-    // 运行态判定唯一源见 contracts.js（含错误恢复过渡态 running）
-    if (isTaskStatusActive(prevTask) || !["completed", "aborted", "error"].includes(prevTask.status)) {
+    // 运行态/终态判定唯一源见 contracts.js（运行态含错误恢复过渡态 running）
+    if (isTaskStatusActive(prevTask) || !isTaskStatusTerminal(prevTask)) {
       prevTask.isSuspended = true; // 原前台活跃任务自动转入后台挂起
       return;
     }
@@ -531,7 +532,7 @@ export class TaskManager extends EventTarget {
   getCompletedSuspendedCount() {
     let count = 0;
     for (const task of this.getSuspendedTasks()) {
-      if (task.status === "completed" || task.status === "aborted" || task.status === "error") {
+      if (isTaskStatusTerminal(task)) {
         count += 1;
       }
     }
@@ -973,7 +974,7 @@ export class TaskManager extends EventTarget {
             break;
           }
         }
-        if (task.status === "completed" || task.status === "error" || task.status === "aborted") {
+        if (isTaskStatusTerminal(task)) {
           if (currentTurn && !currentTurn.completedAt) {
             currentTurn.status = task.status;
             currentTurn.completedAt = Date.now();
