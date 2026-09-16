@@ -2,7 +2,12 @@ import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
 import { bus } from "../lib/event-bus.js";
-import { isInteractiveExtensionUiRequest, isGracePeriodError, resolveEventTaskId } from "../lib/contracts.js";
+import {
+  isInteractiveExtensionUiRequest,
+  isGracePeriodError,
+  isTransientServiceError,
+  resolveEventTaskId,
+} from "../lib/contracts.js";
 import { piClient, isAbortError } from "../services/pi-client.js";
 import { configService } from "../services/config-service.js";
 import { promptHistoryNavigator } from "../services/prompt-history.js";
@@ -691,14 +696,18 @@ export function initFlowPipeline(ctx) {
       modelFailoverEngine.handleModelError(e.detail, failoverHooks);
     } else if (isForeground) {
       // 引擎不接管：仅前台渲染错误卡；后台任务交由 TaskManager 原生错误结算通道
-      // 流中断宽容期：`Stream ended without finish_reason` / `Inference request failed.`
-      // 属瞬态截断或推理请求瞬时失败，不弹红色错误卡，
-      // 改走「黄色倒计时等待消息框」（300 秒，超时仍未恢复才弹错误卡）
-      if (isGracePeriodError(e.detail)) {
-        api.handleStreamInterruption(e.detail);
-      } else {
-        api.renderErrorCard(e.detail);
+      // 流中断宽容期（黄色倒计时等待）：瞬态可恢复错误一律不立即弹红色错误卡。
+      // §6.1 的 isGracePeriodError 命中内核流截断/推理瞬时失败三短语；
+      // isTransientServiceError 覆盖更广的「连接异常 / 服务异常」（超时、断连、
+      // 502/503/504、fetch failed、速率限制…）：Pi 内核底层往往仍在重试，
+      // 过一会即恢复输出；立即弹红框会把 Task 提前置 error 终态并隐藏终止按钮，
+      // 内核随后恢复的输出被前台门禁拦截 → 红框永久滞留、按钮反复重建点击落空
+      // （BUG1/BUG2）。改给 300 秒黄色等待窗口：恢复即静默撤销，仅超时才弹红框。
+      if (isGracePeriodError(e.detail) || isTransientServiceError(e.detail)) {
+        // 宽容期胶囊在极早时点可能尚未挂载（轮次 DOM 未建立）：回退直接弹红框，杜绝错误被静默吞掉
+        if (api.handleStreamInterruption(e.detail)) return;
       }
+      api.renderErrorCard(e.detail);
     }
   });
 

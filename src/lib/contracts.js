@@ -113,6 +113,19 @@ export function isInteractiveExtensionUiRequest(data) {
  *   2. 服务商推理请求瞬时失败（如 Atria 等预览模型回显 `Inference request failed.`）；
  *   3. 网关/代理回显 `upstream failure`（上游服务瞬时不可用，常自行恢复）。
  */
+/**
+ * 从 agent-error detail 中收集全部可能携带错误正文的字段（判定谓词共用，
+ * 严禁各模块各自内联字段回退链致同帧判定分裂）。
+ */
+function collectErrorTexts(errDetail) {
+  return [
+    errDetail.message,
+    errDetail.raw?.errorMessage,
+    errDetail.raw?.message,
+    errDetail.error,
+  ];
+}
+
 const STREAM_INTERRUPTED_RE = /stream\s+ended\s+without\s+finish_reason/i;
 const INFERENCE_FAILED_RE = /inference\s+request\s+failed/i;
 const UPSTREAM_FAILURE_RE = /upstream\s+failure/i;
@@ -132,17 +145,133 @@ const UPSTREAM_FAILURE_RE = /upstream\s+failure/i;
  */
 export function isGracePeriodError(errDetail) {
   if (!errDetail || typeof errDetail !== "object") return false;
-  const candidates = [
-    errDetail.message,
-    errDetail.raw?.errorMessage,
-    errDetail.raw?.message,
-    errDetail.error,
-  ];
-  return candidates.some(
+  return collectErrorTexts(errDetail).some(
     (v) =>
       typeof v === "string" &&
       (STREAM_INTERRUPTED_RE.test(v) || INFERENCE_FAILED_RE.test(v) || UPSTREAM_FAILURE_RE.test(v))
   );
+}
+
+// =====================================================================
+// 【连接异常 / 服务异常 · 瞬态可恢复判定 · 唯一源】
+// =====================================================================
+// 与 isAbortError 的 NETWORK_TRANSIENT_PATTERNS（pi-client.js）语义对齐：
+// 凡属「连接异常 / 服务异常」的远端瞬态错误，一律不立即弹出红色错误卡，
+// 改走黄色倒计时宽容期（handleStreamInterruption，300 秒），给内核与服务商
+// 自行恢复的窗口；期间模型恢复输出即静默撤销，仅超时仍未恢复才弹红框。
+// 与 isGracePeriodError（流截断三短语）互补：后者命中更窄的内核回显短语，
+// 本谓词覆盖更广的网络/网关/速率限制/服务端瞬时错误全集。
+const TRANSIENT_SERVICE_KEYWORDS = [
+  // 速率限制 / 配额瞬时（TPM/RPM/429）
+  "rate limit",
+  "rate_limit",
+  "ratelimit",
+  "429",
+  "tpm",
+  "rpm",
+  "速率限制",
+  "每分钟推理速率",
+  "too many requests",
+  // 服务端瞬时 / 网关
+  "500",
+  "502",
+  "503",
+  "504",
+  "bad gateway",
+  "gateway",
+  "service unavailable",
+  "temporarily unavailable",
+  "temporarily",
+  "overloaded",
+  "capacity",
+  "internal server error",
+  "upstream failure",
+  "inference request failed",
+  // 连接 / 网络 / 超时
+  "connection",
+  "socket",
+  "econnreset",
+  "econnrefused",
+  "enotfound",
+  "etimedout",
+  "timeout",
+  "timed out",
+  "time out",
+  "network error",
+  "fetch failed",
+  "load failed",
+  "status code",
+  "reset by peer",
+  "connection reset",
+  "socket hang up",
+  "keep-alive",
+  "stream ended",
+  "stream error",
+  "dns",
+];
+
+// 明确「不可恢复」的错误：即使正文同时含有上面的瞬态关键词（如
+// `Request failed with status code 401` 含 "status code"），也必须立即弹出
+// 红色错误卡——300 秒等待毫无意义，用户需要立刻看到诊断与「切换其他模型」入口。
+const NON_TRANSIENT_KEYWORDS = [
+  "401",
+  "403",
+  "unauthorized",
+  "forbidden",
+  "invalid api key",
+  "invalid_api_key",
+  "invalid key",
+  "authentication",
+  "not authenticated",
+  "auth failed",
+  "model not found",
+  "no such model",
+  "unknown model",
+  "does not exist",
+  "multimodal",
+  "does not support image",
+  "unsupported media",
+  "unsupported content type",
+  "not support binary",
+  "file attachments are not supported",
+  // 上下文/请求体超限：用户必须改写输入或换模型，300 秒等待毫无意义
+  "context length",
+  "maximum context",
+  "context window",
+  "too long",
+  "request too large",
+  "payload too large",
+  "413",
+  "token limit",
+  "prompt is too long",
+  "input too long",
+  "maximum number of tokens",
+];
+
+/**
+ * 判定一条 agent-error 是否属于「连接异常 / 服务异常」类瞬态可恢复错误，
+ * 从而走黄色倒计时宽容期而非立即弹出红色错误卡。
+ *
+ * 设计动机（BUG1/BUG2）：连接/服务类错误往往只是远端瞬时抖动，Pi 内核自身
+ * 仍在底层重试，过一会即恢复正常输出；若立即弹红框，会把 Task 提前置为
+ * error 终态并隐藏终止按钮，内核随后恢复的输出事件被前台门禁拦截无法落 DOM，
+ * 红框即永久滞留（必须右键退出重进才能消除）；同时一次失败 run 会派发多个
+ * agent-error 帧，反复 innerHTML 重建错误卡导致按钮点击落空（红框「卡死」）。
+ *
+ * @param {Record<string, any>} errDetail pi-client 派发的 agent-error detail
+ * @returns {boolean}
+ */
+export function isTransientServiceError(errDetail) {
+  if (!errDetail || typeof errDetail !== "object") return false;
+  let hit = false;
+  for (const v of collectErrorTexts(errDetail)) {
+    if (typeof v !== "string") continue;
+    const s = v.toLowerCase();
+    // 不可恢复错误一票否决（先判，避免 "status code 401" 被瞬态关键词误命中）
+    if (NON_TRANSIENT_KEYWORDS.some((kw) => s.includes(kw))) return false;
+    if (TRANSIENT_SERVICE_KEYWORDS.some((kw) => s.includes(kw))) hit = true;
+  }
+  return hit;
 }
 
 // =====================================================================

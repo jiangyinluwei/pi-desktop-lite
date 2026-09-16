@@ -186,7 +186,7 @@ flowchart TD
     Abort -->|是| Drop[静默丢弃]
     Abort -->|否| Engine{内置重连引擎活跃或可接管?}
     Engine -->|是| Failover[走 §6 引擎流水线 · 琥珀胶囊倒数]
-    Engine -->|否| Stream{isGracePeriodError 命中?<br/>Stream ended without finish_reason<br/>Inference request failed.<br/>upstream failure}
+    Engine -->|否| Stream{瞬态可恢复错误?<br/>isGracePeriodError: 流截断/推理瞬时/upstream failure<br/>isTransientServiceError: 连接异常/服务异常全集<br/>超时·断连·Socket·DNS·500/502/503/504<br/>fetch failed·network error·429·overloaded}
     Stream -->|否| Red[直接渲染红色错误卡]
     Stream -->|是| Yellow[黄色倒计时等待消息框<br/>.flow-failover-capsule.waiting · 沙漏图标<br/>「等待模型响应中 · 300s」逐秒倒数]
     Yellow -->|模型恢复输出<br/>thinking/text/toolcall/tool-start| Recover[resolveStreamInterruption<br/>清除错误态 · 静默撤销等待]
@@ -195,11 +195,13 @@ flowchart TD
     Yellow -->|300s 超时仍未恢复| Red
 ```
 
-- **判定唯一源**：`src/lib/contracts.js` 的 `isGracePeriodError(errDetail)`（双正则：`/stream\s+ended\s+without\s+finish_reason/i` 流截断 + `/inference\s+request\s+failed/i` 推理请求瞬时失败，同时检查 `errDetail.message` 与 `errDetail.raw.errorMessage/.message/.error`）；判定点位于 `flow-pipeline.js` 的 `agent-error` 监听器**末端**（手动终止门禁、aborted/exhausted/interrupt-send 守则之后，引擎活跃分支之后），仅当「引擎不接管 + 前台任务」时才可能进入；
+- **判定唯一源（双谓词互补）**：`src/lib/contracts.js` 的 `isGracePeriodError(errDetail)`（正则：`/stream\s+ended\s+without\s+finish_reason/i` 流截断 + `/inference\s+request\s+failed/i` 推理请求瞬时失败 + `/upstream\s+failure/i` 上游瞬时不可用）覆盖内核高频回显的窄短语；**`isTransientServiceError(errDetail)` 覆盖全部「连接异常 / 服务异常」瞬态错误全集**（速率限制 rate limit/429/TPM/RPM；服务端 500/502/503/504/bad gateway/service unavailable/overloaded/temporarily；连接 connection/socket/econnreset/econnrefused/enotfound/etimedout/timeout/timed out/network error/fetch failed/load failed/status code/reset by peer/socket hang up/stream ended/dns）。两谓词均检查 `errDetail.message` + `errDetail.raw.errorMessage/.message` + `errDetail.error` 全部候选字段。**不可恢复错误一票否决**：正文含 401/403/unauthorized/forbidden/invalid api key/authentication/model not found/multimodal 不支持/context length 超限/too long/payload too large 等关键词时（即使同时含瞬态关键词，如 `Request failed with status code 401`）直接返回 false → 立即弹红色错误卡，300 秒等待毫无意义；判定点位于 `flow-pipeline.js` 的 `agent-error` 监听器**末端**（手动终止门禁、aborted/exhausted/interrupt-send 守则之后，引擎活跃分支之后），仅当「引擎不接管 + 前台任务」时才可能进入；
 - **写死 300 秒**（`STREAM_INTERRUPT_GRACE_MS = 300000`，`src/modules/flow-stream.js`）：胶囊文案「等待模型响应中 · Ns」逐秒递减；等待期间 `piClient.isStreaming` 保持 `true`，主界面 `#flow-btn-abort` 全周期可见可用，胶囊内 `.failover-abort-btn` 隐藏（纯状态示意条，零系统通知、零红色错误卡）；
 - **恢复即撤销（热路径零负担）**：`api.resolveStreamInterruption(taskId)` 在「无等待」时立即返回；有等待时经 `clearTurnErrorState` 一并清除 `errorMessage`、Task `error→running` 状态回退与残留错误卡，撤销点覆盖 `thinking-start/delta`、`text-start/delta`（`flow-stream.js`）、`toolcall-delta-start`、`tool-start`（`flow-pipeline.js`）；`agent-end` 仅当本轮已真实产出（`responseText` 或 `hasReceivedDelta`）才撤销——空轮保持等待，把 300 秒窗口完整留给模型；
 - **全生命周期撤销**：`api.cancelStreamInterruption(taskId)` 清退定时器并隐藏胶囊，调用点 = 手动终止（`task-panel.abortCurrentSession`）、任务挂起（`flow-suspended`）、任务移除（`task-removed`）、重发与新提问（`clearTurnErrorState` 内置调用）；跨任务 `taskId` 校验杜绝误撤销；
-- **超时才弹红框**：倒计时走完调 `api.renderErrorCard(detail)` 渲染红色错误卡，且触发前二次校验该任务仍为前台活跃任务（`isForegroundStreamTask`），杜绝挂起/切换后跨会话误弹；**幂等**：同任务重复错误帧（一次失败 run 经 `message_end`/`turn_end`/`agent_end` 多次派发 `agent-error`）不重置倒计时，前台已切任务则先撤销旧等待；
+- **超时才弹红框**：倒计时走完调 `api.renderErrorCard(detail)` 渲染红色错误卡，且触发前二次校验该任务仍为前台活跃任务（`isForegroundStreamTask`），杜绝挂起/切换后跨会话误弹；**幂等**：同任务重复错误帧（一次失败 run 经 `message_end`/`turn_end`/`agent_end` 多次派发 `agent-error`）不重置倒计时，前台已切任务则先撤销旧等待；**胶囊未挂载回退**：`handleStreamInterruption` 返回 `true/false`，轮次 DOM 尚未建立时调用方回退 `api.renderErrorCard` 直接弹红框，杜绝错误被静默吞掉；
+- **TaskManager 终态结算延迟对齐**：`task-manager.js` 的 `agent-error` 监听器先于 flow-pipeline 注册（同一帧先执行），对前台任务命中瞬态谓词时同样短路返回（位于 `pendingInterruptSend` 分支之后、`failTask` 之前），绝不提前置 Task 为 error / 弹报错通知；后台任务无宽容期胶囊，仍走 `failTask` 原生结算通道；
+- **错误卡重复帧幂等（BUG1 修复）**：`renderErrorCard`（`src/modules/flow-stream.js`）以 `${bucketId}::${errorMessage}` 签名烙印卡片 `dataset.errSig`，同任务同正文的重复错误帧**一律短路返回**——绝不重复 `innerHTML` 重建卡片（按钮监听随 DOM 反复销毁，用户点击落空 → 红框「卡死」、「重试当前提问」与「切换其他模型」都点不了）、不重复 `finalizeStream` / Windows 通知 / 历史归档；正文变化或 `clearTurnErrorState` 物理移除卡片后签名自然重置，新错误正常重建；
 - **样式**：`.flow-failover-capsule.waiting`（`src/styles/flow.css`）= 实线琥珀边 + 黄色微填充 + 沙漏手绘图标 `ICONS.hourglass`，复用既有胶囊 DOM（`createFlowTurnGroupElement` 创建的 `.flow-failover-capsule`），撤销时还原 bolt 图标供内置重连场景复用；
 
 ---

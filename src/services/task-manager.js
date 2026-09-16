@@ -11,6 +11,8 @@ import { sessionService } from "./session-service.js";
 import {
   EXTENSION_UI_RESPONDABLE_METHODS,
   isInteractiveExtensionUiRequest,
+  isGracePeriodError,
+  isTransientServiceError,
   isTaskStatusActive,
   isTaskStatusTerminal,
   resolveEventTaskId,
@@ -693,6 +695,20 @@ export class TaskManager extends EventTarget {
         }
         return;
       }
+
+      // 流中断宽容期（黄色倒计时等待）优先于终态结算：前台任务的瞬态可恢复错误
+      // （isGracePeriodError 流截断三短语 + isTransientServiceError 「连接异常/服务异常」全集）
+      // 一律交由 flow-pipeline 的 handleStreamInterruption 接管，本监听器绝不提前置 Task 为
+      // error / 弹错误通知——Pi 内核底层往往仍在重试，过一会即恢复输出；提前终态会导致恢复的
+      // 输出事件被前台门禁拦截、会话流中断（BUG2）。300 秒超时由 renderErrorCard 落定终态，
+      // 恢复则由 clearTurnErrorState 回退 error→running。后台任务无宽容期胶囊，仍走 failTask。
+      if (
+        this.isForegroundStreamTask(taskId) &&
+        (isGracePeriodError(detail) || isTransientServiceError(detail))
+      ) {
+        return;
+      }
+
       this.failTask(task.id || taskId, detail.message || "模型调用发生异常");
     });
   }

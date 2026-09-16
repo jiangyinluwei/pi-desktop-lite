@@ -107,19 +107,20 @@ export function initFlowStream(ctx) {
   /**
    * 启动流中断宽容期（幂等：同一任务等待期间重复错误帧不重置倒计时）。
    * @param {{ message: string, model?: string, taskId?: string, raw?: object }} errDetail agent-error detail
+   * @returns {boolean} true = 宽容期已启动（调用方应跳过红框），false = 胶萃未挂载（调用方回退弹红框）
    */
   const handleStreamInterruption = (errDetail) => {
     const taskId = resolveEventTaskId(errDetail, piClient.lastEventTaskId);
     // 一次失败 run 会经 message_end / turn_end / agent_end 多次派发 agent-error：
     // 同任务重复帧保持既有倒计时，绝不重置 300 秒窗口；前台已切到别的任务则先撤销旧等待
     if (streamPauseTimer) {
-      if (!streamPauseTaskId || String(streamPauseTaskId) === String(taskId)) return;
+      if (!streamPauseTaskId || String(streamPauseTaskId) === String(taskId)) return true;
       clearStreamPauseTimers();
     }
 
     const capsule = flowView.activeTurnRefs?.failoverCapsuleEl;
     const textEl = flowView.activeTurnRefs?.failoverTextEl;
-    if (!capsule || !textEl) return;
+    if (!capsule || !textEl) return false;
 
     streamPauseTaskId = taskId;
     streamPauseDetail = errDetail;
@@ -163,6 +164,7 @@ export function initFlowStream(ctx) {
     if (flowScrollArea && flowView.followBottom !== false) {
       flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
     }
+    return true;
   };
 
   /** 事件帧归属任务的纯数据分仓（事件处理器内调用；调用点均已过前台门禁）。 */
@@ -703,6 +705,14 @@ export function initFlowStream(ctx) {
     }
     const errMsg = fs.errorMessage;
 
+    // 重复错误帧幂等（BUG1 根因）：一次失败 run 会经 message_end / turn_end / agent_end /
+    // agent_settled 多次派发 agent-error；若每帧都 innerHTML 重建错误卡，按钮监听随 DOM 反复销毁，
+    // 用户点击落空 → 红框「卡死」（重试当前提问 / 切换其他模型都点不了），并重复弹 Windows 通知。
+    // 同任务同正文的后续帧一律短路返回，DOM 与按钮监听纹丝不动
+    const errSig = `${bucketId}::${errMsg}`;
+    const stagedTarget = flowView.activeTurnRefs?.responseContentEl || flowResponseContent;
+    if (stagedTarget?.querySelector(".sketch-error-card")?.dataset.errSig === errSig) return;
+
     // 软件失焦时立即弹出报错终止通知 (带 Windows 默认提示音)
     // 注：不再传幻影 taskId "agent-prompt"，真实任务的注销与报错通知由 taskManager 的 agent-error 监听器负责
     notificationService.notifyError({
@@ -770,7 +780,7 @@ export function initFlowStream(ctx) {
       </div>
     `;
 
-    // 移除已存在的错误卡片，避免重复堆叠
+    // 移除已存在的错误卡片，避免重复堆叠（同正文重复帧已在上方短路返回，走到这里的必为不同正文的新错误）
     const existingCard = targetResponseEl.querySelector(".sketch-error-card");
     if (existingCard) {
       existingCard.remove();
@@ -781,6 +791,9 @@ export function initFlowStream(ctx) {
     } else {
       targetResponseEl.insertAdjacentHTML("beforeend", cardHtml);
     }
+    // 签名烙印：供重复帧幂等短路比对（clearTurnErrorState 会物理移除卡片从而自然重置）
+    const stagedCard = targetResponseEl.querySelector(".sketch-error-card");
+    if (stagedCard) stagedCard.dataset.errSig = errSig;
 
     // 报错时确保移除可能已挂载的保存按钮
     if (flowView.activeTurnRefs && typeof api.attachResponseSaveButton === "function") {
