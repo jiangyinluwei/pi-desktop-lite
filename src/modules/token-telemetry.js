@@ -581,13 +581,13 @@ export function initTokenTelemetry(ctx) {
     });
   }, STATS_BACKGROUND_INTERVAL_MS);
 
-  /** 触发额度图标与悬浮面板（若已创建）的 0.2 秒弧光高亮 */
+  /** 触发额度图标与悬浮面板（若已创建）的 1 秒弧光高亮 */
   function triggerArcFlash() {
     miniGauge.triggerArcFlash?.();
     if (gauge) gauge.triggerArcFlash?.();
   }
 
-  // 监听新一轮 thinking / point / 工具调用 触发：额度图标弧光高亮 0.2 秒（仅前台任务生效）
+  // 监听新一轮 thinking / point / 工具调用 触发：额度图标弧光高亮 1 秒（仅前台任务生效）
   bus.on("flow:step-start", (detail) => {
     const tid = detail?.taskId || currentTaskId();
     if (tid && !taskManager.isForegroundStreamTask(tid)) return;

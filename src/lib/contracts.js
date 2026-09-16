@@ -23,7 +23,7 @@
  *   | ui:toast | 任意模块 → toast 渲染 | 通知 | bus | task-panel.js (bus.on) |
  *   | ui:workspace-changed | workspace/search → 全局 | 通知 | bus | search-input.js (bus.on) [阶段 6 收编，原 window CustomEvent] |
  *   | flow:response | flow-store → 前台 Flow UI | 通知(带 taskId) | bus | [暂无监听方；payload 必带 taskId，订阅方必须先过 isForegroundStreamTask 前台门禁再触 DOM] |
- *   | flow:step-start | flow-stream / flow-pipeline → token-telemetry | 通知(带 taskId, type) | bus | token-telemetry.js (bus.on → 额度图标 0.2s 弧光高亮) |
+ *   | flow:step-start | flow-stream / flow-pipeline → token-telemetry | 通知(带 taskId, type) | bus | token-telemetry.js (bus.on → 额度图标 1s 弧光高亮) |
  *   | pi:view-change | view-mode → window | UI 内部横切(见注解) | window CustomEvent | view-mode.js [保留，§7.2 评估] |
  *   | pi:step-back | global-interactions → window | UI 内部横切(见注解) | window CustomEvent | global-interactions.js [保留，§7.2 评估] |
  *   | pi:kernel-reconnect-failed | pi-client → window | 内核桥接 | Tauri listen | pi-client.js [保留] |
@@ -58,7 +58,7 @@
 //   ui:workspace-changed  发射方：workspace-panel / search-input
 //                         监听方：search-input.js (bus.on → syncWorkspaceInputState)
 //   flow:step-start       发射方：flow-stream / flow-pipeline
-//                         监听方：token-telemetry.js (bus.on → 额度图标 0.2s 弧光高亮)
+//                         监听方：token-telemetry.js (bus.on → 额度图标 1s 弧光高亮)
 
 export const EVENT_CHANNEL_TABLE_VERSION = 3;
 
