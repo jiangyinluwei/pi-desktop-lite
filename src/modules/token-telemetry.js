@@ -6,7 +6,8 @@
  * 鼠标悬浮 / 键盘聚焦时在图标上方展开手绘胶囊面板（capsule 布局），实时呈现三项遥测：
  *   1. 当前上下文消耗（CTX 弧 + 「已用 / 窗口」读数）；
  *   2. 推理速度 token/s（SPD 弧 + 「推理中 / 空闲」状态）；
- *   3. 已消耗 token（TOK 弧 + 「累计 / 窗口」读数）。
+ *   3. 已消耗 token（TOK 弧 + 「累计 / 额度」读数；额度为动态量级阶梯分母，从 1M 起
+ *      用量满足当前量级后自动 ×10（1M → 10M → 100M → 1B → 10B → …），档位绿/橙/红着色）。
  *
  * 数据来源（双通道，零侵入）：
  *   - 速度 / 实时累计：内核 `message_update` 顶层 `usage`（input / output / cacheRead / cacheWrite / totalTokens）。
@@ -33,7 +34,7 @@ import { bindAll } from "../lib/el-binder.js";
 import { bus } from "../lib/event-bus.js";
 import { piClient } from "../services/pi-client.js";
 import { taskManager } from "../services/task-manager.js";
-import { createTokenTelemetryGauge } from "../lib/token-telemetry-gauge.js";
+import { createTokenTelemetryGauge, resolveTokenQuota } from "../lib/token-telemetry-gauge.js";
 
 /** 面板可见时的 stats 轮询周期（ms）—— 仅悬浮时才跑，零常态负担 */
 const STATS_POLL_INTERVAL_MS = 2000;
@@ -45,8 +46,6 @@ const SPEED_IDLE_THRESHOLD_MS = 2500;
 const SPEED_EMA_ALPHA = 0.6;
 /** 速度刻度上限（gauge 内部会保证最小 10） */
 const SPEED_SCALE_MAX = 120;
-/** 已耗 token 的参考预算刻度（无上下文窗口时的保守回退刻度） */
-const TOKEN_BUDGET_FALLBACK = 64000;
 /** 面板相对按钮的水平间距 */
 const POPUP_OFFSET_X = 4;
 /** 面板与按钮的垂直间距 */
@@ -177,7 +176,6 @@ export function initTokenTelemetry(ctx) {
     const ctxUsage = stats?.contextUsage || null;
     const ctxUsed = typeof ctxUsage?.tokens === "number" ? ctxUsage.tokens : null;
     const ctxTotal = typeof ctxUsage?.contextWindow === "number" ? ctxUsage.contextWindow : null;
-    const budget = ctxTotal || TOKEN_BUDGET_FALLBACK;
 
     const opts = {
       id: "ttg-main",
@@ -194,11 +192,15 @@ export function initTokenTelemetry(ctx) {
       opts.contextRatio = Math.min(1, Math.max(0, ctxUsage.percent / 100));
     }
 
-    // 已消耗 token（累计 total；参考刻度取上下文窗口，直观反映「还能说多久」）
+    // 已消耗 token（累计 total）：配额分母走动态量级阶梯（resolveTokenQuota）——
+    // 从 1M 起，用量满足当前量级后分母自动 ×10（1M → 10M → 100M → 1B → 10B → …），
+    // 档位 0/1/≥2 分别以绿/橙/红着色（tokensLevel 驱动 gauge 换色）。
     const usedTotal = stats?.tokens?.total ?? lastSample?.total ?? null;
     if (usedTotal != null) {
+      const quota = resolveTokenQuota(usedTotal);
       opts.tokensUsed = usedTotal;
-      opts.tokensBudget = budget;
+      opts.tokensBudget = quota.budget;
+      opts.tokensLevel = quota.level;
     }
     return opts;
   }

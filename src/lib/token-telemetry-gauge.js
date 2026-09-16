@@ -6,14 +6,17 @@
  * 同时呈现三项核心遥测指标：
  * 1. 当前上下文消耗比值 (Current Context Window Ratio)
  * 2. token/s 实时速度 (Generation Speed)
- * 3. 已消耗 token 比值 (Consumed Token Budget Ratio)
+ * 3. 已消耗 token 比值 (Consumed Token Quota Ratio)
+ *    配额分母不走固定值，而是动态量级阶梯（resolveTokenQuota）：
+ *    从 1M 起，累计用量满足当前量级后分母自动增长十倍（1M → 10M → 100M → 1B → 10B → …），
+ *    量级档位分别以绿色（1M 档）/ 橙色（10M 档）/ 红色（100M 及以后全部）呈现。
  * 
  * 特性：
  * - 纯矢量 SVG，零外部依赖，极速轻量
  * - 支持三种精巧布局形态：
  *   • 'capsule' (横向遥测卡片，320×92，推荐主视图)
  *   • 'radial'  (同心圆微型仪表盘，110×110，紧凑小窗/悬浮球)
- *   • 'badge'   (单行极简微胶囊，220×28，适合标题栏/工具栏)
+ *   • 'mini'    (24×24 原生双弧微型仪表，对话框「额度」按钮)
  * - 遵循 Anthropic / Pi.dev 手绘草图美学，全域 currentColor + CSS 变量双模自适应
  * - 具备毫秒级无损更新函数 update(params)，适合逐 token 流式高频刷新
  */
@@ -31,15 +34,35 @@ function clamp(val, min = 0, max = 1) {
 }
 
 /**
- * 格式化数值为友好单位简写（如 128000 -> 128k, 1048576 -> 1M）
+ * 格式化数值为友好单位简写（如 128000 -> 128k, 1048576 -> 1M, 1e9 -> 1B, 1e12 -> 1T）
  */
 export function formatTokenCount(num) {
   if (num === undefined || num === null || num === '' || isNaN(num)) return '';
   if (typeof num === 'string') return num;
   const abs = Math.abs(num);
+  if (abs >= 1e12) return (num / 1e12).toFixed(1).replace(/\.0$/, '') + 'T';
+  if (abs >= 1e9) return (num / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
   if (abs >= 1_000_000) return (num / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
   if (abs >= 1_000) return (num / 1_000).toFixed(1).replace(/\.0$/, '') + 'k';
   return String(num);
+}
+
+/**
+ * 已消耗 token 的动态配额阶梯唯一源。
+ * 分母从 1M（TOKEN_QUOTA_BASE）起步，累计用量满足当前量级（>= 分母）后自动增长十倍：
+ *   1M → 10M → 100M → 1B → 10B → 100B → 1T → …
+ * 量级档位 level：0 = 1M 档（绿）、1 = 10M 档（橙）、>=2 = 100M 及以后全部（红）。
+ * @param {number} usedTokens 累计已消耗 token
+ * @returns {{ budget: number, level: number }}
+ */
+export const TOKEN_QUOTA_BASE = 1_000_000;
+
+export function resolveTokenQuota(usedTokens) {
+  const used = Math.max(0, parseFloat(usedTokens) || 0);
+  let budget = TOKEN_QUOTA_BASE;
+  while (budget <= used) budget *= 10;
+  const level = Math.round(Math.log10(budget / TOKEN_QUOTA_BASE));
+  return { budget, level };
 }
 
 /**
@@ -59,10 +82,11 @@ function resolveMetrics(options = {}) {
     }
   }
 
-  // 2. 已消耗 Token 比值
+  // 2. 已消耗 Token 比值（配额量级档位：0=绿(1M) / 1=橙(10M) / >=2=红(100M+)）
   let tokRatio = options.tokenRatio !== undefined ? clamp(options.tokenRatio) : 0;
   let tokLabel = `${(tokRatio * 100).toFixed(1)}%`;
   let tokSub = options.tokenText || '';
+  const tokLevel = Math.min(2, Math.max(0, Math.floor(parseFloat(options.tokensLevel) || 0)));
 
   if (options.tokensUsed !== undefined && options.tokensBudget !== undefined && options.tokensBudget > 0) {
     tokRatio = clamp(options.tokensUsed / options.tokensBudget);
@@ -85,6 +109,7 @@ function resolveMetrics(options = {}) {
     tokRatio,
     tokLabel,
     tokSub,
+    tokLevel,
     speed,
     speedMax,
     speedRatio,
@@ -151,6 +176,9 @@ function getSharedStyles(id) {
       stroke-linecap: round;
       transition: stroke-dasharray 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
     }
+    #${id}.ttg-quota-l0 { --color-token: var(--ttg-quota-green, #4a7c59); }
+    #${id}.ttg-quota-l1 { --color-token: var(--ttg-quota-orange, #d97706); }
+    #${id}.ttg-quota-l2 { --color-token: var(--ttg-quota-red, #c2413c); }
     #${id} .ttg-bolt {
       fill: none;
       stroke: currentColor;
@@ -230,7 +258,7 @@ function renderCapsuleSvg(metrics, options, id) {
 
   return `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}"
-     class="token-telemetry-gauge ttg-layout-capsule" id="${id}" role="img"
+     class="token-telemetry-gauge ttg-layout-capsule ttg-quota-l${metrics.tokLevel}" id="${id}" role="img"
      aria-label="Token 遥测：上下文 ${metrics.ctxLabel}, 速度 ${metrics.speed.toFixed(1)} tok/s, 已消耗 ${metrics.tokLabel}">
   <defs>
     <style>${getSharedStyles(id)}</style>
@@ -335,7 +363,7 @@ function renderRadialSvg(metrics, options, id) {
 
   return `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}"
-     class="token-telemetry-gauge ttg-layout-radial" id="${id}" role="img"
+     class="token-telemetry-gauge ttg-layout-radial ttg-quota-l${metrics.tokLevel}" id="${id}" role="img"
      aria-label="Token 遥测：上下文 ${metrics.ctxLabel}, 速度 ${metrics.speed.toFixed(1)} tok/s, 已消耗 ${metrics.tokLabel}">
   <defs>
     <style>${getSharedStyles(id)}</style>
@@ -398,7 +426,7 @@ function renderMiniSvg(metrics, options, id) {
 
   return `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}"
-     class="token-telemetry-gauge ttg-layout-mini" id="${id}" role="img" aria-hidden="true">
+     class="token-telemetry-gauge ttg-layout-mini ttg-quota-l${metrics.tokLevel}" id="${id}" role="img" aria-hidden="true">
   <defs>
     <style>
       #${id} {
@@ -435,6 +463,9 @@ function renderMiniSvg(metrics, options, id) {
         stroke-linecap: round;
         transition: stroke-dasharray 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
       }
+      #${id}.ttg-quota-l0 { --color-token: var(--ttg-quota-green, #4a7c59); }
+      #${id}.ttg-quota-l1 { --color-token: var(--ttg-quota-orange, #d97706); }
+      #${id}.ttg-quota-l2 { --color-token: var(--ttg-quota-red, #c2413c); }
       #${id} .ttg-mini-bolt {
         transition: fill 0.2s ease, stroke 0.2s ease, filter 0.2s ease;
       }
@@ -504,9 +535,6 @@ export function renderTokenTelemetrySvg(options = {}) {
   if (layout === 'radial') {
     return renderRadialSvg(metrics, options, id);
   }
-  if (layout === 'badge') {
-    return renderBadgeSvg(metrics, options, id);
-  }
   return renderCapsuleSvg(metrics, options, id);
 }
 
@@ -544,7 +572,7 @@ export function createTokenTelemetryGauge(initialOptions = {}) {
   const txtTokSub = svgEl.querySelector(`#${id}-txt-tok-sub`);
   const barTok = svgEl.querySelector(`#${id}-bar-tok`);
 
-  const barMaxW = layout === 'badge' ? 46 : 84;
+  const barMaxW = 84;
 
   // 弧长计算参数
   const isMini = layout === 'mini' || layout === 'icon';
@@ -560,6 +588,13 @@ export function createTokenTelemetryGauge(initialOptions = {}) {
    */
   function update(nextOptions = {}) {
     const m = resolveMetrics({ ...initialOptions, ...nextOptions });
+
+    // 0. 配额量级档位换色（绿 → 橙 → 红）：重定义 --color-token，TOK 弧/条/读数整体跟随
+    const levelClass = `ttg-quota-l${m.tokLevel}`;
+    if (!svgEl.classList.contains(levelClass)) {
+      svgEl.classList.remove('ttg-quota-l0', 'ttg-quota-l1', 'ttg-quota-l2');
+      svgEl.classList.add(levelClass);
+    }
 
     // 1. 上下文消耗比值 (CTX)
     if (arcCtx) {

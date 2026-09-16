@@ -48,6 +48,11 @@
   --sketch-step-tool-accent: #2563eb;
   --sketch-step-tool-code-bg: #eaf0f7;
   --sketch-step-tool-code-border: rgba(175, 195, 218, 0.60);
+
+  /* 「额度」遥测动态配额量级三档色（resolveTokenQuota：1M 档绿 / 10M 档橙 / 100M 及以后红） */
+  --ttg-quota-green: #4a7c59;
+  --ttg-quota-orange: #d97706;
+  --ttg-quota-red: #c2413c;
 }
 
 :root[data-theme="dark"] {
@@ -97,6 +102,11 @@
   --sketch-step-tool-accent: #60a5fa;
   --sketch-step-tool-code-bg: #0e1218;
   --sketch-step-tool-code-border: rgba(45, 60, 85, 0.65);
+
+  /* 「额度」遥测动态配额量级三档色 - 深色炭黑素描提亮 */
+  --ttg-quota-green: #7fb384;
+  --ttg-quota-orange: #e6970e;
+  --ttg-quota-red: #e07a72;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -147,6 +157,11 @@
     --sketch-step-tool-accent: #60a5fa;
     --sketch-step-tool-code-bg: #0e1218;
     --sketch-step-tool-code-border: rgba(45, 60, 85, 0.65);
+
+    /* 「额度」遥测动态配额量级三档色 - 系统跟随深色提亮 */
+    --ttg-quota-green: #7fb384;
+    --ttg-quota-orange: #e6970e;
+    --ttg-quota-red: #e07a72;
   }
 }
 
