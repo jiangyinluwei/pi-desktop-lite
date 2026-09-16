@@ -56,6 +56,25 @@ impl JobObjectManager {
         }
     }
 
+    /// 创建 Job Object 的统一入口（supervisor / host_pool 共用，杜绝逐字重复的伪容错）：
+    /// 首次失败记录告警并重试一次；仍失败即 panic 终止 —— Job Object 是孤儿进程级联收割的
+    /// 最后防线，缺失将导致主进程崩溃后内核子进程沦为孤儿，绝不静默降级运行。
+    /// panic 消息携带组件名与两次失败原因，杜绝「容错」假象掩盖必然复现的确定性失败。
+    pub fn create_or_panic(component: &str) -> Self {
+        match Self::new() {
+            Ok(mgr) => mgr,
+            Err(first_err) => {
+                log::warn!("[{}] JobObject init failed (1st attempt): {}", component, first_err);
+                Self::new().unwrap_or_else(|second_err| {
+                    panic!(
+                        "[{}] JobObject init failed twice: {} / {}",
+                        component, first_err, second_err
+                    );
+                })
+            }
+        }
+    }
+
     /// 将进程句柄以 usize 整数形式传入并加入 Job Object
     pub fn assign_process_usize(&self, process_handle_usize: usize) -> Result<(), String> {
         #[cfg(windows)]

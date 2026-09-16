@@ -146,6 +146,57 @@ export function isGracePeriodError(errDetail) {
 }
 
 // =====================================================================
+// 【任务运行态判定 · 唯一源】
+// =====================================================================
+// Task 状态机（task-manager.js TaskItem.status）中「生成进行中 / 待确认」的活跃状态全集：
+//   thinking / streaming / tool_exec —— 正常生成三态；
+//   paused    —— 人工交互待确认（内核阻塞等待作答，同属生成进行中，铁律 3）；
+//   running   —— 错误态任务经 clearTurnErrorState 重试恢复后的过渡态（flow-stream.js）。
+// 回退守卫（flow-rollback）、任务管理器（task-manager）等一律引用本常量判定，
+// 严禁各模块自维护状态字面量数组（防同一状态跨模块判定相反，如回退守卫漏判 running）。
+export const TASK_ACTIVE_STATUSES = Object.freeze([
+  "thinking",
+  "streaming",
+  "tool_exec",
+  "paused",
+  "running",
+]);
+
+/**
+ * 判定任务是否处于生成进行中（含人工交互待确认与错误恢复过渡态）。
+ * @param {{ status?: string } | null | undefined} task
+ * @returns {boolean}
+ */
+export function isTaskStatusActive(task) {
+  return Boolean(task && TASK_ACTIVE_STATUSES.includes(task.status));
+}
+
+// =====================================================================
+// 【内核事件帧归属 taskId 解析 · 唯一源】
+// =====================================================================
+// pi-client 派发的事件 detail 统一携带规范化 taskId（camelCase，取自帧 task_id/taskId），
+// raw 为内核原始帧（snake_case task_id）。此前 token-telemetry / flow-stream /
+// flow-pipeline / model-failover / task-manager 各自内联回退链且字段优先级互不一致，
+// 同一事件帧可能被不同模块归到不同任务 —— 现收敛为本唯一源。
+/**
+ * 从内核事件帧 detail 解析归属 taskId（唯一源）。
+ * @param {Record<string, any> | null | undefined} detail 事件帧 detail（raw-event / agent-error / usage 等）
+ * @param {string | null | undefined} [fallback] 调用方兜底（如 piClient.lastEventTaskId / currentActiveTaskId / 引擎 taskId）
+ * @returns {string | null}
+ */
+export function resolveEventTaskId(detail, fallback = null) {
+  if (!detail || typeof detail !== "object") return fallback || null;
+  return (
+    detail.taskId ||
+    detail.task_id ||
+    detail.raw?.task_id ||
+    detail.raw?.taskId ||
+    fallback ||
+    null
+  );
+}
+
+// =====================================================================
 // 【ctx.api 函数槽契约 · 阶段 6 定型】
 // =====================================================================
 // 仍保留在 ctx 的 api 函数槽上的函数槽全量登记（按属主模块分组）。阶段 6 已清退

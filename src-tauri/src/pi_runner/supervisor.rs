@@ -35,10 +35,7 @@ pub struct PiSupervisor {
 
 impl PiSupervisor {
     pub fn new(app_handle: AppHandle) -> Self {
-        let job_object = Arc::new(JobObjectManager::new().unwrap_or_else(|err| {
-            log::warn!("[Supervisor] JobObject init failed: {}", err);
-            JobObjectManager::new().unwrap()
-        }));
+        let job_object = Arc::new(JobObjectManager::create_or_panic("Supervisor"));
 
         Self {
             app_handle,

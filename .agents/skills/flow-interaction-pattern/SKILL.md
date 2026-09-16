@@ -362,7 +362,7 @@ SessionHost::send_command → 内核 stdin → 解除阻塞续跑
 - **作答时序（严格同步判定 + 异步回写）**：① 用户提交 → **先同步** `takePendingUiRequest` 摘除未决请求并定格横条（杜绝双击双答竞态）；② **再异步** `sendExtensionUiResponse`；③ 回写失败（Task 已终止 / 进程已亡）→ 横条转「作答未能送达 · 任务已终止」失效态 + Toast 提示，**不重试轰炸**；
 - **挂起与直切（铁律 3）**：交互未决时直切任务 → 原 Task 照常 `isSuspended = true`（`paused` 属待确认态，符合终态判定排除）；回入 Flow 由 `renderTurnsIntoFlow → api.restoreHumanInputCards(task.id)` 重建全部未决横条，请求不丢失；后台任务的请求只入 TaskManager 数据与抽屉徽标（「待确认 (N)」），**绝不渲染前台横条**（前台门禁 `isForegroundStreamTask`）；
 - **强制终止（铁律 3 / 18）**：`abortTask` 先 `clearPendingUiRequests` 取回未决请求 → `Promise.all` best-effort 回写 `{cancelled:true}` → 再走既有 `piClient.abort` 强杀链路；Rust `SessionHost::send_command` 的 aborted 门禁物理拒绝迟到作答；`invalidateHumanInputCards` 将横条转失效态；**严禁**触发模型内置重连；
-- **回退互斥（铁律 3）**：交互未决 = 生成进行中；`flow-rollback.js` 的 `isTaskRunning` 已显式纳入 `paused`（**原实现仅含 thinking/streaming/tool_exec，人工交互未决时可被回退撕裂因果链 —— 实施中修复**），命中即 toast「生成进行中，请等待完成或手动终止后再回退」并中止；
+- **回退互斥（铁律 3）**：交互未决 = 生成进行中；`flow-rollback.js` 的 `isTaskRunning` 即 `contracts.js` 唯一源 `isTaskStatusActive`（`TASK_ACTIVE_STATUSES` = thinking/streaming/tool_exec/paused/**running**；**原实现漏判错误恢复过渡态 `running`，已于 2026-09-16 与 TaskManager 一并收敛真源修复**），命中即 toast「生成进行中，请等待完成或手动终止后再回退」并中止；
 - **重连引擎共存（铁律 18）**：`paused`（UI 阻塞）与「模型异常」语义严格区分；`modelFailoverEngine` 仅由错误帧驱动，UI 阻塞不触发续发「继续」；
 - **清理时机**：作答回写 / 读秒归零（内核自动解析）/ `agent_end` / `agent_settled`（`{resume:false}`，避免终态前状态抖动）/ abort / `task-removed` / 内核 `kernel-status-change`（`hasKernel === false` 时全部失效）；`pendingUiRequests` 清空且 Task 仍 `paused`、`piClient.isStreaming` 为真时回落 `streaming`。
 - **文本控件焦点铁律（实施中修复的缺陷）**：`SketchModal.open()` 在自身 `requestAnimationFrame` 内聚焦「提交」按钮；`input` / `editor` 分支的文本控件聚焦**必须再延后一帧**（`requestAnimationFrame(() => field.focus())`）注册，否则会被按钮抢回焦点，用户敲键落到按钮上导致提交空值。

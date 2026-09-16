@@ -501,10 +501,7 @@ impl PiHostPool {
         primary_supervisor: Arc<PiSupervisor>,
         session_cache: SessionIndexCache,
     ) -> Self {
-        let job_object = Arc::new(JobObjectManager::new().unwrap_or_else(|err| {
-            log::warn!("[PiHostPool] JobObject init failed: {}", err);
-            JobObjectManager::new().unwrap()
-        }));
+        let job_object = Arc::new(JobObjectManager::create_or_panic("PiHostPool"));
 
         Self {
             app_handle,

@@ -2,7 +2,7 @@ import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
 import { bus } from "../lib/event-bus.js";
-import { isInteractiveExtensionUiRequest, isGracePeriodError } from "../lib/contracts.js";
+import { isInteractiveExtensionUiRequest, isGracePeriodError, resolveEventTaskId } from "../lib/contracts.js";
 import { piClient, isAbortError } from "../services/pi-client.js";
 import { configService } from "../services/config-service.js";
 import { promptHistoryNavigator } from "../services/prompt-history.js";
@@ -632,7 +632,7 @@ export function initFlowPipeline(ctx) {
       return;
     }
 
-    const errTaskId = e.detail?.taskId || e.detail?.raw?.task_id || e.detail?.task_id || piClient.lastEventTaskId;
+    const errTaskId = resolveEventTaskId(e.detail, piClient.lastEventTaskId);
     const isForeground = taskManager.isForegroundStreamTask(errTaskId);
     // 内置重连引擎是否正在服务该任务（后台挂起任务同样需要引擎结算在途尝试）
     const engineOwnsTask =
@@ -703,7 +703,7 @@ export function initFlowPipeline(ctx) {
   });
 
   piClient.addEventListener("agent-end", (e) => {
-    const endTaskId = e.detail?.task_id || e.detail?.taskId || piClient.lastEventTaskId;
+    const endTaskId = resolveEventTaskId(e.detail, piClient.lastEventTaskId);
     const isForeground = taskManager.isForegroundStreamTask(endTaskId);
     // 自动重连引擎接管铁律：若自愈引擎当前正服务该任务（处于退避等待、后台续发或失败延迟）：
     // 1. 若无在途重发尝试（!hasInflightAttempt），本帧属于刚刚被引擎接管的失败轮次的残余收口帧；
@@ -735,11 +735,11 @@ export function initFlowPipeline(ctx) {
     // 视为已恢复正常——撤销黄色等待胶囊，交由下方正常收尾与归档，杜绝无谓的 300 秒空等；
     // 未产出任何内容的空轮保持等待，留给宽容期超时后再弹出红色提醒卡
     if (typeof api.resolveStreamInterruption === "function" && (endFs.responseText || endFs.hasReceivedDelta)) {
-      api.resolveStreamInterruption(e.detail?.task_id || e.detail?.taskId || piClient.lastEventTaskId);
+      api.resolveStreamInterruption(resolveEventTaskId(e.detail, piClient.lastEventTaskId));
     }
     // 完成后收起所有工具卡片（最终输出卡不收起）
     api.collapseAllToolCards();
-    api.finalizeStream(e.detail?.task_id || e.detail?.taskId || piClient.lastEventTaskId);
+    api.finalizeStream(resolveEventTaskId(e.detail, piClient.lastEventTaskId));
     api.archiveCurrentFlowToHistory();
     // 会话完成后展示「文件变更」收纳框（新增/修改的文件，点击可打开所在文件夹）
     if (typeof api.showFileChangesBox === "function") {

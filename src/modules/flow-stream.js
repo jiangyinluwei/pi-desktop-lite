@@ -1,6 +1,7 @@
 import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { bus } from "../lib/event-bus.js";
+import { resolveEventTaskId } from "../lib/contracts.js";
 import { piClient } from "../services/pi-client.js";
 import { notificationService } from "../services/notification-service.js";
 import { taskManager } from "../services/task-manager.js";
@@ -108,7 +109,7 @@ export function initFlowStream(ctx) {
    * @param {{ message: string, model?: string, taskId?: string, raw?: object }} errDetail agent-error detail
    */
   const handleStreamInterruption = (errDetail) => {
-    const taskId = errDetail?.taskId || errDetail?.raw?.task_id || piClient.lastEventTaskId || null;
+    const taskId = resolveEventTaskId(errDetail, piClient.lastEventTaskId);
     // 一次失败 run 会经 message_end / turn_end / agent_end 多次派发 agent-error：
     // 同任务重复帧保持既有倒计时，绝不重置 300 秒窗口；前台已切到别的任务则先撤销旧等待
     if (streamPauseTimer) {
@@ -684,8 +685,8 @@ export function initFlowStream(ctx) {
    */
   const renderErrorCard = (errDetail) => {
     piClient.isStreaming = false;
-    // 分仓键：错误帧自带 taskId（agent-error / 引擎 detail）优先，缺省回退前台活跃任务
-    const bucketId = resolveStreamTaskId(errDetail?.taskId || errDetail?.task_id || errDetail?.raw?.task_id || null);
+    // 分仓键：错误帧归属 taskId 经 contracts 唯一源解析，缺省由 resolveStreamTaskId 回退前台活跃任务
+    const bucketId = resolveStreamTaskId(resolveEventTaskId(errDetail));
     const fs = flowStore.for(bucketId);
     fs.set({ errorMessage: errDetail?.message || "与模型服务通信中断或返回异常" });
     const currentTask = taskManager.getCurrentActiveTask();

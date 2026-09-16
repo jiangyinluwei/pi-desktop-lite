@@ -11,6 +11,8 @@ import { sessionService } from "./session-service.js";
 import {
   EXTENSION_UI_RESPONDABLE_METHODS,
   isInteractiveExtensionUiRequest,
+  isTaskStatusActive,
+  resolveEventTaskId,
 } from "../lib/contracts.js";
 
 /**
@@ -260,12 +262,8 @@ export class TaskManager extends EventTarget {
    * @param {TaskItem} prevTask
    */
   _settlePrevTaskOnSwitch(prevTask) {
-    const isRunningOrPaused =
-      prevTask.status === "thinking" ||
-      prevTask.status === "streaming" ||
-      prevTask.status === "tool_exec" ||
-      prevTask.status === "paused";
-    if (isRunningOrPaused || !["completed", "aborted", "error"].includes(prevTask.status)) {
+    // 运行态判定唯一源见 contracts.js（含错误恢复过渡态 running）
+    if (isTaskStatusActive(prevTask) || !["completed", "aborted", "error"].includes(prevTask.status)) {
       prevTask.isSuspended = true; // 原前台活跃任务自动转入后台挂起
       return;
     }
@@ -480,11 +478,7 @@ export class TaskManager extends EventTarget {
       return Boolean(piClient.isStreaming || modelFailoverEngine.isActive());
     }
     return (
-      t.status === "thinking" ||
-      t.status === "streaming" ||
-      t.status === "tool_exec" ||
-      t.status === "paused" ||
-      t.status === "running" ||
+      isTaskStatusActive(t) ||
       (this.currentActiveTaskId === t.id && piClient.isStreaming) ||
       this._engineOwnedTask(t.id)
     );
@@ -619,7 +613,7 @@ export class TaskManager extends EventTarget {
     const task = this.tasks.get(taskId);
     if (!task) return;
 
-    if (task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec" || task.status === "paused") {
+    if (isTaskStatusActive(task)) {
       try {
         await piClient.abort(taskId);
         await piClient.destroyTask(taskId);
@@ -649,7 +643,7 @@ export class TaskManager extends EventTarget {
       const data = e.detail;
       if (!data) return;
 
-      const taskId = data.task_id || data.taskId || this.currentActiveTaskId;
+      const taskId = resolveEventTaskId(data, this.currentActiveTaskId);
       if (!taskId || !this.tasks.has(taskId)) return;
 
       this.handleTaskEvent(taskId, data);
@@ -660,7 +654,7 @@ export class TaskManager extends EventTarget {
       // 手动终止/中断错误：直接忽略，不发报错通知、不置为 error 状态
       if (isAbortError(detail)) return;
 
-      const taskId = detail.task_id || detail.taskId || this.currentActiveTaskId;
+      const taskId = resolveEventTaskId(detail, this.currentActiveTaskId);
       if (modelFailoverEngine.isTaskAborted(taskId)) return;
 
       const task = (taskId && this.tasks.get(taskId)) || (this.currentActiveTaskId ? this.tasks.get(this.currentActiveTaskId) : null);

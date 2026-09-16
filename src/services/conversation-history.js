@@ -450,7 +450,9 @@ class ConversationHistoryService extends EventTarget {
       conv.thinkingText = lastTurn.thinkingText || "";
       conv.toolCalls = lastTurn.toolCalls || [];
       conv.steps = lastTurn.steps || [];
-      conv.thinkingDuration = lastTurn.thinkingDurationText || "";
+      // 思考耗时字段兼容：旧版记录轮次内为 thinkingDuration，现行标准为 thinkingDurationText
+      // （恢复侧 renderTurnsIntoFlow 已做双名兼容读取，剪枝侧同步兼容，杜绝瘦身回写后丢失耗时展示）
+      conv.thinkingDuration = lastTurn.thinkingDurationText || lastTurn.thinkingDuration || "";
       conv.isAborted = Boolean(lastTurn.isAborted);
     }
     this.saveToStorage();

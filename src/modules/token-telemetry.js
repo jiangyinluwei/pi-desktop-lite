@@ -59,6 +59,7 @@
 
 import { bindAll } from "../lib/el-binder.js";
 import { bus } from "../lib/event-bus.js";
+import { resolveEventTaskId } from "../lib/contracts.js";
 import { piClient } from "../services/pi-client.js";
 import { taskManager } from "../services/task-manager.js";
 import { createTokenTelemetryGauge, resolveTokenQuota } from "../lib/token-telemetry-gauge.js";
@@ -187,11 +188,6 @@ export function initTokenTelemetry(ctx) {
     return s;
   }
 
-  /** 事件帧任务归属解析（与 flow-pipeline 同源回退链） */
-  function resolveEventTaskId(detail) {
-    return detail?.task_id || detail?.taskId || piClient.lastEventTaskId || null;
-  }
-
   /**
    * 会话累计已耗 token（采样仓口径）：跨消息回绕入账后的 total，单调不归零。
    * provider 逐消息重置 usage，新消息起始 total 回落时旧消息累计已并入 totalBanked。
@@ -240,7 +236,7 @@ export function initTokenTelemetry(ctx) {
 
   /** agent-start：开 run 括号（同 run 重复帧幂等） */
   function handleAgentStart(detail) {
-    const tid = detail?.task_id || detail?.taskId || currentTaskId();
+    const tid = resolveEventTaskId(detail, currentTaskId());
     if (!tid) return;
     const s = ensureSample(tid);
     if (!s) return;
@@ -255,14 +251,14 @@ export function initTokenTelemetry(ctx) {
 
   /** tool-start：登记进行中工具窗口（仅既有 run 内生效，跨任务按仓隔离） */
   function handleToolStart(detail) {
-    const s = samples.get(resolveEventTaskId(detail));
+    const s = samples.get(resolveEventTaskId(detail, piClient.lastEventTaskId));
     if (!s || s.runStartTs == null) return;
     if (detail?.toolCallId) s.activeTools.set(detail.toolCallId, performance.now());
   }
 
   /** tool-end：闭合工具窗口并累计其耗时 */
   function handleToolEnd(detail) {
-    const s = samples.get(resolveEventTaskId(detail));
+    const s = samples.get(resolveEventTaskId(detail, piClient.lastEventTaskId));
     const toolCallId = detail?.toolCallId;
     if (!s || !toolCallId) return;
     const t0 = s.activeTools.get(toolCallId);
@@ -274,7 +270,7 @@ export function initTokenTelemetry(ctx) {
 
   /** agent-end / agent-error：收口 run，定格均值（终态后冻结显示「均值」）并持久化终态快照 */
   function handleAgentEnd(detail) {
-    const tid = resolveEventTaskId(detail);
+    const tid = resolveEventTaskId(detail, piClient.lastEventTaskId);
     const s = samples.get(tid);
     if (s) closeRun(s);
     captureSnapshot(tid);
@@ -287,7 +283,7 @@ export function initTokenTelemetry(ctx) {
    */
   function handleUsage(detail) {
     const u = detail?.usage || {};
-    const tid = detail?.taskId || currentTaskId();
+    const tid = resolveEventTaskId(detail, currentTaskId());
     if (!tid) return;
     const s = ensureSample(tid);
     if (!s) return;
@@ -484,9 +480,11 @@ export function initTokenTelemetry(ctx) {
       // 已知良好值保留：瞬时不完整响应不把已稳定的上下文 / 累计读数打回零
       statsByTask.set(tid, mergeStats(statsByTask.get(tid) || null, data));
       while (statsByTask.size > MAX_STATS_BINS) {
-        const oldest = statsByTask.keys().next().value;
-        if (oldest === tid) break; // 保留当前前台任务仓，淘汰次旧
-        statsByTask.delete(oldest);
+        // 自最旧起淘汰；最旧仓恰为当前前台任务时跳过、继续淘汰次旧，
+        // 严禁整循环放弃导致 Map 超上限并随历史任务切换无界漂移增长
+        const victim = Array.from(statsByTask.keys()).find((key) => key !== tid);
+        if (!victim) break; // 全表仅剩前台任务仓，保守保留
+        statsByTask.delete(victim);
       }
       captureSnapshot(tid);
     }

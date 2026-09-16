@@ -17,6 +17,7 @@
 
 import { piClient, isAbortError } from "./pi-client.js";
 import { configService } from "./config-service.js";
+import { resolveEventTaskId } from "../lib/contracts.js";
 
 class ModelFailoverEngine extends EventTarget {
   constructor() {
@@ -120,7 +121,7 @@ class ModelFailoverEngine extends EventTarget {
     if (isAbortError(detail)) return false;
 
     // 铁律 2：所属 Task 已被手动中止时绝对不接管
-    const tid = detail.taskId || detail.task_id || detail.raw?.task_id || detail.raw?.taskId || this.taskId;
+    const tid = resolveEventTaskId(detail, this.taskId);
     if (this.isTaskAborted(tid)) return false;
 
     // 铁律 3：所属 Task 已进入「重连耗尽」终态时绝不接管 (错误卡已弹出，等待用户手动干预)
@@ -162,7 +163,7 @@ class ModelFailoverEngine extends EventTarget {
       return;
     }
 
-    const tid = detail?.taskId || detail?.task_id || detail?.raw?.task_id || detail?.raw?.taskId || this.taskId;
+    const tid = resolveEventTaskId(detail, this.taskId);
     if (this.isTaskAborted(tid)) {
       if (this.isActive()) {
         this.cancel("abort");
