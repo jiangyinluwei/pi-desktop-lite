@@ -25,6 +25,7 @@ A desktop research and reasoning application with minimalist hand-drawn sketch &
 ## ✨ Core Features
 
 - **Four-State Interface & Flow Streaming**: Detailed, Focus, Flow stream, and full-page Settings modes with single-line thinking chains and Typedown-grade Markdown rendering;
+- **Token Telemetry**: A live colored mini-gauge icon shown only in the Flow conversation view, outside the left edge of the chat box (other views are owned by the settings gear; the gauge takes no space there) — itself a scaled-down telemetry dial (context-usage violet arc / tokens-consumed amber arc / inference-speed bolt that recolors with state). Hover it to open a sketch capsule panel above the icon showing current context usage (used / window), inference speed in token/s (generating / idle), and tokens consumed. Speed is sampled live by differencing the `usage` field on streaming `message_update` frames with EMA smoothing; context window and totals come from the kernel `get_session_stats` RPC (fetched synchronously via a backend `with_response` command since its response never enters the broadcast channel), polled at low frequency (2s while hovered, 15s otherwise), foreground-task isolated, and silently degraded when no kernel is present;
 - **Background Tasks & Routed Workspaces**: Seamless task background suspension, explicit termination with process hard-kill and anti-resurrection guards, terminal-state task cleanup to prevent phantom "completed" badges, session continuity via `--session <path>` (multi-turn conversations never fragment into separate history records), historical turn restoration, `code-area` non-polluting routing hub, and multi-preset switching;
 - **Hand-Drawn Sketch Aesthetics**: Universal hand-drawn SVG vector icons, paper-texture dual-mode themes, and custom `SketchSelect` / `SketchAutoFill` / `SketchModal` components;
 - **Package Preset Auto Self-Healing**: "Silent background" recommended configs for components such as web search are merged into their config files and strictly re-verified at three moments — package install, package update, and app startup. Presets with multiple config paths are written to all of them (e.g. `pi-web-access` writes both `~/.pi/agent/web-search.json` and `~/.pi/web-search.json`), so an upstream package changing its default config path can never silently disable the setting and cause web searches to pop up a browser page requiring manual confirmation again;
@@ -97,6 +98,7 @@ pi-desktop-lite/
 │   │   ├── flow-pipeline.js    # Prompt dispatch, tool call events, self-healing pipeline
 │   │   ├── task-panel.js       # Background task capsule, sidebar, history restore
 │   │   ├── sessions-panel.js   # Session records, search/filter, enter Flow pipeline
+│   │   ├── token-telemetry.js # Chat box "quota" telemetry icon: colored mini gauge + context usage / tokens per second / tokens consumed hover panel
 │   │   ├── workspace-panel.js  # Workspace management panel and routing binding
 │   │   └── global-interactions.js # Global Step Back & URL interceptor
 │   ├── services/               # Decoupled frontend services (tauri-bridge, config-service, pi-client, workspace-service)

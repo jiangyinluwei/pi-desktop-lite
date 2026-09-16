@@ -381,48 +381,108 @@ function renderRadialSvg(metrics, options, id) {
 }
 
 /**
- * 渲染形态 3：Badge 单行极简微胶囊 (220 × 28)
+ * 渲染形态 4：Mini 单图标模式 (原生 24×24 viewBox，专为对话框左侧「额度」按钮设计)
+ * 直观呈现：外环上下文消耗比例 + 内环已消耗 Token 比例 + 中心手绘速度闪电
  */
-function renderBadgeSvg(metrics, options, id) {
-  const width = options.width || 220;
-  const height = options.height || 28;
-  const barW = 46;
+function renderMiniSvg(metrics, options, id) {
+  const size = options.size || 20;
 
-  const ctxBarW = (barW * metrics.ctxRatio).toFixed(1);
-  const tokBarW = (barW * metrics.tokRatio).toFixed(1);
+  const R_OUTER = 9.2;
+  const R_INNER = 6.8;
+  const maxOuterLen = 2 * Math.PI * R_OUTER * (ARC_ANGLE / 360); // ~38.54
+  const maxInnerLen = 2 * Math.PI * R_INNER * (ARC_ANGLE / 360); // ~28.48
+
+  const ctxDash = (maxOuterLen * metrics.ctxRatio).toFixed(2);
+  const tokDash = (maxInnerLen * metrics.tokRatio).toFixed(2);
   const boltStateClass = metrics.speed > 0 ? 'spd-active' : 'spd-idle';
 
   return `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}"
-     class="token-telemetry-gauge ttg-layout-badge" id="${id}" role="img"
-     aria-label="Token 遥测：${metrics.speed.toFixed(1)} tok/s, CTX ${metrics.ctxLabel}, USED ${metrics.tokLabel}">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}"
+     class="token-telemetry-gauge ttg-layout-mini" id="${id}" role="img" aria-hidden="true">
   <defs>
-    <style>${getSharedStyles(id)}</style>
+    <style>
+      #${id} {
+        display: block;
+        color: var(--ink-primary, currentColor);
+        overflow: visible;
+        user-select: none;
+      }
+      #${id} .ttg-mini-track-out {
+        fill: none;
+        stroke: var(--sketch-border-subtle, #d6cfc4);
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        opacity: 0.35;
+      }
+      #${id} .ttg-mini-track-in {
+        fill: none;
+        stroke: var(--sketch-border-subtle, #d6cfc4);
+        stroke-width: 1.4;
+        stroke-linecap: round;
+        opacity: 0.3;
+      }
+      #${id} .ttg-mini-arc-ctx {
+        fill: none;
+        stroke: var(--color-ctx, #6d5f8a);
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        transition: stroke-dasharray 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+      #${id} .ttg-mini-arc-tok {
+        fill: none;
+        stroke: var(--color-token, #d97706);
+        stroke-width: 1.4;
+        stroke-linecap: round;
+        transition: stroke-dasharray 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+      #${id} .ttg-mini-bolt {
+        transition: fill 0.2s ease, stroke 0.2s ease, filter 0.2s ease;
+      }
+      #${id} .ttg-mini-core.spd-active .ttg-mini-bolt {
+        fill: var(--color-speed, #2563eb);
+        stroke: var(--color-speed, #2563eb);
+        animation: ttg-mini-pulse-${id} 1.4s ease-in-out infinite alternate;
+      }
+      #${id} .ttg-mini-core.spd-idle .ttg-mini-bolt {
+        fill: none;
+        stroke: var(--ink-faint, #a69f94);
+        opacity: 0.55;
+      }
+      @keyframes ttg-mini-pulse-${id} {
+        0% { filter: drop-shadow(0 0 0.8px rgba(37, 99, 235, 0.3)); opacity: 0.85; }
+        100% { filter: drop-shadow(0 0 2.5px rgba(37, 99, 235, 0.85)); opacity: 1; }
+      }
+    </style>
   </defs>
 
-  <rect class="ttg-bg" x="0.8" y="0.8" width="${width - 1.6}" height="${height - 1.6}" rx="6" ry="6" />
-
-  <!-- 1. 速度区 -->
-  <g class="${boltStateClass}" id="${id}-core-bolt" transform="translate(8, 14)">
-    <path class="ttg-bolt" d="M0 -5 L-2.5 -1 L0 -1 L-0.8 3.5 L2.8 -1 L0.5 -1 Z" stroke-width="1.1" />
-    <text class="ttg-speed-num" id="${id}-txt-speed" x="6" y="3" font-size="11" text-anchor="start">${metrics.speed.toFixed(1)}</text>
-    <text class="ttg-speed-unit" x="33" y="3" font-size="7.5" text-anchor="start">t/s</text>
+  <!-- 3 点精简工程微刻度 -->
+  <g class="ttg-mini-ticks" stroke="currentColor" opacity="0.38" stroke-linecap="round">
+    <line x1="12" y1="0.8" x2="12" y2="2.0" stroke-width="0.9" />
+    <line x1="2.2" y1="8.0" x2="3.1" y2="8.5" stroke-width="0.8" />
+    <line x1="21.8" y1="8.0" x2="20.9" y2="8.5" stroke-width="0.8" />
   </g>
 
-  <line x1="58" y1="5" x2="58" y2="${height - 5}" stroke="var(--sketch-border-subtle, #d6cfc4)" stroke-width="0.8" stroke-dasharray="2 2" />
+  <!-- 外环：当前上下文消耗比值 (R=9.2, 宽 1.8) -->
+  <circle class="ttg-mini-track-out" cx="12" cy="12" r="${R_OUTER}"
+          stroke-dasharray="${maxOuterLen.toFixed(2)} 100"
+          transform="rotate(${ARC_START_ANGLE} 12 12)" />
+  <circle class="ttg-mini-arc-ctx" id="${id}-arc-ctx" cx="12" cy="12" r="${R_OUTER}"
+          stroke-dasharray="${ctxDash} 100"
+          transform="rotate(${ARC_START_ANGLE} 12 12)" />
 
-  <!-- 2. CTX 区 -->
-  <g transform="translate(68, 14)">
-    <text class="ttg-label" x="0" y="3" font-size="8.5" fill="var(--color-ctx, #6d5f8a)">CTX</text>
-    <rect class="ttg-bar-bg" x="20" y="-1.5" width="${barW}" height="3" />
-    <rect class="ttg-bar-fill" id="${id}-bar-ctx" x="20" y="-1.5" width="${ctxBarW}" height="3" fill="var(--color-ctx, #6d5f8a)" />
-  </g>
+  <!-- 内环：已消耗 Token 比值 (R=6.8, 宽 1.4) -->
+  <circle class="ttg-mini-track-in" cx="12" cy="12" r="${R_INNER}"
+          stroke-dasharray="${maxInnerLen.toFixed(2)} 100"
+          transform="rotate(${ARC_START_ANGLE} 12 12)" />
+  <circle class="ttg-mini-arc-tok" id="${id}-arc-tok" cx="12" cy="12" r="${R_INNER}"
+          stroke-dasharray="${tokDash} 100"
+          transform="rotate(${ARC_START_ANGLE} 12 12)" />
 
-  <!-- 3. USED 区 -->
-  <g transform="translate(142, 14)">
-    <text class="ttg-label" x="0" y="3" font-size="8.5" fill="var(--color-token, #d97706)">TOK</text>
-    <rect class="ttg-bar-bg" x="20" y="-1.5" width="${barW}" height="3" />
-    <rect class="ttg-bar-fill" id="${id}-bar-tok" x="20" y="-1.5" width="${tokBarW}" height="3" fill="var(--color-token, #d97706)" />
+  <!-- 中心手绘流速闪电火花 -->
+  <g class="ttg-mini-core ${boltStateClass}" id="${id}-core-bolt">
+    <path class="ttg-mini-bolt" id="${id}-bolt"
+          d="M12.3 7.2 L9.8 11.2 L11.8 11.2 L11.2 16.5 L14.2 11.8 L12.2 11.8 Z"
+          stroke-width="0.9" stroke-linejoin="round" stroke-linecap="round" />
   </g>
 </svg>
 `.trim();
@@ -438,6 +498,9 @@ export function renderTokenTelemetrySvg(options = {}) {
   const layout = options.layout || 'capsule';
   const id = options.id || `ttg-${Math.random().toString(36).slice(2, 9)}`;
 
+  if (layout === 'mini' || layout === 'icon') {
+    return renderMiniSvg(metrics, options, id);
+  }
   if (layout === 'radial') {
     return renderRadialSvg(metrics, options, id);
   }
@@ -484,10 +547,12 @@ export function createTokenTelemetryGauge(initialOptions = {}) {
   const barMaxW = layout === 'badge' ? 46 : 84;
 
   // 弧长计算参数
-  const rOuter = layout === 'radial' ? 38 : 34;
-  const rInner = layout === 'radial' ? 28 : 25;
+  const isMini = layout === 'mini' || layout === 'icon';
+  const rOuter = isMini ? 9.2 : (layout === 'radial' ? 38 : 34);
+  const rInner = isMini ? 6.8 : (layout === 'radial' ? 28 : 25);
   const maxOuterLen = 2 * Math.PI * rOuter * (ARC_ANGLE / 360);
   const maxInnerLen = 2 * Math.PI * rInner * (ARC_ANGLE / 360);
+  const dashModulo = isMini ? 100 : 300;
 
   /**
    * 毫秒级极速平滑更新参数（无 DOM 销毁重构，纯属性/文本同步）
@@ -499,7 +564,7 @@ export function createTokenTelemetryGauge(initialOptions = {}) {
     // 1. 上下文消耗比值 (CTX)
     if (arcCtx) {
       const len = (maxOuterLen * m.ctxRatio).toFixed(2);
-      arcCtx.setAttribute('stroke-dasharray', `${len} 300`);
+      arcCtx.setAttribute('stroke-dasharray', `${len} ${dashModulo}`);
     }
     if (txtCtxVal) txtCtxVal.textContent = m.ctxLabel;
     if (txtCtxSub && m.ctxSub) txtCtxSub.textContent = m.ctxSub;
@@ -526,7 +591,7 @@ export function createTokenTelemetryGauge(initialOptions = {}) {
     // 3. 已消耗 Token 比值 (USED)
     if (arcTok) {
       const len = (maxInnerLen * m.tokRatio).toFixed(2);
-      arcTok.setAttribute('stroke-dasharray', `${len} 300`);
+      arcTok.setAttribute('stroke-dasharray', `${len} ${dashModulo}`);
     }
     if (txtTokVal) txtTokVal.textContent = m.tokLabel;
     if (txtTokSub && m.tokSub) txtTokSub.textContent = m.tokSub;

@@ -295,8 +295,12 @@
           <span class="settings-badge" id="settings-badge"></span>
         </button>
 
+        <!-- 额度遥测图标（悬浮显示上下文消耗 / token 每秒 / 已消耗 token；缩略实时仪表由 token-telemetry.js 注入） -->
+        <button type="button" id="telemetry-btn" class="telemetry-btn" aria-label="额度"></button>
+
         <!-- 手绘线条素描搜索框 -->
         <form class="sketch-search-box" id="search-form" onsubmit="return false;">
+
           <!-- 导入图标与文件选择 -->
           <div class="search-icon" id="search-icon-box" role="button" tabindex="0" aria-label="导入文件"
             title="点击导入文件，或直接将图片/文档拖入此处">

@@ -183,6 +183,80 @@
   color: var(--ink-primary);
 }
 
+/* 「额度」遥测图标（常态透明无边框，悬浮显框）
+   显隐铁律：仅在 Flow 对话流界面出现（遥测数据只对进行中的会话有意义，且齿轮按钮已在 detailed/focus 当家）；
+   非 Flow 视图 display:none 既不占位也不可悬浮，view:changed 时 token-telemetry.js 已统一收起悬浮面板 */
+.telemetry-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 4px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  background: transparent;
+  box-sizing: border-box;
+  transition: color 0.2s ease, transform 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.telemetry-btn:hover {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border-subtle);
+  background-color: var(--sketch-kbd-bg);
+  transform: scale(1.08);
+}
+
+.app-container[data-view="flow"] .telemetry-btn {
+  display: flex;
+}
+
+.telemetry-btn:focus-visible {
+  outline: none;
+  border-color: var(--sketch-border);
+  color: var(--ink-primary);
+}
+
+/* 缩略实时仪表：24×24 原生双弧 + 速率闪电 + 刻度，直观映射大面板指标 */
+.telemetry-btn .ttg-bg,
+.telemetry-btn .ttg-speed-num,
+.telemetry-btn .ttg-speed-unit,
+.telemetry-btn .ttg-val,
+.telemetry-btn .ttg-sub {
+  display: none;
+}
+
+.telemetry-btn .token-telemetry-gauge {
+  display: block;
+  overflow: visible;
+}
+
+/* 「额度」遥测悬浮面板（fixed 定位避开搜索框 overflow 裁剪；gauge 自带 .ttg-bg 卡片底） */
+.telemetry-popup {
+  position: fixed;
+  z-index: 9000;
+  width: 320px;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.18));
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.telemetry-popup.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.telemetry-popup svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 /* 输入框与格言跑马灯包装层 */
 .search-input-wrapper {
   flex: 1;

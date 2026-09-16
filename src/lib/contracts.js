@@ -29,7 +29,7 @@
  *   | pi:inner-skill-activated | pi-client → window | 内核桥接 | Tauri listen | pi-client.js [保留] |
  *   | pi:context-injected | pi-client → window | 内核桥接 | Tauri listen | pi-client.js [保留] |
  *   | task-* / tasks-changed / active-task-changed | task-manager → window | 服务域事件 | 服务 EventEmitter | task-manager.js [保留] |
- *   | agent-* / turn-* / message-* / tool-* / text-* / thinking-* / state-update | pi-client → window | 服务域事件 | 服务 EventEmitter | pi-client.js [保留] |
+ *   | agent-* / turn-* / message-* / tool-* / text-* / thinking-* / usage / state-update | pi-client → window | 服务域事件 | 服务 EventEmitter | pi-client.js [保留] |
  *   | config-service / conversation-history / version-service / session-service / model-failover | 各自 this.dispatchEvent | 服务域事件 | 服务 EventEmitter | 各服务 [保留] |
  *
  *   [注解] pi:view-change / pi:step-back 命名带 pi: 前缀，但实际由 UI 自身在 window 上派发，
@@ -208,6 +208,7 @@ export function isGracePeriodError(errDetail) {
 //  * @property {() => void} renderTaskSidebarList                task-panel → 任务抽屉渲染
 //  * @property {(taskId: string) => void} restoreTaskToFlow      task-panel → 任务回入 Flow（防重入铁律）
 //  * @property {(task: object) => void} renderTurnsIntoFlow      task-panel → 轮次回填（切换铁律热区）
+//  * @property {(taskId: string) => Promise<any|null>} getSessionStats  pi-client → 会话实时统计（上下文/token/费用，后端 with_response 取回；token-telemetry 消费）
 //  * @property {() => void} archiveCurrentFlowToHistory          task-panel → 终态归档历史
 //  * @property {() => void} renderConversationMessages           task-panel → 历史讯息渲染
 //  * @property {() => void} syncFlowAbortButtonVisibility        task-panel → Flow 终止按钮显隐同步（铁律3）

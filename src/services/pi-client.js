@@ -427,6 +427,16 @@ class PiClient extends EventTarget {
       this.lastEventTaskId = data.task_id || data.taskId;
     }
 
+    // 内核在 message_update 顶层携带累积 usage（input/output/cache*/totalTokens/cost），
+    // 是「额度」遥测面板实时 token 速度与已耗 token 的唯一数据源（无 evt 归属时也派发）。
+    if (data.usage) {
+      this.dispatchEvent(
+        new CustomEvent("usage", {
+          detail: { usage: data.usage, taskId: data.task_id || data.taskId || null },
+        }),
+      );
+    }
+
     switch (evt.type) {
       case "thinking_start":
         this.dispatchEvent(new CustomEvent("thinking-start", { detail: evt }));
@@ -575,6 +585,21 @@ class PiClient extends EventTarget {
       taskId,
       command: { type: "extension_ui_response", id: requestId, ...payload },
     });
+  }
+
+  /**
+   * 查询指定 Task 会话的实时统计（上下文消耗 / token 用量 / 费用）
+   * （输入框「额度」遥测面板数据源；响应帧不进广播通道，由后端 with_response 同步取回）
+   * @param {string} taskId
+   * @returns {Promise<any|null>} 内核 get_session_stats 的 data（tokens / cost / contextUsage），失败静默返 null
+   */
+  async getSessionStats(taskId) {
+    if (!taskId) return null;
+    try {
+      return await this.invoke("pi_get_session_stats", { taskId });
+    } catch {
+      return null;
+    }
   }
 
   /**

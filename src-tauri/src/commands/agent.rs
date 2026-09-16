@@ -50,6 +50,19 @@ pub async fn pi_send_command_to_task(
     host_pool.send_command_to_task(&task_id, command).await
 }
 
+/// 查询指定 Task 会话的实时统计（上下文消耗 / token 用量 / 费用），供输入框「额度」遥测面板
+///
+/// 内核 `get_session_stats` 的响应帧不进入广播通道（仅唤醒 pending_responses 等待者），
+/// 故必须由此命令以 with_response 语义同步取回。任务不存在 / 已结束 / 内核未及时响应时
+/// 静默返回 None，避免打扰前端的遥测轮询。
+#[tauri::command]
+pub async fn pi_get_session_stats(
+    host_pool: State<'_, PiHostPool>,
+    task_id: Option<String>,
+) -> Result<Option<serde_json::Value>, String> {
+    host_pool.get_session_stats(&task_id.unwrap_or_default()).await
+}
+
 /// 中止指定任务（task_id 为空时中止主会话）
 #[tauri::command]
 pub async fn pi_abort(

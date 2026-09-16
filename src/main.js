@@ -34,6 +34,7 @@ import { initFlowRollback } from "./modules/flow-rollback.js";
 import { initTaskPanel } from "./modules/task-panel.js";
 import { initFileAttachments } from "./modules/file-attachments.js";
 import { initSearchInput } from "./modules/search-input.js";
+import { initTokenTelemetry } from "./modules/token-telemetry.js";
 import { initPackagesPanel } from "./modules/packages-panel.js";
 import { initGlobalInteractions } from "./modules/global-interactions.js";
 
@@ -78,6 +79,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initFlowRollback(ctx);
   initFileAttachments(ctx);
   initSearchInput(ctx);
+  initTokenTelemetry(ctx);
   initPackagesPanel(ctx);
   initGlobalInteractions(ctx);
 });

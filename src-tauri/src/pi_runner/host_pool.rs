@@ -808,6 +808,24 @@ impl PiHostPool {
         host.send_command_with_response(command, timeout).await
     }
 
+    /// 查询指定 Task 会话的实时统计（上下文消耗 / token 用量 / 费用），供前端「额度」遥测面板
+    ///
+    /// `get_session_stats` 的响应帧不进入广播通道（仅唤醒 pending_responses 等待者），
+    /// 必须走 with_response 语义。任务不存在 / 已结束 / 内核未及时响应时静默返回 None。
+    pub async fn get_session_stats(&self, task_id: &str) -> Result<Option<Value>, String> {
+        if task_id.is_empty() {
+            return Ok(None);
+        }
+        let command = serde_json::json!({ "type": "get_session_stats" });
+        match self
+            .send_command_to_task_with_response(task_id, command, Duration::from_secs(4))
+            .await
+        {
+            Ok(v) => Ok(Some(v)),
+            Err(_) => Ok(None),
+        }
+    }
+
     /// 向指定 Task 发送 Steer 指令
     pub async fn send_steer(&self, request: SteerRequest) -> Result<(), String> {
         if let Some(ref task_id) = request.task_id {
