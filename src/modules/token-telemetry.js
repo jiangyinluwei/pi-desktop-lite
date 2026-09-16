@@ -10,6 +10,15 @@
  *   3. 已消耗 token（TOK 弧 + 「累计 / 额度」读数；额度为动态量级阶梯分母，从 1M 起
  *      用量满足当前量级后自动 ×10（1M → 10M → 100M → 1B → 10B → …），档位绿/橙/红着色）。
  *
+ * 会话数据保留（保留会话数据，下次点开仍展示该历史对话的三项遥测）：
+ *   - 内存级：stats 不再在收口 / 任务切换时清空，改为按 taskId 分仓（statsByTask）保留
+ *     「最近一次 get_session_stats 结果」；速度仓 samples 本身即按 taskId 保留冻结均值。
+ *     会话结束后收起面板、再点开（hover / focus）时，面板与缩略仪表立即回填该会话的
+ *     上下文消耗 / 推理均值速度 / 已消耗 token，随后再尝试拉取一次实时数据覆盖。
+ *   - 磁盘级：以 sessionPath（会话延续铁律的持久身份）为键把稳定快照节流写入 localStorage
+ *     （上下文 / 累计 / 冻结均值速度 / 时间戳），跨应用重启与「历史记录 / 会话记录」还原
+ *     会话时回填——历史会话无活跃内核宿主也能展示其遥测。无磁盘可写时静默降级为仅内存保留。
+ *
  * 数据来源（双通道，零侵入）：
  *   - 速度 / 实时累计：内核 `message_update` 顶层 `usage`（input / output / cacheRead / cacheWrite / totalTokens）。
  *     pi-client.js 的 handleMessageUpdate 原本把它整个丢弃，现补派 `usage` 事件。
@@ -58,6 +67,14 @@ const SPEED_SCALE_MAX = 250;
 const SPEED_MIN_EFFECTIVE_MS = 250;
 /** 采样仓数量上限（防任务风暴内存膨胀；task-removed / kernel 下线时逐仓清理） */
 const MAX_SAMPLES = 32;
+/** stats 分仓数量上限（与采样仓同界，防内存膨胀） */
+const MAX_STATS_BINS = 32;
+/** localStorage 中遥测快照总表的键（按 sessionPath 持久化，跨重启 / 历史会话还原保留） */
+const SNAPSHOT_STORE_KEY = "pi_dl_telemetry_snapshots";
+/** 磁盘快照条数上限（LRU 淘汰最旧） */
+const SNAPSHOT_MAX_ENTRIES = 64;
+/** 磁盘快照写入节流间隔（ms）：合并短时间内的多次采集，杜绝高频写盘 */
+const SNAPSHOT_SAVE_DEBOUNCE_MS = 1200;
 /** 面板相对按钮的水平间距 */
 const POPUP_OFFSET_X = 4;
 /** 面板与按钮的垂直间距 */
@@ -83,9 +100,20 @@ export function initTokenTelemetry(ctx) {
   /** Map<taskId, sample>；sample = { tokensBanked, msgBase, output, total, ts,
    *  genElapsedMs, runStartTs, toolElapsedMs, activeTools, isGenerating } */
   const samples = new Map();
-  /** 最近一次 get_session_stats 结果（归属 statsTaskId，仅前台任务） */
-  let stats = null;
-  let statsTaskId = null;
+  /**
+   * Map<taskId, stats>：按任务分仓保留「最近一次 get_session_stats 结果」
+   * （上下文窗口 / 累计 token / 费用）。收口与任务切换均不清空，仅 task-removed /
+   * kernel 下线时清理——保证会话结束后下次点开仍展示该会话遥测。
+   */
+  const statsByTask = new Map();
+  /**
+   * 磁盘快照内存镜像：Map<sessionPath, snapshot>，避免反复解析 localStorage；
+   * snapshot = { ctx, usedTotal, speed, savedAt }，跨重启 / 历史会话还原保留。
+   */
+  const snapshotCache = new Map();
+  let snapshotCacheLoaded = false;
+  /** 磁盘快照节流写入定时器 */
+  let snapshotSaveTimer = null;
   /** stats 轮询定时器（仅面板可见时运行） */
   let pollTimer = null;
   /** 隐藏延迟定时器（鼠标在按钮与面板间移动时不闪烁） */
@@ -227,11 +255,12 @@ export function initTokenTelemetry(ctx) {
     }
   }
 
-  /** agent-end / agent-error：收口 run，定格均值（终态后冻结显示「均值」） */
+  /** agent-end / agent-error：收口 run，定格均值（终态后冻结显示「均值」）并持久化终态快照 */
   function handleAgentEnd(detail) {
-    const s = samples.get(resolveEventTaskId(detail));
-    if (!s) return;
-    closeRun(s);
+    const tid = resolveEventTaskId(detail);
+    const s = samples.get(tid);
+    if (s) closeRun(s);
+    captureSnapshot(tid);
     applyGauges();
   }
 
@@ -274,36 +303,115 @@ export function initTokenTelemetry(ctx) {
     }
   }
 
-  /** stats 只服务前台任务：任务切换时清空旧缓存，杜绝跨任务串味 */
-  function resetStatsIfTaskChanged() {
-    const tid = currentTaskId();
-    if (statsTaskId && statsTaskId !== tid) {
-      stats = null;
-      statsTaskId = null;
+  /**
+   * 磁盘快照总表情性装载（仅一次）：解析 localStorage 中的 sessionPath → snapshot 映射，
+   * 损坏 / 不可读时静默降级为空表（仅内存保留）。
+   */
+  function loadSnapshotStore() {
+    if (snapshotCacheLoaded) return;
+    snapshotCacheLoaded = true;
+    try {
+      const raw = localStorage.getItem(SNAPSHOT_STORE_KEY);
+      if (!raw) return;
+      const obj = JSON.parse(raw);
+      if (obj && typeof obj === "object") {
+        for (const [sp, snap] of Object.entries(obj)) {
+          if (sp && snap && typeof snap === "object") snapshotCache.set(sp, snap);
+        }
+      }
+    } catch {
+      // 磁盘不可读 / JSON 损坏：静默降级，遥测保留退化为仅会话内内存保留
     }
   }
 
-  /** 拉取一次内核会话统计（静默降级，不报错） */
+  /** 按 sessionPath 取持久化快照（历史会话还原 / 重启后回填） */
+  function loadSnapshot(sessionPath) {
+    if (!sessionPath) return null;
+    loadSnapshotStore();
+    return snapshotCache.get(sessionPath) || null;
+  }
+
+  /**
+   * 按 sessionPath 持久化一份遥测快照（LRU 淘汰最旧，节流合并写盘）。
+   * @param {string} sessionPath 会话持久身份
+   * @param {{ ctx: any|null, usedTotal: number|null, speed: number, savedAt: number }} snap
+   */
+  function storeSnapshot(sessionPath, snap) {
+    if (!sessionPath) return;
+    loadSnapshotStore();
+    // 已存在键先删后插，把最近使用的会话挪到 LRU 尾部
+    snapshotCache.delete(sessionPath);
+    snapshotCache.set(sessionPath, snap);
+    while (snapshotCache.size > SNAPSHOT_MAX_ENTRIES) {
+      const oldest = snapshotCache.keys().next().value;
+      snapshotCache.delete(oldest);
+    }
+    if (snapshotSaveTimer) return;
+    snapshotSaveTimer = setTimeout(() => {
+      snapshotSaveTimer = null;
+      try {
+        const obj = {};
+        for (const [sp, s] of snapshotCache) obj[sp] = s;
+        localStorage.setItem(SNAPSHOT_STORE_KEY, JSON.stringify(obj));
+      } catch {
+        // 磁盘不可写（隐私模式 / 配额）：静默降级为仅内存保留，不报错不弹窗
+      }
+    }, SNAPSHOT_SAVE_DEBOUNCE_MS);
+  }
+
+  /**
+   * 采集前台任务当前遥测快照并按 sessionPath 持久化（收口 / stats 刷新成功时调用）。
+   * 三项数据均缺失时跳过，杜绝写入空快照污染历史会话回填。
+   */
+  function captureSnapshot(tid) {
+    if (!tid) return;
+    const task = taskManager.getTask?.(tid) || null;
+    const sp = task?.sessionPath;
+    if (!sp) return;
+    const st = statsByTask.get(tid);
+    const s = samples.get(tid);
+    const ctx = st?.contextUsage || null;
+    const usedTotal = st?.tokens?.total ?? s?.total ?? null;
+    const speed = Math.max(0, computeTaskSpeed(s));
+    if (!ctx && usedTotal == null && speed <= 0) return;
+    storeSnapshot(sp, { ctx, usedTotal, speed, savedAt: Date.now() });
+  }
+
+  /** 拉取一次内核会话统计（静默降级，不报错）；成功时入前台任务分仓并顺手持久化快照 */
   async function refreshStats() {
     const tid = currentTaskId();
     if (!tid || !piClient.hasKernel()) return;
     const data = await piClient.getSessionStats(tid);
     if (data) {
-      stats = data;
-      statsTaskId = tid;
+      statsByTask.delete(tid);
+      statsByTask.set(tid, data);
+      while (statsByTask.size > MAX_STATS_BINS) {
+        const oldest = statsByTask.keys().next().value;
+        if (oldest === tid) break; // 保留当前前台任务仓，淘汰次旧
+        statsByTask.delete(oldest);
+      }
+      captureSnapshot(tid);
     }
   }
 
-  /** 计算当前 gauge 渲染参数 */
+  /** 计算当前 gauge 渲染参数（数据源：前台任务 stats 分仓 → 磁盘快照回填） */
   function buildGaugeOptions() {
-    resetStatsIfTaskChanged();
     const tid = currentTaskId();
+    const task = tid ? taskManager.getCurrentActiveTask() : null;
     const s = tid ? samples.get(tid) : null;
-    const ctxUsage = stats?.contextUsage || null;
+
+    // 数据源优先级：① 前台任务实时 / 内存保留 stats（收口后不清空）
+    //               ② 磁盘快照（历史会话还原 / 重启后回填，按 sessionPath 持久身份）
+    const live = tid ? (statsByTask.get(tid) || null) : null;
+    const snapshot = !live && task?.sessionPath ? loadSnapshot(task.sessionPath) : null;
+
+    const ctxUsage = live?.contextUsage || snapshot?.ctx || null;
     const ctxUsed = typeof ctxUsage?.tokens === "number" ? ctxUsage.tokens : null;
     const ctxTotal = typeof ctxUsage?.contextWindow === "number" ? ctxUsage.contextWindow : null;
 
-    const speed = Math.max(0, computeTaskSpeed(s));
+    // 速度优先取实时采样仓（推理中实时均值 / 收口后冻结均值）；
+    // 历史会话还原无采样仓时回退磁盘快照的冻结均值（speedText 定格「均值」）。
+    const speed = Math.max(0, s ? computeTaskSpeed(s) : (snapshot?.speed ?? 0));
     const speedActive = !!s?.isGenerating;
     const opts = {
       id: "ttg-main",
@@ -326,7 +434,7 @@ export function initTokenTelemetry(ctx) {
     // 已消耗 token（累计 total）：配额分母走动态量级阶梯（resolveTokenQuota）——
     // 从 1M 起，用量满足当前量级后分母自动 ×10（1M → 10M → 100M → 1B → 10B → …），
     // 档位 0/1/≥2 分别以绿/橙/红着色（tokensLevel 驱动 gauge 换色）。
-    const usedTotal = stats?.tokens?.total ?? s?.total ?? null;
+    const usedTotal = live?.tokens?.total ?? s?.total ?? snapshot?.usedTotal ?? null;
     if (usedTotal != null) {
       const quota = resolveTokenQuota(usedTotal);
       opts.tokensUsed = usedTotal;
@@ -444,23 +552,22 @@ export function initTokenTelemetry(ctx) {
   piClient.addEventListener("agent-end", (e) => handleAgentEnd(e.detail));
   piClient.addEventListener("agent-error", (e) => handleAgentEnd(e.detail));
 
-  // 内核下线：全部采样仓清空，杜绝幽灵读数复活
+  // 内核下线：全部采样仓与内存 stats 清空，杜绝幽灵读数复活（磁盘快照保留，供历史会话还原）
   piClient.addEventListener("kernel-status-change", (e) => {
     if (e.detail?.hasKernel === false) {
       samples.clear();
-      stats = null;
-      statsTaskId = null;
+      statsByTask.clear();
       applyGauges();
     }
   });
 
-  // 轮次 / 会话收口时刷新一次终态统计（上下文窗口在收口后才稳定）
+  // 轮次 / 会话收口时保留遥测数据并落盘快照（上下文窗口在收口后才稳定）；
+  // 面板可见时刷新一次实时统计覆盖，不可见时仅持久化 + 刷新缩略仪表（数据保留，下次点开即展示）
   const refreshOnSettle = () => {
+    captureSnapshot(currentTaskId());
     if (popup && popup.classList.contains("visible")) {
       void refreshStats().then(() => applyGauges());
     } else {
-      stats = null;
-      statsTaskId = null;
       applyGauges();
     }
   };
@@ -468,11 +575,19 @@ export function initTokenTelemetry(ctx) {
   piClient.addEventListener("agent-end", refreshOnSettle);
   piClient.addEventListener("agent-settled", refreshOnSettle);
 
-  // 任务被移除 / 归档时清理其采样仓并同步缩略仪表，杜绝幽灵读数
+  // 任务被移除 / 归档时清理其采样仓与 stats 分仓并同步缩略仪表，杜绝幽灵读数
   taskManager.addEventListener("task-removed", (e) => {
     const tid = e.detail?.taskId;
-    if (tid) samples.delete(tid);
-    resetStatsIfTaskChanged();
+    if (tid) {
+      samples.delete(tid);
+      statsByTask.delete(tid);
+    }
+    applyGauges();
+  });
+
+  // 前台任务切换 / 历史会话还原入 Flow：立即按各自分仓重绘缩略仪表
+  // （切换到历史会话时经磁盘快照回填其上下文 / 速度 / 消耗，无需等待内核响应）
+  taskManager.addEventListener("active-task-changed", () => {
     applyGauges();
   });
 

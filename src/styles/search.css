@@ -210,8 +210,37 @@
   transform: scale(1.08);
 }
 
+/* Flow 布局对齐铁律：对话框（搜索框）与上方会话内容左右边缘完全对齐。
+   齿轮与遥测图标一律退出行内布局流——齿轮由左上角 Mini π 接管（不可见绝对占位），
+   遥测图标绝对定位于对话框左侧、与内容左边缘解耦并保持一定间距（不与内容左边缘对齐）。 */
+.app-container[data-view="flow"] .search-box-row {
+  position: relative;
+  gap: 0;
+}
+
+.app-container[data-view="flow"] .settings-btn {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
 .app-container[data-view="flow"] .telemetry-btn {
   display: flex;
+  position: absolute;
+  top: 50%;
+  /* 左偏移 = 图标宽(24px) + 间距(12px)，但绝不允许图标越过窗口左边缘：
+     会话列左缘距窗口左侧为 24px 列内边距 + 列居中余量 max(0, (100vw - 808px) / 2)，
+     取「目标偏移」与「可用余量」的较小值，最小窗口宽(800px)时恰好贴窗口边、永不裁剪。 */
+  left: calc(-1 * min(36px, 24px + max(0px, (100vw - 808px) / 2)));
+  width: 24px;
+  height: 24px;
+  padding: 2px;
+  transform: translateY(-50%);
+}
+
+.app-container[data-view="flow"] .telemetry-btn:hover {
+  transform: translateY(-50%) scale(1.08);
 }
 
 .telemetry-btn:focus-visible {

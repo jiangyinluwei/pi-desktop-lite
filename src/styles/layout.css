@@ -273,6 +273,8 @@ body:has(.app-container[data-view="flow"]) .flow-mini-brand {
 .app-container[data-view="flow"] .sketch-search-box {
   border-radius: 255px 16px 225px 16px / 16px 225px 16px 255px;
   box-shadow: var(--sketch-shadow);
+  /* 与会话内容右边缘对齐：滚动区右侧 6px 滚动条槽即为内容右缘，对话框同侧让出 */
+  margin-right: 6px;
 }
 
 .app-container[data-view="flow"] .flow-stage {
