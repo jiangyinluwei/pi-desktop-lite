@@ -2,8 +2,9 @@
 
 use crate::pi_runner::PiSupervisor;
 use crate::session::{
-    extract_timestamped_prompts_from_session, parse_session_entries, parse_session_turns,
-    SessionEntrySummary, SessionIndexCache, SessionMetadata, SessionTurnDetail, SessionWatcher,
+    extract_timestamped_prompts_from_session, parse_session_entries, parse_session_telemetry,
+    parse_session_turns, SessionEntrySummary, SessionIndexCache, SessionMetadata,
+    SessionTelemetry, SessionTurnDetail, SessionWatcher,
 };
 use std::path::Path;
 use std::sync::Arc;
@@ -75,6 +76,16 @@ pub fn pi_get_session_tree(session_path: String) -> Result<Vec<SessionEntrySumma
 pub fn pi_get_session_detail(session_path: String) -> Result<Vec<SessionTurnDetail>, String> {
     let path = Path::new(&session_path);
     parse_session_turns(path)
+}
+
+/// 获取指定会话的底层遥测汇总（逐 assistant usage 累加，供历史会话还原时额度遥测直接回填）。
+/// 文件不存在 / 无任何 usage 时返回 Ok(None)，前端优雅降级。
+#[tauri::command]
+pub fn pi_get_session_telemetry(
+    session_path: String,
+) -> Result<Option<SessionTelemetry>, String> {
+    let path = Path::new(&session_path);
+    parse_session_telemetry(path)
 }
 
 /// 切换当前会话（内置技能轮次重置后下发 switch_session 命令）

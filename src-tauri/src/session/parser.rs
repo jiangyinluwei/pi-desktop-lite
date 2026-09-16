@@ -736,3 +736,72 @@ pub fn parse_session_turns(path: &Path) -> Result<Vec<SessionTurnDetail>, String
 
     Ok(turns)
 }
+
+/// 会话底层遥测汇总（从 JSONL 逐 assistant 消息 usage 累加所得）。
+/// 供前端「额度遥测」在历史会话还原（无内存 stats / 无磁盘快照）时直接回填显示。
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionTelemetry {
+    /// 累计已消耗 token（逐消息 usage.totalTokens 累加，与内核会话累计口径一致）
+    pub total_tokens: u64,
+    /// 最末一条 assistant usage 的 totalTokens（≈ 当前上下文占用 tokens；无 usage 时为 None）
+    pub context_tokens: Option<u64>,
+    /// 含有效 usage 的 assistant 消息条数
+    pub message_count: usize,
+}
+
+/// 流式解析会话 JSONL，逐行累加 assistant 消息 usage，还原底层遥测。
+/// 单行解析失败静默跳过；文件不存在 / 无任何 usage 时返回 Ok(None)，由前端优雅降级。
+pub fn parse_session_telemetry(path: &Path) -> Result<Option<SessionTelemetry>, String> {
+    let file = match File::open(path) {
+        Ok(f) => f,
+        Err(_) => return Ok(None),
+    };
+    let reader = BufReader::new(file);
+    let mut total_tokens: u64 = 0;
+    let mut context_tokens: Option<u64> = None;
+    let mut message_count: usize = 0;
+
+    for line in reader.lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let val = match serde_json::from_str::<Value>(trimmed) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if val.get("type").and_then(|v| v.as_str()) != Some("message") {
+            continue;
+        }
+        let msg_obj = match val.get("message") {
+            Some(m) => m,
+            None => continue,
+        };
+        if msg_obj.get("role").and_then(|v| v.as_str()) != Some("assistant") {
+            continue;
+        }
+        let usage = match msg_obj.get("usage") {
+            Some(u) => u,
+            None => continue,
+        };
+        let total = usage.get("totalTokens").and_then(|v| v.as_u64());
+        if let Some(total) = total {
+            total_tokens = total_tokens.saturating_add(total);
+            message_count = message_count.saturating_add(1);
+            context_tokens = Some(total);
+        }
+    }
+
+    if message_count == 0 {
+        return Ok(None);
+    }
+    Ok(Some(SessionTelemetry {
+        total_tokens,
+        context_tokens,
+        message_count,
+    }))
+}

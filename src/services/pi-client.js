@@ -603,6 +603,21 @@ class PiClient extends EventTarget {
   }
 
   /**
+   * 解析指定会话 JSONL 的底层遥测汇总（逐 assistant usage 累加，纯本地文件解析，不依赖内核）。
+   * 供历史会话还原（无内存 stats / 无磁盘快照）时额度遥测直接回填。
+   * @param {string} sessionPath
+   * @returns {Promise<{total_tokens:number, context_tokens:number|null, message_count:number}|null>}
+   */
+  async getSessionTelemetry(sessionPath) {
+    if (!sessionPath) return null;
+    try {
+      return await this.invoke("pi_get_session_telemetry", { sessionPath });
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * 中止正在进行的 Agent 运行（支持指定 taskId）
    * @param {string} [taskId]
    */

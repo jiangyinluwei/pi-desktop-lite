@@ -408,7 +408,55 @@ export function initTokenTelemetry(ctx) {
   }
 
   /**
-   * 合并新一轮会话统计：单项字段缺失 / 置空时保留上一轮已知良好值，
+   * 历史会话还原回填：当前前台任务既无内存 stats、也无磁盘快照时，
+   * 经底层会话 JSONL（逐 assistant usage 累加）直接计算遥测并入磁盘快照仓，
+   * 进入历史对话立即呈现历史额度状态，无需先发起对话。纯本地文件解析，不依赖内核。
+   * 并发去重（in-flight 集合）+ 已有快照去重（snapshotCache），实时 stats 永远优先。
+   */
+  const backfillInFlight = new Set();
+  async function backfillHistoryTelemetry() {
+    const tid = currentTaskId();
+    const task = tid ? taskManager.getCurrentActiveTask?.() : null;
+    const sp = task?.sessionPath;
+    if (!sp || !sp.endsWith(".jsonl")) return;
+    if (statsByTask.has(tid) || samples.has(tid)) return; // 实时 stats / 采样优先，绝不覆盖
+    if (snapshotCache.has(sp)) return; // 已有快照（含已回填），无需重算
+    if (backfillInFlight.has(sp)) return;
+    backfillInFlight.add(sp);
+    try {
+      const tele = await piClient.getSessionTelemetry(sp);
+      if (!tele || !(tele.total_tokens > 0)) return;
+      // 若曾持久化过带 contextWindow 的快照，合成完整 contextUsage
+      // （JSONL 中无窗口大小，借已知窗口还原外环比值弧）；否则仅回填 tokens。
+      const stored = loadSnapshot(sp);
+      const cw = stored?.ctx?.contextWindow;
+      let ctx = null;
+      if (typeof tele.context_tokens === "number") {
+        ctx = typeof cw === "number" && cw > 0
+          ? {
+              contextWindow: cw,
+              tokens: tele.context_tokens,
+              percent: Math.min(100, (tele.context_tokens / cw) * 100),
+            }
+          : { tokens: tele.context_tokens };
+      } else if (stored?.ctx) {
+        ctx = stored.ctx;
+      }
+      storeSnapshot(sp, {
+        ctx,
+        usedTotal: tele.total_tokens,
+        speed: stored?.speed ?? 0,
+        savedAt: Date.now(),
+      });
+      applyGauges();
+    } catch {
+      /* 静默降级：回填失败不阻塞遥测面板 */
+    } finally {
+      backfillInFlight.delete(sp);
+    }
+  }
+
+  /** 合并新一轮会话统计：单项字段缺失 / 置空时保留上一轮已知良好值，
    * 杜绝遥测弧因单次瞬时不完整响应（压缩后 contextUsage 暂为 null、
    * 首消息 usage 未上报、工具执行期间响应超时后的首轮空帧）「突然归零」。
    */
@@ -531,9 +579,10 @@ export function initTokenTelemetry(ctx) {
     if (!popup) buildPopup();
     positionPopup();
     popup.classList.add("visible");
-    // 立即同步一次最新采样并启动轮询
+    // 立即同步一次最新采样并启动轮询；若为无内存数据的历史会话，顺手触发底层回填
     applyGauges();
     void refreshStats().then(() => applyGauges());
+    void backfillHistoryTelemetry();
     startPolling();
   }
 
@@ -653,9 +702,11 @@ export function initTokenTelemetry(ctx) {
   });
 
   // 前台任务切换 / 历史会话还原入 Flow：立即按各自分仓重绘缩略仪表
-  // （切换到历史会话时经磁盘快照回填其上下文 / 速度 / 消耗，无需等待内核响应）
+  // （切换到历史会话时经磁盘快照回填其上下文 / 速度 / 消耗，无需等待内核响应；
+  //   快照缺失时进一步经底层会话 JSONL 回填，进入历史对话立即呈现历史额度状态）
   taskManager.addEventListener("active-task-changed", () => {
     applyGauges();
+    void backfillHistoryTelemetry();
   });
 
   // 铁律 3：右键 / Esc 回退时收起面板（返回 true 表示已消费该次回退）

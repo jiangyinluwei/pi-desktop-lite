@@ -84,6 +84,7 @@ pub fn run() {
             pi_get_prompt_history,
             pi_get_session_tree,
             pi_get_session_detail,
+            pi_get_session_telemetry,
             pi_switch_session,
             pi_new_session,
             pi_get_inner_skills_rules,
