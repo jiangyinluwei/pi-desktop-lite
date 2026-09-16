@@ -22,17 +22,7 @@ A desktop research and reasoning application with minimalist hand-drawn sketch &
 
 ---
 
-## ✨ Core Features
-
-- **Four-State Interface & Flow Streaming**: Detailed, Focus, Flow stream, and full-page Settings modes with single-line thinking chains and Typedown-grade Markdown rendering;
-- **Token Telemetry**: A live colored mini-gauge icon shown only in the Flow conversation view, outside the left edge of the chat box (other views are owned by the settings gear; the gauge takes no space there) — itself a scaled-down telemetry dial (context-usage violet arc / tokens-consumed amber arc / inference-speed bolt that recolors with state). Hover it to open a sketch capsule panel above the icon showing current context usage (used / window), inference speed in token/s (generating / mean / idle), and tokens consumed (total / quota); the consumed-token quota denominator follows a dynamic magnitude ladder (`resolveTokenQuota`): starting at 1M, the denominator grows tenfold once usage fills the current tier (1M → 10M → 100M → 1B → 10B → …), colored green (1M tier) / orange (10M tier) / red (100M and beyond). Inference speed is a global dynamic mean (task cumulative inference output ÷ effective generation time, with `agent-start`/`agent-end` wall-clock brackets and tool-call windows excluded in real time; provider usage wrap-around across messages is banked automatically), so inter-frame pauses and long tool calls never zero it out and it freezes at the mean after a run ends; four threshold tiers color the speed (< 50 red / < 100 orange / < 200 green / ≥ 200 blue, single source `resolveSpeedLevel`), with continuous blurry glow cancelled on the middle lightning bolt and replaced by a 0.2-second arc flash highlight whenever a new round of thinking / point / toolcall is triggered. Context window and totals come from the kernel `get_session_stats` RPC (fetched synchronously via a backend `with_response` command since its response never enters the broadcast channel), polled at low frequency (2s while hovered, 15s otherwise), per-task isolated (direct task switching keeps each task's mean), with session data retention (stats are kept per taskId and never cleared on run settle, so re-opening the panel after a conversation ends still shows that conversation's context / mean speed / consumed tokens; a stable snapshot is also debounced into localStorage keyed by sessionPath, auto-backfilling telemetry when the app restarts or a conversation is restored from history / session records; when no snapshot exists, entering a historical conversation immediately backfills its quota state by parsing the underlying session JSONL (new IPC `pi_get_session_telemetry`, accumulating per-assistant usage — pure local file parsing, no kernel required), so no new prompt is needed to see historical quota — silently degrading to in-memory-only retention when the disk is unreadable) and silent degradation when no kernel is present;
-- **Background Tasks & Routed Workspaces**: Seamless task background suspension, explicit termination with process hard-kill and anti-resurrection guards, terminal-state task cleanup to prevent phantom "completed" badges, session continuity via `--session <path>` (multi-turn conversations never fragment into separate history records), historical turn restoration, `code-area` non-polluting routing hub, and multi-preset switching;
-- **Hand-Drawn Sketch Aesthetics**: Universal hand-drawn SVG vector icons, paper-texture dual-mode themes, and custom `SketchSelect` / `SketchAutoFill` / `SketchModal` components;
-- **Package Preset Auto Self-Healing**: "Silent background" recommended configs for components such as web search are merged into their config files and strictly re-verified at three moments — package install, package update, and app startup. Presets with multiple config paths are written to all of them (e.g. `pi-web-access` writes both `~/.pi/agent/web-search.json` and `~/.pi/web-search.json`), so an upstream package changing its default config path can never silently disable the setting and cause web searches to pop up a browser page requiring manual confirmation again;
-- **Package Patch Self-Healing**: Source-level defects in third-party components (e.g. `pi-ocr` 1.4.x hard-coding `python3` on Windows, which resolves to the Microsoft Store placeholder stub and makes every OCR fail, plus a missing win32 branch in PDF page counting) are fixed at the app layer, embedded into the binary, and materialized onto the installed package directory at three moments — package install, package update, and app startup. Guarded by a **version gate** (only verified `major.minor` versions are patched; a package upgrade never blindly overwrites possibly-restructured upstream files), an **existence gate**, and **idempotent re-read verification**; a manual “Patch” entry is also available in the components panel;
-- **Rust Performance & Self-Healing Core**: Kernel-level orphan process harvesting, smooth auto-reconnect insurance on crashes, silent built-in model reconnect (background re-sends a hidden "continue" prompt, all 60s delay + 60s delay after sending, fixed 10 attempts for 120s * 10, live "auto reconnect N/10" countdown capsule docked at the very bottom of the session flow, supports direct full session abort at any point during backoff delay via inline sketch button or global abort, executed-step history preserved, covers both foreground and suspended background tasks, intercepts residual failure `agent-end` frames to eliminate premature stream termination, precise network transient error exclusion to prevent false abort classification, error window shown only after all 10 attempts are exhausted — exhaustion locks a terminal state so duplicate error frames never re-trigger auto reconnect, only a manual retry or a new query can re-arm it; manual termination never revives reconnecting; automatic model switching has been removed), **stream-interruption grace period with a yellow countdown waiting capsule** (any transient connection/service error — stream truncation `Stream ended without finish_reason`, provider hiccup `Inference request failed.`, gateway `upstream failure`, plus the full set of timeouts / disconnects / socket resets / DNS errors, 500/502/503/504, `fetch failed` / `network error`, TPM/RPM/429 rate limits and `overloaded` — never shows the red error card immediately; instead a hand-drawn yellow waiting message box appears at the bottom of the session flow with a fixed 300-second live countdown "Waiting for model response · Ns"; it clears silently as soon as the model resumes output or the session settles normally, and only falls back to the red error card after the full timeout, with full abort available throughout; non-recoverable errors such as 401/403 auth failure, unknown model, unsupported multimodal input or context-length overflow are vetoed and show the red card immediately; duplicate error frames are idempotent and never rebuild the card, fixing the frozen unclickable error card buttons), Node.js preflight checks, and native desktop integration.
-
-> 📖 **Full Architecture & Development Specifications**: Refer to [`.agents/skills/pi-desktop-overview/SKILL.md`](.agents/skills/pi-desktop-overview/SKILL.md).
+> 📖 **Full feature list, the 22 interaction ironclads, and architecture specs**: see the development skills under [`.agents/skills/`](.agents/skills/) — overview & feature matrix: [`pi-desktop-overview`](.agents/skills/pi-desktop-overview/SKILL.md); interaction ironclads: [`desktop-interaction-invariants`](.agents/skills/desktop-interaction-invariants/SKILL.md); Flow details: [`flow-interaction-pattern`](.agents/skills/flow-interaction-pattern/SKILL.md).
 
 ---
 
@@ -51,10 +41,16 @@ npm run check
 # 3. Start desktop dev mode
 npm run dev
 
-# 4. Build check (compile binaries without full packaging)
+# 4. Frontend static gate (syntax + import graph + circular dependencies, required before composite refactors)
+npm run check:fe
+
+# 5. Coupling metrics baseline (automated decoupling indicators)
+npm run measure:coupling
+
+# 6. Build check (compile binaries without full packaging)
 npm run build:check
 
-# 5. Build release installer package
+# 7. Build release installer package
 npm run build
 ```
 
@@ -80,37 +76,41 @@ Pi Desktop Lite fully adheres to the native Pi kernel ecosystem, supporting vari
 
 ```text
 pi-desktop-lite/
-├── .agents/skills/             # Development-level agent skill definitions (pi-ecosystem-configuration, auto-compile-and-fix, sketch-drafting-ui, etc.)
+├── .agents/skills/             # Development-level agent skill definitions (overview / interaction ironclads / Flow pattern / ecosystem config / compile gates; routing matrix in AGENTS.md)
 ├── .mytools/pi-body/           # Bundled Pi Agent Release engine (contains pi-windows-x64.7z, extract to pi-windows-x64 before development)
 ├── default-area/               # Default workspace template & runtime isolation sandbox
 ├── workspaces/                 # Public preset workspace templates (code-area hub / research-area)
 ├── scripts/                    # Automation and build scripts (tauri.js, check.js, check-frontend.js, measure-coupling.js)
 ├── src/                        # Frontend source code and assets
 │   ├── assets/                 # Static assets (logo.svg, logo.ico, hand-drawn SVG icons)
-│   ├── lib/                    # Shared foundational utilities (dom-utils, icons, markdown-renderer, view-constants, event-bus sync event bus, el-binder on-demand DOM binding, contracts event-channel + api-slot contracts)
-│   ├── modules/                # Feature-scoped UI modules orchestrated by main.js (flow-render pure rendering / flow-dom read-only DOM refs / flow-state-view view-cache owner)
+│   ├── lib/                    # Shared foundational utilities (dom-utils, icons, markdown-renderer, view-constants, event-bus, el-binder, contracts single contract registry)
+│   ├── modules/                # Feature-scoped UI modules orchestrated by main.js
 │   │   ├── view-mode.js        # Four-state state machine & settings routing
 │   │   ├── flow-ui.js          # Flow rendering: Markdown, turns DOM, floating tip, turn navigation
-│   │   ├── flow-render.js      # Flow pure rendering: card factories, argument/result HTML formatting (side-effect free)
-│   │   ├── flow-dom.js         # Flow read-only DOM references: createFlowDom() -> ctx.flowDom
-│   │   ├── flow-state-view.js  # Flow view-derived cache owner: flowView sealed cache object
-│   │   ├── flow-stream.js      # Stream state machine, error cards, and built-in reconnect capsules
-│   │   ├── flow-pipeline.js    # Prompt dispatch, tool call events, self-healing pipeline
+│   │   ├── flow-render.js      # Flow pure rendering layer (side-effect free, explicit imports)
+│   │   ├── flow-dom.js         # Flow read-only DOM references (createFlowDom → ctx.flowDom)
+│   │   ├── flow-state-view.js  # Flow view-derived cache owner (sealed flowView object)
+│   │   ├── flow-stream.js      # Stream state machine, error cards, reconnect capsules & grace period
+│   │   ├── flow-pipeline.js    # Prompt dispatch, tool call events, built-in reconnect engine
+│   │   ├── flow-human-input.js # Mid-run ask-back: answer bars + dialogs + extension_ui_response write-back
+│   │   ├── flow-file-changes.js # Session file-change collector (per-Task stores, consistent restore on re-entry)
+│   │   ├── flow-rollback.js    # Session rollback orchestration (kernel fork + file restoration + prune re-render + toast)
 │   │   ├── task-panel.js       # Background task capsule, sidebar, history restore
 │   │   ├── sessions-panel.js   # Session records, search/filter, enter Flow pipeline
-│   │   ├── token-telemetry.js # Chat box "quota" telemetry icon: colored mini gauge + context usage / tokens per second / tokens consumed hover panel
+│   │   ├── token-telemetry.js  # Quota telemetry icon: context usage / mean speed / tokens consumed panel + history backfill
 │   │   ├── workspace-panel.js  # Workspace management panel and routing binding
 │   │   └── global-interactions.js # Global Step Back & URL interceptor
-│   ├── services/               # Decoupled frontend services (tauri-bridge, config-service, pi-client, workspace-service)
-│   ├── styles/                 # Feature-scoped sketch styles (tokens, layout, flow, markdown, settings, form-widgets)
+│   ├── services/               # Decoupled frontend services (tauri-bridge, config-service, pi-client, model-failover, workspace-service)
+│   │   └── stores/             # Shared mutable state owners (view-store, settings-store, attachments-store, flow-store per-taskId compartments)
+│   ├── styles/                 # Feature-scoped sketch styles (tokens, layout, flow, markdown, settings)
 │   ├── index.html              # Main HTML container
 │   ├── styles.css              # Aggregated style entry (@import to styles/ subfiles)
 │   └── main.js                 # Main orchestrator entry
 ├── src-tauri/                  # High-performance Tauri (Rust) backend
 │   ├── extensions/             # Built-in kernel extensions (pi-rollback-guard.ts snapshot guard, pi-tool-sanitizer.ts tool arguments auto-unwrapper)
-│   ├── inner-skills/           # Runtime dynamic inner-skills (RULES.md, bash compatibility, OCR inspection, multi-agent, web search, failure logging, etc.)
+│   ├── inner-skills/           # Runtime inner-skills (RULES.md mapping index + 9 on-demand injected skills; mechanism in inner-skills-injection skill)
 │   └── src/                    # Rust core source (lib.rs, main.rs, commands/, config_manager/, workspace, pi_runner, security, session)
-├── AGENTS.md                   # Project rules and agent guidelines
+├── AGENTS.md                   # Project rules and agent guidelines (condensed invariants + skill routing matrix)
 ├── README.md                   # Project overview & configuration guide (Chinese)
 ├── README_en.md                # Project overview & configuration guide (English)
 └── package.json
