@@ -182,7 +182,11 @@ const TRANSIENT_SERVICE_KEYWORDS = [
   "service unavailable",
   "temporarily unavailable",
   "temporarily",
-  "overloaded",
+  // `overload` 为子串，同时覆盖服务商回显 "server overload"（无 ed，如
+  // "The service is currently unable to handle additional requests due to
+  // server overload."，典型 529/503 过载瞬态）与 "overloaded_error" 两种变体
+  "overload",
+  "unable to handle",
   "capacity",
   "internal server error",
   "upstream failure",
