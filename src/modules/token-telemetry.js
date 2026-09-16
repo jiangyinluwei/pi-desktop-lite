@@ -2,7 +2,7 @@
  * token-telemetry.js — 输入框旁「额度」遥测图标与悬浮面板
  *
  * 定位：图标位于对话框外部左侧（与齿轮设置按钮同排），本身即一枚专为 24×24
- * 视口重绘的实时微型遥测仪表（mini 布局，外环 CTX 弧 + 内环 TOK 弧 + 速率闪电随数据着色与流光呼吸）；
+ * 视口重绘的实时微型遥测仪表（mini 布局，外环 CTX 弧 + 内环 TOK 弧 + 速率闪电随数据着色与步骤弧光高亮）；
  * 鼠标悬浮 / 键盘聚焦时在图标上方展开手绘胶囊面板（capsule 布局），实时呈现三项遥测：
  *   1. 当前上下文消耗（CTX 弧 + 「已用 / 窗口」读数）；
  *   2. 推理速度 token/s（SPD 弧 + 「推理中 / 均值 / 空闲」状态；四档阈值着色
@@ -580,6 +580,19 @@ export function initTokenTelemetry(ctx) {
       if (!popup || !popup.classList.contains("visible")) applyGauges();
     });
   }, STATS_BACKGROUND_INTERVAL_MS);
+
+  /** 触发额度图标与悬浮面板（若已创建）的 0.2 秒弧光高亮 */
+  function triggerArcFlash() {
+    miniGauge.triggerArcFlash?.();
+    if (gauge) gauge.triggerArcFlash?.();
+  }
+
+  // 监听新一轮 thinking / point / 工具调用 触发：额度图标弧光高亮 0.2 秒（仅前台任务生效）
+  bus.on("flow:step-start", (detail) => {
+    const tid = detail?.taskId || currentTaskId();
+    if (tid && !taskManager.isForegroundStreamTask(tid)) return;
+    triggerArcFlash();
+  });
 
   // ---- 事件接线 ----
   el.telemetryBtn.addEventListener("mouseenter", showPopup);

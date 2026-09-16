@@ -12,8 +12,8 @@
  *    量级档位分别以绿色（1M 档）/ 橙色（10M 档）/ 红色（100M 及以后全部）呈现。
  * 4. 推理速度四档阈值着色（速度唯一解析源 resolveSpeedLevel）：
  *    < 50 红 / < 100 橙 / < 200 绿 / ≥ 200 蓝；速度 > 0 时闪电与 SPD 行整体跟随档位换色，
- *    生成进行中（speedActive）附加流光呼吸脉冲，生成结束后定格为静态着色「均值」读数，
- *    速度为 0（空闲）时闪电回落灰色、档位类摘除。
+ *    生成进行中（speedActive）保持清晰矢量着色（取消模糊光晕），新一轮步骤启动时触发 0.2s 弧光高亮，
+ *    生成结束后定格为静态着色「均值」读数，速度为 0（空闲）时闪电回落灰色、档位类摘除。
  *
  * 特性：
  * - 纯矢量 SVG，零外部依赖，极速轻量
@@ -212,11 +212,10 @@ function getSharedStyles(id) {
       stroke: currentColor;
       stroke-linecap: round;
       stroke-linejoin: round;
-      transition: stroke 0.25s ease, filter 0.25s ease;
+      transition: stroke 0.25s ease;
     }
     #${id} .spd-active .ttg-bolt {
       stroke: var(--color-speed, #2563eb);
-      animation: ttg-pulse-${id} 1.6s ease-in-out infinite alternate;
     }
     #${id} .spd-valued .ttg-bolt {
       stroke: var(--color-speed, #2563eb);
@@ -257,9 +256,29 @@ function getSharedStyles(id) {
       rx: 1.75;
       transition: width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
     }
-    @keyframes ttg-pulse-${id} {
-      0% { filter: drop-shadow(0 0 1px var(--color-speed, #2563eb)); opacity: 0.85; }
-      100% { filter: drop-shadow(0 0 4.5px var(--color-speed, #2563eb)); opacity: 1; }
+    #${id}.ttg-arc-flash {
+      animation: ttg-arc-flash-${id} 0.2s cubic-bezier(0.1, 0.9, 0.2, 1);
+    }
+    #${id}.ttg-arc-flash .ttg-bolt {
+      stroke: var(--color-speed, #2563eb) !important;
+      opacity: 1 !important;
+    }
+    #${id}.ttg-arc-flash .ttg-ctx-arc {
+      stroke-width: 4.8;
+    }
+    #${id}.ttg-arc-flash .ttg-tok-arc {
+      stroke-width: 4.0;
+    }
+    @keyframes ttg-arc-flash-${id} {
+      0% {
+        filter: drop-shadow(0 0 3px var(--color-speed, #2563eb)) brightness(1.75);
+      }
+      50% {
+        filter: drop-shadow(0 0 1.2px var(--color-speed, #2563eb)) brightness(1.35);
+      }
+      100% {
+        filter: drop-shadow(0 0 0 transparent) brightness(1);
+      }
     }
   `.trim();
 }
@@ -505,12 +524,12 @@ function renderMiniSvg(metrics, options, id) {
       #${id}.ttg-speed-s2 { --color-speed: var(--ttg-speed-green, #4a7c59); }
       #${id}.ttg-speed-s3 { --color-speed: var(--ttg-speed-blue, #2563eb); }
       #${id} .ttg-mini-bolt {
-        transition: fill 0.2s ease, stroke 0.2s ease, filter 0.2s ease;
+        transition: fill 0.2s ease, stroke 0.2s ease, opacity 0.2s ease;
       }
       #${id} .ttg-mini-core.spd-active .ttg-mini-bolt {
         fill: var(--color-speed, #2563eb);
         stroke: var(--color-speed, #2563eb);
-        animation: ttg-mini-pulse-${id} 1.4s ease-in-out infinite alternate;
+        opacity: 1;
       }
       #${id} .ttg-mini-core.spd-valued .ttg-mini-bolt {
         fill: var(--color-speed, #2563eb);
@@ -522,9 +541,30 @@ function renderMiniSvg(metrics, options, id) {
         stroke: var(--ink-faint, #a69f94);
         opacity: 0.55;
       }
-      @keyframes ttg-mini-pulse-${id} {
-        0% { filter: drop-shadow(0 0 0.8px var(--color-speed, #2563eb)); opacity: 0.85; }
-        100% { filter: drop-shadow(0 0 2.5px var(--color-speed, #2563eb)); opacity: 1; }
+      #${id}.ttg-arc-flash {
+        animation: ttg-mini-arc-flash-${id} 0.2s cubic-bezier(0.1, 0.9, 0.2, 1);
+      }
+      #${id}.ttg-arc-flash .ttg-mini-bolt {
+        fill: var(--color-speed, #2563eb) !important;
+        stroke: var(--color-speed, #2563eb) !important;
+        opacity: 1 !important;
+      }
+      #${id}.ttg-arc-flash .ttg-mini-arc-ctx {
+        stroke-width: 2.3;
+      }
+      #${id}.ttg-arc-flash .ttg-mini-arc-tok {
+        stroke-width: 1.8;
+      }
+      @keyframes ttg-mini-arc-flash-${id} {
+        0% {
+          filter: drop-shadow(0 0 2.2px var(--color-speed, #2563eb)) brightness(1.75);
+        }
+        50% {
+          filter: drop-shadow(0 0 1px var(--color-speed, #2563eb)) brightness(1.35);
+        }
+        100% {
+          filter: drop-shadow(0 0 0 transparent) brightness(1);
+        }
       }
     </style>
   </defs>
@@ -670,7 +710,7 @@ export function createTokenTelemetryGauge(initialOptions = {}) {
     if (barSpd) barSpd.setAttribute('width', (barMaxW * m.speedRatio).toFixed(1));
 
     if (coreBolt) {
-      // 闪电三态：生成中脉冲（spd-active）/ 结束定格静态着色（spd-valued）/ 空闲灰（spd-idle）
+      // 闪电三态：生成中激活态（spd-active）/ 结束定格静态着色（spd-valued）/ 空闲灰（spd-idle）
       const boltCls = m.speedActive ? 'spd-active' : m.speed > 0 ? 'spd-valued' : 'spd-idle';
       if (!coreBolt.classList.contains(boltCls)) {
         coreBolt.classList.remove('spd-active', 'spd-valued', 'spd-idle');
@@ -688,10 +728,29 @@ export function createTokenTelemetryGauge(initialOptions = {}) {
     if (barTok) barTok.setAttribute('width', (barMaxW * m.tokRatio).toFixed(1));
   }
 
+  let flashTimer = null;
+
+  /**
+   * 触发 0.2 秒弧光高亮（新一轮 thinking / point / 工具调用 启动时调用）
+   * 取消常态模糊光晕，以瞬态高亮电弧微脉冲定格 200ms
+   */
+  function triggerArcFlash() {
+    svgEl.classList.remove('ttg-arc-flash');
+    void svgEl.offsetWidth; // 触发 reflow 确保连续/重入触发能重播 0.2s 动画
+    svgEl.classList.add('ttg-arc-flash');
+    if (flashTimer) clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => {
+      svgEl.classList.remove('ttg-arc-flash');
+      flashTimer = null;
+    }, 200);
+  }
+
   return {
     element: svgEl,
     update,
+    triggerArcFlash,
     destroy() {
+      if (flashTimer) clearTimeout(flashTimer);
       svgEl.remove();
     }
   };

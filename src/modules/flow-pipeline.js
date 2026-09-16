@@ -216,6 +216,9 @@ export function initFlowPipeline(ctx) {
     }
   });
 
+  // 最近一次已宣布触发弧光高亮的工具调用 ID（避免 toolcall-delta-start 与 tool-start 双重触发）
+  let lastAnnouncedToolCallId = null;
+
   /**
    * 辅助：确保当前存在“伪工具运行框”占位卡（工具参数流式期空窗辅助显示）
    * 对齐伪思考框机制：toolcall-delta-start 即插入「工具调用... + 读秒 + running」单行卡，
@@ -313,6 +316,13 @@ export function initFlowPipeline(ctx) {
     api.autoCollapseThinkingOnNextPhase();
     // 伪工具运行框：参数流式期空窗即时呈现「工具调用... + 读秒 + running」
     ensureActiveToolPseudoStep();
+    // 触发新一轮工具调用事件（通知额度图标弧光高亮）
+    const deltaToolId = e.detail?.toolCallId || e.detail?.id || `delta_${Date.now()}`;
+    lastAnnouncedToolCallId = deltaToolId;
+    bus.emit("flow:step-start", {
+      type: "tool",
+      taskId: piClient.lastEventTaskId || taskManager.getCurrentActiveTask()?.id || null,
+    });
   });
 
   piClient.addEventListener("toolcall-delta-end", (e) => {
@@ -332,6 +342,15 @@ export function initFlowPipeline(ctx) {
     const data = e.detail;
     const toolCallId = data.toolCallId;
     const toolName = data.toolName || "tool";
+
+    // 若此前未经过 toolcall-delta-start 阶段（例如非流式直接进入 tool-start），补发新一轮工具调用事件
+    if (!lastAnnouncedToolCallId || (toolCallId && toolCallId !== lastAnnouncedToolCallId)) {
+      lastAnnouncedToolCallId = toolCallId;
+      bus.emit("flow:step-start", {
+        type: "tool",
+        taskId: piClient.lastEventTaskId || taskManager.getCurrentActiveTask()?.id || null,
+      });
+    }
 
     // 工具开始时，结算或清理当前活跃的思维切片（带有 preserveForTool: true 幂等兜底）
     if (typeof api.sealActiveThinkingStep === "function") {
@@ -489,6 +508,7 @@ export function initFlowPipeline(ctx) {
       clearInterval(flowView.toolRunTimerInterval);
       flowView.toolRunTimerInterval = null;
     }
+    lastAnnouncedToolCallId = null;
 
     if (card) {
       card.classList.remove("running");

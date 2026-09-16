@@ -1,5 +1,6 @@
 import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
+import { bus } from "../lib/event-bus.js";
 import { piClient } from "../services/pi-client.js";
 import { notificationService } from "../services/notification-service.js";
 import { taskManager } from "../services/task-manager.js";
@@ -863,6 +864,11 @@ export function initFlowStream(ctx) {
     }
     flowView.currentSteps.push(stepItem);
 
+    bus.emit("flow:step-start", {
+      type: "thinking",
+      taskId: piClient.lastEventTaskId || taskManager.getCurrentActiveTask()?.id || null,
+    });
+
     if (!flowView.thinkingTimerInterval) {
       flowView.thinkingTimerInterval = setInterval(() => {
         if (flowView.activeThinkingStep?.durationEl) {
@@ -912,6 +918,11 @@ export function initFlowStream(ctx) {
       flowView.currentSteps = [];
     }
     flowView.currentSteps.push(stepItem);
+
+    bus.emit("flow:step-start", {
+      type: "point",
+      taskId: piClient.lastEventTaskId || taskManager.getCurrentActiveTask()?.id || null,
+    });
 
     if (!flowView.textTimerInterval) {
       flowView.textTimerInterval = setInterval(() => {
