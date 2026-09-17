@@ -1,3 +1,4 @@
+pub mod app_meta;
 pub mod commands;
 pub mod config_manager;
 pub mod package_manager;

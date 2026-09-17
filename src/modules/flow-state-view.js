@@ -83,3 +83,25 @@ export function resolveStreamTaskId(explicit) {
     STREAM_BUCKET_FALLBACK
   );
 }
+
+/**
+ * Flow 读秒计时器统一驱动（100ms 步进；此前 thinking / text / 伪工具 / 真实工具
+ * 四处复制粘贴同一 setInterval 习语，收敛为本唯一实现）。
+ * 同名槽位已存在时直接复用——间隔回调每帧动态读取 getStep()，活跃切片切换无需重建计时器。
+ * @param {object} view flowView（计时器句柄槽属主，sealed 槽位须预登记）
+ * @param {string} slotKey 计时器槽位键（如 "thinkingTimerInterval"）
+ * @param {() => object|null} getStep 每帧取当前活跃切片（返回 null 或无 durationEl 即跳过本帧）
+ * @param {(step: object, elapsed: string) => void} [render] 读秒文案渲染（缺省 "(N.Ns)..."）
+ * @returns {number} 计时器句柄
+ */
+export function startElapsedTimer(view, slotKey, getStep, render) {
+  if (view[slotKey]) return view[slotKey];
+  view[slotKey] = setInterval(() => {
+    const step = getStep();
+    if (!step?.durationEl) return;
+    const elapsed = ((Date.now() - step.startTime) / 1000).toFixed(1);
+    if (render) render(step, elapsed);
+    else step.durationEl.textContent = `(${elapsed}s)...`;
+  }, 100);
+  return view[slotKey];
+}

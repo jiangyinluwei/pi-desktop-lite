@@ -1,4 +1,5 @@
 import { VIEW_DETAILED, VIEW_FOCUS, VIEW_FLOW } from "../lib/view-constants.js";
+import { isTaskStatusActive } from "../lib/contracts.js";
 import { bus } from "../lib/event-bus.js";
 import { piClient } from "../services/pi-client.js";
 import { taskManager } from "../services/task-manager.js";
@@ -68,10 +69,7 @@ export function initGlobalInteractions(ctx) {
 
       const activeTask = taskManager.getCurrentActiveTask();
       const isRunning = activeTask
-        ? (activeTask.status === "thinking" ||
-           activeTask.status === "streaming" ||
-           activeTask.status === "tool_exec" ||
-           (modelFailoverEngine.isActive() && (!modelFailoverEngine.taskId || modelFailoverEngine.taskId === activeTask.id)))
+        ? (isTaskStatusActive(activeTask) || taskManager.isEngineOwnedTask(activeTask.id))
         : (piClient.isStreaming || modelFailoverEngine.isActive());
       const isPaused = activeTask ? activeTask.status === "paused" : false;
 

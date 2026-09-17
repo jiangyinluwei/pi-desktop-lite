@@ -87,7 +87,7 @@ pub fn is_newer(local: &str, remote: &str) -> bool {
 pub async fn check_latest_version(current_version: &str) -> VersionCheckResult {
     let client = match reqwest::Client::builder()
         .timeout(HTTP_TIMEOUT)
-        .user_agent("pi-desktop-lite/0.1.1")
+        .user_agent(&crate::app_meta::user_agent())
         .build()
     {
         Ok(c) => c,

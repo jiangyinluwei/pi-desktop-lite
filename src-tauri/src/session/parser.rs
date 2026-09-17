@@ -556,13 +556,6 @@ pub fn extract_timestamped_prompts_from_session(path: &Path) -> Vec<(i64, String
     prompts
 }
 
-/// 从单个 .jsonl 会话文件中提取所有真实用户提问 (role: "user")
-pub fn extract_user_prompts_from_session(path: &Path) -> Vec<String> {
-    extract_timestamped_prompts_from_session(path)
-        .into_iter()
-        .map(|(_, text)| text)
-        .collect()
-}
 
 // ==========================================================================
 // 会话完整轮次解析（供 Flow 界面历史还原使用）

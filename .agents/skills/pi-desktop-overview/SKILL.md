@@ -88,7 +88,7 @@ description: |
   - **纯渲染层 (`src/modules/flow-render.js`)**：无副作用、不读共享状态、不碰视图缓存的纯函数（卡片创建、映射、HTML 格式化等），调用方显式 `import`，彻底清退旧 `ctx.api` 纯渲染槽；
   - **只读 DOM 引用层 (`src/modules/flow-dom.js`)**：`createFlowDom()` 产出挂载于 `ctx.flowDom`，flow 模块统一只读此引用；
   - **视图派生缓存唯一属主 (`src/modules/flow-state-view.js`)**：`flowView` 密封对象（`renderedToolCards`、`currentSteps`、读秒计时器、`activeTurnRefs`、`followBottom`），严禁入 store；
-  - **DOM 按需自绑定 (`src/lib/el-binder.js`)**：各业务模块通过 `bindAll` / `bindEl` 按需自绑定自己的 DOM id 子集，**`ctx.el` 已彻底废除**；
+  - **DOM 按需自绑定 (`src/lib/el-binder.js`)**：各业务模块通过 `bindAll` 按需自绑定自己的 DOM id 子集，**`ctx.el` 已彻底废除**；
 - **契约化通信与事件通道 (`src/lib/contracts.js`)**：
   - 横切通知（fire-and-forget，如 `ui:toast`、`ui:workspace-changed`、`flow:response`）统一由 `src/lib/event-bus.js` 同步分发；
   - 控制流与状态迁移走 Store action 或显式 import；

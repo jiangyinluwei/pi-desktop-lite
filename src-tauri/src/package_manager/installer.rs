@@ -297,16 +297,48 @@ pub async fn check_node_environment() -> NodeEnvironmentInfo {
     }
 }
 
-/// 执行 pi.exe install <pkg> -a 安装组件并实时派发进度事件
-pub async fn install_package(
-    app_handle: &tauri::AppHandle,
-    raw_name: &str,
-) -> Result<String, String> {
-    let (pkg_name, source_spec) = normalize_package_source(raw_name);
-    if pkg_name.is_empty() {
-        return Err("Package name cannot be empty".to_string());
-    }
+/// 安装/更新共用的 npm 生命周期文案与关键词差异面。
+/// 此前 install_package 与 update_package 各自维护一份约 220 行结构重复的流水线，
+/// 仅命令词/文案/关键词不同——更新路径的静默吞错正是只改一份没同步另一份的产物，
+/// 差异面参数化后收敛为 run_package_lifecycle 单一实现。
+struct NpmLifecycleFlavor {
+    /// 日志动词（"Installing" / "Updating"）
+    verb: &'static str,
+    /// pi 子命令（"install" / "update"）
+    subcommand: &'static str,
+    /// 子命令附加参数（install 为 ["-a"]，update 为空）
+    extra_args: &'static [&'static str],
+    /// 包规格（install 传原始 source_spec，update 传 npm:<pkg>）
+    spec: String,
+    /// spawn 失败消息中的命令标签（"pi install command" / "pi update command"）
+    spawn_label: &'static str,
+    /// 失败日志与最终错误前缀（"Install" / "Update"）
+    fail_label: &'static str,
+    /// resolving 阶段（15%）文案
+    resolving_msg: String,
+    /// downloading 阶段（35%）文案
+    downloading_msg: String,
+    /// stdout 首段关键词（"installing" / "updating"，与 fetch/download 并列）
+    head_keyword: &'static str,
+    /// downloading 进度（55%）文案
+    download_progress_msg: String,
+    /// linking 进度（75%）文案
+    link_msg: String,
+    /// registering 关键词（"installed" / "updated"，与 success 并列）
+    register_keyword: &'static str,
+    /// registering 进度（90%）文案
+    register_msg: String,
+}
 
+/// 安装/更新共用的 npm 生命周期执行流水线：
+/// 互斥排队 ➔ Node 环境校验 ➔ spawn pi 子命令 ➔ stdout/stderr 进度解析任务 ➔
+/// wait ➔ 失败结算（error 事件 + Err）。成功路径仅保证子命令执行完毕，
+/// 预设/补丁等后处理语义分属安装（无条件应用）与更新（缺失才重打）两套，由调用方自理。
+async fn run_package_lifecycle(
+    app_handle: &tauri::AppHandle,
+    pkg_name: &str,
+    flavor: &NpmLifecycleFlavor,
+) -> Result<(), String> {
     // 异步排队获取全局互斥锁（严格按队列顺序执行，杜绝并发冲突）
     let _lock = PACKAGE_OPERATION_MUTEX.lock().await;
 
@@ -318,7 +350,7 @@ pub async fn install_package(
         let _ = app_handle.emit(
             "package-progress",
             PackageProgressPayload {
-                package_name: pkg_name.clone(),
+                package_name: pkg_name.to_string(),
                 stage: "error".to_string(),
                 percent: 100,
                 message: err_msg.clone(),
@@ -331,27 +363,28 @@ pub async fn install_package(
         PiSupervisor::find_pi_binary(Some(app_handle)).unwrap_or_else(|| PathBuf::from("pi"));
 
     log::info!(
-        "[PackageManager] Installing package '{}' using binary: {:?}",
-        source_spec,
+        "[PackageManager] {} package '{}' using binary: {:?}",
+        flavor.verb,
+        flavor.spec,
         pi_bin
     );
 
     let _ = app_handle.emit(
         "package-progress",
         PackageProgressPayload {
-            package_name: pkg_name.clone(),
+            package_name: pkg_name.to_string(),
             stage: "resolving".to_string(),
             percent: 15,
-            message: format!("正在解析组件 {} 依赖环境...", pkg_name),
+            message: flavor.resolving_msg.clone(),
         },
     );
 
     let mut cmd = tokio::process::Command::new(&pi_bin);
-    cmd.arg("install")
-        .arg(&source_spec)
-        .arg("-a")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    cmd.arg(flavor.subcommand).arg(&flavor.spec);
+    for extra in flavor.extra_args {
+        cmd.arg(extra);
+    }
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
     let workspace = PiSupervisor::get_default_workspace(Some(app_handle));
     let _ = std::fs::create_dir_all(&workspace);
@@ -363,11 +396,11 @@ pub async fn install_package(
     }
 
     let mut child = cmd.spawn().map_err(|e| {
-        let msg = format!("Failed to spawn pi install command: {}", e);
+        let msg = format!("Failed to spawn {}: {}", flavor.spawn_label, e);
         let _ = app_handle.emit(
             "package-progress",
             PackageProgressPayload {
-                package_name: pkg_name.clone(),
+                package_name: pkg_name.to_string(),
                 stage: "error".to_string(),
                 percent: 100,
                 message: msg.clone(),
@@ -379,10 +412,10 @@ pub async fn install_package(
     let _ = app_handle.emit(
         "package-progress",
         PackageProgressPayload {
-            package_name: pkg_name.clone(),
+            package_name: pkg_name.to_string(),
             stage: "downloading".to_string(),
             percent: 35,
-            message: "正在从 npm 仓库拉取组件包与依赖...".to_string(),
+            message: flavor.downloading_msg.clone(),
         },
     );
 
@@ -390,7 +423,12 @@ pub async fn install_package(
     let stderr = child.stderr.take();
 
     let app_handle_clone = app_handle.clone();
-    let pkg_name_clone = pkg_name.clone();
+    let pkg_name_clone = pkg_name.to_string();
+    let download_msg = flavor.download_progress_msg.clone();
+    let link_msg = flavor.link_msg.clone();
+    let register_msg = flavor.register_msg.clone();
+    let head_keyword = flavor.head_keyword;
+    let register_keyword = flavor.register_keyword;
     let stdout_task = tokio::spawn(async move {
         let mut lines = Vec::new();
         if let Some(out) = stdout {
@@ -398,7 +436,7 @@ pub async fn install_package(
             while let Ok(Some(line)) = reader.next_line().await {
                 log::info!("[PackageManager stdout] {}", line);
                 let lower = line.to_lowercase();
-                if lower.contains("installing")
+                if lower.contains(head_keyword)
                     || lower.contains("fetch")
                     || lower.contains("download")
                 {
@@ -408,7 +446,7 @@ pub async fn install_package(
                             package_name: pkg_name_clone.clone(),
                             stage: "downloading".to_string(),
                             percent: 55,
-                            message: "正在下载 npm 模块与静态依赖...".to_string(),
+                            message: download_msg.clone(),
                         },
                     );
                 } else if lower.contains("added")
@@ -421,17 +459,17 @@ pub async fn install_package(
                             package_name: pkg_name_clone.clone(),
                             stage: "linking".to_string(),
                             percent: 75,
-                            message: "依赖下载完成，正在解压与校验签名...".to_string(),
+                            message: link_msg.clone(),
                         },
                     );
-                } else if lower.contains("installed") || lower.contains("success") {
+                } else if lower.contains(register_keyword) || lower.contains("success") {
                     let _ = app_handle_clone.emit(
                         "package-progress",
                         PackageProgressPayload {
                             package_name: pkg_name_clone.clone(),
                             stage: "registering".to_string(),
                             percent: 90,
-                            message: "正在注册并挂载至 settings.json...".to_string(),
+                            message: register_msg.clone(),
                         },
                     );
                 }
@@ -466,16 +504,17 @@ pub async fn install_package(
         } else {
             stdout_str
         };
-        log::error!("[PackageManager] Install failed: {}", err_msg);
+        log::error!("[PackageManager] {} failed: {}", flavor.fail_label, err_msg);
         let final_err = format!(
-            "Install failed (code {:?}): {}",
+            "{} failed (code {:?}): {}",
+            flavor.fail_label,
             status.code(),
             err_msg.trim()
         );
         let _ = app_handle.emit(
             "package-progress",
             PackageProgressPayload {
-                package_name: pkg_name.clone(),
+                package_name: pkg_name.to_string(),
                 stage: "error".to_string(),
                 percent: 100,
                 message: final_err.clone(),
@@ -483,6 +522,36 @@ pub async fn install_package(
         );
         return Err(final_err);
     }
+
+    Ok(())
+}
+
+/// 执行 pi.exe install <pkg> -a 安装组件并实时派发进度事件
+pub async fn install_package(
+    app_handle: &tauri::AppHandle,
+    raw_name: &str,
+) -> Result<String, String> {
+    let (pkg_name, source_spec) = normalize_package_source(raw_name);
+    if pkg_name.is_empty() {
+        return Err("Package name cannot be empty".to_string());
+    }
+
+    let flavor = NpmLifecycleFlavor {
+        verb: "Installing",
+        subcommand: "install",
+        extra_args: &["-a"],
+        spec: source_spec,
+        spawn_label: "pi install command",
+        fail_label: "Install",
+        resolving_msg: format!("正在解析组件 {} 依赖环境...", pkg_name),
+        downloading_msg: "正在从 npm 仓库拉取组件包与依赖...".to_string(),
+        head_keyword: "installing",
+        download_progress_msg: "正在下载 npm 模块与静态依赖...".to_string(),
+        link_msg: "依赖下载完成，正在解压与校验签名...".to_string(),
+        register_keyword: "installed",
+        register_msg: "正在注册并挂载至 settings.json...".to_string(),
+    };
+    run_package_lifecycle(app_handle, &pkg_name, &flavor).await?;
 
     log::info!("[PackageManager] Successfully installed {}", pkg_name);
 
@@ -679,7 +748,7 @@ pub async fn check_package_updates() -> Result<Vec<PackageUpdateInfo>, String> {
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(8))
-        .user_agent("pi-desktop-lite/0.1.1")
+        .user_agent(&crate::app_meta::user_agent())
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
@@ -726,189 +795,32 @@ pub async fn update_package(
         return Err("Package name cannot be empty".to_string());
     }
 
-    // 异步排队获取全局互斥锁（严格按队列顺序执行，杜绝并发冲突）
-    let _lock = PACKAGE_OPERATION_MUTEX.lock().await;
-
-    // 前置环境防御校验：确认 Node.js 环境就绪
-    let node_env = check_node_environment().await;
-    if !node_env.installed {
-        let err_msg =
-            "未检测到 Node.js 运行环境，请先安装 Node.js (https://nodejs.org/)".to_string();
-        let _ = app_handle.emit(
-            "package-progress",
-            PackageProgressPayload {
-                package_name: pkg_name.clone(),
-                stage: "error".to_string(),
-                percent: 100,
-                message: err_msg.clone(),
-            },
-        );
-        return Err(err_msg);
-    }
-
-    let pi_bin =
-        PiSupervisor::find_pi_binary(Some(app_handle)).unwrap_or_else(|| PathBuf::from("pi"));
-    let update_spec = format!("npm:{}", pkg_name);
-
-    log::info!(
-        "[PackageManager] Updating package '{}' using binary: {:?}",
-        update_spec,
-        pi_bin
-    );
-
-    let _ = app_handle.emit(
-        "package-progress",
-        PackageProgressPayload {
-            package_name: pkg_name.clone(),
-            stage: "resolving".to_string(),
-            percent: 15,
-            message: format!("正在连接 npm 仓库解析组件 {} 最新版本...", pkg_name),
-        },
-    );
-
-    let mut cmd = tokio::process::Command::new(&pi_bin);
-    cmd.arg("update")
-        .arg(&update_spec)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    let workspace = PiSupervisor::get_default_workspace(Some(app_handle));
-    let _ = std::fs::create_dir_all(&workspace);
-    cmd.current_dir(&workspace);
-
-    #[cfg(windows)]
-    {
-        cmd.creation_flags(0x08000000);
-    }
-
-    let mut child = cmd.spawn().map_err(|e| {
-        let msg = format!("Failed to spawn pi update command: {}", e);
-        let _ = app_handle.emit(
-            "package-progress",
-            PackageProgressPayload {
-                package_name: pkg_name.clone(),
-                stage: "error".to_string(),
-                percent: 100,
-                message: msg.clone(),
-            },
-        );
-        msg
-    })?;
-
-    let _ = app_handle.emit(
-        "package-progress",
-        PackageProgressPayload {
-            package_name: pkg_name.clone(),
-            stage: "downloading".to_string(),
-            percent: 35,
-            message: "正在从 npm 仓库拉取最新组件代码与依赖...".to_string(),
-        },
-    );
-
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-
-    let app_handle_clone = app_handle.clone();
-    let pkg_name_clone = pkg_name.clone();
-    let stdout_task = tokio::spawn(async move {
-        let mut lines = Vec::new();
-        if let Some(out) = stdout {
-            let mut reader = BufReader::new(out).lines();
-            while let Ok(Some(line)) = reader.next_line().await {
-                log::info!("[PackageManager stdout] {}", line);
-                let lower = line.to_lowercase();
-                if lower.contains("updating")
-                    || lower.contains("fetch")
-                    || lower.contains("download")
-                {
-                    let _ = app_handle_clone.emit(
-                        "package-progress",
-                        PackageProgressPayload {
-                            package_name: pkg_name_clone.clone(),
-                            stage: "downloading".to_string(),
-                            percent: 55,
-                            message: "正在下载 npm 最新包模块与文件...".to_string(),
-                        },
-                    );
-                } else if lower.contains("added")
-                    || lower.contains("changed")
-                    || lower.contains("packages")
-                {
-                    let _ = app_handle_clone.emit(
-                        "package-progress",
-                        PackageProgressPayload {
-                            package_name: pkg_name_clone.clone(),
-                            stage: "linking".to_string(),
-                            percent: 75,
-                            message: "依赖更新完成，正在解压与校验签名...".to_string(),
-                        },
-                    );
-                } else if lower.contains("updated") || lower.contains("success") {
-                    let _ = app_handle_clone.emit(
-                        "package-progress",
-                        PackageProgressPayload {
-                            package_name: pkg_name_clone.clone(),
-                            stage: "registering".to_string(),
-                            percent: 90,
-                            message: "正在更新 settings.json 配置...".to_string(),
-                        },
-                    );
-                }
-                lines.push(line);
-            }
-        }
-        lines.join("\n")
-    });
-
-    let stderr_task = tokio::spawn(async move {
-        let mut lines = Vec::new();
-        if let Some(err) = stderr {
-            let mut reader = BufReader::new(err).lines();
-            while let Ok(Some(line)) = reader.next_line().await {
-                log::warn!("[PackageManager stderr] {}", line);
-                lines.push(line);
-            }
-        }
-        lines.join("\n")
-    });
-
-    let status = child
-        .wait()
-        .await
-        .map_err(|e| format!("Wait failed: {}", e))?;
-    let stdout_str = stdout_task.await.unwrap_or_default();
-    let stderr_str = stderr_task.await.unwrap_or_default();
-
-    if !status.success() {
-        let err_msg = if !stderr_str.trim().is_empty() {
-            stderr_str
-        } else {
-            stdout_str
-        };
-        log::error!("[PackageManager] Update failed: {}", err_msg);
-        let final_err = format!(
-            "Update failed (code {:?}): {}",
-            status.code(),
-            err_msg.trim()
-        );
-        let _ = app_handle.emit(
-            "package-progress",
-            PackageProgressPayload {
-                package_name: pkg_name.clone(),
-                stage: "error".to_string(),
-                percent: 100,
-                message: final_err.clone(),
-            },
-        );
-        return Err(final_err);
-    }
+    let flavor = NpmLifecycleFlavor {
+        verb: "Updating",
+        subcommand: "update",
+        extra_args: &[],
+        spec: format!("npm:{}", pkg_name),
+        spawn_label: "pi update command",
+        fail_label: "Update",
+        resolving_msg: format!("正在连接 npm 仓库解析组件 {} 最新版本...", pkg_name),
+        downloading_msg: "正在从 npm 仓库拉取最新组件代码与依赖...".to_string(),
+        head_keyword: "updating",
+        download_progress_msg: "正在下载 npm 最新包模块与文件...".to_string(),
+        link_msg: "依赖更新完成，正在解压与校验签名...".to_string(),
+        register_keyword: "updated",
+        register_msg: "正在更新 settings.json 配置...".to_string(),
+    };
+    run_package_lifecycle(app_handle, &pkg_name, &flavor).await?;
 
     log::info!("[PackageManager] Successfully updated {}", pkg_name);
 
-    // 检查并自动同步应用推荐配置预设
+    // 检查并自动同步应用推荐配置预设（失败必须落日志——静默丢失会让用户无痕迹地
+    // 失去「后台静默执行」等推荐配置；与安装路径的 warn 日志口径对齐）
     if let Some(preset) = super::presets::find_preset_for_package(&pkg_name) {
         if !super::presets::is_preset_applied(&preset) {
-            let _ = super::presets::apply_preset(&preset);
+            if let Err(e) = super::presets::apply_preset(&preset) {
+                log::warn!("[PackageManager] Post-update preset re-apply failed for {}: {}", pkg_name, e);
+            }
         }
     }
 
@@ -918,7 +830,9 @@ pub async fn update_package(
             super::patches::resolve_installed_package(&pkg_name)
         {
             if !super::patches::is_patch_set_applied(&patch_set, &package_root) {
-                let _ = super::patches::apply_patch_set(&patch_set, &package_root, &version);
+                if let Err(e) = super::patches::apply_patch_set(&patch_set, &package_root, &version) {
+                    log::warn!("[PackageManager] Post-update patch re-apply failed for {}: {}", pkg_name, e);
+                }
             }
         }
     }

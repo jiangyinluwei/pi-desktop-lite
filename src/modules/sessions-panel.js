@@ -1,4 +1,5 @@
 import { escapeHtml, cleanUserPrompt } from "../lib/dom-utils.js";
+import { isTaskStatusActive } from "../lib/contracts.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_SETTINGS } from "../lib/view-constants.js";
 import { bus } from "../lib/event-bus.js";
@@ -164,11 +165,7 @@ export function initSessionsPanel(ctx) {
       // 智能重定向铁律：若该会话已作为活跃/挂起任务运行在 TaskManager 中，直接接入实时现场，杜绝用静态历史覆写
       let existingTask = taskManager.getTask(convId);
       if (existingTask) {
-        const isRunning =
-          existingTask.status === "thinking" ||
-          existingTask.status === "streaming" ||
-          existingTask.status === "tool_exec" ||
-          existingTask.status === "paused";
+        const isRunning = isTaskStatusActive(existingTask);
         if (isRunning) {
           api.restoreTaskToFlow(existingTask);
           viewStore.set({ flowFromSettings: true });

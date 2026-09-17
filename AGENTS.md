@@ -101,7 +101,7 @@
 前端按功能域模块化解耦，严禁向入口文件堆砌业务代码：
 
 - **`src/main.js`**：唯一编排入口。**不收集 DOM 引用（`ctx.el` 已彻底废除，各模块经 `src/lib/el-binder.js` 的 `bindAll` 按需自绑定）**，仅构建共享上下文（`ctx.flowDom` + 4 个 store 引用 + `ctx.flowView` 视图派生缓存 + `ctx.api`）并按依赖顺序初始化各模块；
-- **`src/lib/`**：跨模块共享基础件（`dom-utils` / `icons` / `markdown-renderer` / `view-constants` / `event-bus` / `el-binder` / `contracts`）。**`contracts.js` 是唯一契约归口**：事件通道契约表（bus / Store action / `pi:*` 内核桥接，新事件必须登记）、`ctx.api` 函数槽契约 @typedef 定型（新增槽位必须同步登记，严禁幽灵槽）、任务运行态/终态判定唯一源（`TASK_ACTIVE_STATUSES` / `TASK_TERMINAL_STATUSES`，严禁模块自维护状态字面量数组）、内核事件帧 taskId 解析唯一源（`resolveEventTaskId`，严禁内联回退链）；
+- **`src/lib/`**：跨模块共享基础件（`dom-utils` / `icons` / `markdown-renderer` / `view-constants` / `event-bus` / `el-binder` / `contracts`）。**`contracts.js` 是唯一契约归口**：事件通道契约表（bus / Store action / `pi:*` 内核桥接，新事件必须登记）、`ctx.api` 函数槽契约 @typedef 定型（新增槽位必须同步登记，严禁幽灵槽）、任务运行态/终态/终止判定唯一源（`TASK_ACTIVE_STATUSES` / `TASK_TERMINAL_STATUSES` / `isTaskAborted`，严禁模块自维护状态字面量数组或 `isAborted || aborted` 习语）、内核事件帧 taskId 解析唯一源（`resolveEventTaskId`，严禁内联回退链）；
 - **`src/modules/`**：按功能域拆分的 UI 业务模块（全量清单见 README 目录拓扑；`flow-render.js` 纯渲染层、`flow-dom.js` 只读 DOM 引用层、`flow-state-view.js` 视图派生缓存属主）。跨模块调用经 `ctx.api.<fn>()` 与显式 import；**Flow 视图分层铁律**（流式纯数据归 `flowStore` 按 taskId 分仓、视图派生缓存归 `flowView` 密封对象、纯渲染归 `flow-render.js`、只读 DOM 引用归 `ctx.flowDom`）的完整细节见 [`flow-interaction-pattern` 技能 §1](.agents/skills/flow-interaction-pattern/SKILL.md)；
 - **`src/services/stores/`**：共享可变状态唯一属主（`viewStore` 四态状态机 / `settingsStore` / `attachmentsStore` / `flowStore` 流式纯数据分仓）。**Store action 一律同步、禁 async/await、禁微任务**；严禁跨模块直改 `view.x` / `settings.x` / `attachments.x` / `flow.<纯数据>`（`measure:coupling` 度量断言 = 0）；
 - **`src/styles/`**：按功能域拆分的样式文件，`src/styles.css` 仅为 `@import` 聚合入口；
@@ -120,7 +120,7 @@
 - **正式发布构建（生成安装包）**：`npm run build`
 - **Rust 后端语法检查**：`cargo check`（位于 `src-tauri` 目录）
 
-> 🛡️ **后端命令层规范**：Tauri IPC 命令按领域拆至 `src-tauri/src/commands/`（`file` / `window` / `agent` / `session` / `rollback` / `workspace_cmd` / `skills` / `version`）；`lib.rs` 仅保留 `invoke_handler!` 汇总与 `run()` 启动；`config_manager.rs` 拆为 `config_manager/{io,schema,migrate,validate}.rs`。新增/修改 IPC 命令时，应落在对应领域子模块，而非 `lib.rs`。
+> 🛡️ **后端命令层规范**：Tauri IPC 命令按领域拆至 `src-tauri/src/commands/`（`file` / `window` / `agent` / `session` / `rollback` / `workspace_cmd` / `skills` / `version`）；`lib.rs` 仅保留 `invoke_handler!` 汇总与 `run()` 启动；内核 RPC 基建（请求 id/pending 登记/三态等待响应/stdin 写循环/PATH 补全）收敛于 `pi_runner/rpc.rs` 单一实现，supervisor 与 host_pool 仅保留各自门禁差异；`config_manager.rs` 拆为 `config_manager/{io,schema,migrate,validate}.rs`。新增/修改 IPC 命令时，应落在对应领域子模块，而非 `lib.rs`。
 
 ### 多预设工作区与路由调度中枢
 - **IPC 指令**：`pi_list_workspaces` / `pi_get_active_workspace` / `pi_set_active_workspace(id)`（物化副本 ➔ 持久化 ➔ 切换 ➔ 空闲重启重锚 CWD）；

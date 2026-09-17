@@ -15,6 +15,7 @@ import {
   isTransientServiceError,
   isTaskStatusActive,
   isTaskStatusTerminal,
+  isTaskAborted,
   resolveEventTaskId,
 } from "../lib/contracts.js";
 
@@ -311,7 +312,7 @@ export class TaskManager extends EventTarget {
    * @param {string | null | undefined} taskId
    * @returns {boolean}
    */
-  _engineOwnedTask(taskId) {
+  isEngineOwnedTask(taskId) {
     return (
       modelFailoverEngine.isActive() &&
       (!modelFailoverEngine.taskId || String(modelFailoverEngine.taskId) === String(taskId))
@@ -424,7 +425,7 @@ export class TaskManager extends EventTarget {
   _settlePausedAfterUi(task) {
     if (!task || task.status !== "paused") return;
     if (task.pendingUiRequests && task.pendingUiRequests.size > 0) return;
-    if (task.isAborted || task.status === "aborted") return;
+    if (isTaskAborted(task)) return;
     if (!piClient.isStreaming) return;
     task.status = "streaming";
     const lastTurn = task.turns && task.turns.length > 0 ? task.turns[task.turns.length - 1] : null;
@@ -441,7 +442,7 @@ export class TaskManager extends EventTarget {
    */
   failTask(taskId, message) {
     const task = this.tasks.get(taskId);
-    if (!task || task.isAborted || task.status === "aborted") return;
+    if (!task || isTaskAborted(task)) return;
     // 幂等守卫：已处于 error 终态时严禁重复结算 (重复错误帧会重复触发系统通知与广播风暴)
     if (task.status === "error") return;
     task.graceWaiting = false;
@@ -490,7 +491,7 @@ export class TaskManager extends EventTarget {
     return (
       isTaskStatusActive(t) ||
       (this.currentActiveTaskId === t.id && piClient.isStreaming) ||
-      this._engineOwnedTask(t.id)
+      this.isEngineOwnedTask(t.id)
     );
   }
 
@@ -562,7 +563,7 @@ export class TaskManager extends EventTarget {
    */
   suspendCurrentFlow() {
     const current = this.getCurrentActiveTask();
-    if (!current || current.isAborted || current.status === "aborted") {
+    if (!current || isTaskAborted(current)) {
       return null;
     }
     current.isSuspended = true;
@@ -670,13 +671,13 @@ export class TaskManager extends EventTarget {
 
       const task = (taskId && this.tasks.get(taskId)) || (this.currentActiveTaskId ? this.tasks.get(this.currentActiveTaskId) : null);
       if (!task) return;
-      if (task.status === "aborted" || task.isAborted) return;
+      if (isTaskAborted(task)) return;
 
       // 自动强制重连进行中 或 将被引擎接管冷启动 (内置重连开启且含模型上下文) 或 瞬态速率限制：
       // 错误一律由 ModelFailoverEngine 结算，绝不提前置 Task 为 error / 弹错误通知。
       // 引擎占用判定按任务收敛：引擎正服务其他任务时，本任务错误仍走正常 error 结算通道
       // (注：taskManager 监听器先于 main.js 注册，故冷启动时引擎尚未激活，需以 canHandle 预判接管)
-      const engineOwned = this._engineOwnedTask(taskId);
+      const engineOwned = this.isEngineOwnedTask(taskId);
       // 耗尽终态 (10 次重连全部失败、错误卡已弹出) 的任务不视为引擎可接管：
       // 后续重复错误帧 (message_end/turn_end/agent_end/agent_settled 各派发一次)
       // 必须落入 failTask 终态收口，而非被误判为引擎将接管而永久悬空
@@ -742,7 +743,7 @@ export class TaskManager extends EventTarget {
     }
 
     // 铁律：已显式手动终止 (isAborted / aborted) 的任务，绝对禁止被任何迟到的内核事件复活或覆盖状态！
-    if (task.isAborted || task.status === "aborted") {
+    if (isTaskAborted(task)) {
       return;
     }
 
@@ -767,7 +768,7 @@ export class TaskManager extends EventTarget {
 
     // 自动强制重连自愈成功探测：当前 Task 只要开始产生响应输出（思维/正文/工具调用），
     // 且引擎正在为此任务重连，立即通知引擎自愈成功，彻底掐死等待期定时器与后续静默续发
-    if (this._engineOwnedTask(taskId)) {
+    if (this.isEngineOwnedTask(taskId)) {
       const evtType = data.assistantMessageEvent?.type;
       if (
         data.type === "tool_execution_start" ||
@@ -933,7 +934,7 @@ export class TaskManager extends EventTarget {
       case "message_start":
       case "message_end":
         // 自动强制重连进行中（且引擎正服务本任务）：错误分支交由引擎结算，不提前置 Task 为 error
-        if (this._engineOwnedTask(taskId)) break;
+        if (this.isEngineOwnedTask(taskId)) break;
         // 「终止并发送」流程中旧轮错误已由 interrupt-send 流水线结算
         if (task.pendingInterruptSend) break;
         // 流中断宽容期等待中：瞬态错误已交由黄色倒计时接管，严禁残余收口帧提前置 error 终态
@@ -962,7 +963,7 @@ export class TaskManager extends EventTarget {
 
       case "extension_error":
         // 自动强制重连进行中（且引擎正服务本任务）：错误分支交由引擎结算
-        if (this._engineOwnedTask(taskId)) break;
+        if (this.isEngineOwnedTask(taskId)) break;
         // 「终止并发送」流程中旧轮错误已由 interrupt-send 流水线结算
         if (task.pendingInterruptSend) break;
         // 流中断宽容期等待中：严禁残余收口帧提前置 error 终态（超时由 renderErrorCard 落定）
@@ -999,7 +1000,7 @@ export class TaskManager extends EventTarget {
           );
           if (errMessage) {
             // 自动强制重连进行中（且引擎正服务本任务）：错误分支交由引擎结算，不提前置 Task 为 error
-            if (this._engineOwnedTask(taskId)) break;
+            if (this.isEngineOwnedTask(taskId)) break;
             // 流中断宽容期等待中：严禁残余收口帧提前置 error 终态
             if (task.graceWaiting) break;
             const rawErrMsg = errMessage.errorMessage || "";
@@ -1035,7 +1036,7 @@ export class TaskManager extends EventTarget {
         // 内置重连引擎正为此任务退避等待（上一失败尝试已被引擎结算，无在途重发）：
         // 本帧属于已被引擎接管的失败轮收口，严禁提前落地 completed 造成幽灵已完成胶囊与历史归档断裂；
         // 引擎成功后由恢复运行的真实完成帧自然收口，10 次耗尽则经 failTask 落定 error 终态
-        if (this._engineOwnedTask(taskId) && !modelFailoverEngine.hasInflightAttempt()) {
+        if (this.isEngineOwnedTask(taskId) && !modelFailoverEngine.hasInflightAttempt()) {
           scheduleSessionRefresh();
           break;
         }

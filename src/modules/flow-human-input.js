@@ -34,7 +34,7 @@ import { piClient } from "../services/pi-client.js";
 import { taskManager } from "../services/task-manager.js";
 import { SketchModal } from "../services/sketch-modal.js";
 import { SketchSelect } from "../services/sketch-select.js";
-import { isTaskStatusTerminal } from "../lib/contracts.js";
+import { isTaskStatusTerminal, resolveEventTaskId } from "../lib/contracts.js";
 
 /** 已渲染的交互横条（taskId → Map<requestId, barEl>），仅本模块可见。 */
 const barRegistry = new Map();
@@ -383,7 +383,7 @@ export function initHumanInput(ctx) {
   // 内核发出人工交互请求：仅前台活跃任务渲染横条（后台任务只保留数据 + 抽屉徽标）
   piClient.addEventListener("extension-ui", (e) => {
     const data = e?.detail || {};
-    const taskId = data.task_id || data.taskId || taskManager.currentActiveTaskId;
+    const taskId = resolveEventTaskId(data, taskManager.currentActiveTaskId);
     if (!taskId || !taskManager.isForegroundStreamTask(taskId)) return;
     const match = taskManager.getPendingUiRequests(taskId).find((r) => r.id === data.id);
     if (match) showHumanInputCard(taskId, match);

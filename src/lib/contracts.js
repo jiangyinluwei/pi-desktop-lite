@@ -323,6 +323,22 @@ export function isTaskStatusTerminal(task) {
 }
 
 // =====================================================================
+// 【任务终止判定 · 唯一源】
+// =====================================================================
+// 「已终止」为复合语义（铁律 3）：isAborted 是手动终止黑名单标志（可独立于状态机存在），
+// status === "aborted" 是状态机终态 —— 两字段并存且历史 Task 可能仅携带其一，
+// 挂起通道 / 回退守卫 / 引擎结算等判定一律引用本谓词，
+// 严禁内联 `isAborted || status === "aborted"` 习语（防两字段顺序变体漂移）。
+/**
+ * 判定任务是否已处于终止状态（isAborted 标志命中或 aborted 终态）。
+ * @param {{ isAborted?: boolean, status?: string } | null | undefined} task
+ * @returns {boolean}
+ */
+export function isTaskAborted(task) {
+  return Boolean(task && (task.isAborted || task.status === "aborted"));
+}
+
+// =====================================================================
 // 【内核事件帧归属 taskId 解析 · 唯一源】
 // =====================================================================
 // pi-client 派发的事件 detail 统一携带规范化 taskId（camelCase，取自帧 task_id/taskId），

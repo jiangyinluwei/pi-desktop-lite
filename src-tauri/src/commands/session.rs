@@ -34,34 +34,44 @@ pub async fn pi_refresh_sessions(
 }
 
 /// 获取全局输入历史（严格时间序 + LIFO 去重保留最新）
+///
+/// 逐会话全文件解析 JSONL（可达数百个）重 IO，放行至阻塞线程池执行，
+/// 与同文件 `pi_refresh_sessions` 同型处理，避免卡顿主线程。
 #[tauri::command]
-pub fn pi_get_prompt_history(session_cache: State<'_, SessionIndexCache>) -> Result<Vec<String>, String> {
-    let sessions = session_cache.list_all();
-    let mut all_timestamped: Vec<(i64, String)> = Vec::new();
+pub async fn pi_get_prompt_history(
+    session_cache: State<'_, SessionIndexCache>,
+) -> Result<Vec<String>, String> {
+    let cache = session_cache.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let sessions = cache.list_all();
+        let mut all_timestamped: Vec<(i64, String)> = Vec::new();
 
-    for s in &sessions {
-        let p = Path::new(&s.file_path);
-        let prompts = extract_timestamped_prompts_from_session(p);
-        all_timestamped.extend(prompts);
-    }
-
-    // 严格按真实毫秒时间戳从小到大（从旧到新）排序
-    all_timestamped.sort_by_key(|item| item.0);
-
-    // 去重策略：保留最新出现（Keep Most Recent / LIFO）
-    // 从后往前（从最新到最旧）遍历，先记录进 seen 的就是该 prompt 最新一次出现
-    let mut seen = std::collections::HashSet::new();
-    let mut deduped_reversed = Vec::new();
-
-    for (_ts, prompt) in all_timestamped.into_iter().rev() {
-        if seen.insert(prompt.clone()) {
-            deduped_reversed.push(prompt);
+        for s in &sessions {
+            let p = Path::new(&s.file_path);
+            let prompts = extract_timestamped_prompts_from_session(p);
+            all_timestamped.extend(prompts);
         }
-    }
 
-    // 翻转回来，获得从旧到新的全局历史栈（最新发送的位于末尾）
-    deduped_reversed.reverse();
-    Ok(deduped_reversed)
+        // 严格按真实毫秒时间戳从小到大（从旧到新）排序
+        all_timestamped.sort_by_key(|item| item.0);
+
+        // 去重策略：保留最新出现（Keep Most Recent / LIFO）
+        // 从后往前（从最新到最旧）遍历，先记录进 seen 的就是该 prompt 最新一次出现
+        let mut seen = std::collections::HashSet::new();
+        let mut deduped_reversed = Vec::new();
+
+        for (_ts, prompt) in all_timestamped.into_iter().rev() {
+            if seen.insert(prompt.clone()) {
+                deduped_reversed.push(prompt);
+            }
+        }
+
+        // 翻转回来，获得从旧到新的全局历史栈（最新发送的位于末尾）
+        deduped_reversed.reverse();
+        Ok(deduped_reversed)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// 获取指定会话的树状历史条目摘要

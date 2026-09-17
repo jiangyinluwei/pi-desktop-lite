@@ -6,6 +6,8 @@ import {
   isInteractiveExtensionUiRequest,
   isGracePeriodError,
   isTransientServiceError,
+  isTaskStatusActive,
+  isTaskAborted,
   resolveEventTaskId,
 } from "../lib/contracts.js";
 import { piClient, isAbortError } from "../services/pi-client.js";
@@ -17,7 +19,7 @@ import { taskManager, resolveTaskSessionIdentity } from "../services/task-manage
 import { sketchAlert, sketchConfirm } from "../services/sketch-modal.js";
 import { modelFailoverEngine } from "../services/model-failover.js";
 import { flowStore } from "../services/stores/flow-store.js";
-import { flowView, resolveStreamTaskId } from "./flow-state-view.js";
+import { flowView, resolveStreamTaskId, startElapsedTimer } from "./flow-state-view.js";
 import { bindAll } from "../lib/el-binder.js";
 import {
   createToolPseudoRunningCard,
@@ -181,6 +183,17 @@ export function initFlowPipeline(ctx) {
     }
   };
 
+  /** 构建单条「注入提示」条目 li（kind+名称，展示文案统一经 escapeHtml；渲染/add 双入口共用） */
+  const createInjectionNoticeItem = (kind, displayName) => {
+    const itemEl = document.createElement("li");
+    itemEl.className = "injection-notice-item";
+    itemEl.innerHTML = `
+      <span class="item-kind">${escapeHtml(INJECTION_KIND_LABELS[kind] || kind)}</span>
+      <span class="item-name">${escapeHtml(displayName)}</span>
+    `;
+    return itemEl;
+  };
+
   /** 从给定条目清单全量回填前台提示框 DOM */
   const renderInjectionNoticeItems = (items) => {
     const noticeEl = ensureInjectionNoticeEl();
@@ -194,13 +207,7 @@ export function initFlowPipeline(ctx) {
       if (injectionNotice.renderedKeys.has(key)) return;
       injectionNotice.renderedKeys.add(key);
       const displayName = item.kind === "inner_skill" ? getSkillDisplayName(item.name) : item.name;
-      const itemEl = document.createElement("li");
-      itemEl.className = "injection-notice-item";
-      itemEl.innerHTML = `
-        <span class="item-kind">${escapeHtml(INJECTION_KIND_LABELS[item.kind] || item.kind)}</span>
-        <span class="item-name">${escapeHtml(displayName)}</span>
-      `;
-      injectionNotice.listEl.appendChild(itemEl);
+      injectionNotice.listEl.appendChild(createInjectionNoticeItem(item.kind, displayName));
     });
     updateInjectionNoticeCount(injectionNotice.renderedKeys.size);
   };
@@ -232,13 +239,7 @@ export function initFlowPipeline(ctx) {
       if (noticeEl && injectionNotice.listEl && !injectionNotice.renderedKeys.has(key)) {
         injectionNotice.renderedKeys.add(key);
         const displayName = kind === "inner_skill" ? getSkillDisplayName(name) : name;
-        const itemEl = document.createElement("li");
-        itemEl.className = "injection-notice-item";
-        itemEl.innerHTML = `
-          <span class="item-kind">${escapeHtml(INJECTION_KIND_LABELS[kind] || kind)}</span>
-          <span class="item-name">${escapeHtml(displayName)}</span>
-        `;
-        injectionNotice.listEl.appendChild(itemEl);
+        injectionNotice.listEl.appendChild(createInjectionNoticeItem(kind, displayName));
         updateInjectionNoticeCount(injectionNotice.renderedKeys.size);
         // 仅吸底跟随开启时随内容定位到底部，向上滚离后不打断浏览
         if (flowScrollArea && flowView.followBottom !== false) {
@@ -308,12 +309,10 @@ export function initFlowPipeline(ctx) {
   // 每次真实注入后携带条目清单广播，前端逐条追加至「注入提示」框
   piClient.addEventListener("context-injected", (e) => {
     const detail = e.detail || {};
-    const targetTaskId =
-      detail.task_id ||
-      detail.taskId ||
-      taskManager.currentActiveTaskId ||
-      piClient.lastEventTaskId ||
-      LEGACY_INJECTION_KEY;
+    const targetTaskId = resolveEventTaskId(
+      detail,
+      taskManager.currentActiveTaskId || piClient.lastEventTaskId || LEGACY_INJECTION_KEY
+    );
 
     const items = detail.items;
     if (Array.isArray(items)) {
@@ -328,12 +327,10 @@ export function initFlowPipeline(ctx) {
   // Tool-call Hook 命中：Inner-Skill 动态激活（steer 即时或兑底入队）即同步至「注入提示」框
   piClient.addEventListener("inner-skill-activated", (e) => {
     const detail = e.detail || {};
-    const targetTaskId =
-      detail.task_id ||
-      detail.taskId ||
-      taskManager.currentActiveTaskId ||
-      piClient.lastEventTaskId ||
-      LEGACY_INJECTION_KEY;
+    const targetTaskId = resolveEventTaskId(
+      detail,
+      taskManager.currentActiveTaskId || piClient.lastEventTaskId || LEGACY_INJECTION_KEY
+    );
 
     const skillName = detail.skill;
     if (skillName) {
@@ -367,14 +364,7 @@ export function initFlowPipeline(ctx) {
     };
     flowView.activeToolPseudoStep = pseudoItem;
 
-    if (!flowView.toolPseudoTimerInterval) {
-      flowView.toolPseudoTimerInterval = setInterval(() => {
-        if (flowView.activeToolPseudoStep?.durationEl) {
-          const elapsed = ((Date.now() - flowView.activeToolPseudoStep.startTime) / 1000).toFixed(1);
-          flowView.activeToolPseudoStep.durationEl.textContent = `(${elapsed}s)...`;
-        }
-      }, 100);
-    }
+    startElapsedTimer(flowView, "toolPseudoTimerInterval", () => flowView.activeToolPseudoStep);
 
     return pseudoItem;
   };
@@ -412,13 +402,15 @@ export function initFlowPipeline(ctx) {
       clearInterval(flowView.toolRunTimerInterval);
       flowView.toolRunTimerInterval = null;
     }
-    flowView.toolRunTimerInterval = setInterval(() => {
-      const step = flowView.activeToolStep;
-      if (!step?.durationEl || step.status !== "running") return;
-      const elapsed = ((Date.now() - step.startTime) / 1000).toFixed(1);
-      step.durationText = `(${elapsed}s)...`;
-      step.durationEl.textContent = step.durationText;
-    }, 100);
+    startElapsedTimer(
+      flowView,
+      "toolRunTimerInterval",
+      () => (flowView.activeToolStep?.status === "running" ? flowView.activeToolStep : null),
+      (step, elapsed) => {
+        step.durationText = `(${elapsed}s)...`;
+        step.durationEl.textContent = step.durationText;
+      }
+    );
   };
 
   piClient.addEventListener("toolcall-delta-start", (e) => {
@@ -760,9 +752,7 @@ export function initFlowPipeline(ctx) {
     const errTaskId = resolveEventTaskId(e.detail, piClient.lastEventTaskId);
     const isForeground = taskManager.isForegroundStreamTask(errTaskId);
     // 内置重连引擎是否正在服务该任务（后台挂起任务同样需要引擎结算在途尝试）
-    const engineOwnsTask =
-      modelFailoverEngine.isActive() &&
-      (!modelFailoverEngine.taskId || String(modelFailoverEngine.taskId) === String(errTaskId));
+    const engineOwnsTask = taskManager.isEngineOwnedTask(errTaskId);
 
     // 检查所属 Task 是否已处于中止状态或在中止黑名单中（前后台一致门禁）
     if (modelFailoverEngine.isTaskAborted(errTaskId)) {
@@ -770,7 +760,7 @@ export function initFlowPipeline(ctx) {
     }
     if (errTaskId) {
       const task = taskManager.getTask(errTaskId);
-      if (task && (task.status === "aborted" || task.isAborted)) {
+      if (task && isTaskAborted(task)) {
         return;
       }
     }
@@ -839,10 +829,7 @@ export function initFlowPipeline(ctx) {
     // 2. 若存在在途重发尝试（hasInflightAttempt），由引擎结算该尝试结果；
     // 无论前台还是后台，只要引擎处于活跃接管状态，本帧绝不能穿透流向 api.finalizeStream 与归档，
     // 必须立即拦截 return，杜绝失败轮次 agent-end 误将前台流式界面瞬间终结并切断会话流！
-    const engineOwnsTask =
-      modelFailoverEngine.isActive() &&
-      (!modelFailoverEngine.taskId || String(modelFailoverEngine.taskId) === String(endTaskId));
-    if (engineOwnsTask) {
+    if (taskManager.isEngineOwnedTask(endTaskId)) {
       if (modelFailoverEngine.hasInflightAttempt()) {
         modelFailoverEngine.resolveTurnSuccess(endTaskId);
       }
@@ -853,22 +840,19 @@ export function initFlowPipeline(ctx) {
       return;
     }
     // 「终止并发送」进行中：旧轮结算由 interrupt-send 流水线接管，跳过收尾与归档
-    const endFs = flowStore.for(resolveStreamTaskId(piClient.lastEventTaskId));
-    if (endFs.interruptSendTaskId) {
-      const endTaskId = e.detail?.task_id || e.detail?.taskId;
-      if (!endTaskId || endTaskId === endFs.interruptSendTaskId) {
-        return;
-      }
+    const endFs = flowStore.for(resolveStreamTaskId(endTaskId));
+    if (endFs.interruptSendTaskId && (!endTaskId || endTaskId === endFs.interruptSendTaskId)) {
+      return;
     }
     // 流中断宽容期收口：模型流虽无 finish_reason 但已真实产出内容（正文/思维/工具），
     // 视为已恢复正常——撤销黄色等待胶囊，交由下方正常收尾与归档，杜绝无谓的 300 秒空等；
     // 未产出任何内容的空轮保持等待，留给宽容期超时后再弹出红色提醒卡
     if (typeof api.resolveStreamInterruption === "function" && (endFs.responseText || endFs.hasReceivedDelta)) {
-      api.resolveStreamInterruption(resolveEventTaskId(e.detail, piClient.lastEventTaskId));
+      api.resolveStreamInterruption(endTaskId);
     }
     // 完成后收起所有工具卡片（最终输出卡不收起）
     api.collapseAllToolCards();
-    api.finalizeStream(resolveEventTaskId(e.detail, piClient.lastEventTaskId));
+    api.finalizeStream(endTaskId);
     api.archiveCurrentFlowToHistory();
     // 会话完成后展示「文件变更」收纳框（新增/修改的文件，点击可打开所在文件夹）
     if (typeof api.showFileChangesBox === "function") {
@@ -895,7 +879,7 @@ export function initFlowPipeline(ctx) {
         resolve();
       };
       const isTargetTask = (detail) => {
-        const tid = detail?.task_id || detail?.taskId || detail?.raw?.task_id;
+        const tid = resolveEventTaskId(detail);
         return !tid || tid === taskId;
       };
       const onEnd = (e) => {
@@ -935,11 +919,7 @@ export function initFlowPipeline(ctx) {
         ? (() => {
           const t = taskManager.getCurrentActiveTask();
           if (!t) return null;
-          return t.status === "thinking" ||
-            t.status === "streaming" ||
-            t.status === "tool_exec" ||
-            t.status === "paused" ||
-            (modelFailoverEngine.isActive() && (!modelFailoverEngine.taskId || modelFailoverEngine.taskId === t.id))
+          return (isTaskStatusActive(t) || taskManager.isEngineOwnedTask(t.id))
             ? t
             : null;
         })()
@@ -1144,7 +1124,7 @@ export function initFlowPipeline(ctx) {
       // 同一个 Flow 使用同一个 currentTask.id 保持会话上下文
 
       // 发送前预检：若在图片准备或排队期间用户已点击终止，直接短路退出
-      if (currentTask && (currentTask.isAborted || currentTask.status === "aborted")) {
+      if (currentTask && isTaskAborted(currentTask)) {
         console.warn(`[FlowPipeline] Task ${currentTask.id} was aborted before sendPrompt, skipping.`);
         return;
       }
@@ -1160,7 +1140,7 @@ export function initFlowPipeline(ctx) {
       );
     } catch (err) {
       // 若任务已被用户手动终止，静默忽略异常，严禁复活为 error 态或渲染错误卡片
-      if (currentTask && (currentTask.isAborted || currentTask.status === "aborted")) {
+      if (currentTask && isTaskAborted(currentTask)) {
         return;
       }
       console.error("Failed to send prompt to Pi:", err);

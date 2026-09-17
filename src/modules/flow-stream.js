@@ -7,7 +7,7 @@ import { notificationService } from "../services/notification-service.js";
 import { taskManager } from "../services/task-manager.js";
 import { modelFailoverEngine } from "../services/model-failover.js";
 import { flowStore } from "../services/stores/flow-store.js";
-import { flowView, resolveStreamTaskId } from "./flow-state-view.js";
+import { flowView, resolveStreamTaskId, startElapsedTimer } from "./flow-state-view.js";
 import { createThinkingStepCard, createPhaseStepCard, syncThinkingPreview } from "./flow-render.js";
 
 /**
@@ -892,14 +892,7 @@ export function initFlowStream(ctx) {
       taskId: piClient.lastEventTaskId || taskManager.getCurrentActiveTask()?.id || null,
     });
 
-    if (!flowView.thinkingTimerInterval) {
-      flowView.thinkingTimerInterval = setInterval(() => {
-        if (flowView.activeThinkingStep?.durationEl) {
-          const elapsed = ((Date.now() - flowView.activeThinkingStep.startTime) / 1000).toFixed(1);
-          flowView.activeThinkingStep.durationEl.textContent = `(${elapsed}s)...`;
-        }
-      }, 100);
-    }
+    startElapsedTimer(flowView, "thinkingTimerInterval", () => flowView.activeThinkingStep);
 
     return stepItem;
   };
@@ -947,14 +940,14 @@ export function initFlowStream(ctx) {
       taskId: piClient.lastEventTaskId || taskManager.getCurrentActiveTask()?.id || null,
     });
 
-    if (!flowView.textTimerInterval) {
-      flowView.textTimerInterval = setInterval(() => {
-        if (flowView.activeTextStep?.durationEl) {
-          const elapsed = ((Date.now() - flowView.activeTextStep.startTime) / 1000).toFixed(1);
-          flowView.activeTextStep.durationEl.textContent = `输出中 (${elapsed}s)...`;
-        }
-      }, 100);
-    }
+    startElapsedTimer(
+      flowView,
+      "textTimerInterval",
+      () => flowView.activeTextStep,
+      (step, elapsed) => {
+        step.durationEl.textContent = `输出中 (${elapsed}s)...`;
+      }
+    );
 
     return stepItem;
   };

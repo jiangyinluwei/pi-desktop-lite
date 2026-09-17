@@ -1,4 +1,5 @@
 import { VIEW_DETAILED, VIEW_FOCUS, VIEW_FLOW, VIEW_SETTINGS } from "../lib/view-constants.js";
+import { resolveEventTaskId } from "../lib/contracts.js";
 import { bus } from "../lib/event-bus.js";
 import { listenTauri } from "../services/tauri-bridge.js";
 import { bindAll } from "../lib/el-binder.js";
@@ -217,7 +218,7 @@ export function initViewMode(ctx) {
   // 监听用户点击系统通知事件：自动退出设置全屏页、切换至该 Task 的 Flow 模式并滚动到底部
   listenTauri("notification-clicked", (event) => {
     closeSettingsView();
-    const targetTaskId = event?.payload?.taskId || event?.payload?.task_id;
+    const targetTaskId = resolveEventTaskId(event?.payload);
     if (targetTaskId && taskManager.getTask(targetTaskId)) {
       api.restoreTaskToFlow(taskManager.getTask(targetTaskId));
     } else {

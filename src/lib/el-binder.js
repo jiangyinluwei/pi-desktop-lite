@@ -11,9 +11,6 @@
  *     存活元素），因此跨模块共享 id（searchInput / searchForm / appContainer /
  *     autoReconnectSwitch 等，见《GUI 回归专项》§4.2 跨簇注记）天然共享同一元素引用，
  *     不存在「双绑互消」；未命中的 id 返回 null，调用方按原有 truthy 判定兜底。
- *   - bindEl(scope, ids)：只在给定容器内查询（scope.querySelector('#id')）。
- *     供「明确知道自己所有 id 都落在某个容器内」的模块使用（如 Flow 簇对 #flow-stage）；
- *     误用会拿到 null，故仅在确认作用域归属时使用。
  *
  * 约定（对齐《GUI 回归专项》§4.4）：
  *   - 模块绑定表内 id 与 index.html 一一对应；新增/改名 DOM id 必须同步绑定表；
@@ -30,20 +27,6 @@ export function bindAll(ids) {
   const out = {};
   for (const [key, id] of Object.entries(ids)) {
     out[key] = typeof id === "string" ? document.getElementById(id) : null;
-  }
-  return out;
-}
-
-/**
- * 容器内按 id 绑定（仅在确认全部 id 落于 scope 内时使用）。
- * @param {ParentNode|null} scope 容器元素
- * @param {Record<string, string>} ids 键 → DOM id 映射表
- * @returns {Record<string, Element|null>} 键 → 元素（scope 为空或未命中均为 null）
- */
-export function bindEl(scope, ids) {
-  const out = {};
-  for (const [key, id] of Object.entries(ids)) {
-    out[key] = scope && typeof id === "string" ? scope.querySelector("#" + id) : null;
   }
   return out;
 }

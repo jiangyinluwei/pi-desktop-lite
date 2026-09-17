@@ -1,4 +1,5 @@
 import { escapeHtml, cleanUserPrompt } from "../lib/dom-utils.js";
+import { isTaskStatusActive } from "../lib/contracts.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
 import { bus } from "../lib/event-bus.js";
@@ -742,11 +743,7 @@ export function initTaskPanel(ctx) {
 
       // 铁律 2 (H28)：Task 归档与终结彻底解耦（完全终止才归档至历史记录）
       // 处于运行态或待确认态（thinking / streaming / tool_exec / paused）的 Task 绝不写入 conversationHistoryService
-      const isRunningOrPaused =
-        currentActive.status === "thinking" ||
-        currentActive.status === "streaming" ||
-        currentActive.status === "tool_exec" ||
-        currentActive.status === "paused";
+      const isRunningOrPaused = isTaskStatusActive(currentActive);
 
       if (isRunningOrPaused && !isAborted) {
         return;
@@ -835,12 +832,7 @@ export function initTaskPanel(ctx) {
       // 探测是否存在匹配的后台活跃/挂起任务 (H28 运行中脉冲徽章)
       const matchedTask = taskManager.getTask(conv.taskId || conv.id) ||
         taskManager.getAllTasks().find((t) => t.conversationId === conv.id);
-      const isRunning = matchedTask && (
-        matchedTask.status === "thinking" ||
-        matchedTask.status === "streaming" ||
-        matchedTask.status === "tool_exec" ||
-        matchedTask.status === "paused"
-      );
+      const isRunning = Boolean(matchedTask && isTaskStatusActive(matchedTask));
 
       card.innerHTML = `
         <svg class="sketch-card-circle-overlay" viewBox="0 0 200 60" preserveAspectRatio="none" aria-hidden="true">
