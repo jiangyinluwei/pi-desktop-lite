@@ -444,6 +444,7 @@ export class TaskManager extends EventTarget {
     if (!task || task.isAborted || task.status === "aborted") return;
     // 幂等守卫：已处于 error 终态时严禁重复结算 (重复错误帧会重复触发系统通知与广播风暴)
     if (task.status === "error") return;
+    task.graceWaiting = false;
     task.status = "error";
     task.completedAt = Date.now();
     task.errorMessage = message || "模型调用发生异常";
@@ -586,6 +587,7 @@ export class TaskManager extends EventTarget {
 
     task.status = "aborted";
     task.isAborted = true;
+    task.graceWaiting = false;
     task.completedAt = Date.now();
     const lastTurn = task.turns && task.turns.length > 0 ? task.turns[task.turns.length - 1] : null;
     if (lastTurn && !lastTurn.completedAt) {
@@ -712,6 +714,10 @@ export class TaskManager extends EventTarget {
         this.isForegroundStreamTask(taskId) &&
         (isGracePeriodError(detail) || isTransientServiceError(detail))
       ) {
+        // 标记宽容期等待中：后续 message_end/agent_end 残余收口帧严禁提前落定终态，
+        // 否则 Task 置 error/completed 会经 syncFlowAbortButtonVisibility 隐藏终止按钮，
+        // 致 300 秒「等待模型响应中」期间用户完全失去中断手段（铁律18）
+        task.graceWaiting = true;
         return;
       }
 
@@ -738,6 +744,22 @@ export class TaskManager extends EventTarget {
     // 铁律：已显式手动终止 (isAborted / aborted) 的任务，绝对禁止被任何迟到的内核事件复活或覆盖状态！
     if (task.isAborted || task.status === "aborted") {
       return;
+    }
+
+    // 宽容期恢复探测：等待期间内核恢复任何真实输出（思维/正文/工具调用）→ 清除等待标记，
+    // 后续真实收口帧可正常落定终态（与自愈引擎恢复探测同构）
+    if (task.graceWaiting) {
+      const evtType = data.assistantMessageEvent?.type;
+      if (
+        data.type === "tool_execution_start" ||
+        evtType === "thinking_start" ||
+        evtType === "thinking_delta" ||
+        evtType === "text_start" ||
+        evtType === "text_delta" ||
+        evtType === "toolcall_start"
+      ) {
+        task.graceWaiting = false;
+      }
     }
 
     // 压入事件缓冲区
@@ -914,6 +936,8 @@ export class TaskManager extends EventTarget {
         if (this._engineOwnedTask(taskId)) break;
         // 「终止并发送」流程中旧轮错误已由 interrupt-send 流水线结算
         if (task.pendingInterruptSend) break;
+        // 流中断宽容期等待中：瞬态错误已交由黄色倒计时接管，严禁残余收口帧提前置 error 终态
+        if (task.graceWaiting) break;
         if (data.message && (data.message.stopReason === "error" || data.message.errorMessage)) {
           const rawErrMsg = data.message.errorMessage || "";
           if (
@@ -941,6 +965,8 @@ export class TaskManager extends EventTarget {
         if (this._engineOwnedTask(taskId)) break;
         // 「终止并发送」流程中旧轮错误已由 interrupt-send 流水线结算
         if (task.pendingInterruptSend) break;
+        // 流中断宽容期等待中：严禁残余收口帧提前置 error 终态（超时由 renderErrorCard 落定）
+        if (task.graceWaiting) break;
         task.status = "error";
         task.completedAt = Date.now();
         task.errorMessage = parseErrorMessage(data.error || "扩展插件运行异常");
@@ -974,6 +1000,8 @@ export class TaskManager extends EventTarget {
           if (errMessage) {
             // 自动强制重连进行中（且引擎正服务本任务）：错误分支交由引擎结算，不提前置 Task 为 error
             if (this._engineOwnedTask(taskId)) break;
+            // 流中断宽容期等待中：严禁残余收口帧提前置 error 终态
+            if (task.graceWaiting) break;
             const rawErrMsg = errMessage.errorMessage || "";
             if (
               (!modelFailoverEngine.isActive() &&
@@ -1008,6 +1036,12 @@ export class TaskManager extends EventTarget {
         // 本帧属于已被引擎接管的失败轮收口，严禁提前落地 completed 造成幽灵已完成胶囊与历史归档断裂；
         // 引擎成功后由恢复运行的真实完成帧自然收口，10 次耗尽则经 failTask 落定 error 终态
         if (this._engineOwnedTask(taskId) && !modelFailoverEngine.hasInflightAttempt()) {
+          scheduleSessionRefresh();
+          break;
+        }
+        // 流中断宽容期等待中（残余空收口帧）：严禁提前落地 completed——等待恢复或超时后再由
+        // renderErrorCard / 恢复后的真实收口帧自然结算，否则终态会隐藏终止按钮致等待期不可中断
+        if (task.graceWaiting) {
           scheduleSessionRefresh();
           break;
         }

@@ -136,6 +136,12 @@ export function initFlowStream(ctx) {
     const abortBtn = flowView.activeTurnRefs?.failoverAbortBtn || capsule.querySelector(".failover-abort-btn");
     if (abortBtn) abortBtn.classList.add("hidden");
 
+    // 铁律18：主界面 #flow-btn-abort 在等待全周期保持可见可用（用户随时可彻底终止会话与一切后台模型调用）。
+    // 残余收口帧（message_end/agent_end）可能已在此前经 finalizeStream / 终态结算将本按钮隐藏，此处强制恢复显现
+    if (flowBtnAbort) {
+      flowBtnAbort.classList.remove("hidden");
+    }
+
     let secs = Math.max(1, Math.round(STREAM_INTERRUPT_GRACE_MS / 1000));
     textEl.textContent = `等待模型响应中 · ${secs}s`;
     streamPauseInterval = setInterval(() => {
@@ -359,7 +365,9 @@ export function initFlowStream(ctx) {
       if (cursor) cursor.remove();
     }
     // 流式结束时隐藏 Flow 中止按钮
-    if (flowBtnAbort) {
+    // （例外：流中断宽容期等待中严禁隐藏——残余 agent-end 收口帧会经此路径把按钮藏掉，
+    //   致 300 秒「等待模型响应中」期间用户完全失去中断手段，违背铁律18）
+    if (flowBtnAbort && !streamPauseTimer) {
       flowBtnAbort.classList.add("hidden");
     }
     // 正常完成且无错误时，为当前轮次输出卡片挂载保存按钮
@@ -694,6 +702,7 @@ export function initFlowStream(ctx) {
     const currentTask = taskManager.getCurrentActiveTask();
     if (currentTask) {
       currentTask.status = "error";
+      currentTask.graceWaiting = false;
       currentTask.completedAt = Date.now();
       currentTask.errorMessage = fs.errorMessage;
       taskManager.dispatchEvent(new CustomEvent("task-updated", { detail: currentTask }));
