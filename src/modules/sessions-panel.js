@@ -177,9 +177,23 @@ export function initSessionsPanel(ctx) {
       }
 
       let turns;
+      let injectedItems = [];
       try {
         const detail = await sessionService.getSessionDetail(s.file_path);
         turns = mapSessionTurns(detail);
+        if (Array.isArray(detail)) {
+          const itemMap = new Map();
+          for (const t of detail) {
+            if (Array.isArray(t.injected_items)) {
+              for (const item of t.injected_items) {
+                if (item?.title && !itemMap.has(item.title)) {
+                  itemMap.set(item.title, item);
+                }
+              }
+            }
+          }
+          injectedItems = Array.from(itemMap.values());
+        }
       } catch (err) {
         console.error("[SessionsPanel] Failed to parse session detail:", err);
         turns = [];
@@ -217,6 +231,7 @@ export function initSessionsPanel(ctx) {
         toolCalls: lastTurn.toolCalls || [],
         steps: lastTurn.steps || [],
         sessionPath: s.file_path,
+        injectedItems,
       });
 
       // 绑定 TaskManager 活跃 Task，后续追问接入同一 Pi 会话
@@ -235,6 +250,9 @@ export function initSessionsPanel(ctx) {
         task.turns = JSON.parse(JSON.stringify(turns));
         task.conversationId = convId;
         task.status = "completed";
+      }
+      if (!isExistingRunning || !task.injectedItems?.length) {
+        task.injectedItems = injectedItems;
       }
       task.sessionPath = s.file_path;
       task.sessionId = s.session_id;

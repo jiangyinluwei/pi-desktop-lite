@@ -1,3 +1,4 @@
+use crate::pi_runner::InjectedItem;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -389,6 +390,75 @@ pub fn split_user_prompt_attachments(text: &str) -> (String, Vec<String>) {
     (query, attachments)
 }
 
+static ROUTED_AGENTS_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?is)<routed_agents_md\s+filename="([^"]+)">"#).unwrap()
+});
+static ROUTED_README_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?is)<routed_readme_md\s+filename="([^"]+)">"#).unwrap()
+});
+static RUNTIME_INNER_SKILL_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?is)<runtime_inner_skill\s+name="([^"]+)">"#).unwrap()
+});
+
+/// 从未清洗的用户原始 prompt 中提取注入的上下文条目（供历史会话恢复「注入提示」信息框）
+pub fn extract_injected_items(text: &str) -> Vec<InjectedItem> {
+    let mut items = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    let mut add_item = |kind: &str, name: &str| {
+        let key = format!("{}::{}", kind, name);
+        if seen.insert(key) {
+            items.push(InjectedItem {
+                kind: kind.to_string(),
+                name: name.to_string(),
+            });
+        }
+    };
+
+    if text.contains("<code_area_routing_context") {
+        add_item("routing_context", "code_area_routing_context");
+    }
+
+    for cap in ROUTED_AGENTS_RE.captures_iter(text) {
+        if let Some(m) = cap.get(1) {
+            add_item("agents_md", m.as_str());
+        }
+    }
+
+    for cap in ROUTED_README_RE.captures_iter(text) {
+        if let Some(m) = cap.get(1) {
+            add_item("readme_md", m.as_str());
+        }
+    }
+
+    for cap in RUNTIME_INNER_SKILL_RE.captures_iter(text) {
+        if let Some(m) = cap.get(1) {
+            add_item("inner_skill", m.as_str());
+        }
+    }
+
+    if text.contains("<runtime_inner_skills") {
+        let known_skills = [
+            "windows-bash-compatibility",
+            "document-multimodal-inspection",
+            "multi-agent-orchestration",
+            "web-search-silent-access",
+            "persistent-memory-retrieval",
+            "dynamic-workflows-orchestration",
+            "active-context-pruning",
+            "temp-file-hygiene",
+            "tool-failure-logging",
+        ];
+        for skill in known_skills {
+            if text.contains(skill) {
+                add_item("inner_skill", skill);
+            }
+        }
+    }
+
+    items
+}
+
 /// 提取消息正文：content 为 string 时直接返回，为 blocks 数组时拼接全部 text 块
 fn extract_message_text(content: Option<&Value>) -> String {
     let Some(content) = content else {
@@ -536,6 +606,8 @@ pub struct SessionTurnDetail {
     pub steps: Vec<SessionStepDetail>,
     pub timestamp: Option<String>,
     pub is_aborted: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub injected_items: Vec<InjectedItem>,
 }
 
 /// 按顺序配对解析会话 JSONL 中的 user/assistant/toolResult 消息，还原完整多轮对话。
@@ -578,6 +650,7 @@ pub fn parse_session_turns(path: &Path) -> Result<Vec<SessionTurnDetail>, String
             "user" => {
                 let raw = extract_message_text(msg_obj.get("content"));
                 let (query, attachments) = split_user_prompt_attachments(&raw);
+                let injected_items = extract_injected_items(&raw);
                 turns.push(SessionTurnDetail {
                     query,
                     attachments,
@@ -587,6 +660,7 @@ pub fn parse_session_turns(path: &Path) -> Result<Vec<SessionTurnDetail>, String
                     steps: Vec::new(),
                     timestamp,
                     is_aborted: false,
+                    injected_items,
                 });
             }
             "assistant" => {
@@ -601,6 +675,7 @@ pub fn parse_session_turns(path: &Path) -> Result<Vec<SessionTurnDetail>, String
                         steps: Vec::new(),
                         timestamp,
                         is_aborted: false,
+                        injected_items: Vec::new(),
                     });
                 }
                 let turn = turns.last_mut().expect("turns is non-empty");

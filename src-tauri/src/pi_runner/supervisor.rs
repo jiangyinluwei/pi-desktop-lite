@@ -629,8 +629,8 @@ impl PiSupervisor {
     /// 对输入提示词进行 code-area 路由上下文与动态激活 Inner-Skill 注入处理
     /// （不再静态注入完整 RULES.md；Inner-Skill 改由 tool-call hook 按需动态注入）
     /// 每次真实注入后广播 `pi:context_injected` 事件，
-    /// 携带本次注入条目清单，供前端会话流顶部「注入提示」信息框展示。
-    pub fn inject_prompt(&self, message: &str) -> (String, InjectedContextInfo) {
+    /// 携带本次注入条目清单与 task_id，供前端会话流顶部「注入提示」信息框展示。
+    pub fn inject_prompt(&self, message: &str, task_id: Option<&str>) -> (String, InjectedContextInfo) {
         let (skill_injected, mut info) = self.skill_injector.process_prompt_with_info(message);
 
         // 检查当前是否处于 code-area 预设工作区
@@ -653,7 +653,11 @@ impl PiSupervisor {
             if !info.items.is_empty() {
                 let _ = self.app_handle.emit(
                     "pi:context_injected",
-                    serde_json::json!({ "items": info.items }),
+                    serde_json::json!({
+                        "task_id": task_id,
+                        "taskId": task_id,
+                        "items": info.items,
+                    }),
                 );
             }
 
@@ -664,7 +668,11 @@ impl PiSupervisor {
         if !info.items.is_empty() {
             let _ = self.app_handle.emit(
                 "pi:context_injected",
-                serde_json::json!({ "items": info.items }),
+                serde_json::json!({
+                    "task_id": task_id,
+                    "taskId": task_id,
+                    "items": info.items,
+                }),
             );
         }
 
@@ -675,6 +683,11 @@ impl PiSupervisor {
     /// 监听 tool_execution_start 事件，命中 RULES.md 映射时动态注入对应 Inner-Skill。
     /// 优先通过 steer 在当前轮次下一个 LLM 调用前注入；失败时兑底随下一次 Prompt 注入。
     async fn handle_tool_call_hook(this: &PiSupervisor, event_val: &Value) {
+        let task_id = event_val
+            .get("task_id")
+            .or_else(|| event_val.get("taskId"))
+            .and_then(|v| v.as_str());
+
         let tool_name = event_val
             .get("toolName")
             .and_then(|v| v.as_str())
@@ -710,6 +723,8 @@ impl PiSupervisor {
             let _ = this.app_handle.emit(
                 "pi:inner-skill-activated",
                 serde_json::json!({
+                    "task_id": task_id,
+                    "taskId": task_id,
                     "toolName": activation.tool_name,
                     "skill": activation.skill,
                     "mode": "steer",

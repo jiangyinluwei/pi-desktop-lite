@@ -84,7 +84,8 @@ export function initFlowPipeline(ctx) {
   /* ========== 「注入提示」信息框（路由目标项目胶囊下方，默认收起显示标题与注入数量） ==========
    * 展示所有在调用模型之前注入的上下文条目（Inner-Skill 运行态技能、
    * 路由工作区 AGENTS.md / README.md、命中技能与路由上下文信封等），
-   * 随会话动态累积（跨轮保留，按 kind+name 去重），全新会话时重置。
+   * 随会话动态累积（按 Task 隔离、跨轮保留、按 kind+name 去重），全新会话时重置。
+   * 会话流缓存铁律：每个 Task 一份独立注入缓存，切换任务或回入 Flow 时由 restoreInjectionNoticeFor 恢复。
    */
   const INJECTION_KIND_LABELS = {
     inner_skill: "Inner-Skill 运行态技能",
@@ -94,11 +95,24 @@ export function initFlowPipeline(ctx) {
     routing_context: "路由工作区上下文",
   };
 
+  const LEGACY_INJECTION_KEY = "__legacy_session__";
+  // 按 Task 隔离的注入条目缓存仓：taskId -> Map<`${kind}::${name}`, { kind, name }>
+  const sessionInjectionStores = new Map();
+
+  const getInjectionStore = (taskId) => {
+    const key = taskId || LEGACY_INJECTION_KEY;
+    if (!sessionInjectionStores.has(key)) {
+      sessionInjectionStores.set(key, new Map());
+    }
+    return sessionInjectionStores.get(key);
+  };
+
   const injectionNotice = {
     el: null,
     listEl: null,
     countEl: null,
-    items: new Set(),
+    chevronEl: null,
+    renderedKeys: new Set(),
     collapsed: true,
   };
 
@@ -128,17 +142,23 @@ export function initFlowPipeline(ctx) {
       injectionNotice.listEl = injectionNotice.el.querySelector(".injection-notice-list");
       injectionNotice.countEl = injectionNotice.el.querySelector(".injection-notice-count");
       injectionNotice.chevronEl = injectionNotice.el.querySelector(".injection-notice-chevron");
-      injectionNotice.items.clear();
-      // 置于首个消息组的「路由目标项目」胶囊下方（胶囊缺失时回退至组首/会话流顶部）
+      injectionNotice.renderedKeys.clear();
+
+      // 挂载定位：优先置于首个消息组的「路由目标项目」胶囊下方；
+      // 无路由胶囊时置于首组用户提问卡下方；再次兜底置于组首/会话流顶部
       const firstGroup = flowConversation.querySelector(":scope > .flow-message-group");
       const routeCapsule = firstGroup?.querySelector(":scope > .flow-route-capsule:not(.hidden)");
+      const promptCard = firstGroup?.querySelector(":scope > .flow-user-prompt-card");
       if (routeCapsule) {
         routeCapsule.after(injectionNotice.el);
+      } else if (promptCard) {
+        promptCard.after(injectionNotice.el);
       } else if (firstGroup) {
         firstGroup.insertBefore(injectionNotice.el, firstGroup.firstChild);
       } else {
         flowConversation.insertBefore(injectionNotice.el, flowConversation.firstChild);
       }
+
       // 默认收起：点击头部在收起态与完整清单间切换
       injectionNotice.el
         .querySelector(".injection-notice-header")
@@ -154,70 +174,170 @@ export function initFlowPipeline(ctx) {
     return injectionNotice.el;
   };
 
-  const updateInjectionNoticeCount = () => {
+  const updateInjectionNoticeCount = (count = null) => {
     if (injectionNotice.countEl) {
-      injectionNotice.countEl.textContent =
-        injectionNotice.items.size > 0 ? `${injectionNotice.items.size} 项` : "";
+      const actualCount = typeof count === "number" ? count : injectionNotice.renderedKeys.size;
+      injectionNotice.countEl.textContent = actualCount > 0 ? `${actualCount} 项` : "";
     }
   };
 
-  /** 向「注入提示」信息框追加一条注入条目（kind+name 去重，跨轮累积） */
-  const addInjectionNoticeItem = (kind, name) => {
-    if (!kind || !name) return;
-    const key = `${kind}::${name}`;
+  /** 从给定条目清单全量回填前台提示框 DOM */
+  const renderInjectionNoticeItems = (items) => {
     const noticeEl = ensureInjectionNoticeEl();
-    if (!noticeEl || injectionNotice.items.has(key)) return;
-    injectionNotice.items.add(key);
-    const displayName = kind === "inner_skill" ? getSkillDisplayName(name) : name;
-    const itemEl = document.createElement("li");
-    itemEl.className = "injection-notice-item";
-    itemEl.innerHTML = `
-      <span class="item-kind">${escapeHtml(INJECTION_KIND_LABELS[kind] || kind)}</span>
-      <span class="item-name">${escapeHtml(displayName)}</span>
-    `;
-    injectionNotice.listEl.appendChild(itemEl);
-    updateInjectionNoticeCount();
-    // 仅吸底跟随开启时随内容定位到底部，向上滚离后不打断浏览
-    if (flowScrollArea && flowView.followBottom !== false) {
-      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    if (!noticeEl || !injectionNotice.listEl) return;
+    injectionNotice.listEl.innerHTML = "";
+    injectionNotice.renderedKeys.clear();
+
+    items.forEach((item) => {
+      if (!item?.kind || !item?.name) return;
+      const key = `${item.kind}::${item.name}`;
+      if (injectionNotice.renderedKeys.has(key)) return;
+      injectionNotice.renderedKeys.add(key);
+      const displayName = item.kind === "inner_skill" ? getSkillDisplayName(item.name) : item.name;
+      const itemEl = document.createElement("li");
+      itemEl.className = "injection-notice-item";
+      itemEl.innerHTML = `
+        <span class="item-kind">${escapeHtml(INJECTION_KIND_LABELS[item.kind] || item.kind)}</span>
+        <span class="item-name">${escapeHtml(displayName)}</span>
+      `;
+      injectionNotice.listEl.appendChild(itemEl);
+    });
+    updateInjectionNoticeCount(injectionNotice.renderedKeys.size);
+  };
+
+  /** 向「注入提示」信息框追加一条注入条目（按 Task 归仓，kind+name 去重，跨轮累积） */
+  const addInjectionNoticeItem = (kind, name, taskId = null) => {
+    if (!kind || !name) return;
+    const targetTaskId =
+      taskId ||
+      taskManager.currentActiveTaskId ||
+      piClient.lastEventTaskId ||
+      LEGACY_INJECTION_KEY;
+
+    const store = getInjectionStore(targetTaskId);
+    const key = `${kind}::${name}`;
+    if (!store.has(key)) {
+      store.set(key, { kind, name });
+    }
+
+    // 同步至 Task 结构体，支持历史记录持久化与切换回填
+    const task = taskManager.getTask(targetTaskId);
+    if (task) {
+      task.injectedItems = Array.from(store.values());
+    }
+
+    // 串轮过滤铁律：仅当目标任务为当前前台活跃任务时，才直接更新前台 Flow DOM
+    if (taskManager.isForegroundStreamTask(targetTaskId)) {
+      const noticeEl = ensureInjectionNoticeEl();
+      if (noticeEl && injectionNotice.listEl && !injectionNotice.renderedKeys.has(key)) {
+        injectionNotice.renderedKeys.add(key);
+        const displayName = kind === "inner_skill" ? getSkillDisplayName(name) : name;
+        const itemEl = document.createElement("li");
+        itemEl.className = "injection-notice-item";
+        itemEl.innerHTML = `
+          <span class="item-kind">${escapeHtml(INJECTION_KIND_LABELS[kind] || kind)}</span>
+          <span class="item-name">${escapeHtml(displayName)}</span>
+        `;
+        injectionNotice.listEl.appendChild(itemEl);
+        updateInjectionNoticeCount(injectionNotice.renderedKeys.size);
+        // 仅吸底跟随开启时随内容定位到底部，向上滚离后不打断浏览
+        if (flowScrollArea && flowView.followBottom !== false) {
+          flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+        }
+      }
     }
   };
+
+  /**
+   * 按 Task 恢复「注入提示」信息框（会话流缓存铁律，由 renderTurnsIntoFlow 回填调用）
+   * @param {string} taskId
+   */
+  const restoreInjectionNoticeFor = (taskId) => {
+    if (!taskId) return;
+    const store = sessionInjectionStores.get(taskId);
+    const task = taskManager.getTask(taskId);
+    let items = [];
+    if (store && store.size > 0) {
+      items = Array.from(store.values());
+    } else if (Array.isArray(task?.injectedItems) && task.injectedItems.length > 0) {
+      items = task.injectedItems;
+      const s = getInjectionStore(taskId);
+      items.forEach((item) => {
+        if (item?.kind && item?.name) s.set(`${item.kind}::${item.name}`, item);
+      });
+    }
+
+    if (items.length > 0) {
+      renderInjectionNoticeItems(items);
+    } else {
+      if (injectionNotice.el && injectionNotice.el.isConnected) {
+        injectionNotice.el.remove();
+      }
+      injectionNotice.el = null;
+      injectionNotice.listEl = null;
+      injectionNotice.countEl = null;
+      injectionNotice.chevronEl = null;
+      injectionNotice.renderedKeys.clear();
+    }
+  };
+
+  api.restoreInjectionNoticeFor = restoreInjectionNoticeFor;
 
   /** 全新会话时重置「注入提示」信息框（DOM 随 flowConversation 清空一并移除） */
-  const resetInjectionNotice = () => {
+  const resetInjectionNotice = (taskId = null) => {
+    if (injectionNotice.el && injectionNotice.el.isConnected) {
+      injectionNotice.el.remove();
+    }
     injectionNotice.el = null;
     injectionNotice.listEl = null;
     injectionNotice.countEl = null;
     injectionNotice.chevronEl = null;
-    injectionNotice.items.clear();
+    injectionNotice.renderedKeys.clear();
     injectionNotice.collapsed = true;
+
+    if (taskId) {
+      sessionInjectionStores.delete(taskId);
+    } else if (taskManager.currentActiveTaskId) {
+      sessionInjectionStores.delete(taskManager.currentActiveTaskId);
+    }
   };
 
   api.resetInjectionNotice = resetInjectionNotice;
 
-  // 串轮过滤铁律：事件帧携 task_id 且非当前前台活跃任务 (后台挂起任务) 时，
-  // 绝不向前台 Flow 注入任何步骤卡/胶囊/错误卡，也不触发收尾归档
-  const isForegroundStreamEvent = () =>
-    taskManager.isForegroundStreamTask(piClient.lastEventTaskId || null);
-
   // 后端真实注入广播：inject_prompt（兑底 Inner-Skill + code-area 路由上下文）
   // 每次真实注入后携带条目清单广播，前端逐条追加至「注入提示」框
   piClient.addEventListener("context-injected", (e) => {
-    if (!isForegroundStreamEvent()) return;
-    const items = e.detail?.items;
+    const detail = e.detail || {};
+    const targetTaskId =
+      detail.task_id ||
+      detail.taskId ||
+      taskManager.currentActiveTaskId ||
+      piClient.lastEventTaskId ||
+      LEGACY_INJECTION_KEY;
+
+    const items = detail.items;
     if (Array.isArray(items)) {
       items.forEach((item) => {
-        if (item?.kind && item?.name) addInjectionNoticeItem(item.kind, item.name);
+        if (item?.kind && item?.name) {
+          addInjectionNoticeItem(item.kind, item.name, targetTaskId);
+        }
       });
     }
   });
 
   // Tool-call Hook 命中：Inner-Skill 动态激活（steer 即时或兑底入队）即同步至「注入提示」框
   piClient.addEventListener("inner-skill-activated", (e) => {
-    if (!isForegroundStreamEvent()) return;
-    const skillName = e.detail?.skill;
+    const detail = e.detail || {};
+    const targetTaskId =
+      detail.task_id ||
+      detail.taskId ||
+      taskManager.currentActiveTaskId ||
+      piClient.lastEventTaskId ||
+      LEGACY_INJECTION_KEY;
+
+    const skillName = detail.skill;
     if (skillName) {
-      addInjectionNoticeItem("inner_skill", skillName);
+      addInjectionNoticeItem("inner_skill", skillName, targetTaskId);
     }
   });
 

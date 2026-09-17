@@ -6,6 +6,6 @@ pub mod protocol;
 pub mod supervisor;
 
 pub use host_pool::{PiHostPool, SessionHost, MAX_CONCURRENT_TASKS};
-pub use inner_skills::{InjectedContextInfo, InnerSkillInjector, SkillMapping};
+pub use inner_skills::{InjectedContextInfo, InjectedItem, InnerSkillInjector, SkillMapping};
 pub use protocol::*;
 pub use supervisor::PiSupervisor;

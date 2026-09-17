@@ -752,7 +752,7 @@ impl PiHostPool {
             return Err(format!("Task {} was aborted", task_id));
         }
 
-        let (processed_message, _info) = self.primary_supervisor.inject_prompt(&request.message);
+        let (processed_message, _info) = self.primary_supervisor.inject_prompt(&request.message, Some(&task_id));
         let mut val = serde_json::json!({
             "type": "prompt",
             "message": processed_message,
@@ -848,7 +848,7 @@ impl PiHostPool {
         if let Some(ref task_id) = request.task_id {
             let hosts = self.hosts.read().await;
             if let Some(host) = hosts.get(task_id) {
-                let (processed_message, _) = self.primary_supervisor.inject_prompt(&request.message);
+                let (processed_message, _) = self.primary_supervisor.inject_prompt(&request.message, Some(task_id.as_str()));
                 let val = serde_json::json!({
                     "type": "follow_up",
                     "message": processed_message,
@@ -857,7 +857,7 @@ impl PiHostPool {
             }
         }
         // 兜底发往主 supervisor
-        let (processed_message, _) = self.primary_supervisor.inject_prompt(&request.message);
+        let (processed_message, _) = self.primary_supervisor.inject_prompt(&request.message, None);
         let val = serde_json::json!({
             "type": "follow_up",
             "message": processed_message,

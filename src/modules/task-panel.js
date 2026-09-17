@@ -503,9 +503,12 @@ export function initTaskPanel(ctx) {
       }
     });
 
-    // 会话流缓存铁律：返回 Flow 时恢复该会话生命周期内收集的「文件变更」收纳框，
+    // 会话流缓存铁律：返回 Flow 时恢复该会话生命周期内收集的「注入提示」信息框与「文件变更」收纳框，
     // 保证右键退出（挂起/归档）后经历史记录 / Task 记录回入时呈现与退出前一致。
-    // 内核会话还原等无缓存仓的会话自然空操作，不产生任何串档
+    if (typeof api.restoreInjectionNoticeFor === "function") {
+      api.restoreInjectionNoticeFor(task.id);
+    }
+
     if (typeof api.restoreFileChangesFor === "function") {
       api.restoreFileChangesFor(task.id);
     }
@@ -667,6 +670,7 @@ export function initTaskPanel(ctx) {
     task.responseText = lastTurn?.responseText || conv.responseText || "";
     task.toolCalls = lastTurn?.toolCalls || conv.toolCalls || [];
     task.thinkingDurationText = lastTurn?.thinkingDurationText || conv.thinkingDuration || "已完成思考";
+    task.injectedItems = Array.isArray(conv.injectedItems) ? conv.injectedItems : (task.injectedItems || []);
 
     renderTurnsIntoFlow(task, turns, {
       sessionPath: task.sessionPath,
@@ -765,6 +769,7 @@ export function initTaskPanel(ctx) {
         sessionPath: resolveTaskSessionIdentity(currentActive).sessionPath || "",
         sessionId: resolveTaskSessionIdentity(currentActive).sessionId || undefined,
         isAborted: turnsToSave.some((t) => t.isAborted),
+        injectedItems: currentActive.injectedItems || [],
       });
 
       if (savedConv && savedConv.id) {
@@ -783,6 +788,7 @@ export function initTaskPanel(ctx) {
         sessionPath: resolveTaskSessionIdentity(currentActive).sessionPath || "",
         sessionId: resolveTaskSessionIdentity(currentActive).sessionId || undefined,
         isAborted,
+        injectedItems: currentActive?.injectedItems || [],
       });
 
       if (savedConv && savedConv.id && currentActive) {

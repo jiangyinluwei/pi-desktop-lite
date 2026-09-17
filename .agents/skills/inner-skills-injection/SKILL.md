@@ -91,11 +91,12 @@ description: 描述运行态技能在何种场景下被触发与主要约束。
    - 在 `get_skill_detail` 中增加匹配分支（若编写临时测试验证逻辑，验证通过后**必须彻底清除**，严禁滞留代码库）。
 2. **前端模块 (`src/modules/flow-pipeline.js`)**：
    - 在 `getSkillDisplayName` 注册中文友好标签（注入提示条目展示用，inner_skill 条目自动拼装展示名）；
-   - 每段注入提醒：后端每次真实注入均广播一次 `pi:inner-skill-activated`，前端监听后调用 `addInjectionNoticeItem("inner_skill", skillName)` 在路由目标项目胶囊下方的「注入提示」信息框中追加条目（kind+name 去重，跨轮累积，默认收起显示「注入提示」与注入数量，全新会话重置）；
-   - 路由上下文注入上报：`inject_prompt`（`src-tauri/src/pi_runner/supervisor.rs`）在兑底 Inner-Skill 与 code-area 路由上下文（`build_code_area_routing_context_with_items`）注入后广播 `pi:context_injected`（payload 携带 `items: [{kind, name}]`，kind ∈ inner_skill / agents_md / readme_md / routing_context），前端监听 `context-injected` 逐条追加至「注入提示」框；
+   - 每段注入提醒：后端每次真实注入均广播一次 `pi:inner-skill-activated`（必须携带 `task_id`），前端监听后调用 `addInjectionNoticeItem("inner_skill", skillName, taskId)` 在路由目标项目胶囊（或首轮提问卡）下方的「注入提示」信息框中追加条目（kind+name 去重，跨轮累积，默认收起显示「注入提示」与注入数量，全新会话重置）；
+   - 路由上下文注入上报：`inject_prompt`（`src-tauri/src/pi_runner/supervisor.rs`）在兑底 Inner-Skill 与 code-area 路由上下文（`build_code_area_routing_context_with_items`）注入后广播 `pi:context_injected`（payload 携带 `task_id` 与 `items: [{kind, name}]`，kind ∈ inner_skill / agents_md / readme_md / routing_context），前端监听 `context-injected` 路由至对应 Task 分仓并逐条追加至「注入提示」框；
+   - Task 隔离与会话恢复铁律：注入数据按 Task 维护在 `sessionInjectionStores` 与 `task.injectedItems`。多任务直切、历史记录查看与会话回退时通过 `api.restoreInjectionNoticeFor(taskId)` 同步自愈复原，后台挂起任务注入只入分仓不动前台 DOM；
    - 同步在 `src/styles/flow.css` 保留 `.flow-injection-notice` 信息框样式（直角矩形简洁风头部 + 可点击展开的条目清单，默认收起显示「注入提示」与注入数量）；
 3. **构建验证**：
-   - 运行 `npm run check` 确保前端 AST 与 Rust 编译均通过。
+   - 运行 `npm run check:fe` 与 `npm run check` 确保前端 AST、门禁契约与 Rust 编译均通过。
 
 ---
 

@@ -98,7 +98,7 @@ description: Pi Desktop Lite 桌面端交互 22 项核心铁律的完整机制�
 - **平滑切换与择时绑定**：允许先切换至 `code-area`，再在设置面板或主界面择时添加路由；处于 `code-area` 且未绑定路由时，输入框禁止输入（只读提示），点击输入框快速呼出路由绑定对话框；
 - **免污染铁律**：`code-area` 自身绝对不创建或修改业务文件，所有代码读写、补丁与命令执行严格作用于目标路由项目；
 - **存在性自动校验与失效清除**：切换至 `code-area` 或启动时，自动校验路由工作区与「最近使用项目」是否在本地磁盘真实存在；失效时自动清除选项并过滤失效历史；
-- 对话流上下文注入：发起 Prompt / FollowUp 时透明注入 `<code_area_routing_context>`（目标绝对路径、免污染铁律与 Hub 技能清单），自动读取并注入目标路由工作区的 `AGENTS.md`（及 `README.md`）。`.agents/skills/` 下的技能规约无需全量强制前置注入，由 Agent 遵循 `AGENTS.md` 中的 Skills 映射矩阵按需查阅并调用；并在 Flow 呈现路由目标胶囊；所有注入条目（Inner-Skill / AGENTS.md / README.md / 路由信封）在 Flow 会话流「路由目标项目」胶囊下方的「注入提示」信息框中集中呈现（直角简洁风格，默认收起显示「注入提示」与注入数量，点击展开完整清单；动态累积、去重）。
+- 对话流上下文注入：发起 Prompt / FollowUp 时透明注入 `<code_area_routing_context>`（目标绝对路径、免污染铁律与 Hub 技能清单），自动读取并注入目标路由工作区的 `AGENTS.md`（及 `README.md`）。`.agents/skills/` 下的技能规约无需全量强制前置注入，由 Agent 遵循 `AGENTS.md` 中的 Skills 映射矩阵按需查阅并调用；并在 Flow 呈现路由目标胶囊；所有注入条目（Inner-Skill / AGENTS.md / README.md / 路由信封）在 Flow 会话流「路由目标项目」胶囊（或提问卡）下方的「注入提示」信息框中集中呈现（直角简洁风格，默认收起显示「注入提示」与注入数量，点击展开完整清单；动态累积、去重；事件广播必须携带 `task_id`，前端建立按 Task 隔离的注入缓存分仓，多任务直切、设置页历史查看及会话回退时由 `restoreInjectionNoticeFor` 完整自愈复原）。
 
 ## 铁律 14：子代理模型自动钉住与防跃升机制 (Subagents Model Pinning & Escalation Prevention)
 

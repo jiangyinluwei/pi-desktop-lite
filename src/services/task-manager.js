@@ -159,6 +159,9 @@ export class TaskManager extends EventTarget {
 
     this.tasks.set(taskId, task);
     this.currentActiveTaskId = taskId;
+    if (piClient) {
+      piClient.lastEventTaskId = taskId;
+    }
 
     // 注册到系统通知服务
     notificationService.registerTask(taskId, {
@@ -290,6 +293,9 @@ export class TaskManager extends EventTarget {
     }
 
     this.currentActiveTaskId = taskId;
+    if (taskId && piClient) {
+      piClient.lastEventTaskId = taskId;
+    }
     if (taskId && this.tasks.has(taskId)) {
       const task = this.tasks.get(taskId);
       task.hasUnread = false;

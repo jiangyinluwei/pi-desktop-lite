@@ -480,6 +480,9 @@ class PiClient extends EventTarget {
    * @param {string} [sessionId]
    */
   async sendPrompt(message, images = null, streamingBehavior = null, taskId = null, sessionPath = null, sessionId = null) {
+    if (taskId) {
+      this.lastEventTaskId = taskId;
+    }
     const activeModel = this.currentModel;
     const provider = activeModel?.provider;
     const modelId = activeModel?.id || activeModel?.modelId || activeModel?.name;

@@ -138,10 +138,10 @@ window.addEventListener("wheel", (e) => {
 - 选择“终止并发送”：先注册 `waitForTurnSettled(taskId)`（6s 兜底），再 `piClient.abort(taskId)`，旧轮定格为「已中断」，旧轮结算后才开启新轮，彻底杜绝内容串轮。
 
 ### 5.4 后台任务流式串轮过滤铁律 (Foreground Stream Gate)
-- **事件帧归属追踪**：`piClient` 在 `handleAgentEvent` / `handleMessageUpdate` 中记录每帧 RPC 的 `task_id` 至 `piClient.lastEventTaskId`（同步派发窗口内可靠）；
+- **事件帧归属追踪**：`piClient` 在 `handleAgentEvent` / `handleMessageUpdate` 中记录每帧 RPC 的 `task_id` 至 `piClient.lastEventTaskId`；同时在 `sendPrompt` / `sendFollowUp` 发起新任务与 `taskManager.createTask` / `setActiveTask` 时**同步立即对齐** `lastEventTaskId`，严禁让首帧事件到达前的真空期残留旧任务 ID 导致前台门禁误杀（如 `pi:context_injected` 首发即被门禁吞噬）；
 - **前台门禁判定**：`taskManager.isForegroundStreamTask(taskId)` —— 事件携 `task_id` 且 ≠ 当前前台活跃任务（含挂起态 `currentActiveTaskId = null`）时视为后台事件；缺失 `task_id` 时视为前台主会话向后兼容；
-- **UI 层全量门禁**：`flow-stream.js` 与 `flow-pipeline.js` 的全部流式监听器（thinking/text/toolcall/tool/agent/retry/注入提示框条目）入口处统一执行 `isForegroundStreamEvent()` 过滤——后台挂起任务的增量只入 `TaskManager` 数据缓冲（供侧边栏与恢复展示），**绝不触碰前台 Flow DOM、流式状态、错误卡与收尾归档**；
-- **历史会话恢复场景**：从历史记录/会话记录进入 Flow 时，后台旧任务继续输出也绝不拼进历史轮次 DOM；仅当该任务被重新置为前台活跃任务时才恢复流式渲染。
+- **UI 层全量门禁与注入分仓**：`flow-stream.js` 与 `flow-pipeline.js` 的全部流式监听器（thinking/text/toolcall/tool/agent/retry/注入提示框条目）统一按 Task 分仓（如 `sessionInjectionStores` 与 `task.injectedItems`）。后台挂起任务的增量只入 `TaskManager` 与分仓缓冲（供侧边栏与恢复展示），**绝不触碰前台 Flow DOM、流式状态、错误卡与收尾归档**；
+- **历史与多任务恢复场景**：从历史记录/会话记录进入 Flow 或多任务直切时，在 `renderTurnsIntoFlow` 中通过 `api.restoreInjectionNoticeFor(task.id)` 完整自愈复原「注入提示」信息框；后台旧任务继续输出也绝不拼进历史轮次 DOM。
 
 ---
 

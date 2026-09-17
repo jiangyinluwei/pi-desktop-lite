@@ -329,6 +329,9 @@ class ConversationHistoryService extends EventTarget {
       if (typeof data.isAborted === "boolean") {
         conv.isAborted = data.isAborted;
       }
+      if (Array.isArray(data.injectedItems)) {
+        conv.injectedItems = data.injectedItems;
+      }
       // 重新恢复显示（若此前被隐藏）
       this.hiddenIds.delete(conv.id);
     } else {
@@ -346,6 +349,7 @@ class ConversationHistoryService extends EventTarget {
         sessionId: data.sessionId || undefined,
         isAborted: Boolean(data.isAborted),
         turns: cleanedTurns,
+        injectedItems: Array.isArray(data.injectedItems) ? data.injectedItems : [],
         createdAt: now,
         lastViewedAt: now,
       };
