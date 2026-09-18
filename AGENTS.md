@@ -101,7 +101,7 @@
 前端按功能域模块化解耦，严禁向入口文件堆砌业务代码：
 
 - **`src/main.js`**：唯一编排入口。**不收集 DOM 引用（`ctx.el` 已彻底废除，各模块经 `src/lib/el-binder.js` 的 `bindAll` 按需自绑定）**，仅构建共享上下文（`ctx.flowDom` + 4 个 store 引用 + `ctx.flowView` 视图派生缓存 + `ctx.api`）并按依赖顺序初始化各模块；
-- **`src/lib/`**：跨模块共享基础件（`dom-utils` / `icons` / `markdown-renderer` / `view-constants` / `event-bus` / `el-binder` / `contracts`）。**`contracts.js` 是唯一契约归口**：事件通道契约表（bus / Store action / `pi:*` 内核桥接，新事件必须登记）、`ctx.api` 函数槽契约 @typedef 定型（新增槽位必须同步登记，严禁幽灵槽）、任务运行态/终态/终止判定唯一源（`TASK_ACTIVE_STATUSES` / `TASK_TERMINAL_STATUSES` / `isTaskAborted`，严禁模块自维护状态字面量数组或 `isAborted || aborted` 习语）、内核事件帧 taskId 解析唯一源（`resolveEventTaskId`，严禁内联回退链）；
+- **`src/lib/`**：跨模块共享基础件（`dom-utils` / `icons` / `markdown-renderer` / `view-constants` / `event-bus` / `el-binder` / `token-telemetry-gauge` / `contracts`）。**`contracts.js` 是唯一契约归口**：事件通道契约表（bus / Store action / `pi:*` 内核桥接，新事件必须登记）、`ctx.api` 函数槽契约 @typedef 定型（新增槽位必须同步登记，严禁幽灵槽）、任务运行态/终态/终止判定唯一源（`TASK_ACTIVE_STATUSES` / `TASK_TERMINAL_STATUSES` / `isTaskAborted`，严禁模块自维护状态字面量数组或 `isAborted || aborted` 习语）、内核事件帧 taskId 解析唯一源（`resolveEventTaskId`，严禁内联回退链）；
 - **`src/modules/`**：按功能域拆分的 UI 业务模块（全量清单见 README 目录拓扑；`flow-render.js` 纯渲染层、`flow-dom.js` 只读 DOM 引用层、`flow-state-view.js` 视图派生缓存属主）。跨模块调用经 `ctx.api.<fn>()` 与显式 import；**Flow 视图分层铁律**（流式纯数据归 `flowStore` 按 taskId 分仓、视图派生缓存归 `flowView` 密封对象、纯渲染归 `flow-render.js`、只读 DOM 引用归 `ctx.flowDom`）的完整细节见 [`flow-interaction-pattern` 技能 §1](.agents/skills/flow-interaction-pattern/SKILL.md)；
 - **`src/services/stores/`**：共享可变状态唯一属主（`viewStore` 四态状态机 / `settingsStore` / `attachmentsStore` / `flowStore` 流式纯数据分仓）。**Store action 一律同步、禁 async/await、禁微任务**；严禁跨模块直改 `view.x` / `settings.x` / `attachments.x` / `flow.<纯数据>`（`measure:coupling` 度量断言 = 0）；
 - **`src/styles/`**：按功能域拆分的样式文件，`src/styles.css` 仅为 `@import` 聚合入口；
@@ -124,5 +124,5 @@
 
 ### 多预设工作区与路由调度中枢
 - **IPC 指令**：`pi_list_workspaces` / `pi_get_active_workspace` / `pi_set_active_workspace(id)`（物化副本 ➔ 持久化 ➔ 切换 ➔ 空闲重启重锚 CWD）；
-- **公共预设 (`workspaces/`)**：`default-area`（默认）、`code-area`（**全局编码技能集与路由调度中枢**，物理 CWD 驻留 Hub、免污染路由外部目标项目）、`research-area`（深度研究）；
+- **公共预设**：根目录 `default-area/`（默认工作区）、`workspaces/code-area`（**全局编码技能集与路由调度中枢**，物理 CWD 驻留 Hub、免污染路由外部目标项目）、`workspaces/research-area`（深度研究）；模板发现同时兼容根级含 `workspace.json` 的自定义预设目录（`src-tauri/src/workspace/mod.rs` 三段扫描）；
 - **随安装包分发**：注册于 `tauri.conf.json` 的 `bundle.resources`，首次选中整目录物化复制至 `~/.pi-dl/workspaces/<id>/` 作为运行时副本。

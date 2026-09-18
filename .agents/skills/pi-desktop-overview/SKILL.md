@@ -78,7 +78,7 @@ description: |
 
 ## 🧩 前端模块化与降耦合架构 (Modular & Decoupled Architecture)
 
-- **功能域模块化编排**：`src/modules/` 按功能域拆分（22 个模块），`src/main.js` 作为轻量唯一编排入口（约 100 行），仅构建共享上下文并按依赖顺序初始化各模块；
+- **功能域模块化编排**：`src/modules/` 按功能域拆分（24 个模块），`src/main.js` 作为轻量唯一编排入口（约 90 行），仅构建共享上下文并按依赖顺序初始化各模块；
 - **共享可变状态唯一属主 (`src/services/stores/`)**：
   - `viewStore`：四态界面状态机（`morph`/`set`），控制流命令禁上总线；
   - `settingsStore`：通道抽屉、官方目录、认证缓存与工作区状态；
@@ -94,7 +94,7 @@ description: |
   - 控制流与状态迁移走 Store action 或显式 import；
   - `ctx.api` 函数槽以 JSDoc `@typedef` 全量契约定型（按属主分组登记 + 三类保留原因注解），杜绝幽灵槽与兼容壳复发；
 - **构建与质量度量门禁**：
-  - `npm run check:fe`：前端静态校验门禁（50 个 .js 模块语法 + import 图可解析 + 循环依赖检测）；
+  - `npm run check:fe`：前端静态校验门禁（全量 .js 模块语法 + import 图可解析 + 循环依赖检测）；
   - `npm run check`：Rust 极速语法与类型校验（~1s）；
   - `npm run measure:coupling`：耦合度量基线监控（确保共享状态裸写为 0、无超额重复注册）。
 
@@ -104,12 +104,16 @@ description: |
 
 | 子系统模块 | 核心职责 |
 |---|---|
-| **`pi_runner`** | Win32 Job Object 孤儿收割，`\n` 分帧器，内核自动平滑重连（最多 5 次，失败触发闪电提醒） |
-| **`inner_skills`** | 基于 `RULES.md` 极简映射（<100 Tokens）在工具调用时动态 Steer 注入 7 大运行态技能 |
-| **`package_manager`** | 连通 pi.dev/packages，15min TTL 缓存，FIFO 安装队列与 ProgressStepper 步进 |
+| **`pi_runner`** | Win32 Job Object 孤儿收割（`job_object.rs`），`\n` 分帧（`framer.rs`），内核 RPC 基建与内核保险平滑重连（最多 5 次，失败触发闪电提醒）；内含 `supervisor.rs`（主宿主监督器）、`host_pool.rs`（多任务进程池，`MAX_CONCURRENT_TASKS = 3`）、`rpc.rs`（请求 id/pending 登记/stdin 写循环/PATH 补全单一实现）、`inner_skills.rs`（运行态技能注入）、`protocol.rs` |
+| **`pi_runner/inner_skills`** | 基于 `RULES.md` 极简映射（<100 Tokens）在工具调用时动态 Steer 注入 9 大运行态技能 |
+| **`package_manager`** | 连通 pi.dev/packages，15min TTL 缓存，FIFO 安装队列与 ProgressStepper 步进；含 `presets.rs`（推荐配置预设）与 `patches.rs`（组件缺陷补丁） |
 | **`session`** | `DashMap` 并发缓存 + `notify` 递归监听 `~/.pi/agent/sessions/`，原生上下文脱敏净化，精确毫秒时间戳排序与 LIFO 最新提问去重历史栈 |
-| **`config_manager`** | 双层持久化：`~/.pi-dl/config.json` 与 `~/.pi/agent/` 下的 `auth.json` / `models.json` / `settings.json`；已由单文件神对象拆为 `config_manager/{io,schema,migrate,validate}.rs`（阶段 5） |
-| **`commands`** | Tauri IPC 命令层（阶段 5 拆分）：`commands/{file,window,agent,session,rollback,workspace_cmd,skills,version}.rs`，`lib.rs` 仅保留 `invoke_handler!` 汇总与 `app.manage(...)`/`run()` 启动 |
+| **`config_manager`** | 双层持久化：`~/.pi-dl/config.json` 与 `~/.pi/agent/` 下的 `auth.json` / `models.json` / `settings.json`；已由单文件神对象拆为 `config_manager/{io,schema,migrate,validate}.rs` |
+| **`workspace`** | 多预设工作区模板发现（`default-area` 根目录 + `workspaces/<id>/` + 根级含 `workspace.json` 目录）、整目录物化复制至 `~/.pi-dl/workspaces/<id>/`、`code-area` 路由中枢绑定与 CWD 重锚 |
+| **`version_watcher`** | 内核版本检查（`checker.rs`）、VersionScheduler 更新调度（`scheduler.rs`）、流式下载热更新与原子取消（`updater.rs`） |
+| **`security`** | 上下文脱敏净化（`redaction.rs`），历史会话与遥测的敏感信息剥离 |
+| **`rollback.rs`** | 会话回退文件还原：按 `(path, toolCallId)` 精确匹配最早快照，两阶段事务性预检与原子落盘 |
+| **`commands`** | Tauri IPC 命令层：`commands/{file,window,agent,session,rollback,workspace_cmd,skills,version}.rs`，`lib.rs` 仅保留 `invoke_handler!` 汇总与 `app.manage(...)`/`run()` 启动 |
 
 ---
 
