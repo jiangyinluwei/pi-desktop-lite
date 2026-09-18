@@ -265,6 +265,8 @@
   border-radius: 8px;
   padding: 8px 16px;
   box-shadow: var(--sketch-shadow);
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .flow-user-prompt-card .prompt-icon {
@@ -273,6 +275,9 @@
   align-items: center;
   margin-top: 3px;
   flex-shrink: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none;
 }
 
 .prompt-main-wrap {
@@ -281,6 +286,8 @@
   gap: 4px;
   min-width: 0;
   flex: 1;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .flow-prompt-attachments {
@@ -288,6 +295,8 @@
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 2px;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .flow-attachment-chip {
@@ -302,6 +311,7 @@
   color: var(--ink-primary);
   line-height: 1;
   user-select: none;
+  -webkit-user-select: none;
 }
 
 .flow-attachment-chip .chip-icon {
@@ -318,6 +328,9 @@
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 /* 提问一键复制按钮：常态透明无边框（1px 透明占位防抖），悬浮/聚焦显现手绘边框 */
@@ -336,6 +349,7 @@
   border-radius: 4px;
   cursor: pointer;
   user-select: none;
+  -webkit-user-select: none;
   transition: all 0.15s ease;
 }
 
@@ -376,6 +390,7 @@
   border-radius: 4px;
   cursor: pointer;
   user-select: none;
+  -webkit-user-select: none;
   opacity: 0;
   pointer-events: none;
   transition: all 0.15s ease;
@@ -1738,6 +1753,8 @@
   color: var(--ink-primary);
   white-space: pre-wrap;
   word-break: break-all;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .tool-empty-tip {
