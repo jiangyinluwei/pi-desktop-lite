@@ -119,6 +119,9 @@ export function initFlowUi(ctx) {
    * @param {boolean} [options.isOpenThinking=false]
    * @param {boolean} [options.isAborted=false]
    * @param {string | null} [options.errorMessage=null]
+   * @param {boolean} [options.silentPrompt=false] 静默回填轮次（生图/多模态路由 Phase 2）：
+   *                 回填 Prompt 属于路由模型向会话模型传递的内部会话信息，严禁渲染提问卡与路由胶囊，
+   *                 后台静默执行（铁律23），仅呈现回归回答的步骤流与最终输出
    * @returns {Object} 包含该轮各子元素引用的对象
    */
   const createFlowTurnGroupElement = ({
@@ -132,62 +135,68 @@ export function initFlowUi(ctx) {
     isOpenThinking = false,
     isAborted = false,
     errorMessage = null,
+    silentPrompt = false,
   } = {}) => {
     const groupEl = document.createElement("div");
     groupEl.className = "flow-message-group";
 
     // 1. 用户问题卡片（净化剥离注入信封与绝对路径尾注，始终展示真实用户输入）
-    const userPromptCard = document.createElement("div");
-    userPromptCard.className = "flow-user-prompt-card";
+    let userPromptCard = null;
+    if (!silentPrompt) {
+      userPromptCard = document.createElement("div");
+      userPromptCard.className = "flow-user-prompt-card";
 
-    const cleanQuery = cleanUserPrompt(query);
+      const cleanQuery = cleanUserPrompt(query);
 
-    let attachmentsHtml = "";
-    if (Array.isArray(attachments) && attachments.length > 0) {
-      const chips = attachments
-        .map(
-          (f) => `
-        <span class="flow-attachment-chip" title="${escapeHtml(f.path || f.name)}">
-          <span class="chip-icon">${getFileCategoryIcon(f.category)}</span>
-          <span class="chip-name">${escapeHtml(f.name)}</span>
-        </span>
-      `
-        )
-        .join("");
-      attachmentsHtml = `<div class="flow-prompt-attachments">${chips}</div>`;
+      let attachmentsHtml = "";
+      if (Array.isArray(attachments) && attachments.length > 0) {
+        const chips = attachments
+          .map(
+            (f) => `
+          <span class="flow-attachment-chip" title="${escapeHtml(f.path || f.name)}">
+            <span class="chip-icon">${getFileCategoryIcon(f.category)}</span>
+            <span class="chip-name">${escapeHtml(f.name)}</span>
+          </span>
+        `
+          )
+          .join("");
+        attachmentsHtml = `<div class="flow-prompt-attachments">${chips}</div>`;
+      }
+
+      if (cleanQuery) {
+        userPromptCard.dataset.copyText = cleanQuery;
+      }
+      userPromptCard.innerHTML = `
+        <div class="prompt-icon">
+          <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <path d="M4 10 L16 10 M11 5 L16 10 L11 15" />
+          </svg>
+        </div>
+        <div class="prompt-main-wrap">
+          ${attachmentsHtml}
+          <p class="prompt-content">${escapeHtml(cleanQuery || (attachments.length > 0 ? `[附带 ${attachments.length} 个文件/图片]` : ""))}</p>
+        </div>
+        <button class="prompt-copy-btn" type="button" title="复制提问" aria-label="复制提问">${ICONS.copy}</button>
+        <button class="flow-rollback-btn" type="button" title="回退到此处（撤回此轮及之后的文件变更）" aria-label="回退到此处">${ICONS.rewind}</button>
+      `;
+      groupEl.appendChild(userPromptCard);
     }
 
-    if (cleanQuery) {
-      userPromptCard.dataset.copyText = cleanQuery;
+    // 2. code-area 路由目标项目胶囊（静默回填轮次严禁重复展示，路由上下文已随真实提问轮呈现）
+    if (!silentPrompt) {
+      const isCodeArea = settingsStore.activeWorkspace?.id === "code-area" || settingsStore.activeWorkspace?.requiresRoute;
+      const routePath = settingsStore.activeWorkspace?.routePath;
+      const routeName = settingsStore.activeWorkspace?.routeName || (routePath ? routePath.split("/").pop() : "");
+
+      const routeCapsuleEl = document.createElement("div");
+      routeCapsuleEl.className = `flow-route-capsule ${isCodeArea && routePath ? "" : "hidden"}`;
+      routeCapsuleEl.setAttribute("title", `路由目标物理路径: ${routePath || ""}`);
+      routeCapsuleEl.innerHTML = `
+        <span class="capsule-icon" aria-hidden="true">${ICONS.folder}</span>
+        <span class="capsule-text">路由目标项目：<strong>${escapeHtml(routeName || routePath || "")}</strong></span>
+      `;
+      groupEl.appendChild(routeCapsuleEl);
     }
-    userPromptCard.innerHTML = `
-      <div class="prompt-icon">
-        <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-          <path d="M4 10 L16 10 M11 5 L16 10 L11 15" />
-        </svg>
-      </div>
-      <div class="prompt-main-wrap">
-        ${attachmentsHtml}
-        <p class="prompt-content">${escapeHtml(cleanQuery || (attachments.length > 0 ? `[附带 ${attachments.length} 个文件/图片]` : ""))}</p>
-      </div>
-      <button class="prompt-copy-btn" type="button" title="复制提问" aria-label="复制提问">${ICONS.copy}</button>
-      <button class="flow-rollback-btn" type="button" title="回退到此处（撤回此轮及之后的文件变更）" aria-label="回退到此处">${ICONS.rewind}</button>
-    `;
-    groupEl.appendChild(userPromptCard);
-
-    // 2. code-area 路由目标项目胶囊
-    const isCodeArea = settingsStore.activeWorkspace?.id === "code-area" || settingsStore.activeWorkspace?.requiresRoute;
-    const routePath = settingsStore.activeWorkspace?.routePath;
-    const routeName = settingsStore.activeWorkspace?.routeName || (routePath ? routePath.split("/").pop() : "");
-
-    const routeCapsuleEl = document.createElement("div");
-    routeCapsuleEl.className = `flow-route-capsule ${isCodeArea && routePath ? "" : "hidden"}`;
-    routeCapsuleEl.setAttribute("title", `路由目标物理路径: ${routePath || ""}`);
-    routeCapsuleEl.innerHTML = `
-      <span class="capsule-icon" aria-hidden="true">${ICONS.folder}</span>
-      <span class="capsule-text">路由目标项目：<strong>${escapeHtml(routeName || routePath || "")}</strong></span>
-    `;
-    groupEl.appendChild(routeCapsuleEl);
 
     // 2b. 无痕内置重连进度胶囊 (手绘草图风格，置于会话流最下方，运行态瞬态展示，不沉淀历史)
     const failoverCapsuleEl = document.createElement("div");
@@ -391,8 +400,8 @@ export function initFlowUi(ctx) {
     // 自动内置重连提醒文本框置于会话流最下方（原本是最上方）
     groupEl.appendChild(failoverCapsuleEl);
 
-    const userTextEl = userPromptCard.querySelector(".prompt-content");
-    const promptAttachmentsEl = userPromptCard.querySelector(".flow-prompt-attachments");
+    const userTextEl = userPromptCard?.querySelector(".prompt-content") || null;
+    const promptAttachmentsEl = userPromptCard?.querySelector(".flow-prompt-attachments") || null;
     const failoverTextEl = failoverCapsuleEl.querySelector(".capsule-text");
 
     const turnRefs = {

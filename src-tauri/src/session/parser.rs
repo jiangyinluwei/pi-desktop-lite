@@ -200,6 +200,9 @@ const KNOWN_TAG_NAMES: &[&str] = &[
     "inner_skills_context",
     "inner_skill_rules",
     "prompt_context",
+    // 生图/多模态路由静默回填信封（铁律23）：路由模型向会话模型回传的内部调度信息，
+    // 剥离后输入历史、会话记录与内核历史树摘要仅呈现用户真实提问
+    "image_routing_handover",
 ];
 
 static KNOWN_INJECTED_TAGS_REGEX: Lazy<Regex> = Lazy::new(|| {

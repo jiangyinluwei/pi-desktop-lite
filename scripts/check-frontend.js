@@ -264,8 +264,69 @@ if (cycles.length) {
   }
 }
 
+// ---------- 4. 命名导出与导入有效性校验 ----------
+// 启发式正则校验（非完整 AST）：stripComments 会误伤字符串字面量中的 "//"（如 URL），
+// 故仅用于导出匹配辅助；误报时以运行时实际表现为准
+const missingExports = [];
+const stripCommentsCache = new Map();
+function stripComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*/g, "");
+}
+function getStrippedCode(file) {
+  if (!stripCommentsCache.has(file)) {
+    stripCommentsCache.set(file, stripComments(fs.readFileSync(file, "utf-8")));
+  }
+  return stripCommentsCache.get(file);
+}
+
+for (const file of files) {
+  const code = getStrippedCode(file);
+  const importNamedRegex = /import\s*\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"]/g;
+  let m;
+  while ((m = importNamedRegex.exec(code)) !== null) {
+    const rawNames = m[1];
+    const spec = m[2];
+    const resolved = resolveSpecifier(file, spec);
+    if (!resolved) continue;
+    const targetCode = getStrippedCode(resolved);
+    const names = rawNames
+      .split(",")
+      .map((s) => {
+        const trimmed = s.trim();
+        if (!trimmed) return null;
+        return trimmed.split(/\s+as\s+/)[0].trim();
+      })
+      .filter(Boolean);
+
+    for (const name of names) {
+      const exportDeclRegex = new RegExp(
+        `export\\s+(?:async\\s+)?(?:function\\*?|const|let|class|var)\\s+${name}\\b`
+      );
+      // 导出列表要求 name 位于导出项末尾（后随逗号/收尾花括号）：
+      // `export { a as x }` 中 a 是本地名而非导出名，不得因 \ba\b 误判为已导出
+      const exportListRegex = new RegExp(`export\\s*\\{[^}]*\\b${name}\\s*(?:,[^}]*)?\\}`);
+      if (!exportDeclRegex.test(targetCode) && !exportListRegex.test(targetCode)) {
+        missingExports.push({
+          from: path.relative(process.cwd(), file),
+          name,
+          spec,
+          target: path.relative(process.cwd(), resolved),
+        });
+      }
+    }
+  }
+}
+
+if (missingExports.length) {
+  ok = false;
+  lines.push(`\n[命名导出缺失] ${missingExports.length} 处：`);
+  for (const item of missingExports) {
+    lines.push(`  ✗ ${item.from} 导入了 '${item.name}'，但目标模块 ${item.target} 未导出该标识符`);
+  }
+}
+
 if (ok) {
-  lines.push("\n前端静态校验通过：语法 / import 图可解析 / 无循环依赖");
+  lines.push("\n前端静态校验通过：语法 / import 图可解析 / 命名导出匹配 / 无循环依赖");
 } else {
   lines.push("\n前端静态校验未通过，见上方错误。");
 }

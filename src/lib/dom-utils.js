@@ -51,8 +51,9 @@ export const cleanUserPrompt = (text) => {
   clean = clean.replace(/<inner_skills_context(?:\s[^>]*)?>[\s\S]*?<\/inner_skills_context>/gi, "");
   clean = clean.replace(/<inner_skill_rules(?:\s[^>]*)?>[\s\S]*?<\/inner_skill_rules>/gi, "");
   clean = clean.replace(/<prompt_context(?:\s[^>]*)?>[\s\S]*?<\/prompt_context>/gi, "");
+  clean = clean.replace(/<image_routing_handover(?:\s[^>]*)?>[\s\S]*?<\/image_routing_handover>/gi, "");
   clean = clean.replace(/<([a-zA-Z0-9_-]*(?:context|rules|skill|routing)[a-zA-Z0-9_-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>/gi, "");
-  clean = clean.replace(/<(?:runtime_context_rules|runtime_inner_skills|runtime_inner_skill|code_area_routing_context|routed_agents_md|routed_readme_md|routed_project_skills|routed_skill|workspace_context|runtime_rules|inner_skills_context|inner_skill_rules|prompt_context)(?:\s[^>]*)?>[\s\S]*$/gi, "");
+  clean = clean.replace(/<(?:runtime_context_rules|runtime_inner_skills|runtime_inner_skill|code_area_routing_context|routed_agents_md|routed_readme_md|routed_project_skills|routed_skill|workspace_context|runtime_rules|inner_skills_context|inner_skill_rules|prompt_context|image_routing_handover)(?:\s[^>]*)?>[\s\S]*$/gi, "");
 
   // 2. 查找并截断附带本地文件路径尾注
   const attachmentMarkers = [

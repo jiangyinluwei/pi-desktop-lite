@@ -25,6 +25,16 @@ export const DEFAULT_FAILOVER_CONFIG = {
   postReconnectDelayMs: 60000,
 };
 
+/**
+ * 生图与多模态路由配置默认值
+ */
+export const DEFAULT_IMAGE_ROUTING_CONFIG = {
+  enabled: false,
+  routingModel: null, // { provider: string, modelId: string, name?: string }
+  separateVisionModel: false,
+  visionModel: null, // { provider: string, modelId: string, name?: string }
+};
+
 class ConfigService extends EventTarget {
   constructor() {
     super();
@@ -36,6 +46,7 @@ class ConfigService extends EventTarget {
     this.ignoreUpdateNotification = false;
     this.autoReconnectSwitch = true;
     this.modelFailover = { ...DEFAULT_FAILOVER_CONFIG };
+    this.imageRouting = { ...DEFAULT_IMAGE_ROUTING_CONFIG };
     this.mediaQueryDark = window.matchMedia("(prefers-color-scheme: dark)");
     this.cachedNodeEnv = null;
   }
@@ -102,6 +113,9 @@ class ConfigService extends EventTarget {
         if (config.modelFailover && typeof config.modelFailover === "object") {
           this.modelFailover = { ...DEFAULT_FAILOVER_CONFIG, ...config.modelFailover };
         }
+        if (config.imageRouting && typeof config.imageRouting === "object") {
+          this.imageRouting = { ...DEFAULT_IMAGE_ROUTING_CONFIG, ...config.imageRouting };
+        }
         return config;
       }
     } catch (e) {
@@ -123,6 +137,7 @@ class ConfigService extends EventTarget {
       ignoreUpdateNotification: this.getIgnoreUpdateNotification(),
       autoReconnectSwitch: this.getAutoReconnectSwitch(),
       modelFailover: this.getModelFailoverConfig(),
+      imageRouting: this.getImageRoutingConfig(),
     };
 
     try {
@@ -261,6 +276,57 @@ class ConfigService extends EventTarget {
     }
   }
 
+  /**
+   * 获取生图与多模态路由配置
+   * @returns {Object}
+   */
+  getImageRoutingConfig() {
+    return { ...DEFAULT_IMAGE_ROUTING_CONFIG, ...(this.imageRouting || {}) };
+  }
+
+  /**
+   * 判断生图与多模态路由是否已开启且已配置有效路由模型
+   * @returns {boolean}
+   */
+  isImageRoutingEnabled() {
+    return Boolean(this.imageRouting?.enabled && this.imageRouting?.routingModel?.modelId);
+  }
+
+  /**
+   * 获取当前生效的生图/识图路由模型
+   * 生图任务返回专用生图路由模型；识图任务必须显式配置独立识图模型 —— 专用生图模型
+   * （/images/generations 或 DashScope 异步）不具备对话补全能力，严禁作为识图回退，
+   * 未配置时返回 null 由调用方回落常规会话模型链路
+   * @param {"generation" | "vision"} [type="generation"]
+   * @returns {{ provider: string, modelId: string, name?: string } | null}
+   */
+  getEffectiveRoutingModel(type = "generation") {
+    const conf = this.getImageRoutingConfig();
+    if (!conf.enabled) return null;
+    if (type === "vision") {
+      return conf.separateVisionModel && conf.visionModel?.modelId ? conf.visionModel : null;
+    }
+    return conf.routingModel || null;
+  }
+
+  /**
+   * 保存并持久化生图与多模态路由配置
+   * @param {Object} config
+   * @param {boolean} [persist=true]
+   */
+  async saveImageRoutingConfig(config, persist = true) {
+    this.imageRouting = {
+      ...this.getImageRoutingConfig(),
+      ...(config || {}),
+    };
+    if (persist) {
+      await this.saveAppConfig();
+    }
+    this.dispatchEvent(
+      new CustomEvent("image-routing-change", { detail: this.getImageRoutingConfig() })
+    );
+  }
+
   // ==========================================================================
   // 2. 软件主题色设置 (Theme Mode: system | light | dark)
   // ==========================================================================
@@ -366,14 +432,28 @@ class ConfigService extends EventTarget {
    * 读取 models.json 中的自定义配置
    */
   async getCustomModels() {
-    return (await this.invoke("pi_get_custom_models")) || { providers: {} };
+    const res = (await this.invoke("pi_get_custom_models")) || { providers: {} };
+    this._cachedCustomModels = res;
+    return res;
+  }
+
+  /**
+   * 同步获取当前已缓存的自定义 models.json 配置
+   * @returns {{ providers: Record<string, any> }}
+   */
+  getCustomModelsSync() {
+    return this._cachedCustomModels || { providers: {} };
   }
 
   /**
    * 保存完整 models.json
    */
   async saveCustomModels(modelsData) {
-    return await this.invoke("pi_save_custom_models", { modelsData });
+    const res = await this.invoke("pi_save_custom_models", { modelsData });
+    // 回读落盘后的真实配置作为缓存（后端可能对 provider id 等字段做归一化）
+    await this.getCustomModels();
+    this.dispatchEvent(new CustomEvent("custom-models-change", { detail: this._cachedCustomModels }));
+    return res;
   }
 
   /**
@@ -381,7 +461,10 @@ class ConfigService extends EventTarget {
    * @param {Object} entry { provider_id, api_type, base_url, api_key }
    */
   async saveCustomProvider(entry) {
-    return await this.invoke("pi_save_custom_provider", { entry });
+    const res = await this.invoke("pi_save_custom_provider", { entry });
+    await this.getCustomModels();
+    this.dispatchEvent(new CustomEvent("custom-models-change", { detail: this._cachedCustomModels }));
+    return res;
   }
 
   /**
@@ -389,7 +472,10 @@ class ConfigService extends EventTarget {
    * @param {string} providerId
    */
   async deleteCustomProvider(providerId) {
-    return await this.invoke("pi_delete_custom_provider", { providerId });
+    const res = await this.invoke("pi_delete_custom_provider", { providerId });
+    await this.getCustomModels();
+    this.dispatchEvent(new CustomEvent("custom-models-change", { detail: this._cachedCustomModels }));
+    return res;
   }
 
   /**
@@ -397,7 +483,10 @@ class ConfigService extends EventTarget {
    * @param {Object} entry { provider_id, model_id, model_name, context_window, max_tokens, reasoning }
    */
   async addCustomProviderModel(entry) {
-    return await this.invoke("pi_add_custom_provider_model", { entry });
+    const res = await this.invoke("pi_add_custom_provider_model", { entry });
+    await this.getCustomModels();
+    this.dispatchEvent(new CustomEvent("custom-models-change", { detail: this._cachedCustomModels }));
+    return res;
   }
 
   /**
@@ -405,7 +494,10 @@ class ConfigService extends EventTarget {
    * @param {Object} entry
    */
   async addCustomModel(entry) {
-    return await this.invoke("pi_add_custom_model", { entry });
+    const res = await this.invoke("pi_add_custom_model", { entry });
+    await this.getCustomModels();
+    this.dispatchEvent(new CustomEvent("custom-models-change", { detail: this._cachedCustomModels }));
+    return res;
   }
 
   /**
@@ -414,7 +506,10 @@ class ConfigService extends EventTarget {
    * @param {string|null} [modelId]
    */
   async deleteCustomModel(providerId, modelId = null) {
-    return await this.invoke("pi_delete_custom_model", { providerId, modelId });
+    const res = await this.invoke("pi_delete_custom_model", { providerId, modelId });
+    await this.getCustomModels();
+    this.dispatchEvent(new CustomEvent("custom-models-change", { detail: this._cachedCustomModels }));
+    return res;
   }
 
   /**

@@ -471,21 +471,23 @@ class PiClient extends EventTarget {
   }
 
   /**
-   * 向 Pi 发送用户提示词（支持指定 taskId 绑定多进程独立会话）
+   * 向 Pi 发送用户提示词（支持指定 taskId 绑定多进程独立会话，支持指定特定模型 provider/modelId）
    * @param {string} message
    * @param {Array<any>} [images]
    * @param {string} [streamingBehavior]
    * @param {string} [taskId]
    * @param {string} [sessionPath]
    * @param {string} [sessionId]
+   * @param {string} [provider]
+   * @param {string} [modelId]
    */
-  async sendPrompt(message, images = null, streamingBehavior = null, taskId = null, sessionPath = null, sessionId = null) {
+  async sendPrompt(message, images = null, streamingBehavior = null, taskId = null, sessionPath = null, sessionId = null, provider = null, modelId = null) {
     if (taskId) {
       this.lastEventTaskId = taskId;
     }
     const activeModel = this.currentModel;
-    const provider = activeModel?.provider;
-    const modelId = activeModel?.id || activeModel?.modelId || activeModel?.name;
+    const effectiveProvider = provider || activeModel?.provider;
+    const effectiveModelId = modelId || activeModel?.id || activeModel?.modelId || activeModel?.name;
     const thinkingLevel = this.currentThinkingLevel;
 
     return await this.invoke("pi_send_prompt", {
@@ -494,8 +496,8 @@ class PiClient extends EventTarget {
         taskId: taskId || undefined,
         images,
         streamingBehavior,
-        provider: provider || undefined,
-        modelId: modelId || undefined,
+        provider: effectiveProvider || undefined,
+        modelId: effectiveModelId || undefined,
         thinkingLevel: thinkingLevel || undefined,
         sessionPath: sessionPath || undefined,
         sessionId: sessionId || undefined,

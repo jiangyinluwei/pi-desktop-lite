@@ -6,6 +6,7 @@ import { enhanceSelect } from "../services/sketch-select.js";
 import { sketchAlert } from "../services/sketch-modal.js";
 import { bindAll } from "../lib/el-binder.js";
 import { scrollSettingsToBottom } from "./settings-navigation.js";
+import { isModelMultimodal, isImageGenerationApiType } from "../services/multimodal-detector.js";
 
 /**
  * 当前模型列表、白名单 MRU 与官方通道配置
@@ -63,9 +64,6 @@ export function initModelPanel(ctx) {
   if (flowModelTag) {
     flowModelTag.classList.toggle("kernel-missing", !initialHasKernel);
   }
-  if (initialHasKernel) {
-    loadModelsAndState();
-  }
 
   // ==========================================================================
   // 3. 当前模型列表与白名单机制 (最近选用 MRU 自动排序 + 选中模型禁止删除保护)
@@ -121,6 +119,24 @@ export function initModelPanel(ctx) {
     }
 
     let whitelist = configService.loadModelWhitelist();
+
+    // 防污染自愈：过滤掉任何专用生图协议（如 openai-images / dashscope-async-image）的模型，绝不出现在常规模型列表中
+    const customConf = configService.getCustomModelsSync();
+    const customProviders = customConf?.providers || {};
+    const filteredWhitelist = whitelist.filter((m) => {
+      if (m.isCustom && m.provider && customProviders[m.provider]) {
+        const provApi = customProviders[m.provider].api;
+        if (isImageGenerationApiType(provApi)) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    if (filteredWhitelist.length !== whitelist.length) {
+      whitelist = filteredWhitelist;
+      configService.saveModelWhitelist(whitelist);
+    }
 
     if (!whitelist || whitelist.length === 0) {
       whitelistModelsList.innerHTML = `<div class="empty-sessions">暂无已添加的模型，请展开下方“官方通道”或“自定义通道”添加模型。</div>`;
@@ -244,6 +260,7 @@ export function initModelPanel(ctx) {
     });
   };
 
+
   const loadModelsAndState = async () => {
     try {
       // 同步「自动强制重连」勾选状态至设置页 UI
@@ -260,6 +277,7 @@ export function initModelPanel(ctx) {
       const [state, catalog] = await Promise.all([
         piClient.getState(),
         configService.getOfficialModelsCatalog(),
+        configService.getCustomModels(),
       ]);
 
       settingsStore.setOfficialCatalog(catalog || []);
@@ -315,6 +333,11 @@ export function initModelPanel(ctx) {
       const effectiveModelId = currentActiveModel?.id || savedModel?.modelId;
       if (effectiveModelId) {
         configService.syncSubagentPinnedModel(effectiveModelId);
+      }
+
+      // 同步生图与多模态路由配置 UI
+      if (typeof api.syncImageRoutingUI === "function") {
+        api.syncImageRoutingUI();
       }
     } catch (err) {
       console.warn("[Main] Failed to load models and state:", err);
@@ -580,4 +603,8 @@ export function initModelPanel(ctx) {
   api.loadModelsAndState = loadModelsAndState;
   api.renderOfficialProviderDetails = renderOfficialProviderDetails;
   api.loadOfficialProvidersConfig = loadOfficialProvidersConfig;
+
+  if (initialHasKernel) {
+    loadModelsAndState();
+  }
 }

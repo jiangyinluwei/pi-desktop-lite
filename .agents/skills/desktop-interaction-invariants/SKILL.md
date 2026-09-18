@@ -1,13 +1,13 @@
 ---
 name: desktop-interaction-invariants
-description: Pi Desktop Lite 桌面端交互 22 项核心铁律的完整机制规范（唯一全文事实来源）。涵盖四态界面流与 Step Back、挂起/终止双通道、任务直切自动挂起、会话延续唯一性、历史记录持久化预算与 30 天归档、会话回退撤回、模型无痕内置重连、流中断 300 秒宽容期、中途提问人工回归、工具入参自愈、组件预设与补丁闸门等。当涉及"交互铁律/铁律N/UI修改/界面行为/挂起/终止/重连/宽容期/人工回归/组件预设/组件补丁/会话历史/回退撤回"等任何 UI 与交互修改时，必须先读本技能再动手。
+description: Pi Desktop Lite 桌面端交互 23 项核心铁律的完整机制规范（唯一全文事实来源）。涵盖四态界面流与 Step Back、挂起/终止双通道、任务直切自动挂起、会话延续唯一性、历史记录持久化预算与 30 天归档、会话回退撤回、模型无痕内置重连、流中断 300 秒宽容期、中途提问人工回归、工具入参自愈、组件预设与补丁闸门、生图与多模态路由及无缝回归等。当涉及"交互铁律/铁律N/UI修改/界面行为/挂起/终止/重连/宽容期/人工回归/组件预设/组件补丁/会话历史/回退撤回/生图路由/多模态路由"等任何 UI 与交互修改时，必须先读本技能再动手。
 ---
 
-# 桌面端交互 22 项核心铁律（完整规范 · 唯一全文事实来源）
+# 桌面端交互 23 项核心铁律（完整规范 · 唯一全文事实来源）
 
 > **与 `AGENTS.md` 的关系**：`AGENTS.md` 仅保留每条铁律的一句话不变量速查表；**本文件承载全部实现细节、历史根因与缺陷防范链路，是唯一全文事实来源**。任何 UI 与交互修改前必须先读本文件对应条目；修改铁律内容时，必须同步更新本文件与 `AGENTS.md` 速查表（核心准则一）。
 
-本项目前端作为轻量桌面应用，所有 UI 与交互修改必须严格遵守以下 22 项核心铁律。
+本项目前端作为轻量桌面应用，所有 UI 与交互修改必须严格遵守以下 23 项核心铁律。
 
 ---
 
@@ -188,3 +188,22 @@ description: Pi Desktop Lite 桌面端交互 22 项核心铁律的完整机制�
 - **状态透出**：`InstalledPackage` 增 `hasPatches` / `isPatchesApplies` / `patchTitle` 三字段，与 preset 三字段同源同构（`get_installed_packages` 统一计算）；
 - **典型范例 `pi-ocr` 1.4.x**：Windows 上 `mineru.ts`/`pix2text.ts`/`ollama.ts` 三处硬编码 `spawn("python3")` 命中 Microsoft Store 占位 stub（退出码 49 + Store 推销语，真正的解释器是 `python`），且 `getPdfPageCount` 无 win32 分支恒返回 1 导致 >20 页 PDF 整包直发 MinerU 免费档被拒。补丁 = 新增 `extensions/python.ts`（候选命令探测 + 实跑验活 + 进程级缓存，跳过 Store stub）+ 三处改用 `getPythonCmd()` + `getPdfPageCount` 补 win32 分支（pypdfium2 数页数，失败保守回落 1）；
 - **新增组件补丁流程**：把修复后的完整文件放入 `src-tauri/presets/patches/<包>/` → 在 `package-patches.json` 追加条目（`source` 相对 `presets/patches/`，`target` 相对组件根）→ 在 `patches.rs` 的 `patch_source_by_name` 追加 `include_str!` 映射 → `npm run check` + `npm run check:fe` 验证。**严禁**为未验证的版本放宽 `versionPrefixes`。
+
+## 铁律 23：生图与多模态路由及会话模型无缝回归铁律 (Image Generation & Multimodal Routing with Seamless Model Regression Invariance)
+
+- **定位与背景**：纯文本大模型（如 DeepSeek-Chat、DeepSeek-Reasoner 及代码专用模型）具备强大的推理与代码能力，但直接接收图像附件或面临用户绘图需求时受限于自身模态输入输出能力；
+- **模型配置内部并列 Sub-Tab 界面与持久化**：在设置页「模型配置」Page（`pane-current-models`）内部顶部以并列 Sub-Tab 翻页方式呈现（`data-subtab="subpane-image-routing"` 与 `subpane-models-list` 顶部并列切换），具备独立启用开关（`image-routing-switch`）、原则公示条、专用生图模型选择（`image-routing-model-select`）与独立多模态识图模型选择（`vision-routing-model-select`），配置全局持久化于 `~/.pi-dl/config.json`（`imageRouting`）；
+- **生图模型配置原则与协议硬性约束**：常规的 `/v1/chat/completions`、`/v1/responses` 与 `Anthropic` 协议属于聊天补全对话接口，**均不支持直接输出图像文件**；生图模型必须在「模型配置 ➔ 自定义通道」中配置为 **「OpenAI 兼容 /images/generations 类型」**（`openai-images`）或 **「DashScope 原生异步接口」**（`dashscope-async-image`）；
+- **生图下拉框严格过滤**：生图模型下拉框对运营商 API 协议实施严格硬性过滤，**仅当模型所属运营商使用上述两种专用生图协议时才在下拉框可选**，聊天补全类模型绝不可选，杜绝混淆与调用报错；识图下拉框汇聚具备多模态视觉能力的大模型，且**严禁混入专用生图协议模型**（生图接口不具备对话补全能力）；
+- **动态探测三原则**：
+  1. **多模态能力动态探测**：通过 `multimodal-detector.js` 自动检测当前会话模型是否具备多模态能力（黑名单短路 + 白名单及已知多模态特征识别）；若当前模型自身已具备多模态能力（如 GPT-4o、Claude 3.5 Sonnet、Gemini 等），100% 直通原生执行，不触发额外路由；
+  2. **识图任务精准判定**：附带图片文件（`.png`、`.jpg`、`.jpeg`、`.webp` 等）或 prompt 显式查看本地图片时，判定为识图任务；
+  3. **生图任务精准判定**：匹配中文文生图/绘图/出图意图或英文 image generation 关键词时，判定为生图任务；
+- **两阶段路由与无缝回归流水线 (Two-Phase Routing & Handover Pipeline)**：
+  - **Phase 1 (路由执行阶段)**：在同一个会话 Task 下：
+    - 若是生图任务，调度专用生图模型，由 Rust 后端原生指令 `pi_generate_image` 向 `/images/generations` 或 DashScope 原生异步接口发送生图请求，接收图片字节流落盘至 `~/.pi-dl/attachments/`，生成 Markdown 图片卡片直接展示（支持 Flow 原生灯箱放大与一键保存到系统桌面）；
+    - 若是识图任务，前端调用 `piClient.sendPrompt` 透传独立识图路由模型并注入图片 Payload，引导路由模型输出深度的视觉解析与结构化提取；调度指令以用户原始提问裸文本在前 + `<image_routing_handover>` 注入信封包裹内部指令构造，杜绝调度文本在输入历史与会话记录中外显；**识图任务必须显式配置独立识图模型，未配置时 `getEffectiveRoutingModel("vision")` 返回 null 直接回落常规会话链路**——专用生图模型不具备对话补全能力，严禁作为识图回退；
+  - **Phase 2 (无缝回归与产物回填阶段 · 静默回填铁律)**：Phase 1 执行完毕后，收集路由模型的额外输出文本（包含解析内容或生成的图片 Markdown 产物），系统**无缝切回原本的会话模型**，将常规链路的完整发送 Prompt（`promptToSend`，含附件绝对路径块与指引，杜绝路由路径丢失非图片附件上下文）与路由回填说明/产物（包入 `<image_routing_handover>` 信封——前后端净化层 `clean_user_prompt` / `cleanUserPrompt` 统一剥离）构造为回填 Prompt 输入原会话模型继续深度交互；
+    - **回填 Prompt 属路由模型向会话模型传递的内部会话信息，绝不在会话流展示**：回填轮次经 `TaskManager.startNewTurn(..., { silentPrompt: true })` 烙印 `turn.silentPrompt`，`createFlowTurnGroupElement` 对静默轮次跳过提问卡与路由胶囊渲染，`renderTurnsIntoFlow` 历史/挂起恢复路径同样传递 `silentPrompt` 保证任何渲染路径 0 外显；`resetStreamState(..., { silentPrompt: true })` 严禁改写 `lastUserQuery`（悬浮提问提示、保存按钮与「重试当前提问」必须继续对应用户原始提问）；完成通知文案同样回退 `task.query`；
+    - **回填期收口守卫**：路由引擎在 `executeRoutedTask` 入口烙印 `task.routingHandoverActive = true`（Phase 2 内核运行接管后、路由失败 catch 与手动终止时解除），TaskManager `agent_end/agent_settled` 在该标记下严禁提前落地 completed / 触发完成通知 / 预归档半截会话——Phase 1（识图路由模型执行）的收口帧到达时任务尚有 Phase 2 静默续跑，由其结束后的真实收口帧统一结算；
+  - **会话模型稳定性**：整个过程中，顶部状态栏、设置面板与底层会话的主模型始终保持为用户所选的原模型不变，由原模型基于丰富的图像解析或绘图上下文给出最终深入分析，实现“多模态辅助、原本模型主导”的无缝融合。

@@ -29,10 +29,11 @@ A desktop research and reasoning application with minimalist hand-drawn sketch &
 - **Flow Sequential ReAct Step Stream**: Compact single-line thinking steps, point phases, and tool slices that never expand automatically;
 - **Direct Image Display & One-Click Desktop Save**: Model-generated and outputted images render directly in the Flow view (supports Markdown images, HTML tags, and standalone image paths); local disk images securely resolve to Data URLs via Rust IPC with frontend Map caching; supports full-screen lightbox zoom, sketch action bar with "One-Click Save to Desktop" (incremental naming + emerald checkmark feedback), and file explorer revealing; pure image generation tasks automatically self-heal and inject preview cards if the model omits Markdown syntax;
 - **Typedown Markdown & External Link Interception**: Code blocks with hand-drawn language badges and copy feedback, Callout alerts, and safe external link opening via the default system browser;
+- **Image Generation & Multimodal Routing**: Managed within top-parallel sub-tabs inside the "Model Configuration" page in Settings. When the active model is text-only and an image generation or multimodal vision inspection task is detected, automatically route to the configured model (image generation strictly requires OpenAI-compatible /images/generations or DashScope async interfaces; vision inspection supports multimodal vision LLMs); upon task completion, seamlessly return to the original model and inject outputs back;
 - **Session Rollback & File Restoration**: Forks kernel history nodes and safely restores modified/deleted files based on pre-execution snapshots (newly added files are never removed);
 - **`code-area` Routing Hub**: Physical CWD stays anchored at the central Hub skills repository, dispatching tasks to external projects via native Windows folder picker without self-pollution.
 
-> 📖 **Full feature list, the 22 interaction ironclads, and architecture specs**: see the development skills under [`.agents/skills/`](.agents/skills/) — overview & feature matrix: [`pi-desktop-overview`](.agents/skills/pi-desktop-overview/SKILL.md); interaction ironclads: [`desktop-interaction-invariants`](.agents/skills/desktop-interaction-invariants/SKILL.md); Flow details: [`flow-interaction-pattern`](.agents/skills/flow-interaction-pattern/SKILL.md).
+> 📖 **Full feature list, the 23 interaction ironclads, and architecture specs**: see the development skills under [`.agents/skills/`](.agents/skills/) — overview & feature matrix: [`pi-desktop-overview`](.agents/skills/pi-desktop-overview/SKILL.md); interaction ironclads: [`desktop-interaction-invariants`](.agents/skills/desktop-interaction-invariants/SKILL.md); Flow details: [`flow-interaction-pattern`](.agents/skills/flow-interaction-pattern/SKILL.md).
 
 ---
 
@@ -51,7 +52,7 @@ npm run check
 # 3. Start desktop dev mode
 npm run dev
 
-# 4. Frontend static gate (syntax + import graph + circular dependencies, required before composite refactors)
+# 4. Frontend static gate (syntax + import graph + named exports matching + circular dependencies, required before composite refactors)
 npm run check:fe
 
 # 5. Coupling metrics baseline (automated decoupling indicators)
@@ -65,7 +66,7 @@ npm run build
 ```
 
 ### Multi-Workspace Switching & `code-area` Routing
-1. Click the gear icon on the bottom-left to enter Settings full-page, select **"Workspaces"**;
+1. Click the gear icon on the bottom-left to enter Settings full-page, select **"Workspaces"** in the left sidebar;
 2. **`code-area` Routing Hub Features**:
    - Native Windows OpenFolder dialog via Rust `rfd` (IFileOpenDialog) supporting directory browsing, direct path input, and MRU project switching;
    - Auto-validates target directory existence upon startup/switching and cleans up stale items;
@@ -108,9 +109,10 @@ pi-desktop-lite/
 │   │   ├── task-panel.js       # Background task capsule, sidebar, history restore
 │   │   ├── sessions-panel.js   # Session records, search/filter, enter Flow pipeline
 │   │   ├── token-telemetry.js  # Quota telemetry icon: context usage / mean speed / tokens consumed panel + history backfill
+│   │   ├── image-routing-panel.js # Dedicated panel for image generation & multimodal routing
 │   │   ├── workspace-panel.js  # Workspace management panel and routing binding
 │   │   └── global-interactions.js # Global Step Back & URL interceptor
-│   ├── services/               # Decoupled frontend services (tauri-bridge, config-service, pi-client, model-failover, workspace-service)
+│   ├── services/               # Frontend service layer (tauri-bridge, config-service, pi-client, multimodal-detector, image-routing-engine, model-failover, workspace-service)
 │   │   └── stores/             # Shared mutable state owners (view-store, settings-store, attachments-store, flow-store per-taskId compartments)
 │   ├── styles/                 # Feature-scoped sketch styles (tokens, layout, flow, markdown, settings)
 │   ├── index.html              # Main HTML container

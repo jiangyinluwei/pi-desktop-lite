@@ -21,6 +21,8 @@ import { modelFailoverEngine } from "../services/model-failover.js";
 import { flowStore } from "../services/stores/flow-store.js";
 import { flowView, resolveStreamTaskId, startElapsedTimer } from "./flow-state-view.js";
 import { bindAll } from "../lib/el-binder.js";
+import { isModelMultimodal, detectImageTaskType } from "../services/multimodal-detector.js";
+import { imageRoutingEngine } from "../services/image-routing-engine.js";
 import {
   createToolPseudoRunningCard,
   getFriendlyToolName,
@@ -1127,6 +1129,37 @@ export function initFlowPipeline(ctx) {
       if (currentTask && isTaskAborted(currentTask)) {
         console.warn(`[FlowPipeline] Task ${currentTask.id} was aborted before sendPrompt, skipping.`);
         return;
+      }
+
+      // 检查是否需要走「生图与多模态路由」管线
+      const isRoutingEnabled = configService.isImageRoutingEnabled();
+      const currentActiveModel = piClient.currentModel || {
+        provider: providerName,
+        id: modelName,
+        name: modelName,
+      };
+      const isCurrentMultimodal = isModelMultimodal(currentActiveModel);
+
+      if (isRoutingEnabled && !isCurrentMultimodal) {
+        const detectedTaskType = detectImageTaskType(query, filesToAttach);
+        if (detectedTaskType) {
+          // 识图任务未显式配置独立识图模型时返回 null，此处自然回落常规会话链路
+          const effectiveRoutingModel = configService.getEffectiveRoutingModel(detectedTaskType);
+          if (effectiveRoutingModel && effectiveRoutingModel.modelId) {
+            await imageRoutingEngine.executeRoutedTask({
+              query,
+              promptToSend,
+              filesToAttach,
+              imagePayloads,
+              taskType: detectedTaskType,
+              originalModel: currentActiveModel,
+              routingModel: effectiveRoutingModel,
+              currentTask,
+              ctx,
+            });
+            return;
+          }
+        }
       }
 
       const sessionIdentity = resolveTaskSessionIdentity(currentTask);

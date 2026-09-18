@@ -39,7 +39,7 @@ grep "activeTurnRefs" src/main.js src/modules/*.js
 
 ### 铁律 4：强制执行前端静态校验门禁 (`check:fe` / `node -c`)
 修改 JavaScript 代码后，**必须立即运行前端静态校验门禁**（秒级极速完成）：
-- **首选（复合重构 / 多文件改动）**：`npm run check:fe` — 覆盖全量前端语法 + import 图解析 + 循环依赖检测；
+- **首选（复合重构 / 多文件改动）**：`npm run check:fe` — 覆盖全量前端语法 + import 图解析 + 命名导出匹配 + 循环依赖检测；
 - **快速单文件 AST**：`node -c <filePath>`；
 ```bash
 node -c src/main.js
@@ -48,7 +48,7 @@ node -c src/modules/flow-stream.js
 node -c src/modules/flow-pipeline.js
 node -c src/modules/task-panel.js
 node -c src/services/task-manager.js
-npm run check:fe   # 复合重构门禁（语法 + import 图 + 循环依赖）
+npm run check:fe   # 复合重构门禁（语法 + import 图 + 命名导出匹配 + 循环依赖）
 ```
 
 ### 铁律 5：多轮数据结构的幂等迁移

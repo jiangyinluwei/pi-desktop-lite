@@ -95,7 +95,7 @@ description: |
   - 控制流与状态迁移走 Store action 或显式 import；
   - `ctx.api` 函数槽以 JSDoc `@typedef` 全量契约定型（按属主分组登记 + 三类保留原因注解），杜绝幽灵槽与兼容壳复发；
 - **构建与质量度量门禁**：
-  - `npm run check:fe`：前端静态校验门禁（全量 .js 模块语法 + import 图可解析 + 循环依赖检测）；
+  - `npm run check:fe`：前端静态校验门禁（全量 .js 模块语法 + import 图可解析 + 命名导出匹配 + 循环依赖检测）；
   - `npm run check`：Rust 极速语法与类型校验（~1s）；
   - `npm run measure:coupling`：耦合度量基线监控（确保共享状态裸写为 0、无超额重复注册）。
 

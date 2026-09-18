@@ -264,9 +264,16 @@ export function initFlowStream(ctx) {
    * @param {Array<any>} attachments
    * @param {boolean} isFollowUpTurn 是否为同会话多轮后续追问
    * @param {string} [taskId] 本轮归属任务 id（发送链显式传入；缺省回退前台活跃任务）
+   * @param {Object} [options]
+   * @param {boolean} [options.silentPrompt=false] 静默回填轮次（生图/多模态路由 Phase 2，铁律23）：
+   *                 不渲染提问卡与路由胶囊，且严禁改写 lastUserQuery（悬浮提问提示、保存按钮
+   *                 与「重试当前提问」必须继续对应用户原始提问，而非路由回填 Prompt）
    */
-  const resetStreamState = (query, attachments = [], isFollowUpTurn = false, taskId = null) => {
-    streamData(taskId).set({ lastUserQuery: query });
+  const resetStreamState = (query, attachments = [], isFollowUpTurn = false, taskId = null, options = {}) => {
+    const silentPrompt = Boolean(options.silentPrompt);
+    if (!silentPrompt) {
+      streamData(taskId).set({ lastUserQuery: query });
+    }
     clearStreamTimersAndBuffers(taskId);
     clearTurnErrorState(taskId);
     if (!modelFailoverEngine.isActive()) {
@@ -308,6 +315,7 @@ export function initFlowStream(ctx) {
       toolCalls: [],
       steps: [],
       isOpenThinking: false,
+      silentPrompt,
     });
 
     if (flowConversation && flowView.activeTurnRefs?.groupEl) {

@@ -463,6 +463,9 @@ export function initTaskPanel(ctx) {
         isOpenThinking: isOpen,
         isAborted: turn.isAborted || turn.responseText?.includes("刚刚会话已手动终止"),
         errorMessage: isLast && !isRunning ? turn.errorMessage : null,
+        // 生图/多模态路由静默回填轮次（铁律23）：历史/挂起恢复时同样跳过提问卡渲染，
+        // 保证回填 Prompt 在任何渲染路径下都不出现在会话流
+        silentPrompt: Boolean(turn.silentPrompt),
       });
 
       if (flowConversation && groupRefs?.groupEl) {

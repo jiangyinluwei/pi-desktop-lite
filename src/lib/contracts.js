@@ -31,7 +31,7 @@
  *   | pi:context-injected | pi-client → window | 内核桥接 | Tauri listen | pi-client.js [保留] |
  *   | task-* / tasks-changed / active-task-changed | task-manager → window | 服务域事件 | 服务 EventEmitter | task-manager.js [保留] |
  *   | agent-* / turn-* / message-* / tool-* / text-* / thinking-* / usage / state-update | pi-client → window | 服务域事件 | 服务 EventEmitter | pi-client.js [保留] |
- *   | config-service / conversation-history / version-service / session-service / model-failover | 各自 this.dispatchEvent | 服务域事件 | 服务 EventEmitter | 各服务 [保留] |
+ *   | config-service (auto-reconnect-change / image-routing-change / custom-models-change) / conversation-history / version-service / session-service / model-failover | 各自 this.dispatchEvent | 服务域事件 | 服务 EventEmitter | 各服务 [保留] |
  *
  *   [注解] pi:view-change / pi:step-back 命名带 pi: 前缀，但实际由 UI 自身在 window 上派发，
  *          并非 Rust→前端桥接。它们深度耦合 AGENTS.md 铁律 3（四态回退链）与
@@ -415,6 +415,7 @@ export function resolveEventTaskId(detail, fallback = null) {
 //  * @property {() => Promise<void>} loadModelsAndState          model-panel → 模型与状态加载
 //  * @property {(providerId: string) => Promise<void>} renderOfficialProviderDetails model-panel → 官方 Provider 详情
 //  * @property {() => Promise<void>} loadOfficialProvidersConfig model-panel → 官方目录加载
+//  * @property {() => void} syncImageRoutingUI                   image-routing-panel → 生图与多模态路由面板状态同步
 //  * @property {() => Promise<void>} loadInstalledPackages       packages-panel → 已装组件渲染
 //  * @property {() => Promise<void>} loadRecommendedPlugins      packages-panel → 推荐插件渲染
 //  * @property {() => Promise<void>} loadCatalogPackages         packages-panel → 组件目录渲染

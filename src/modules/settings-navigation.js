@@ -148,6 +148,12 @@ export function initSettingsNavigation(ctx) {
         if (targetTab === "tab-sessions") {
           if (typeof api.loadSessions === "function") api.loadSessions(true);
         }
+        if (targetTab === "tab-current-models") {
+          const activeSubpane = document.querySelector(".model-subpane.active");
+          if (activeSubpane && activeSubpane.id === "subpane-image-routing") {
+            if (typeof api.syncImageRoutingUI === "function") api.syncImageRoutingUI();
+          }
+        }
       } else {
         pane.classList.remove("active");
       }

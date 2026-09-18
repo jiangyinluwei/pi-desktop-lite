@@ -29,10 +29,11 @@
 - **Flow 流式因果步骤流**：单行紧凑折叠的思维切片、阶段 Point 切片与工具调用切片，过程永不自动展开；
 - **图片直观展示与一键存桌面**：模型生成与输出的图片在 Flow 界面直观呈现（支持 Markdown 图片、HTML 标签与路径行）；本地磁盘图片经 Rust IPC 异步安全转码 Data URL，前端 Map 缓存防抖；支持点击全屏灯箱放大预览、手绘操作栏「一键保存到桌面」（时间戳防覆盖 + 翠绿对勾微反馈）与资源管理器高亮定位；纯生图任务若模型漏发 Markdown 语法，流式收口阶段自动探测会话新增图片并兜底自愈补全；
 - **Typedown 质感 Markdown 与全域外链拦截**：代码块手绘徽标一键复制、Callout 警示框、外链经操作系统默认浏览器安全打开；
+- **生图与多模态智能路由**：设置页「模型配置」内部顶部并列 Tab 翻页管理。当会话主模型为纯文本模型且出现图片生成或多模态识图任务时，自动调度路由模型（生图模型严格限制为 OpenAI 兼容 /images/generations 或 DashScope 异步生图接口，识图模型支持多模态视觉 LLM）；执行完毕后无缝切回原会话模型并回填产物与分析文本；
 - **会话回退与文件撤回**：配合内核原生 RPC fork 历史节点，基于工具执行前确定性快照安全撤回已修改/删除文件（新增文件永不撤回）；
 - **`code-area` 路由调度中枢**：物理 CWD 驻留技能 Hub，原生 Windows 选夹器透明绑定目标外部工程，严格免污染。
 
-> 📖 **完整特性清单、22 项交互铁律与架构规范**：详见 [`.agents/skills/`](.agents/skills/) 下各开发技能（总览与特性矩阵：[`pi-desktop-overview`](.agents/skills/pi-desktop-overview/SKILL.md)；交互铁律：[`desktop-interaction-invariants`](.agents/skills/desktop-interaction-invariants/SKILL.md)；Flow 细节：[`flow-interaction-pattern`](.agents/skills/flow-interaction-pattern/SKILL.md)）。
+> 📖 **完整特性清单、23 项交互铁律与架构规范**：详见 [`.agents/skills/`](.agents/skills/) 下各开发技能（总览与特性矩阵：[`pi-desktop-overview`](.agents/skills/pi-desktop-overview/SKILL.md)；交互铁律：[`desktop-interaction-invariants`](.agents/skills/desktop-interaction-invariants/SKILL.md)；Flow 细节：[`flow-interaction-pattern`](.agents/skills/flow-interaction-pattern/SKILL.md)）。
 
 ---
 
@@ -51,7 +52,7 @@ npm run check
 # 3. 启动桌面端开发调试
 npm run dev
 
-# 4. 前端静态校验门禁（语法 + import 图解析 + 循环依赖检测，复合重构前必做）
+# 4. 前端静态校验门禁（语法 + import 图解析 + 命名导出匹配 + 循环依赖检测，复合重构前必做）
 npm run check:fe
 
 # 5. 耦合度量基线（自动化架构降耦合指标）
@@ -65,7 +66,7 @@ npm run build
 ```
 
 ### 多工作区切换与 `code-area` 路由调度中枢
-1. 点击主界面左下角手绘齿轮按钮进入「设置」全屏页，在左侧选择 **「工作区」**；
+1. 点击主界面左下角手绘齿轮按钮进入「设置」全屏页，在左侧边栏选择 **「工作区」**；
 2. **`code-area` 路由工作区特性**：
    - 基于 Rust `rfd` (IFileOpenDialog) 实现 Windows 原生 OpenFolder 文件夹选择器，支持目录浏览、绝对路径输入与历史项目快速切换；
    - 每次切换或启动时自动校验目标项目存在性，失效时自动清理；
@@ -108,9 +109,10 @@ pi-desktop-lite/
 │   │   ├── task-panel.js       # 后台任务胶囊、侧边栏、历史恢复与快照归档
 │   │   ├── sessions-panel.js   # 会话记录列表、搜索筛选、进入 Flow 管线
 │   │   ├── token-telemetry.js  # 额度遥测图标：上下文消耗 / 均值推理速度 / 已耗 token 悬浮面板 + 历史回填
+│   │   ├── image-routing-panel.js # 生图与多模态路由独立面板（接口协议过滤、双下拉框与状态同步）
 │   │   ├── workspace-panel.js  # 多预设工作区设置面板与路由绑定
 │   │   └── global-interactions.js # 全局右键/Esc 回退与外链拦截
-│   ├── services/               # 前端服务层 (tauri-bridge, config-service, pi-client, model-failover, workspace-service 等)
+│   ├── services/               # 前端服务层 (tauri-bridge, config-service, pi-client, multimodal-detector, image-routing-engine, model-failover, workspace-service 等)
 │   │   └── stores/             # 共享可变状态唯一属主 (view-store, settings-store, attachments-store, flow-store 按 taskId 分仓)
 │   ├── styles/                 # 按功能域拆分的手绘样式 (tokens, layout, flow, markdown, settings 等)
 │   ├── index.html              # 页面主体

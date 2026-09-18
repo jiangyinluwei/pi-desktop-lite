@@ -15,6 +15,7 @@ import { initPreferences } from "./modules/preferences.js";
 import { initSettingsNavigation } from "./modules/settings-navigation.js";
 import { initModelPanel } from "./modules/model-panel.js";
 import { initCustomProviderPanel } from "./modules/custom-provider-panel.js";
+import { initImageRoutingPanel } from "./modules/image-routing-panel.js";
 import { initKernelPanel } from "./modules/kernel-panel.js";
 import { initSessionsPanel } from "./modules/sessions-panel.js";
 import { initWorkspacePanel } from "./modules/workspace-panel.js";
@@ -66,6 +67,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initSettingsNavigation(ctx);
   initModelPanel(ctx);
   initCustomProviderPanel(ctx);
+  initImageRoutingPanel(ctx);
   initKernelPanel(ctx);
   initSessionsPanel(ctx);
   initWorkspacePanel(ctx);

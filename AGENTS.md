@@ -32,7 +32,7 @@
 
 ---
 
-## 📌 核心准则三：桌面端交互 22 项铁律（速查索引）
+## 📌 核心准则三：桌面端交互 23 项铁律（速查索引）
 
 > 📖 **完整机制全文（唯一事实来源）**：[`.agents/skills/desktop-interaction-invariants/SKILL.md`](.agents/skills/desktop-interaction-invariants/SKILL.md)。**任何 UI 与交互修改前必须先读该技能中对应条目的完整规范**；下表仅为速查不变量。
 
@@ -60,6 +60,7 @@
 | 20 | 工具入参自愈解包 | `pi-tool-sanitizer.ts` 双层防御（`message_end` 前置剥离外壳 + `tool_call` 二次清洗），治愈模型嵌套外壳引发的 AJV 校验自激死循环，无外壳 100% 直通。 |
 | 21 | 组件推荐配置预设 | `package-presets.json` 唯一源，读-合并-写回 + 严格回读校验；`configFiles` 多路径双写；安装/更新/启动三时机自愈。 |
 | 22 | 组件缺陷补丁预设 | `package-patches.json` + `patches/<组件>/` 源码内嵌；版本闸门 / 存在性闸门 / 幂等回读三道闸门缺一不可；安装/更新/启动三时机重打；严禁为未验证版本放宽 `versionPrefixes`。 |
+| 23 | 生图与多模态路由 | 模型配置Page内顶部并列Tab分页展现，明确聊天协议不支持直接出图，限定OpenAI兼容/images/generations与DashScope原生异步接口，专用生图模型落盘并无缝切回原会话模型；Phase 2 回填 Prompt 属路由模型向会话模型传递的内部会话信息，统一包入 `<image_routing_handover>` 信封（前后端净化层剥离）并烙印 `silentPrompt` 静默轮次后台静默执行，任何渲染路径（实时 Flow/历史恢复）严禁渲染为提问卡，Phase 1 收口帧严禁提前落地 completed/触发完成通知。 |
 
 ---
 
@@ -73,7 +74,7 @@
 | 领域分类 | Skill 名称 | 路径 | 核心能力与触发场景 |
 | :--- | :--- | :--- | :--- |
 | **架构与规范** | **`pi-desktop-overview`** | [`.agents/skills/pi-desktop-overview/SKILL.md`](.agents/skills/pi-desktop-overview/SKILL.md) | 产品定位、四态体系、核心特性与交互流水线总览（触发：项目概述/架构总览/四态界面）。 |
-| | **`desktop-interaction-invariants`** | [`.agents/skills/desktop-interaction-invariants/SKILL.md`](.agents/skills/desktop-interaction-invariants/SKILL.md) | 桌面端交互 22 项铁律完整全文（唯一事实来源；触发：任何 UI 与交互修改，见核心准则三速查表）。 |
+| | **`desktop-interaction-invariants`** | [`.agents/skills/desktop-interaction-invariants/SKILL.md`](.agents/skills/desktop-interaction-invariants/SKILL.md) | 桌面端交互 23 项铁律完整全文（唯一事实来源；触发：任何 UI 与交互修改，见核心准则三速查表）。 |
 | | **`pi-ecosystem-configuration`** | [`.agents/skills/pi-ecosystem-configuration/SKILL.md`](.agents/skills/pi-ecosystem-configuration/SKILL.md) | Pi API 鉴权、大模型接入、Packages 扩展包、Skills 规范、TypeScript 扩展与子代理钉住配置全指南（触发：pi配置/模型配置/组件安装/auth.json/models.json/subagents配置/Ollama配置）。 |
 | | **`inner-skills-injection`** | [`.agents/skills/inner-skills-injection/SKILL.md`](.agents/skills/inner-skills-injection/SKILL.md) | 运行态内置约束（RULES.md）按需注入架构、目录拓扑与新增 SOP（触发：运行态技能/上下文注入/RULES/新增inner-skill）。 |
 | **手绘 UI 与交互** | **`sketch-drafting-ui`** | [`.agents/skills/sketch-drafting-ui/SKILL.md`](.agents/skills/sketch-drafting-ui/SKILL.md) | Anthropic/Pi.dev 手绘草图美学、简约线条与纸质双模主题（触发：手绘风格/工程绘图风/草图UI）。 |
@@ -81,7 +82,7 @@
 | | **`sketch-form-autofill-pattern`** | [`.agents/skills/sketch-form-autofill-pattern/SKILL.md`](.agents/skills/sketch-form-autofill-pattern/SKILL.md) | 手绘表单规范、消灭原生变色与 `SketchAutoFill` 智能联想（触发：新增表单/自定义填表/autofill）。 |
 | | **`svg-asset-workflow`** | [`.agents/skills/svg-asset-workflow/SKILL.md`](.agents/skills/svg-asset-workflow/SKILL.md) | 手绘 SVG 图元规范、`currentColor` 主题自适应与内联管理（触发：SVG图标/替换图标/图标规范）。 |
 | | **`flow-interaction-pattern`** | [`.agents/skills/flow-interaction-pattern/SKILL.md`](.agents/skills/flow-interaction-pattern/SKILL.md) | Flow 流式交互全规范（架构分层铁律、单行紧凑过程卡、因果时序拼接、多轮定位、无痕内置重连引擎、宽容期胶囊、文件变更收纳框、会话回退撤回、多任务直切、人工回归作答、额度遥测弧光）（触发：flow交互/思维链/轮次定位/文件变更/修改了哪些文件/会话回退/撤回文件/流式渲染）。 |
-| | **`settings-view-pattern`** | [`.agents/skills/settings-view-pattern/SKILL.md`](.agents/skills/settings-view-pattern/SKILL.md) | 设置全屏独立视图（第4态）、5 大 Tab、MRU 模型排序与回退流（触发：设置界面/配置页面/settings）。 |
+| | **`settings-view-pattern`** | [`.agents/skills/settings-view-pattern/SKILL.md`](.agents/skills/settings-view-pattern/SKILL.md) | 设置全屏独立视图（第4态）、左侧垂直侧边栏导航、模型配置内顶部并列子Tab翻页（模型配置/生图与多模态路由）、MRU 模型排序与回退流（触发：设置界面/配置页面/settings）。 |
 | **工程与治理** | **`desktop-kernel-lifecycle`** | [`.agents/skills/desktop-kernel-lifecycle/SKILL.md`](.agents/skills/desktop-kernel-lifecycle/SKILL.md) | Tauri 2 + Rust 内核生命周期管控、多环境寻址与 Release 打包避坑（触发：内核崩溃/进程重启/打包）。 |
 | | **`auto-compile-and-fix`** | [`.agents/skills/auto-compile-and-fix/SKILL.md`](.agents/skills/auto-compile-and-fix/SKILL.md) | 任务完成后自动极速编译与失败自愈闭环、前端门禁与度量（触发：编译校验/自动修复/构建验证/门禁）。 |
 | | **`clean-code-refactoring`** | [`.agents/skills/clean-code-refactoring/SKILL.md`](.agents/skills/clean-code-refactoring/SKILL.md) | 桌面端与 Web 混合架构逻辑去重、结构精简与样板消除（触发：代码精简/去冗余/重构优化）。 |
@@ -113,7 +114,7 @@
 
 ### 常用命令
 - **极速编译检查（首选，~1s）**：`npm run check`
-- **前端静态校验门禁（语法 + import 图 + 循环依赖，重构必做）**：`npm run check:fe`
+- **前端静态校验门禁（语法 + import 图 + 命名导出匹配 + 循环依赖，重构必做）**：`npm run check:fe`
 - **耦合度量基线检查（裸写断言 = 0 / 契约槽位监控）**：`npm run measure:coupling`
 - **桌面端开发调试**：`npm run dev`
 - **构建测试（生成二进制，不打包）**：`npm run build:check`

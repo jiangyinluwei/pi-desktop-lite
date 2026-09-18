@@ -182,15 +182,21 @@ export class TaskManager extends EventTarget {
    * @param {string} taskId
    * @param {string} query
    * @param {Array<any>} [attachments=[]]
+   * @param {Object} [options={}]
+   * @param {boolean} [options.silentPrompt=false] 静默回填轮次（生图/多模态路由 Phase 2，铁律23）：
+   *                 轮次快照烙印 silentPrompt，渲染层跳过提问卡（回填 Prompt 绝不在会话流展示），
+   *                 完成通知文案继续对应用户原始提问（task.query）
    * @returns {Object}
    */
-  startNewTurn(taskId, query, attachments = []) {
+  startNewTurn(taskId, query, attachments = [], options = {}) {
     const task = this.tasks.get(taskId);
     if (!task) return null;
 
     if (!Array.isArray(task.turns)) {
       task.turns = [];
     }
+
+    const silentPrompt = Boolean(options && options.silentPrompt);
 
     const newTurn = {
       id: `turn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -204,6 +210,7 @@ export class TaskManager extends EventTarget {
       status: "thinking",
       errorMessage: null,
       isAborted: false,
+      silentPrompt,
       startedAt: Date.now(),
       completedAt: null,
     };
@@ -230,10 +237,10 @@ export class TaskManager extends EventTarget {
     task.thinkingDurationText = "思考中...";
     task.startedAt = Date.now();
 
-    // 重新注册到系统通知服务
+    // 重新注册到系统通知服务（静默回填轮次：通知文案继续对应用户原始提问，严禁回填 Prompt 污染）
     notificationService.registerTask(taskId, {
       title: task.title,
-      query: query || task.query,
+      query: silentPrompt ? (task.query || query) : (query || task.query),
       type: "agent",
     });
 
@@ -589,6 +596,8 @@ export class TaskManager extends EventTarget {
     task.status = "aborted";
     task.isAborted = true;
     task.graceWaiting = false;
+    // 路由静默回填守卫随终止同步清退：杜绝遗留标记使后续新提问的收口帧被误拦截（铁律23）
+    task.routingHandoverActive = false;
     task.completedAt = Date.now();
     const lastTurn = task.turns && task.turns.length > 0 ? task.turns[task.turns.length - 1] : null;
     if (lastTurn && !lastTurn.completedAt) {
@@ -1043,6 +1052,13 @@ export class TaskManager extends EventTarget {
         // 流中断宽容期等待中（残余空收口帧）：严禁提前落地 completed——等待恢复或超时后再由
         // renderErrorCard / 恢复后的真实收口帧自然结算，否则终态会隐藏终止按钮致等待期不可中断
         if (task.graceWaiting) {
+          scheduleSessionRefresh();
+          break;
+        }
+        // 生图/多模态路由静默回填期守卫（铁律23）：本帧属于路由 Phase 1（识图路由模型执行）的
+        // 收口帧，引擎即将无缝回归原会话模型继续 Phase 2 静默续跑（回填 Prompt 不渲染提问卡），
+        // 严禁提前落地 completed / 触发完成通知 / 预归档半截会话，由 Phase 2 结束后的真实收口帧统一结算
+        if (task.routingHandoverActive) {
           scheduleSessionRefresh();
           break;
         }
