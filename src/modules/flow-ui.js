@@ -2,7 +2,7 @@ import { escapeHtml, cleanUserPrompt } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
 import { invokeTauri } from "../services/tauri-bridge.js";
-import { renderMarkdown, initMarkdownInteractions } from "../lib/markdown-renderer.js";
+import { renderMarkdown, initMarkdownInteractions, resolveMarkdownImages } from "../lib/markdown-renderer.js";
 import { flowStore } from "../services/stores/flow-store.js";
 import { resolveStreamTaskId } from "./flow-state-view.js";
 import { collapseToolCard, createThinkingStepCard, createPhaseStepCard, createToolStepCard } from "./flow-render.js";
@@ -386,6 +386,7 @@ export function initFlowUi(ctx) {
     responseContentEl.innerHTML = initialHtml;
     responseCardEl.appendChild(responseContentEl);
     groupEl.appendChild(responseCardEl);
+    resolveMarkdownImages(responseContentEl);
 
     // 自动内置重连提醒文本框置于会话流最下方（原本是最上方）
     groupEl.appendChild(failoverCapsuleEl);

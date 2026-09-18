@@ -381,6 +381,7 @@ export function resolveEventTaskId(detail, fallback = null) {
 //  * @property {(taskId: string) => void} restoreFileChangesFor  flow-file-changes → 按 Task 恢复会话流缓存仓
 //  * @property {() => object[]} collectRollbackPreview           flow-file-changes → 回退预览逐条变更
 //  * @property {(taskId: string) => void} pruneFileChangesFor    flow-file-changes → 回退后剪枝重渲
+//  * @property {(taskId?: string) => object[]} getNewlyAddedImageFiles flow-file-changes → 收集会话新产生图片列表供自愈展示
 //  * @property {(taskId: string, request: object) => void} showHumanInputCard        flow-human-input → 前台渲染人工交互作答卡
 //  * @property {(taskId: string) => void} restoreHumanInputCards flow-human-input → 挂起任务回入 Flow 时重建未决卡
 //  * @property {(taskId?: string) => void} resetInjectionNotice                 flow-pipeline → 重置「注入提示」信息框

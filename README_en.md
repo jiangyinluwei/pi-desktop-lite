@@ -22,6 +22,16 @@ A desktop research and reasoning application with minimalist hand-drawn sketch &
 
 ---
 
+## ✨ Core Feature Highlights
+
+- **Hand-Drawn Architectural Drafting Aesthetics**: 1.2~1.4px ink sketch line frames with gentle dual-theme paper backgrounds, completely free of system emojis, unified hand-drawn SVG assets;
+- **Four-State Minimalist Flow**: Detailed view (multi-line input, history traversal, multimodal attachment capsules) ➔ Focus view ➔ Flow streaming view ➔ Settings full page, with global Step Back via right-click or Esc;
+- **Flow Sequential ReAct Step Stream**: Compact single-line thinking steps, point phases, and tool slices that never expand automatically;
+- **Direct Image Display & One-Click Desktop Save**: Model-generated and outputted images render directly in the Flow view (supports Markdown images, HTML tags, and standalone image paths); local disk images securely resolve to Data URLs via Rust IPC with frontend Map caching; supports full-screen lightbox zoom, sketch action bar with "One-Click Save to Desktop" (incremental naming + emerald checkmark feedback), and file explorer revealing; pure image generation tasks automatically self-heal and inject preview cards if the model omits Markdown syntax;
+- **Typedown Markdown & External Link Interception**: Code blocks with hand-drawn language badges and copy feedback, Callout alerts, and safe external link opening via the default system browser;
+- **Session Rollback & File Restoration**: Forks kernel history nodes and safely restores modified/deleted files based on pre-execution snapshots (newly added files are never removed);
+- **`code-area` Routing Hub**: Physical CWD stays anchored at the central Hub skills repository, dispatching tasks to external projects via native Windows folder picker without self-pollution.
+
 > 📖 **Full feature list, the 22 interaction ironclads, and architecture specs**: see the development skills under [`.agents/skills/`](.agents/skills/) — overview & feature matrix: [`pi-desktop-overview`](.agents/skills/pi-desktop-overview/SKILL.md); interaction ironclads: [`desktop-interaction-invariants`](.agents/skills/desktop-interaction-invariants/SKILL.md); Flow details: [`flow-interaction-pattern`](.agents/skills/flow-interaction-pattern/SKILL.md).
 
 ---

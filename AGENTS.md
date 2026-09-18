@@ -49,7 +49,7 @@
 | 9 | 失焦系统通知 | 仅失焦且（完成/需确认/报错）时触发 Windows Toast，聚焦绝对静默。 |
 | 10 | 无内核运行降级 | 平稳待机不死循环重启、发送入口屏蔽、内核面板降级、一键下载自愈、崩溃监督器最多 5 次平滑重连（间隔 2s）。 |
 | 11 | 多模态拖拽与智能粘贴 | 文件/文件夹拖入与 `Ctrl+V` 粘贴（位图落盘 `~/.pi-dl/attachments/`、`CF_HDROP` 提取路径、文件夹生成单个概述胶囊不炸裂）。 |
-| 12 | Markdown 渲染与外链 | Typedown 质感渲染引擎；全域超链接拦截经 `pi_open_url` 唤起外部浏览器，严禁 Webview 内跳转。 |
+| 12 | Markdown 渲染、图片直显与外链 | Typedown 质感渲染引擎；支持手绘图片卡片（.md-image-card）、本地图片 Data URL 极速解析、纯生图任务产物自动展示与一键保存到桌面；全域超链接拦截经 pi_open_url 唤起外部浏览器。 |
 | 13 | code-area 路由中枢 | 物理 CWD 驻留 Hub、`rfd` 原生选夹器、免污染铁律、存在性自动校验、透明注入路由上下文与「注入提示」框。 |
 | 14 | 子代理模型钉住 | `pi-subagents` 启用时同步主模型至 `subagents.defaultModel` 与各角色 `agentOverrides`（读-合并-写回），未启用零污染，杜绝模型跃升。 |
 | 15 | Node.js 环境预检 | 组件安装/更新/内核下载前 `pi_check_node_environment` 探测；缺失时 `SketchModal` 拦截 + 一键跳官方下载，装好即续无需重启。 |

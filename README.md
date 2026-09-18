@@ -22,6 +22,16 @@
 
 ---
 
+## ✨ 核心特性亮点
+
+- **手绘工程绘图美学**：1.2~1.4px 实墨草图线框与柔和纸质双模主题，全域消除系统 Emoji，统一手绘矢量图元；
+- **四态极简交互流**：详细版（多行输入、历史翻阅、多模态附件胶囊）➔ 专注版 ➔ Flow 交互版 ➔ 设置全页面，全域右键/Esc 支持 Step Back；
+- **Flow 流式因果步骤流**：单行紧凑折叠的思维切片、阶段 Point 切片与工具调用切片，过程永不自动展开；
+- **图片直观展示与一键存桌面**：模型生成与输出的图片在 Flow 界面直观呈现（支持 Markdown 图片、HTML 标签与路径行）；本地磁盘图片经 Rust IPC 异步安全转码 Data URL，前端 Map 缓存防抖；支持点击全屏灯箱放大预览、手绘操作栏「一键保存到桌面」（时间戳防覆盖 + 翠绿对勾微反馈）与资源管理器高亮定位；纯生图任务若模型漏发 Markdown 语法，流式收口阶段自动探测会话新增图片并兜底自愈补全；
+- **Typedown 质感 Markdown 与全域外链拦截**：代码块手绘徽标一键复制、Callout 警示框、外链经操作系统默认浏览器安全打开；
+- **会话回退与文件撤回**：配合内核原生 RPC fork 历史节点，基于工具执行前确定性快照安全撤回已修改/删除文件（新增文件永不撤回）；
+- **`code-area` 路由调度中枢**：物理 CWD 驻留技能 Hub，原生 Windows 选夹器透明绑定目标外部工程，严格免污染。
+
 > 📖 **完整特性清单、22 项交互铁律与架构规范**：详见 [`.agents/skills/`](.agents/skills/) 下各开发技能（总览与特性矩阵：[`pi-desktop-overview`](.agents/skills/pi-desktop-overview/SKILL.md)；交互铁律：[`desktop-interaction-invariants`](.agents/skills/desktop-interaction-invariants/SKILL.md)；Flow 细节：[`flow-interaction-pattern`](.agents/skills/flow-interaction-pattern/SKILL.md)）。
 
 ---

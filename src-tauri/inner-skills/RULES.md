@@ -8,7 +8,7 @@
 | Invoked Tool / Intent | Target Inner-Skill | Enforcement Level |
 | :--- | :--- | :--- |
 | `bash`, `terminal`, `powershell`, `cmd`, `execute_command` | `windows-bash-compatibility` | **Mandatory** |
-| `read_file`, `docparser`, `ocr`, `deword`, `pi-ocr`, `pi-docparser`, `extract_text`, `image_ocr` | `document-multimodal-inspection` | **Mandatory** |
+| `read_file`, `docparser`, `ocr`, `deword`, `pi-ocr`, `pi-docparser`, `extract_text`, `image_ocr`, `generate_image`, `text_to_image`, `draw_image`, `create_image`, `render_image` | `document-multimodal-inspection` | **Mandatory** |
 | `subagent`, `pi-subagents`, `spawn_agent`, `parallel_tasks`, `delegate_task`, `subtask_spawn` | `multi-agent-orchestration` | **Mandatory** |
 | `web_search`, `pi-web-access`, `search_web`, `fetch_web_page`, `web_access`, `browse_page` | `web-search-silent-access` | **Mandatory** |
 | `memory_retrieve`, `memory_store`, `pi-memory`, `recall_memory`, `search_memory` | `persistent-memory-retrieval` | **Mandatory** |
@@ -49,3 +49,6 @@ When invoking tools or planning actions:
 
 9. **Tool Failure Diagnostics & Workspace Logging (`tool-failure-logging`)**:
    - When any tool execution encounters a failure status, non-zero error code, or exception: immediately compile and record structured failure details (timestamp, tool name, arguments, stderr/traceback, root cause) into `~/.pi-dl/workspaces/log/<workspace>/` (on Windows `C:\Users\<username>\.pi-dl\workspaces\log\<routed_workspace_name>\`, auto-create if absent, e.g., `tool-errors.log`); zero pollution to target project root; preserve diagnostic logs for post-mortem analysis; never silently ignore errors.
+
+10. **Image Generation & Direct Presentation (`document-multimodal-inspection`)**:
+    - When generating, drawing, or creating images (especially for pure image generation tasks), ALWAYS directly embed and present the image in your final response using Markdown image syntax `![alt](image_path)` so that the desktop application directly renders and displays it for immediate visual inspection and one-click saving to desktop. Never output raw paths without image tags.

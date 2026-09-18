@@ -84,11 +84,26 @@ description: Pi Desktop Lite 桌面端交互 22 项核心铁律的完整机制�
 - 文件夹拖入或粘贴时由 Rust 后端（`pi_inspect_paths`）直接生成单个文件夹概述胶囊（`category: "folder"` + 手绘文件夹 SVG），不展开炸裂为零散子文件；
 - 附件胶囊在输入框内部上方自然换行排列（支持极简滚动条与无缝换行，杜绝横向溢出），下方保留 100% 全宽文本输入区；发起对话时自动注入系统绝对路径供内核原生遍历。
 
-## 铁律 12：Markdown 预览渲染与全域超链接跳转规范
+## 铁律 12：Markdown 预览渲染、全域外链跳转与图片展示/存桌面规范
 
-- 模型输出全面采用 Typedown 质感 Markdown 预览渲染引擎（`src/lib/markdown-renderer.js` + `src/styles/markdown.css`）；
-- 支持多级标题、围栏代码块（手绘语言徽标 + 一键复制 + 复制反馈 + 多语言轻量高亮）、GFM 表格、任务清单（Checkbox）、GitHub Callout 警示框（Note/Tip/Important/Warning/Caution）与流式未闭合标记自愈；
-- 全域 HTTP/HTTPS/Mailto 超链接自动解析并拦截点击，通过 Tauri 后端（`tauri_plugin_opener` / `pi_open_url`）唤起操作系统默认外部浏览器打开，严禁在 Webview 内部跳转。
+- **引擎与质感**：模型输出全面采用 Typedown 质感 Markdown 预览渲染引擎（`src/lib/markdown-renderer.js` + `src/styles/markdown.css`）；
+- **核心语法支持**：支持多级标题、围栏代码块（手绘语言徽标 + 一键复制 + 复制反馈 + 多语言轻量高亮）、GFM 表格、任务清单（Checkbox）、GitHub Callout 警示框（Note/Tip/Important/Warning/Caution）与流式未闭合标记自愈；
+- **全域外链拦截**：全域 HTTP/HTTPS/Mailto 超链接自动解析并拦截点击，通过 Tauri 后端（`tauri_plugin_opener` / `pi_open_url`）唤起操作系统默认外部浏览器打开，严禁在 Webview 内部跳转；
+- **图片直观渲染与 Data URL 异步映射**：
+  - 支持标准 Markdown 图片 `![alt](url)`、HTML `<img src="..." />`、以及纯图片路径独占行/链接；
+  - 针对 Windows 桌面端 Webview2 同源安全隔离策略（禁止直接加载 `C:\` 或 `file:///` 物理盘路径），统一通过 Rust IPC `pi_read_image_as_data_url` 异步读取为 `data:<mime>;base64,<data>`，前端维护 `imageCache` Map 消除重复读取损耗；
+  - 图片以手绘风格 `.md-image-card` 呈现，带微妙阴影与半透明线框，避免 Layout Shift；
+- **手绘操作栏与一键保存到桌面**：
+  - 每张图片卡片下方集成极简手绘操作栏（`.md-image-bar`）：
+    - 「一键保存到桌面」：调用 Rust `pi_save_image_to_desktop`，支持 Base64、网络图片下载与本地文件拷贝，自动采用 `yyyyMMdd_HHmmss` 与递增后缀防重名覆盖；点击后按钮变换为翠绿对勾（`✓ 已保存到桌面`）并保持 2.2 秒微反馈，同时触发手绘提示；
+    - 「打开所在目录」：本地文件支持点击通过 `pi_reveal_path` 在 Windows 资源管理器中高亮定位；
+- **手绘全屏灯箱放大预览 (Lightbox)**：
+  - 点击图片卡片主体可弹出全屏极简毛玻璃灯箱预览（`.md-image-lightbox`），支持滚轮/缩放与原始高清比例，支持点击外部空白、按下 Esc 键或全域右键 (Step Back) 快速平滑关闭；
+- **生图任务兜底自愈机制 (Pure Image Generation Self-Healing Invariance)**：
+  - 若模型在纯生图任务中仅输出了工具调用或文字说明（例如仅描述“图片已生成并保存在 xx.png”），但未以 Markdown 图片语法主动输出 `![img](...)`：
+  - 流式终态收口阶段（`finalizeStream`）自动通过 `api.getNewlyAddedImageFiles` 比对会话生命周期内新增或修改的图片文件；
+  - 若检测到新增图片文件未在回答卡 DOM 中完成渲染，系统自动在其输出卡末尾动态注入手绘风格的自愈图片预览框（`.flow-auto-image-notice`），确保用户在生图任务中无需手动寻址、100% 默认直接可见并可一键保存到桌面；
+  - 内置运行态约束（`document-multimodal-inspection/SKILL.md` 指令 6 与 `RULES.md` 指令 10）要求模型在生图工具调用成功后，必须在回答中以 Markdown 语法直接输出图片。
 
 ## 铁律 13：预设工作区 "code-area" 路由工作区与技能调度中枢规范 (Hub & Routed Workspace)
 

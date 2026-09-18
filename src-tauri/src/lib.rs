@@ -136,6 +136,8 @@ pub fn run() {
             pi_get_home_dir,
             pi_read_clipboard_files,
             pi_save_clipboard_image,
+            pi_read_image_as_data_url,
+            pi_save_image_to_desktop,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

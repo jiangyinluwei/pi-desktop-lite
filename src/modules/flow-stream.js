@@ -9,6 +9,7 @@ import { modelFailoverEngine } from "../services/model-failover.js";
 import { flowStore } from "../services/stores/flow-store.js";
 import { flowView, resolveStreamTaskId, startElapsedTimer } from "./flow-state-view.js";
 import { createThinkingStepCard, createPhaseStepCard, syncThinkingPreview } from "./flow-render.js";
+import { resolveMarkdownImages, renderImageCard } from "../lib/markdown-renderer.js";
 
 /**
  * 流式状态机、错误卡渲染与内置重连胶囊
@@ -363,6 +364,42 @@ export function initFlowStream(ctx) {
     if (flowView.activeTurnRefs?.responseContentEl) {
       const cursor = flowView.activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
       if (cursor) cursor.remove();
+
+      // 1. 异步解析输出卡片中的图片（本地文件转 Data URL 并加载）
+      resolveMarkdownImages(flowView.activeTurnRefs.responseContentEl);
+
+      // 2. 纯生图任务自愈呈现：检查当前会话是否有新产生且未在回答卡中展示的图片文件
+      if (typeof api.getNewlyAddedImageFiles === "function") {
+        const effTaskId = taskId || taskManager.currentActiveTaskId;
+        const newImages = api.getNewlyAddedImageFiles(effTaskId);
+        if (Array.isArray(newImages) && newImages.length > 0) {
+          const container = flowView.activeTurnRefs.responseContentEl;
+          for (const imgItem of newImages) {
+            const cards = container.querySelectorAll(".md-image-card");
+            let alreadyShown = false;
+            for (const c of cards) {
+              const src = c.getAttribute("data-src") || "";
+              if (src.includes(imgItem.name) || src === imgItem.path) {
+                alreadyShown = true;
+                break;
+              }
+            }
+            if (!alreadyShown) {
+              const autoNoticeEl = document.createElement("div");
+              autoNoticeEl.className = "flow-auto-image-notice";
+              autoNoticeEl.innerHTML = `
+                <div class="flow-auto-image-header">
+                  <span class="header-icon">${ICONS.sparkle || ""}</span>
+                  <span>任务产出图片预览</span>
+                </div>
+                ${renderImageCard(imgItem.name, imgItem.path)}
+              `;
+              container.appendChild(autoNoticeEl);
+              resolveMarkdownImages(autoNoticeEl);
+            }
+          }
+        }
+      }
     }
     // 流式结束时隐藏 Flow 中止按钮
     // （例外：流中断宽容期等待中严禁隐藏——残余 agent-end 收口帧会经此路径把按钮藏掉，
@@ -1129,9 +1166,21 @@ export function initFlowStream(ctx) {
     if (flowView.activeTurnRefs?.responseContentEl) {
       flowView.activeTurnRefs.responseContentEl.innerHTML =
         api.renderMarkdown(fs.responseText) + `<span class="streaming-cursor"></span>`;
+      if (fs.responseText && (fs.responseText.includes("![") || fs.responseText.includes("<img") || fs.responseText.includes(".png") || fs.responseText.includes(".jpg") || fs.responseText.includes(".jpeg") || fs.responseText.includes(".webp"))) {
+        debouncedResolveImages(flowView.activeTurnRefs.responseContentEl);
+      }
     }
     followScrollToBottom();
   });
+
+  let resolveImagesTimer = null;
+  const debouncedResolveImages = (el) => {
+    if (!el) return;
+    if (resolveImagesTimer) clearTimeout(resolveImagesTimer);
+    resolveImagesTimer = setTimeout(() => {
+      resolveMarkdownImages(el);
+    }, 120);
+  };
 
   api.resetStreamState = resetStreamState;
   api.finalizeStream = finalizeStream;

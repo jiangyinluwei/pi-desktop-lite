@@ -1,5 +1,7 @@
 import { escapeHtml } from "./dom-utils.js";
 import { ICONS } from "./icons.js";
+import { invokeTauri } from "../services/tauri-bridge.js";
+import { workspaceService } from "../services/workspace-service.js";
 
 /**
  * ============================================================================
@@ -135,7 +137,73 @@ function highlightCode(code, lang = "") {
 }
 
 // ============================================================================
-// 2. 行内元素解析器 (Inline Lexer)
+// 2. 图片卡片渲染器与内存缓存 (Image Card Renderer & Cache)
+// ============================================================================
+
+/** 内存级本地图片 Data URL 缓存，避免流式重绘与多轮浏览时反复触发 IPC 读取 */
+export const imageCache = new Map();
+
+/**
+ * 格式化渲染手绘风格图片卡片 (.md-image-card)
+ * @param {string} rawAlt 图片描述
+ * @param {string} rawUrl 图片地址（支持本地绝对路径、相对路径、file://、Base64 或网络 URL）
+ * @returns {string}
+ */
+export function renderImageCard(rawAlt = "", rawUrl = "") {
+  const url = (rawUrl || "").trim();
+  const alt = (rawAlt || "").trim();
+  if (!url) return "";
+
+  const safeUrl = escapeHtml(url);
+  const safeAlt = escapeHtml(alt);
+
+  // 文件名提取
+  let fileName = "";
+  if (url.startsWith("data:")) {
+    fileName = alt || "Base64 图像";
+  } else {
+    const cleanPath = url.split("?")[0].replace(/\\/g, "/");
+    fileName = cleanPath.split("/").pop() || alt || "图片";
+  }
+  const displayFileName = escapeHtml(fileName);
+
+  const isRemoteOrData = url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:");
+  const cachedDataUrl = imageCache.get(url);
+  const isLoaded = Boolean(cachedDataUrl || isRemoteOrData);
+  const initialSrc = cachedDataUrl || (isRemoteOrData ? safeUrl : "");
+
+  return `
+    <div class="md-image-card ${isLoaded ? "is-loaded" : "is-loading"}" data-src="${safeUrl}">
+      <div class="md-image-wrapper" title="点击放大预览">
+        <div class="md-image-loading-placeholder">
+          <span class="md-image-spinner"></span>
+          <span class="md-image-loading-text">正在载入图片...</span>
+        </div>
+        <img class="md-img" src="${initialSrc}" alt="${safeAlt || displayFileName}" data-raw-src="${safeUrl}" loading="lazy" />
+      </div>
+      <div class="md-image-bar">
+        <span class="md-image-label" title="${safeAlt || displayFileName}">
+          <span class="md-image-icon">${ICONS.image || ""}</span>
+          <span class="md-image-name">${displayFileName}</span>
+        </span>
+        <div class="md-image-actions">
+          <button type="button" class="md-image-btn btn-save-desktop" data-action="save-image-desktop" title="一键保存到系统桌面" aria-label="保存到桌面">
+            <span class="btn-icon">${ICONS.save || ""}</span>
+            <span class="btn-text">保存到桌面</span>
+          </button>
+          ${!isRemoteOrData ? `
+          <button type="button" class="md-image-btn btn-reveal" data-action="reveal-image" title="在系统资源管理器中打开所在文件夹" aria-label="打开位置">
+            <span class="btn-icon">${ICONS.folder || ""}</span>
+            <span class="btn-text">打开位置</span>
+          </button>` : ""}
+        </div>
+      </div>
+    </div>
+  `.trim();
+}
+
+// ============================================================================
+// 3. 行内元素解析器 (Inline Lexer)
 // ============================================================================
 
 /**
@@ -162,13 +230,30 @@ function parseInline(text) {
     return `\uE000MATH${idx}\uE001`;
   });
 
-  // 3. 图片 ![alt](url) -> 暂存占位符防 URL 中的下划线/参数被误伤
+  // 3. 原生 HTML <img ...> 标签识别并升级为手绘卡片
   const imgTokens = [];
+  rendered = rendered.replace(/<img\s+([^>]*?)>/gi, (match, attrs) => {
+    const srcMatch = attrs.match(/src=["']([^"']+)["']/i);
+    if (!srcMatch) return match;
+    const altMatch = attrs.match(/alt=["']([^"']*)["']/i);
+    const url = srcMatch[1];
+    const alt = altMatch ? altMatch[1] : "";
+    const idx = imgTokens.length;
+    imgTokens.push(renderImageCard(alt, url));
+    return `\uE000IMG${idx}\uE001`;
+  });
+
+  // 3.1 标准 Markdown 图片 ![alt](url) -> 升级为手绘卡片
   rendered = rendered.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
     const idx = imgTokens.length;
-    const safeUrl = escapeHtml(url.trim());
-    const safeAlt = escapeHtml(alt.trim());
-    imgTokens.push(`<img class="md-img" src="${safeUrl}" alt="${safeAlt}" loading="lazy" />`);
+    imgTokens.push(renderImageCard(alt, url));
+    return `\uE000IMG${idx}\uE001`;
+  });
+
+  // 3.2 针对目标为图片文件的 Markdown 链接 [alt](image_path.png) 智能升级为图片卡
+  rendered = rendered.replace(/\[([^\]]+)\]\(([^)\s]+\.(?:png|jpg|jpeg|gif|webp|svg|bmp|ico)(?:\?[^)\s]*)?)\)/gi, (match, alt, url) => {
+    const idx = imgTokens.length;
+    imgTokens.push(renderImageCard(alt, url));
     return `\uE000IMG${idx}\uE001`;
   });
 
@@ -616,9 +701,26 @@ export function renderMarkdown(markdown) {
     }
 
     // ------------------------------------------------------------------------
+    // 7.5 单独成行的纯图片路径 / 网址识别 (如 C:\...\cat.png 或 ./cat.png)
+    // ------------------------------------------------------------------------
+    const standaloneImgMatch = trimmed.match(/^([a-zA-Z]:[\\\/]|\.{1,2}[\\\/]|~\/|~\\|https?:\/\/|[a-zA-Z0-9_\-\.\/]+)[^\s<>"']+\.(png|jpg|jpeg|gif|webp|svg|bmp|ico)$/i);
+    if (standaloneImgMatch && !trimmed.includes(" ") && !trimmed.includes("<") && !trimmed.includes(">")) {
+      flushTable();
+      flushList();
+      output.push(renderImageCard("", trimmed));
+      continue;
+    }
+
+    // ------------------------------------------------------------------------
     // 8. 普通段落 (Paragraph)
     // ------------------------------------------------------------------------
-    output.push(`<p class="md-p">${parseInline(line)}</p>`);
+    const inlineParsed = parseInline(line);
+    // 若段落仅包含一张图片卡片，直接作为块级元素输出，避免被 <p> 标签无效包裹
+    if (/^\s*<div class="md-image-card[\s\S]*<\/div>\s*$/.test(inlineParsed)) {
+      output.push(inlineParsed);
+    } else {
+      output.push(`<p class="md-p">${inlineParsed}</p>`);
+    }
   }
 
   // 循环结束：流式输出末尾自动容错闭合未完结元素
@@ -633,11 +735,166 @@ export function renderMarkdown(markdown) {
 }
 
 // ============================================================================
-// 4. 全局代码块复制交互处理器 (Copy Code Event Delegation)
+// 5. 全局 Markdown 交互委托 (Code Copy, Image Save & Lightbox)
 // ============================================================================
 
 /**
- * 挂载 Markdown 内部交互委托（一键复制代码、状态切换与反馈）
+ * 异步解析指定容器内所有待加载的本地图片为 Base64 Data URL 并绑定加载监听
+ * @param {HTMLElement} [container=document] 扫描容器
+ * @param {string} [cwd=null] 当前工作区物理目录
+ */
+export async function resolveMarkdownImages(container = document, cwd = null) {
+  if (!container) return;
+
+  const cards = container.querySelectorAll(".md-image-card");
+  if (!cards || cards.length === 0) return;
+
+  // 获取当前工作区路径兜底
+  let effCwd = cwd;
+  if (!effCwd) {
+    try {
+      const ws = await workspaceService.getActiveWorkspace();
+      if (ws?.path) effCwd = ws.path;
+    } catch {}
+  }
+
+  for (const card of cards) {
+    const rawSrc = card.getAttribute("data-src");
+    const img = card.querySelector("img.md-img");
+    if (!rawSrc || !img) continue;
+
+    // 已经加载完成且为有效 src
+    if (card.classList.contains("is-loaded") && img.src && !img.src.endsWith(window.location.href)) {
+      continue;
+    }
+
+    // 分支 1：远程网络图片或已经是 Data URL
+    if (rawSrc.startsWith("http://") || rawSrc.startsWith("https://") || rawSrc.startsWith("data:")) {
+      if (img.src !== rawSrc) {
+        img.src = rawSrc;
+      }
+      img.onload = () => {
+        card.classList.remove("is-loading", "is-error");
+        card.classList.add("is-loaded");
+      };
+      img.onerror = () => {
+        card.classList.remove("is-loading");
+        card.classList.add("is-error");
+        const textEl = card.querySelector(".md-image-loading-text");
+        if (textEl) textEl.textContent = "网络图片加载失败";
+      };
+      if (img.complete && img.naturalWidth > 0) {
+        card.classList.remove("is-loading", "is-error");
+        card.classList.add("is-loaded");
+      }
+      continue;
+    }
+
+    // 分支 2：内存缓存已命中
+    if (imageCache.has(rawSrc)) {
+      img.src = imageCache.get(rawSrc);
+      card.classList.remove("is-loading", "is-error");
+      card.classList.add("is-loaded");
+      continue;
+    }
+
+    // 分支 3：通过 Rust 后端将本地文件解析为 Base64 Data URL
+    try {
+      const dataUrl = await invokeTauri("pi_read_image_as_data_url", {
+        path: rawSrc,
+        cwd: effCwd || null,
+      });
+      if (dataUrl) {
+        imageCache.set(rawSrc, dataUrl);
+        img.src = dataUrl;
+        card.classList.remove("is-loading", "is-error");
+        card.classList.add("is-loaded");
+      } else {
+        throw new Error("返回数据为空");
+      }
+    } catch (err) {
+      card.classList.remove("is-loading");
+      card.classList.add("is-error");
+      const textEl = card.querySelector(".md-image-loading-text");
+      if (textEl) textEl.textContent = "图片未能加载（文件未就绪或不存在）";
+    }
+  }
+}
+
+/**
+ * 打开全屏手绘图片预览模态弹窗 (Lightbox)
+ * @param {string} displaySrc 展示用的图片源
+ * @param {string} rawSrc 原始路径
+ * @param {string} alt 描述
+ */
+export function openImageLightbox(displaySrc, rawSrc = "", alt = "") {
+  const existing = document.querySelector(".md-image-lightbox");
+  if (existing) existing.remove();
+
+  const lightbox = document.createElement("div");
+  lightbox.className = "md-image-lightbox";
+  lightbox.setAttribute("role", "dialog");
+  lightbox.setAttribute("aria-modal", "true");
+
+  const isLocal = rawSrc && !rawSrc.startsWith("http://") && !rawSrc.startsWith("https://") && !rawSrc.startsWith("data:");
+
+  lightbox.innerHTML = `
+    <div class="md-image-lightbox-content">
+      <img class="md-image-lightbox-img" src="${displaySrc}" alt="${escapeHtml(alt || "图片大图预览")}" />
+      <div class="md-image-lightbox-toolbar">
+        <button type="button" class="md-image-btn btn-save-desktop" data-action="save-image-desktop" title="一键保存到系统桌面">
+          <span class="btn-icon">${ICONS.save || ""}</span>
+          <span class="btn-text">保存到桌面</span>
+        </button>
+        ${isLocal ? `
+        <button type="button" class="md-image-btn btn-reveal" data-action="reveal-image" title="在系统资源管理器中打开所在文件夹">
+          <span class="btn-icon">${ICONS.folder || ""}</span>
+          <span class="btn-text">打开位置</span>
+        </button>` : ""}
+        <button type="button" class="md-image-btn btn-close" data-action="close-lightbox" title="关闭预览 (Esc)">
+          <span class="btn-icon">${ICONS.close || ""}</span>
+          <span class="btn-text">关闭</span>
+        </button>
+      </div>
+    </div>
+  `;
+
+  lightbox.setAttribute("data-src", rawSrc || displaySrc);
+
+  const closeLightbox = () => {
+    window.removeEventListener("keydown", onKey);
+    lightbox.remove();
+  };
+
+  const onKey = (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      closeLightbox();
+    }
+  };
+
+  window.addEventListener("keydown", onKey);
+
+  lightbox.addEventListener("click", (e) => {
+    if (e.target === lightbox) {
+      closeLightbox();
+    }
+  });
+
+  const closeBtn = lightbox.querySelector(".btn-close");
+  if (closeBtn) {
+    closeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeLightbox();
+    });
+  }
+
+  document.body.appendChild(lightbox);
+}
+
+/**
+ * 挂载 Markdown 内部交互委托（一键复制代码、图片保存到桌面、定位与放大预览）
  * @param {HTMLElement} [container=document] 监听容器
  */
 export function initMarkdownInteractions(container = document) {
@@ -645,47 +902,153 @@ export function initMarkdownInteractions(container = document) {
   container.__mdInteractionsInit = true;
 
   container.addEventListener("click", async (e) => {
-    const copyBtn = e.target && typeof e.target.closest === "function" ? e.target.closest(".md-copy-btn") : null;
-    if (!copyBtn) return;
+    const target = e.target;
+    if (!target || typeof target.closest !== "function") return;
 
-    e.preventDefault();
-    e.stopPropagation();
+    // 1. 代码块复制按钮
+    const copyBtn = target.closest(".md-copy-btn");
+    if (copyBtn) {
+      e.preventDefault();
+      e.stopPropagation();
 
-    const codeBlock = copyBtn.closest(".md-code-block");
-    if (!codeBlock) return;
+      const codeBlock = copyBtn.closest(".md-code-block");
+      if (!codeBlock) return;
 
-    const codeEl = codeBlock.querySelector(".md-code-content");
-    const textToCopy = codeEl ? codeEl.textContent : "";
-    if (!textToCopy) return;
+      const codeEl = codeBlock.querySelector(".md-code-content");
+      const textToCopy = codeEl ? codeEl.textContent : "";
+      if (!textToCopy) return;
 
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(textToCopy);
-      } else {
-        const textarea = document.createElement("textarea");
-        textarea.value = textToCopy;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textarea);
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(textToCopy);
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.value = textToCopy;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand("copy");
+          document.body.removeChild(textarea);
+        }
+
+        // 复制成功 UI 反馈
+        copyBtn.classList.add("copied");
+        const iconSpan = copyBtn.querySelector(".md-copy-icon");
+        const textSpan = copyBtn.querySelector(".md-copy-text");
+        if (iconSpan) iconSpan.innerHTML = ICONS.check;
+        if (textSpan) textSpan.textContent = "已复制";
+
+        setTimeout(() => {
+          copyBtn.classList.remove("copied");
+          if (iconSpan) iconSpan.innerHTML = ICONS.copy;
+          if (textSpan) textSpan.textContent = "复制";
+        }, 1800);
+      } catch (err) {
+        console.error("[Markdown] Copy failed:", err);
       }
+      return;
+    }
 
-      // 复制成功 UI 反馈
-      copyBtn.classList.add("copied");
-      const iconSpan = copyBtn.querySelector(".md-copy-icon");
-      const textSpan = copyBtn.querySelector(".md-copy-text");
-      if (iconSpan) iconSpan.innerHTML = ICONS.check;
-      if (textSpan) textSpan.textContent = "已复制";
+    // 2. 图片卡片「保存到桌面」按钮
+    const saveImgBtn = target.closest(".md-image-btn[data-action='save-image-desktop']");
+    if (saveImgBtn) {
+      e.preventDefault();
+      e.stopPropagation();
 
-      setTimeout(() => {
-        copyBtn.classList.remove("copied");
-        if (iconSpan) iconSpan.innerHTML = ICONS.copy;
-        if (textSpan) textSpan.textContent = "复制";
-      }, 1800);
-    } catch (err) {
-      console.error("[Markdown] Copy failed:", err);
+      const card = saveImgBtn.closest(".md-image-card, .md-image-lightbox");
+      if (!card) return;
+      const rawSrc = card.getAttribute("data-src");
+      const img = card.querySelector("img.md-img, img.md-image-lightbox-img");
+      const source = rawSrc || img?.src;
+      if (!source) return;
+
+      saveImgBtn.classList.add("saving");
+      const textSpan = saveImgBtn.querySelector(".btn-text");
+      const iconSpan = saveImgBtn.querySelector(".btn-icon");
+      if (textSpan) textSpan.textContent = "保存中...";
+
+      try {
+        let effCwd = null;
+        try {
+          const ws = await workspaceService.getActiveWorkspace();
+          if (ws?.path) effCwd = ws.path;
+        } catch {}
+
+        const savedPath = await invokeTauri("pi_save_image_to_desktop", {
+          source,
+          cwd: effCwd,
+        });
+
+        saveImgBtn.classList.remove("saving");
+        saveImgBtn.classList.add("saved");
+        if (iconSpan) iconSpan.innerHTML = ICONS.check || "";
+        if (textSpan) textSpan.textContent = "已保存至桌面";
+
+        setTimeout(() => {
+          saveImgBtn.classList.remove("saved");
+          if (iconSpan) iconSpan.innerHTML = ICONS.save || "";
+          if (textSpan) textSpan.textContent = "保存到桌面";
+        }, 2200);
+
+        if (typeof window.sketchAlert === "function") {
+          await window.sketchAlert(`图片已成功保存到系统桌面！\n\n保存路径：\n${savedPath || "桌面"}`, {
+            type: "success",
+            title: "保存成功",
+          });
+        }
+      } catch (err) {
+        console.error("[Markdown] Failed to save image to desktop:", err);
+        saveImgBtn.classList.remove("saving");
+        if (iconSpan) iconSpan.innerHTML = ICONS.save || "";
+        if (textSpan) textSpan.textContent = "保存到桌面";
+        if (typeof window.sketchAlert === "function") {
+          await window.sketchAlert(`保存图片失败: ${err?.message || err || "未知错误"}`, {
+            type: "error",
+            title: "保存失败",
+          });
+        }
+      }
+      return;
+    }
+
+    // 3. 图片卡片「打开位置」按钮（Windows 资源管理器高亮定位）
+    const revealBtn = target.closest(".md-image-btn[data-action='reveal-image']");
+    if (revealBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const card = revealBtn.closest(".md-image-card, .md-image-lightbox");
+      const rawSrc = card?.getAttribute("data-src");
+      if (rawSrc) {
+        try {
+          let effPath = rawSrc;
+          if (!effPath.startsWith("http") && !effPath.startsWith("data:")) {
+            try {
+              const ws = await workspaceService.getActiveWorkspace();
+              if (ws?.path && !effPath.includes(":") && !effPath.startsWith("/") && !effPath.startsWith("\\")) {
+                effPath = `${ws.path}/${effPath}`;
+              }
+            } catch {}
+          }
+          await invokeTauri("pi_reveal_path", { path: effPath });
+        } catch (err) {
+          console.warn("[Markdown] Failed to reveal image:", err);
+        }
+      }
+      return;
+    }
+
+    // 4. 点击图片卡片主体放大预览 (Lightbox)
+    const imgWrapper = target.closest(".md-image-wrapper");
+    if (imgWrapper) {
+      const card = imgWrapper.closest(".md-image-card");
+      const img = card?.querySelector("img.md-img");
+      if (img && img.src && card.classList.contains("is-loaded")) {
+        e.preventDefault();
+        e.stopPropagation();
+        openImageLightbox(img.src, card.getAttribute("data-src"), img.alt);
+      }
+      return;
     }
   });
 }

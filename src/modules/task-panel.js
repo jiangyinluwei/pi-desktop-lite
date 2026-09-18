@@ -10,6 +10,7 @@ import { taskManager, resolveTaskSessionIdentity } from "../services/task-manage
 import { modelFailoverEngine } from "../services/model-failover.js";
 import { flowStore } from "../services/stores/flow-store.js";
 import { bindAll } from "../lib/el-binder.js";
+import { resolveMarkdownImages } from "../lib/markdown-renderer.js";
 
 /**
  * 后台任务胶囊、侧边栏、历史恢复与快照归档
@@ -497,6 +498,7 @@ export function initTaskPanel(ctx) {
 
         if (isRunning && groupRefs.responseContentEl) {
           groupRefs.responseContentEl.innerHTML = api.renderMarkdown(turn.responseText || "") + `<span class="streaming-cursor"></span>`;
+          resolveMarkdownImages(groupRefs.responseContentEl);
         }
       } else {
         // 历史轮次全部收起思考卡片与工具卡片
