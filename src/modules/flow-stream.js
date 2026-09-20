@@ -192,7 +192,9 @@ export function initFlowStream(ctx) {
     flowView.currentSteps = [];
     flowView.activeThinkingStep = null;
     flowView.activeToolStep = null;
-    flowView.activeTextStep = null;
+    flowView.pendingTextSegment = null;
+    flowView.finalPointCandidate = null;
+    flowView.activeToolPseudoStep = null;
     if (typeof api.removeActiveToolPseudoStep === "function") {
       api.removeActiveToolPseudoStep();
     }
@@ -203,10 +205,6 @@ export function initFlowStream(ctx) {
     if (flowView.toolRunTimerInterval) {
       clearInterval(flowView.toolRunTimerInterval);
       flowView.toolRunTimerInterval = null;
-    }
-    if (flowView.textTimerInterval) {
-      clearInterval(flowView.textTimerInterval);
-      flowView.textTimerInterval = null;
     }
   };
 
@@ -345,20 +343,35 @@ export function initFlowStream(ctx) {
   const finalizeStream = (taskId = null) => {
     piClient.isStreaming = false;
     const fs = streamData(taskId);
-    // 若存在未封口的活跃阶段性输出切片，说明它是本轮最终输出段：
-    // 移除 Point 卡（内容保留在最终输出卡中），不沉淀为步骤快照
-    if (flowView.activeTextStep) {
-      const lastStep = flowView.activeTextStep;
-      flowView.activeTextStep = null;
-      lastStep.cardEl?.remove();
-      if (Array.isArray(flowView.currentSteps)) {
-        flowView.currentSteps = flowView.currentSteps.filter((s) => s !== lastStep);
+    // 尾段候选回填：若最后一段文本已在 text-end 打包为 Point 卡，且此后直到本轮收尾
+    // 都未开启任何新阶段（无 thinking / 工具调用 / 新文本段边界），说明该段即本轮最终
+    // 输出——移除 Point 卡，将净化前原文（保留代码块等合法内容）回填最终输出卡。
+    // 连接性守卫：任务直切会整体重建轮次 DOM，后台残余收口帧的结算必须跳过回填，
+    // 严禁把旧任务文本写入重建后的其他任务输出卡
+    const candidate = flowView.finalPointCandidate;
+    flowView.finalPointCandidate = null;
+    if (
+      candidate &&
+      candidate.taskId === resolveStreamTaskId(taskId) &&
+      typeof candidate.rawText === "string" &&
+      candidate.rawText.trim() &&
+      flowView.activeTurnRefs?.stepsContainerEl &&
+      (!candidate.step?.cardEl ||
+        flowView.activeTurnRefs.stepsContainerEl.contains(candidate.step.cardEl))
+    ) {
+      if (candidate.step?.cardEl) {
+        candidate.step.cardEl.remove();
+        if (Array.isArray(flowView.currentSteps)) {
+          flowView.currentSteps = flowView.currentSteps.filter((s) => s !== candidate.step);
+        }
+      }
+      fs.set({ responseText: candidate.rawText });
+      if (flowView.activeTurnRefs?.responseContentEl) {
+        flowView.activeTurnRefs.responseContentEl.innerHTML = api.renderMarkdown(candidate.rawText);
       }
     }
-    if (flowView.textTimerInterval) {
-      clearInterval(flowView.textTimerInterval);
-      flowView.textTimerInterval = null;
-    }
+    // 中途打断的未封口文本段（未收到 text-end）：内容本就留在最终输出卡中，仅丢弃追踪态
+    flowView.pendingTextSegment = null;
     sealActiveThinkingStep();
     // 伪工具运行框兜底清理：流式结束时若仍在参数流式期，定格读秒后移除占位卡
     if (typeof api.removeActiveToolPseudoStep === "function") {
@@ -667,14 +680,6 @@ export function initFlowStream(ctx) {
       clearInterval(flowView.thinkingTimerInterval);
       flowView.thinkingTimerInterval = null;
     }
-    if (
-      payload.status === "reconnecting" &&
-      (payload.phase === "waiting" || payload.phase === "post_waiting") &&
-      flowView.textTimerInterval
-    ) {
-      clearInterval(flowView.textTimerInterval);
-      flowView.textTimerInterval = null;
-    }
     updateFailoverCapsule(payload);
     // 侧边栏挂起任务状态徽章 (自动内置重连中) 实时刷新
     if (
@@ -943,104 +948,82 @@ export function initFlowStream(ctx) {
   };
 
   /**
-   * 辅助函数：确保当前存在活跃的阶段性输出切片 (Point 卡)
-   * 阶段性输出流式期间内容在最终输出卡中实时可见（不折叠），
-   * Point 卡仅在步骤流中承载「Point + 读秒」标题位，封口时内容整体折叠进卡片正文。
+   * 阶段性输出 (Point) 打包封口唯一实现：
+   * 流式期间内容仅在最终输出卡实时可见（不建卡、不读秒）；文本段输出完毕
+   * （text-end，或内核未派发 text-end 时的下一个阶段边界兜底）才把该段文本
+   * 整体打包折叠进 Point 卡，耗时于打包瞬间定格为「已输出 X.Xs」。
+   * 严禁在首个 text-delta 提前建卡——那会让 Point 卡带着「输出中」读秒空转到
+   * 下一阶段真正启动（含跨消息 Provider 请求往返延迟），且与输出内容同屏双现。
+   * @param {string|null} [taskId] 事件帧归属任务 id（缺省回退前台活跃任务）
+   * @param {boolean} [recordFinalCandidate] 是否登记尾段候选（仅 text-end 打包时为 true）
    */
-  const ensureActiveTextStep = () => {
-    if (flowView.activeTextStep) return flowView.activeTextStep;
+  const sealTextSegmentAsPointCard = (taskId = null, { recordFinalCandidate = false } = {}) => {
+    const seg = flowView.pendingTextSegment;
+    flowView.pendingTextSegment = null;
 
-    const pStep = createPhaseStepCard({
-      text: "",
-      durationText: "输出中 (0.0s)...",
-      isOpen: false, // 铁律：任何时候都不自动展开
-    });
+    const fs = streamData(taskId);
+    const rawSegText = fs.responseText || "";
+    const cleanedText = cleanPhaseOutputText(rawSegText);
+    const elapsed = ((Date.now() - (seg?.startTime || Date.now())) / 1000).toFixed(1);
+    const durationText = `已输出 ${elapsed}s`;
 
-    if (flowView.activeTurnRefs?.stepsContainerEl) {
-      flowView.activeTurnRefs.stepsContainerEl.appendChild(pStep.cardEl);
-    }
+    // 尾段候选登记：text-end 打包后若直到本轮收尾都无新阶段开启，finalizeStream
+    // 会据此把净化前原文回填最终输出卡（尾段严禁沉淀为 Point 卡）
+    const candidate =
+      recordFinalCandidate && rawSegText.trim()
+        ? { taskId: resolveStreamTaskId(taskId), rawText: rawSegText, step: null }
+        : null;
 
-    const stepItem = {
-      type: "text",
-      id: `phase_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      text: "",
-      durationText: "输出中 (0.0s)...",
-      startTime: Date.now(),
-      cardEl: pStep.cardEl,
-      headerEl: pStep.headerEl,
-      durationEl: pStep.durationEl,
-      previewEl: pStep.previewEl,
-      bodyEl: pStep.bodyEl,
-      textStreamEl: pStep.textStreamEl,
-    };
-
-    flowView.activeTextStep = stepItem;
-    if (!Array.isArray(flowView.currentSteps)) {
-      flowView.currentSteps = [];
-    }
-    flowView.currentSteps.push(stepItem);
-
-    bus.emit("flow:step-start", {
-      type: "point",
-      taskId: piClient.lastEventTaskId || taskManager.getCurrentActiveTask()?.id || null,
-    });
-
-    startElapsedTimer(
-      flowView,
-      "textTimerInterval",
-      () => flowView.activeTextStep,
-      (step, elapsed) => {
-        step.durationEl.textContent = `输出中 (${elapsed}s)...`;
+    let stepItem = null;
+    if (cleanedText) {
+      const pStep = createPhaseStepCard({
+        text: cleanedText,
+        durationText,
+        isOpen: false, // 铁律：任何时候都不自动展开
+      });
+      if (flowView.activeTurnRefs?.stepsContainerEl) {
+        flowView.activeTurnRefs.stepsContainerEl.appendChild(pStep.cardEl);
       }
-    );
-
-    return stepItem;
-  };
-
-  /**
-   * 封口当前活跃的阶段性输出切片：把已累积的中间段文本从最终输出卡
-   * 折叠进 Point 卡正文，定格读秒，并重置最终输出卡以承接下一段输出。
-   * 触发时机：tool-start（进入工具调用）或新一轮 text-start（上一段未结清）。
-   * @param {string} [taskId] 事件帧归属任务 id（缺省回退前台活跃任务）
-   */
-  const sealActivePhaseOutput = (taskId = null) => {
-    if (!flowView.activeTextStep) return;
-    const step = flowView.activeTextStep;
-    flowView.activeTextStep = null;
-    if (flowView.textTimerInterval) {
-      clearInterval(flowView.textTimerInterval);
-      flowView.textTimerInterval = null;
-    }
-
-    const cleanedText = cleanPhaseOutputText(step.text);
-    if (!cleanedText) {
-      // 空段或纯泄漏工具指令段：直接移除空 Point 卡，不沉淀
-      step.cardEl?.remove();
-      if (Array.isArray(flowView.currentSteps)) {
-        flowView.currentSteps = flowView.currentSteps.filter((s) => s !== step);
+      stepItem = {
+        type: "text",
+        id: `phase_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        text: cleanedText,
+        durationText,
+        startTime: seg?.startTime || Date.now(),
+        cardEl: pStep.cardEl,
+        headerEl: pStep.headerEl,
+        durationEl: pStep.durationEl,
+        previewEl: pStep.previewEl,
+        bodyEl: pStep.bodyEl,
+        textStreamEl: pStep.textStreamEl,
+      };
+      if (!Array.isArray(flowView.currentSteps)) {
+        flowView.currentSteps = [];
       }
-      return;
+      flowView.currentSteps.push(stepItem);
+    }
+    if (candidate) {
+      candidate.step = stepItem;
+      flowView.finalPointCandidate = candidate;
     }
 
-    const elapsed = ((Date.now() - step.startTime) / 1000).toFixed(1);
-    step.durationText = `已输出 ${elapsed}s`;
-    step.text = cleanedText;
-    step.cardEl?.classList.remove("running");
-    if (step.durationEl) {
-      step.durationEl.textContent = step.durationText;
-    }
-    if (step.previewEl) {
-      step.previewEl.textContent = cleanedText.replace(/[\r\n\t]+/g, " ").trim();
-    }
-    if (step.textStreamEl) {
-      step.textStreamEl.innerHTML = api.renderMarkdown(cleanedText);
-    }
-
-    // 重置最终输出卡：仅保留光标，承接下一段（最终）输出
-    streamData(taskId).set({ responseText: "" });
+    // 重置最终输出卡：仅保留光标，承接下一段（最终）输出；
+    // 纯泄漏工具指令段（净化后为空）同样清空——其内容已由内核侧抽取为真实工具调用
+    fs.set({ responseText: "" });
     if (flowView.activeTurnRefs?.responseContentEl) {
       flowView.activeTurnRefs.responseContentEl.innerHTML = `<span class="streaming-cursor"></span>`;
     }
+  };
+
+  /**
+   * 兜底封口当前文本段：thinking-start / text-start / toolcall-delta-start / tool-start
+   * 等阶段边界调用（内核未派发 text-end 的异常流时生效）。任何边界封口都证明本轮
+   * 还有后续阶段，必须撤销尾段候选的回填资格。
+   * @param {string} [taskId] 事件帧归属任务 id（缺省回退前台活跃任务）
+   */
+  const sealActivePhaseOutput = (taskId = null) => {
+    flowView.finalPointCandidate = null;
+    sealTextSegmentAsPointCard(taskId);
   };
 
   /**
@@ -1166,16 +1149,15 @@ export function initFlowStream(ctx) {
     // appendResponse 同步累积响应文本并置 hasReceivedDelta（流式热路径）
     fs.appendResponse(e.detail || "");
     sealActiveThinkingStep();
-    // 阶段性输出切片：首增量时创建 Point 卡（标题 + 读秒），内容仍在最终输出卡流式可见
-    const textStep = ensureActiveTextStep();
-    // 关键：同步累积 Point 步骤文本 —— 否则 sealActivePhaseOutput 读到的 step.text 恒为空，
-    // 封口时会被误判为「空段」直接移除，导致 Point 卡永不保留（阶段性输出显示逻辑失效的根因）
-    textStep.text += e.detail || "";
-    if (textStep.previewEl) {
-      const cleanPreview = cleanPhaseOutputText(fs.responseText);
-      textStep.previewEl.textContent = cleanPreview
-        ? cleanPreview.replace(/[\r\n\t]+/g, " ").trim()
-        : "阶段性输出";
+    // 阶段性输出 (Point)：流式期间内容仅在最终输出卡实时可见，不建卡、不读秒；
+    // 文本段输出完毕（text-end）时才整体打包为 Point 卡并定格耗时
+    if (!flowView.pendingTextSegment) {
+      flowView.pendingTextSegment = { startTime: Date.now() };
+      // 触发新一轮 point 事件（通知额度图标弧光高亮）
+      bus.emit("flow:step-start", {
+        type: "point",
+        taskId: piClient.lastEventTaskId || taskManager.getCurrentActiveTask()?.id || null,
+      });
     }
     if (flowView.activeTurnRefs?.responseContentEl) {
       flowView.activeTurnRefs.responseContentEl.innerHTML =
@@ -1185,6 +1167,15 @@ export function initFlowStream(ctx) {
       }
     }
     followScrollToBottom();
+  });
+
+  piClient.addEventListener("text-end", () => {
+    if (!isForegroundStreamEvent()) return;
+    // 阶段性输出打包铁律：文本段输出完毕即刻封口为 Point 卡（耗时定格「已输出 X.Xs」），
+    // 严禁等待下一个 thinking-start / 工具边界——否则 Point 卡会带着「输出中」读秒
+    // 空转到下一阶段真正启动，且打包内容与输出卡正文同屏双现。
+    // text-end 打包后直到本轮收尾都无新阶段开启时，finalizeStream 将该段回填为最终输出。
+    sealTextSegmentAsPointCard(piClient.lastEventTaskId, { recordFinalCandidate: true });
   });
 
   let resolveImagesTimer = null;

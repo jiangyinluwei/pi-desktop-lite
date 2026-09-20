@@ -39,7 +39,7 @@ description: |
 3. **真实 ReAct 时序交织**：步骤按 `思维1 ➔ 工具1 ➔ 思维2 ➔ 工具2 ➔ ...` 一段一段流式拼接；
 4. **前端解耦分层硬约束**：
    - **流式纯数据归仓**：`responseText`、`thinkingText`、`errorMessage`、`lastUserQuery`、`hasReceivedDelta`、`interruptSendTaskId`、`lastSentPrompt`、`lastSentAttachments`、`lastImagePayloads`、`thinkingStartTime` 等 11 个纯数据字段一律通过 `flowStore.for(taskId)` 分仓读写（分仓键经 `resolveStreamTaskId` 解析），严格禁止 `flow.*` 纯数据裸写（度量断言 = 0）；Store action 一律同步执行，禁止 async/await/微任务挂起；
-   - **视图派生缓存密封**：`renderedToolCards`、`currentSteps`、`active*Step`、读秒计时器（`toolPseudoTimerInterval`、`toolRunTimerInterval`）、`activeTurnRefs`、`followBottom` 统一定义于 `src/modules/flow-state-view.js` 的 `flowView` 密封对象（`Object.seal` 封口保护，严禁入 Store）；
+   - **视图派生缓存密封**：`renderedToolCards`、`currentSteps`、`active*Step`、Point 段追踪态（`pendingTextSegment` / `finalPointCandidate`）、读秒计时器（`toolPseudoTimerInterval`、`toolRunTimerInterval`）、`activeTurnRefs`、`followBottom` 统一定义于 `src/modules/flow-state-view.js` 的 `flowView` 密封对象（`Object.seal` 封口保护，严禁入 Store）；
    - **纯渲染助手显式 import**：工具/思维/阶段卡创建、工具名/图标/摘要映射、入参/结果 HTML 格式化、ANSI 剥离、徽章刷新等无副作用纯渲染函数统一定义于 `src/modules/flow-render.js`，各模块直接 `import { ... } from './flow-render.js'` 显式依赖，杜绝旧 `ctx.api` 纯渲染槽；
    - **Flow 域 DOM 引用隔离与按需自绑定**：只读 DOM 引用由 `src/modules/flow-dom.js`（`createFlowDom`）产出挂载到 `ctx.flowDom`，flow-* 模块改读 `flowDom.flow*`；各模块通过 `src/lib/el-binder.js` 的 `bindAll` 按需自绑定自己的 DOM id 子集，**严禁解构已废除的 `ctx.el`**；
    - **契约化事件派发**：横切通知经 `event-bus.js` 同步派发（`flow:response` 携带 taskId，`ui:toast` 等），事件通道在 `src/lib/contracts.js` 严格登记；控制流走 Store action 或显式 import。
@@ -51,7 +51,7 @@ description: |
 | 切片类型 | 视觉语义与展示规范 | 展开正文与交互细节 | 触发与封口时机 |
 |---|---|---|---|
 | **思维链切片 (`flow-step-thinking`)** | **石墨幽兰冷灰调**（`#f7f6fb` / `#1b1a21`），`Thinking` 手绘胶囊 + 星芒自旋呼吸，动态读秒 `(1.2s)...` ➔ 定格 `(3.2s)`，单行实时从右向左流动输出流预览（跟踪最新输出，输出越快流动越快）；默认折叠。 | 细致思考日志流（字号 12px，行高 1.68，石墨淡墨色 `--ink-muted`），柔和内边距与虚线分割。 | `thinking-start` 创建；`tool-start` 或 `text-start` 时封口。 |
-| **阶段性输出切片 (`flow-step-phase`)** | **温润羊皮纸金调**（`#fdfbf5` / `#201d17`），`Point` 手绘暖调胶囊 + 铅笔图标 + 读秒 `已输出 1.2s`；默认折叠。 | 阶段 Markdown 完整渲染（富文本、代码块、列表、引用），内嵌暖调微衬边。 | 首个 `text-delta` 创建；文本段之后再次进入 Thinking（`thinking-start`）或进入工具调用（`toolcall-delta-start` / `tool-start`）时封口；新轮 `text-start` 封口上一段；最终段保留在输出卡。 |
+| **阶段性输出切片 (`flow-step-phase`)** | **温润羊皮纸金调**（`#fdfbf5` / `#201d17`），`Point` 手绘暖调胶囊 + 铅笔图标 + 定格读秒 `已输出 1.2s`；默认折叠。 | 阶段 Markdown 完整渲染（富文本、代码块、列表、引用），内嵌暖调微衬边。 | **流式期间不建卡**（内容仅在最终输出卡实时可见）；文本段输出完毕（内核 `text-end` 事件）即刻打包创建并定格耗时；内核未派发 `text-end` 时由阶段边界（`thinking-start` / `text-start` / `toolcall-delta-start` / `tool-start`）兜底封口；text-end 打包后直到本轮收尾无任何新阶段开启时为最终段，finalize 回填输出卡（净化前原文，保代码块）。 |
 | **工具调用切片 (`flow-step-tool`)** | **蓝图终端工程调**（`#f2f6fa` / `#141920`），按工具智能映射矢量图标（CLI/文件/搜索/OCR等）+ 中文友好名 + 参数预览 + 三态状态徽章 (`running` 琥珀黄 / `done` 翡翠绿 / `failure` 朱红) + 运行期递增读秒 `(1.2s)...` ➔ 封口定格 `(3.2s)`；默认折叠。 | 结构化拆分 `入参 · Parameters` 与 `执行结果 · Result`，仿终端代码块包装，右上角提供手绘一键复制与复制成功即时微反馈。 | `tool-start` 创建；`tool-end` 封口并更新状态与定格读秒。 |
 | **伪工具运行框 (`tool-pseudo-card`)** | **蓝图虚线占位调**（复用工具卡配色 + 虚线边框 + 降不透明度），通用「工具调用...」标题 + running 徽章 + 100ms 递增读秒，工具图标轻微呼吸摆动；无展开正文。 | 无（纯占位单行卡）。 | `toolcall-delta-start` 创建（覆盖工具参数流式期空窗延迟）；`toolcall-delta-end` 回填真实工具名（如「工具调用(edit)」）；`tool-start` 真实卡创建时移除；`thinking-start` / `text-start` / `finalizeStream` 兜底清理。 |
 
@@ -69,8 +69,8 @@ description: |
 当大模型在输出中间过程文本时，可能混杂未结构化的模拟工具调用、命令行代码块（` ```bash\n...\n``` `）、虚假执行引导语（“让我实际运行”、“更正——以实际命令输出为准”等）或伪造的 `**Tool Results**` 标记。为杜绝这些技术实现细节污染用户的自然语言阶段性输出，系统实施全链路多层净化：
 
 1. **统一净化谓词**：`src/lib/dom-utils.js` 中的 `cleanPhaseOutputText(text)` 严格过滤所有带或不带语言标签的代码块（包括末尾追加 `-exec` 标记的命令块）、XML/DSML 工具模拟标签（`<bash>`, `<invoke>`, `<acp>` 等）、假装执行的口头废话以及多余空行；
-2. **流式预览防闪烁**：`flow-stream.js` 的 `text-delta` 在实时更新 `textStep.previewEl.textContent` 时先执行 `cleanPhaseOutputText`，杜绝命令行文本在流动预览中一闪而过；
-3. **空段自愈清理**：`flow-stream.js` 的 `sealActiveTextStep` 在对 Point 卡封口时执行净化，若净化后内容为空（说明该段仅包含泄漏的命令代码块），则直接物理移除该 Point 卡，杜绝沉淀无内容的空卡；
+2. **流式免卡铁律**：`flow-stream.js` 的 `text-delta` 期间**严禁创建 Point 卡**（含任何带读秒的占位卡）——内容仅在最终输出卡实时可见；提前建卡会导致 Point 卡带着「输出中」读秒空转到下一阶段真正启动（含跨消息 Provider 请求往返延迟），且与输出内容同屏双现；
+3. **空段自愈清理**：`flow-stream.js` 的 `sealTextSegmentAsPointCard` 在打包封口（首选 `text-end`，边界兜底）时执行净化，若净化后内容为空（说明该段仅包含泄漏的命令代码块），则不沉淀 Point 卡并同步清空输出卡正文（泄漏内容已由内核侧抽取为真实工具调用执行）；
 4. **底层存储防污染**：`task-manager.js` 在 `tool_execution_start` 将中间段文本沉淀进 `currentTurn.steps` 时，先执行 `cleanPhaseOutputText` 校验，只有净化后含有实质自然语言时才推入 `{ type: "text", text: cleanedText }`，彻底从数据源头切断未净化文本向 Task 数据、历史归档与会话续写中的渗透；
 5. **历史与重渲兜底**：`flow-ui.js` 的 `restoreTurnsIntoFlow` 与 `flow-render.js` 的 `createPhaseStepCard` 双重防线拦截，保证无论是实时生成、挂起恢复、任务直切还是历史查看，Point 框体中 100% 仅展示纯净的人类可读自然语言。
 

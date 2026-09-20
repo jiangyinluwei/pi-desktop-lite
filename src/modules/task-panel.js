@@ -443,6 +443,10 @@ export function initTaskPanel(ctx) {
     flowView.renderedToolCards.clear();
     flowView.activeThinkingStep = null;
     flowView.currentSteps = [];
+    // 阶段性输出 (Point) 追踪态同属前台视图：跨任务切换必须一并清空，
+    // 否则旧任务尾段候选会在新任务 finalize 时误回填其输出卡
+    flowView.pendingTextSegment = null;
+    flowView.finalPointCandidate = null;
 
     turns.forEach((turn, idx) => {
       const isLast = idx === turns.length - 1;

@@ -33,10 +33,10 @@ export const STREAM_BUCKET_FALLBACK = "__stream__";
  *   currentSteps: object[],
  *   activeThinkingStep: object|null,
  *   activeToolStep: object|null,
- *   activeTextStep: object|null,
+ *   pendingTextSegment: object|null,
+ *   finalPointCandidate: object|null,
  *   activeToolPseudoStep: object|null,
  *   thinkingTimerInterval: number|null,
- *   textTimerInterval: number|null,
  *   toolPseudoTimerInterval: number|null,
  *   toolRunTimerInterval: number|null,
  *   activeTurnRefs: object|null,
@@ -52,14 +52,14 @@ export const flowView = Object.seal({
   activeThinkingStep: null,
   /** 当前活跃工具切片卡 */
   activeToolStep: null,
-  /** 当前活跃阶段性输出 (Point) 切片卡 */
-  activeTextStep: null,
+  /** 当前流式中的阶段性输出文本段（首个 text-delta 登记，text-end 打包封口；流式期间不建卡） */
+  pendingTextSegment: null,
+  /** 尾段候选：text-end 打包的最后一个 Point（taskId + 净化前原文），finalize 判定尾段时回填输出卡 */
+  finalPointCandidate: null,
   /** 伪工具运行框占位卡（参数流式期空窗辅助显示） */
   activeToolPseudoStep: null,
   /** 思维切片读秒计时器句柄 */
   thinkingTimerInterval: null,
-  /** 阶段性输出读秒计时器句柄 */
-  textTimerInterval: null,
   /** 伪工具运行框读秒计时器句柄 */
   toolPseudoTimerInterval: null,
   /** 真实工具卡读秒计时器句柄 */

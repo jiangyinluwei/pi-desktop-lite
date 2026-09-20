@@ -182,10 +182,10 @@ description: Pi Desktop Lite 桌面端交互 23 项核心铁律的完整机制�
     - **零干预原则**：`tools` 正常携带时不做任何结构改动，不干预 subagent 按角色收窄后的工具集（恢复源即该上下文自身的锚定声明，天然保真）。
   - ② **模型输出净化 (message_end 主防线)**：在 `message_end` 阶段（模型输出完成、内核参数校验执行之前）拦截助手消息：若正文包含 DSML、标准 XML `<invoke>` 或 `<bash>` **私有协议标签**，自动抽取重构为标准 `toolCall` 块并清洗对应标签残留，确保收纳进单行工具卡顺畅执行；若 `toolCall.name` 包含畸形内容（含空白/尖括号等非法字符）精准提取规范工具名并注入入参；同时无损剥离多层嵌套的 arguments/parameters/args 外壳。**红线：严禁对正文普通 Markdown 命令代码块做工具化提取**——那可能是模型展示给用户的合法示例（如"重命名分支可以这样写"），提取即劫持真实执行、篡改回答语义；私有协议标签才是可靠的泄漏信号；**红线：严禁把净化逻辑做成对回答正文的大范围改写**；
   - ③ **底层执行清洗 (tool_call 第二防线)**：在 `tool_call` 阶段二次兜底清洗入参嵌套与畸形工具名。**红线：严禁对命令行/文件路径做静默改写注入**（如强制前置 `cd "${target}" &&`、相对路径强改绝对路径）——那会静默篡改模型意图（用户明确要求在 Hub 目录执行的命令会被劫持到路由目标）；工作区路由归位由铁律 13 的「透明注入路由上下文」承载（模型自行锚定），净化层只做无损修复；
-  - ④ **前端阶段性输出 (Point) 多层防泄漏与收纳隔离**：
+  - ④ **前端阶段性输出 (Point) 流式免卡、text-end 即时打包与多层防泄漏**：
     - `src/lib/dom-utils.js` 统一收敛 `cleanPhaseOutputText(text)`，严格剥离所有代码块（含 `-exec` 尾缀）、模拟调用标签与虚假执行废话；
-    - 流式阶段（`flow-stream.js` 的 `text-delta`）：预览文本 `textStep.previewEl.textContent` 实时经 `cleanPhaseOutputText` 净化，杜绝代码块流式闪烁；
-    - 步骤封口（`sealActiveTextStep`）：净化后文本若变为空（说明该段原本只有泄漏工具命令），则直接移除空 Point 卡，不沉淀无意义空卡；
+    - 流式阶段（`flow-stream.js` 的 `text-delta`）：**严禁创建 Point 卡与任何读秒占位卡**——内容仅在最终输出卡实时可见，仅登记 `flowView.pendingTextSegment` 起始时刻；提前建卡会导致 Point 卡带着「输出中」读秒空转到下一阶段真正启动（含跨消息 Provider 请求往返延迟），且与输出内容同屏双现；
+    - 打包封口（首选内核 `text-end` 事件 → `sealTextSegmentAsPointCard`）：文本段输出完毕即刻打包为 Point 卡并定格「已输出 X.Xs」；内核未派发 `text-end` 时由阶段边界（thinking-start / text-start / toolcall-delta-start / tool-start → `sealActivePhaseOutput`）兜底封口；净化后文本若变为空（说明该段原本只有泄漏工具命令），则不建卡并同步清空输出卡正文；text-end 打包后直到本轮收尾无新阶段开启即为最终段，finalizeStream 回填输出卡（净化前原文，保留代码块）；
     - 任务管理器沉淀（`task-manager.js` 的 `tool_execution_start`）：在工具开始执行将已累积的中间段文本压入 `currentTurn.steps` 时，先执行 `cleanPhaseOutputText`，净化后有实质内容才推入，纯泄漏工具段直接丢弃，从数据源头杜绝污染；
     - 历史与重新渲染（`flow-ui.js` / `flow-render.js`）：`restoreTurnsIntoFlow` 与 `createPhaseStepCard` 双重防线拦截，保证无论是实时生成、挂起恢复、任务直切还是历史回看，泄漏的命令代码块与模拟文本 0% 暴露在 Point 卡片中。
 - **非侵入与零负担**：纯内存对象剥离与清洗，无冗余外壳、工具名正常且工具列表正常时 100% 原样直通，全流程安全降级保护，绝不阻塞会话或篡改模型原本正确的工具参数。
