@@ -165,13 +165,17 @@ description: Pi Desktop Lite 桌面端交互 23 项核心铁律的完整机制�
 - **挂起 / 直切 / 终止 / 回退 / 重连对齐**：交互未决时直切 → 原 Task 照常 `isSuspended = true`（`paused` 属待确认态），回入 Flow 由 `renderTurnsIntoFlow → api.restoreHumanInputCards(task.id)` 重建未决横条（请求不丢失）；后台任务只入 TaskManager 数据与抽屉徽标「待确认 (N)」，**绝不渲染前台横条**（前台门禁 `isForegroundStreamTask`）；「⏹ 终止」先 `clearPendingUiRequests` → `Promise.all` best-effort 回写 `{cancelled:true}` → 再走既有强杀链路（`invalidateHumanInputCards` 转失效态，**严禁**触发内置重连）；交互未决 = 生成进行中，`flow-rollback` 的 `isTaskRunning` 已显式纳入 `paused` 阻断回退；`paused`（UI 阻塞）与「模型异常」严格区分，重连引擎仅由错误帧驱动；`input` / `editor` 弹窗文本控件聚焦必须延后一帧（`SketchModal.open()` 的 rAF 会聚焦「提交」按钮抢走焦点）；
 - **清理时机**：作答回写 / 读秒归零 / `agent_end` / `agent_settled`（`{resume:false}` 防终态前状态抖动）/ abort / `task-removed` / 内核 `kernel-status-change`（`hasKernel === false` 全部失效）；`pendingUiRequests` 清空且 Task 仍 `paused`、`piClient.isStreaming` 为真时回落 `streaming`。
 
-## 铁律 20：内核工具入参自愈解包铁律 (Tool Call Argument Auto-Unwrap & Self-Healing Invariance)
+## 铁律 20：内核工具入参自愈解包与空工具过滤铁律 (Tool Call Argument Auto-Unwrap & Empty Tools Sanitizer Invariance)
 
-- **痛点与背景**：特定模型（如 DeepSeek-V4 系列在 OpenAI Completions 协议或部分反代渠道中）高频将实际工具入参包裹在冗余外壳（如 `{"arguments": {"command": "..."}}`、`{"parameters": {"path": "..."}}`、`{"args": {...}}` 或同名属性嵌套 `path: { path: "..." }`），导致内核 TypeBox / AJV 参数校验报错 `Validation failed: must have required properties`；错误文本回显给模型后极易诱发模型误判并逐轮叠加嵌套外壳（最高达 5 层深），陷入严重自激死循环；
-- **双层防御自愈流水线**：系统通过内置内核扩展 `src-tauri/extensions/pi-tool-sanitizer.ts`（应用启动时由 `rollback::materialize_extension()` 幂等物化至全局扩展目录 `~/.pi/agent/extensions/`）：
-  - ① **前置拦截（主防线）**：在 `message_end` 阶段（模型输出完成、内核参数校验执行之前）拦截助手消息，无损剥离外壳并就地规范化恢复扁平结构，阻断校验报错产生；
-  - ② **底层清洗（第二防线）**：在 `tool_call` 阶段进行二次兜底清洗，确保 100% 消除由于入参嵌套引发的报错；
-- **非侵入与零负担**：纯内存对象剥离，无冗余外壳时 100% 原样直通，全流程安全降级保护，绝不阻塞会话或篡改模型原本正确的工具参数。
+- **痛点与背景**：
+  1. **入参冗余外壳**：特定模型（如 DeepSeek-V4 系列在 OpenAI Completions 协议或部分反代渠道中）高频将实际工具入参包裹在冗余外壳（如 `{"arguments": {"command": "..."}}`、`{"parameters": {"path": "..."}}`、`{"args": {...}}` 或同名属性嵌套 `path: { path: "..." }`），导致内核 TypeBox / AJV 参数校验报错 `Validation failed: must have required properties`；错误文本回显给模型后极易诱发模型误判并逐轮叠加嵌套外壳（最高达 5 层深），陷入严重自激死循环；
+  2. **畸形工具名与入参泄漏**：部分预览/推理模型（如 Atria-Dawn-Preview、InternLM 等）会将 XML 结构（`<invoke name="bash"><parameter name="command">...</parameter></invoke>`）、换行指令（`bash\n\ncd ...`）、单行空格参数泄漏（`read path="..."</arg_value>`）或中文别名赋值（`bash的手下命令="..."`）直接输出至 `toolCall.name` 中且将 `arguments` 留空，导致内核报 `Tool ... not found` 并误判为错误；部分模型甚至将 `<｜｜DSML｜｜ calls>` 原生调用直接输出在正文文本中而未被平台结构化，导致无法执行工具直接停顿；
+  3. **空 tools 数组被上游 API 拒绝**：当会话已产生工具历史（`hasToolHistory` 为真）但当前轮次未提供活动工具时，底层适配器会向请求体写入 `"tools": []`；在严格校验的服务商处（如 Atria / InternLM / Groq 等）会直接被 400 拦截抛出：`` `tools` must not be an empty array. Either provide at least one tool or omit the field entirely. (parameter=tools) ``。
+- **三层防御自愈流水线**：系统通过内置内核扩展 `src-tauri/extensions/pi-tool-sanitizer.ts`（应用启动时由 `rollback::materialize_extension()` 幂等物化至全局扩展目录 `~/.pi/agent/extensions/`）：
+  - ① **请求发送前防线 (before_provider_request)**：在请求发送给 Provider 前拦截 Payload，若 `tools` 字段为空数组（`[]`）则就地 `delete payload.tools` 并移除孤立的 `tool_choice`，彻底消除上游 400 校验拦截；
+  - ② **模型输出净化与工具名修复 (message_end 主防线)**：在 `message_end` 阶段（模型输出完成、内核参数校验执行之前）拦截助手消息：自动从正文文本中抽取漏出的原生 DSML / invoke 标签并转为标准 `toolCall` 块；若 `toolCall.name` 包含 `<invoke name="...">`、换行拼接、单行参数泄露或中文描述别名，精准提取规范工具名并将泄漏的命令/路径注入入参；同时无损剥离多层嵌套的 arguments/parameters/args 外壳，恢复为扁平标准结构，阻断校验报错产生；
+  - ③ **底层执行清洗 (tool_call 第二防线)**：在 `tool_call` 阶段进行二次兜底清洗，确保 100% 消除由于入参嵌套或工具名异常引发的报错；
+- **非侵入与零负担**：纯内存对象剥离与清洗，无冗余外壳、工具名正常且工具列表非空时 100% 原样直通，全流程安全降级保护，绝不阻塞会话或篡改模型原本正确的工具参数。
 
 ## 铁律 21：组件推荐配置预设与路径迁移自愈铁律 (Package Preset & Config Path Migration Invariance)
 
