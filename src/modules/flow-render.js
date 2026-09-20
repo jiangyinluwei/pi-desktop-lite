@@ -22,7 +22,7 @@
  *   import { createToolStepCard } from "./flow-render.js";
  *   const card = createToolStepCard({ id, name, status, args, result });
  */
-import { escapeHtml } from "../lib/dom-utils.js";
+import { escapeHtml, cleanPhaseOutputText } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { renderMarkdown } from "../lib/markdown-renderer.js";
 
@@ -507,7 +507,8 @@ export const createPhaseStepCard = ({
   const isRunning = durationText.includes("...");
   cardEl.className = `flow-step-card flow-step-phase ${isRunning ? "running" : ""} ${isOpen ? "open" : "collapsed"}`;
 
-  const previewText = text ? text.replace(/[\r\n\t]+/g, " ").trim() : "";
+  const cleanText = cleanPhaseOutputText(text);
+  const previewText = cleanText ? cleanText.replace(/[\r\n\t]+/g, " ").trim() : "";
 
   cardEl.innerHTML = `
       <div class="flow-step-header phase-header" role="button" tabindex="0" aria-expanded="${isOpen ? "true" : "false"}">
@@ -522,7 +523,7 @@ export const createPhaseStepCard = ({
         </div>
       </div>
       <div class="flow-step-body phase-body">
-        <div class="flow-phase-md">${renderAsMarkdown ? renderMarkdown(text) : escapeHtml(text)}</div>
+        <div class="flow-phase-md">${renderAsMarkdown ? renderMarkdown(cleanText) : escapeHtml(cleanText)}</div>
       </div>
     `;
 

@@ -50,14 +50,14 @@
 | 10 | 无内核运行降级 | 平稳待机不死循环重启、发送入口屏蔽、内核面板降级、一键下载自愈、崩溃监督器最多 5 次平滑重连（间隔 2s）。 |
 | 11 | 多模态拖拽与智能粘贴 | 文件/文件夹拖入与 `Ctrl+V` 粘贴（位图落盘 `~/.pi-dl/attachments/`、`CF_HDROP` 提取路径、文件夹生成单个概述胶囊不炸裂）。 |
 | 12 | Markdown 渲染、图片直显与外链 | Typedown 质感渲染引擎；支持手绘图片卡片（.md-image-card）、本地图片 Data URL 极速解析、纯生图任务产物自动展示与一键保存到桌面；全域超链接拦截经 pi_open_url 唤起外部浏览器。 |
-| 13 | code-area 路由中枢 | 物理 CWD 驻留 Hub、`rfd` 原生选夹器、免污染铁律、存在性自动校验、透明注入路由上下文与「注入提示」框。 |
-| 14 | 子代理模型钉住 | `pi-subagents` 启用时同步主模型至 `subagents.defaultModel` 与各角色 `agentOverrides`（读-合并-写回），未启用零污染，杜绝模型跃升。 |
+| 13 | code-area 路由中枢 | 物理 CWD 驻留 Hub、`rfd` 原生选夹器、免污染铁律、存在性自动校验、命令行与相对文件路径运行时自动锚定目标工程、透明注入路由上下文与「注入提示」框。 |
+| 14 | 子代理模型钉住 | `pi-subagents` 启用时同步主模型至 `subagents.defaultModel` 与全量角色（含 advisor/delegate/动态扩展）`agentOverrides`（读-合并-写回），未启用零污染，杜绝模型跃升与 401 鉴权崩溃。 |
 | 15 | Node.js 环境预检 | 组件安装/更新/内核下载前 `pi_check_node_environment` 探测；缺失时 `SketchModal` 拦截 + 一键跳官方下载，装好即续无需重启。 |
 | 16 | 输入历史导航 | 真实时间戳排序 LIFO 最新优先、重复发送晋升末尾、单/多行光标敏感触发、二次编辑草稿保护。 |
 | 17 | 会话监听 | `SessionWatcher` 经 `app.manage` 常驻托管监听 `~/.pi/agent/sessions`；实时监听 + 终态主动同步 + Tab 强刷三重保证。 |
 | 18 | 模型无痕内置重连 | 总开关一票否决（关闭时同步清退内核 `retry` 注入块）；开启时后台续发「继续」写死 10 次、60s + 60s 周期（120s × 10）；耗尽才弹错误卡并锁终态（重复错误帧绝不复发）；瞬态错误先走 300s 黄色宽容期倒计时（恢复即撤销、超时才弹红框、不可恢复错误一票否决）；错误卡按 `${bucketId}::${errorMessage}` 签名幂等防「卡死」；重连/等待期严禁 Toast 与正文红卡，中断按钮全周期可用；重发保留全部过程记录（先 `sealActiveThinkingStep` 再清缓冲）。 |
 | 19 | 中途提问人工回归 | Extension UI 可回写四类方法 `select/confirm/input/editor`；未决请求真源 `task.pendingUiRequests` 随挂起保留；作答先同步摘除再异步回写；后台任务绝不渲染前台横条；终止先 best-effort 回写取消再强杀。 |
-| 20 | 工具入参自愈解包与空工具过滤 | `pi-tool-sanitizer.ts` 三层防御（`before_provider_request` 剔除空 `tools` 数组与孤立 `tool_choice` 防服务商报 400 + `message_end` 修复畸形工具名/单行参数泄漏/DSML正文提取与前置剥离外壳 + `tool_call` 二次清洗），治愈模型嵌套外壳与畸形工具名引发的自激死循环，无异常 100% 直通。 |
+| 20 | 工具入参自愈解包与空工具过滤 | `pi-tool-sanitizer.ts` 三层防御（`before_provider_request` 剔除空 `tools` 数组与孤立 `tool_choice` 防 400 + 防御性剥离 `strict: true` 杜绝 0.86.0 strict 采样退化 + `message_end` 修复畸形工具名/单行参数泄漏/DSML与末尾待执行 Markdown 代码块抽取为原生 toolCall + `tool_call` 二次清洗与 `code-area` 目标锚定）+ 前端阶段性输出 (Point) 实时流式、封口、持久化与重渲全链路代码块/模拟标签净空过滤，治愈模型嵌套外壳与正文泄漏中断，无异常 100% 直通。 |
 | 21 | 组件推荐配置预设 | `package-presets.json` 唯一源，读-合并-写回 + 严格回读校验；`configFiles` 多路径双写；安装/更新/启动三时机自愈。 |
 | 22 | 组件缺陷补丁预设 | `package-patches.json` + `patches/<组件>/` 源码内嵌；版本闸门 / 存在性闸门 / 幂等回读三道闸门缺一不可；安装/更新/启动三时机重打；严禁为未验证版本放宽 `versionPrefixes`。 |
 | 23 | 生图与多模态路由 | 模型配置Page内顶部并列Tab分页展现，明确聊天协议不支持直接出图，限定OpenAI兼容/images/generations与DashScope原生异步接口，专用生图模型落盘并无缝切回原会话模型；Phase 2 回填 Prompt 属路由模型向会话模型传递的内部会话信息，统一包入 `<image_routing_handover>` 信封（前后端净化层剥离）并烙印 `silentPrompt` 静默轮次后台静默执行，任何渲染路径（实时 Flow/历史恢复）严禁渲染为提问卡，Phase 1 收口帧严禁提前落地 completed/触发完成通知。 |

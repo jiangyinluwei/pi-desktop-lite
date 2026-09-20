@@ -119,7 +119,7 @@ pi-desktop-lite/
 │   ├── styles.css              # 样式聚合入口 (@import 各功能域子样式)
 │   └── main.js                 # 前端编排主入口
 ├── src-tauri/                  # Tauri (Rust) 高性能后端核心
-│   ├── extensions/             # 内置内核扩展 (pi-rollback-guard.ts 回退快照守卫、pi-tool-sanitizer.ts 工具入参自愈解包/畸形工具名修复/空工具过滤，启动时物化至全局扩展目录)
+│   ├── extensions/             # 内置内核扩展 (pi-rollback-guard.ts 回退快照守卫、pi-tool-sanitizer.ts 工具入参自愈解包/畸形工具名修复/空工具与严格模式过滤/正文命令抽取/目标路径锚定，启动时物化至全局扩展目录)
 │   ├── inner-skills/           # 应用内置运行态约束技能 (RULES.md 映射总纲 + 9 个按需注入技能，机制见 inner-skills-injection 技能)
 │   └── src/                    # Rust 源码 (lib.rs, main.rs, commands/, config_manager/, workspace, pi_runner, security, session)
 ├── AGENTS.md                   # 项目规则与代理行为准则（浓缩不变量 + 技能映射路由）

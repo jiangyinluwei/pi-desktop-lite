@@ -64,6 +64,16 @@ description: |
 3. **真实工具卡读秒与累计延时铁律**：`tool-start` 创建真实卡片时继承伪工具运行框的 `startTime`，将大模型生成工具参数的延时与工具执行耗时累计显示（初始携带 `(${initialElapsed}s)...`），移除占位卡；`startToolRunTimer` 持续以 100ms 刷新累计读秒；`tool-end` 定格为累计总时长 `(Xs)` 并清空 `flowView.toolRunTimerInterval`，杜绝真实工具执行完成后耗时跳回 0.0s/0.1s 导致前期生成延时丢失；
 4. **状态清理铁律**：伪框与读秒计时器（`flowView.activeToolPseudoStep` / `flowView.toolPseudoTimerInterval` / `flowView.toolRunTimerInterval`）必须在 `resetStreamState`、`resetCurrentTurnForResend`、`finalizeStream`、`thinking-start`、`text-start` 全部边界兜底清理，杜绝幽灵计时器与残留占位卡；伪卡不写入 `flowView.currentSteps`，不污染历史快照。
 
+### 阶段性输出 (Point) 净化与防泄漏铁律 (Phase Output Sanitization & Command Leakage Prevention)
+
+当大模型在输出中间过程文本时，可能混杂未结构化的模拟工具调用、命令行代码块（` ```bash\n...\n``` `）、虚假执行引导语（“让我实际运行”、“更正——以实际命令输出为准”等）或伪造的 `**Tool Results**` 标记。为杜绝这些技术实现细节污染用户的自然语言阶段性输出，系统实施全链路多层净化：
+
+1. **统一净化谓词**：`src/lib/dom-utils.js` 中的 `cleanPhaseOutputText(text)` 严格过滤所有带或不带语言标签的代码块（包括末尾追加 `-exec` 标记的命令块）、XML/DSML 工具模拟标签（`<bash>`, `<invoke>`, `<acp>` 等）、假装执行的口头废话以及多余空行；
+2. **流式预览防闪烁**：`flow-stream.js` 的 `text-delta` 在实时更新 `textStep.previewEl.textContent` 时先执行 `cleanPhaseOutputText`，杜绝命令行文本在流动预览中一闪而过；
+3. **空段自愈清理**：`flow-stream.js` 的 `sealActiveTextStep` 在对 Point 卡封口时执行净化，若净化后内容为空（说明该段仅包含泄漏的命令代码块），则直接物理移除该 Point 卡，杜绝沉淀无内容的空卡；
+4. **底层存储防污染**：`task-manager.js` 在 `tool_execution_start` 将中间段文本沉淀进 `currentTurn.steps` 时，先执行 `cleanPhaseOutputText` 校验，只有净化后含有实质自然语言时才推入 `{ type: "text", text: cleanedText }`，彻底从数据源头切断未净化文本向 Task 数据、历史归档与会话续写中的渗透；
+5. **历史与重渲兜底**：`flow-ui.js` 的 `restoreTurnsIntoFlow` 与 `flow-render.js` 的 `createPhaseStepCard` 双重防线拦截，保证无论是实时生成、挂起恢复、任务直切还是历史查看，Point 框体中 100% 仅展示纯净的人类可读自然语言。
+
 ### 历史快照卡片重绑铁律 (Snapshot Card Rebinding)
 
 历史/Task 记录回入 Flow 时，轮次卡片有两条渲染路径，监听器绑定策略必须严格区分，否则一次点击 toggle 两次互消（表现为收起状态无法点开）或快照卡彻底死卡：

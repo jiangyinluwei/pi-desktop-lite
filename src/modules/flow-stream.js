@@ -1,4 +1,4 @@
-import { escapeHtml } from "../lib/dom-utils.js";
+import { escapeHtml, cleanPhaseOutputText } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { bus } from "../lib/event-bus.js";
 import { resolveEventTaskId } from "../lib/contracts.js";
@@ -1012,9 +1012,9 @@ export function initFlowStream(ctx) {
       flowView.textTimerInterval = null;
     }
 
-    const sealedText = (step.text || "").trim();
-    if (!sealedText) {
-      // 空段（无实际输出内容）：直接移除空 Point 卡，不沉淀
+    const cleanedText = cleanPhaseOutputText(step.text);
+    if (!cleanedText) {
+      // 空段或纯泄漏工具指令段：直接移除空 Point 卡，不沉淀
       step.cardEl?.remove();
       if (Array.isArray(flowView.currentSteps)) {
         flowView.currentSteps = flowView.currentSteps.filter((s) => s !== step);
@@ -1024,13 +1024,16 @@ export function initFlowStream(ctx) {
 
     const elapsed = ((Date.now() - step.startTime) / 1000).toFixed(1);
     step.durationText = `已输出 ${elapsed}s`;
-    step.text = sealedText;
+    step.text = cleanedText;
     step.cardEl?.classList.remove("running");
     if (step.durationEl) {
       step.durationEl.textContent = step.durationText;
     }
+    if (step.previewEl) {
+      step.previewEl.textContent = cleanedText.replace(/[\r\n\t]+/g, " ").trim();
+    }
     if (step.textStreamEl) {
-      step.textStreamEl.innerHTML = api.renderMarkdown(sealedText);
+      step.textStreamEl.innerHTML = api.renderMarkdown(cleanedText);
     }
 
     // 重置最终输出卡：仅保留光标，承接下一段（最终）输出
@@ -1169,7 +1172,10 @@ export function initFlowStream(ctx) {
     // 封口时会被误判为「空段」直接移除，导致 Point 卡永不保留（阶段性输出显示逻辑失效的根因）
     textStep.text += e.detail || "";
     if (textStep.previewEl) {
-      textStep.previewEl.textContent = fs.responseText.replace(/[\r\n\t]+/g, " ").trim();
+      const cleanPreview = cleanPhaseOutputText(fs.responseText);
+      textStep.previewEl.textContent = cleanPreview
+        ? cleanPreview.replace(/[\r\n\t]+/g, " ").trim()
+        : "阶段性输出";
     }
     if (flowView.activeTurnRefs?.responseContentEl) {
       flowView.activeTurnRefs.responseContentEl.innerHTML =

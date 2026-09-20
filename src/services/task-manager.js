@@ -8,6 +8,7 @@ import { notificationService, isTransientRateLimitMessage } from "./notification
 import { configService } from "./config-service.js";
 import { modelFailoverEngine } from "./model-failover.js";
 import { sessionService } from "./session-service.js";
+import { cleanPhaseOutputText } from "../lib/dom-utils.js";
 import {
   EXTENSION_UI_RESPONDABLE_METHODS,
   isInteractiveExtensionUiRequest,
@@ -871,18 +872,19 @@ export class TaskManager extends EventTarget {
           currentTurn.status = "tool_exec";
           currentTurn.toolCalls.push({ ...newTool });
           if (!Array.isArray(currentTurn.steps)) currentTurn.steps = [];
-          // 阶段性输出封口：工具开始前，将已累积的中间段文本沉淀为 Point 步骤切片
-          if (currentTurn.responseText && currentTurn.responseText.trim()) {
+          // 阶段性输出封口：工具开始前，将已累积的中间段文本沉淀为 Point 步骤切片（净化排除泄漏工具命令）
+          const cleanedSegText = cleanPhaseOutputText(currentTurn.responseText);
+          if (cleanedSegText) {
             const segElapsed = currentTurn.textStartedAt
               ? ((Date.now() - currentTurn.textStartedAt) / 1000).toFixed(1)
               : null;
             currentTurn.steps.push({
               type: "text",
-              text: currentTurn.responseText,
+              text: cleanedSegText,
               durationText: segElapsed ? `已输出 ${segElapsed}s` : "已输出",
             });
-            currentTurn.responseText = "";
           }
+          currentTurn.responseText = "";
           currentTurn.textStartedAt = null;
           const toolStartTime = currentTurn.toolCallStartedAt || Date.now();
           currentTurn.toolCallStartedAt = null;

@@ -112,13 +112,16 @@ description: Pi Desktop Lite 桌面端交互 23 项核心铁律的完整机制�
 - **原生 Windows 文件夹选择器**：基于 Rust `rfd` (IFileOpenDialog) 实现 Windows 原生 OpenFolder 文件夹选择器（右下角为标准的「选择文件夹」/「打开」，杜绝网页上传字样与弹窗）；
 - **平滑切换与择时绑定**：允许先切换至 `code-area`，再在设置面板或主界面择时添加路由；处于 `code-area` 且未绑定路由时，输入框禁止输入（只读提示），点击输入框快速呼出路由绑定对话框；
 - **免污染铁律**：`code-area` 自身绝对不创建或修改业务文件，所有代码读写、补丁与命令执行严格作用于目标路由项目；
+- **运行时命令与文件路径自动锚定**：由于 `code-area` 物理 CWD 驻留在其自身 Hub 目录（`~/.pi-dl/workspaces/code-area`），为彻底杜绝模型因执行相对路径或未提前 `cd` 目标目录导致 `No such file or directory`（Exit Code 2），内核扩展 `pi-tool-sanitizer.ts` 在 `tool_call` 拦截阶段自动检测当前工作区。若处于 `code-area` 且已绑定目标项目路径：
+  - 对命令行工具（`bash`, `powershell`, `cmd`, `sh`, `terminal`, `run_command`），自动在其 `command` 前注入 `cd "${routedTarget}" && `（已显式 `cd` 目标路径时不重复注入）；
+  - 对文件工具（`read`, `write`, `edit`, `grep`, `find`, `ls`），自动将相对路径基于目标项目绝对路径解析（`path.resolve(routedTarget, rawPath)`），确保所有命令与文件读写 100% 作用于目标路由工程，免去模型手动切换目录失误引发的中断；
 - **存在性自动校验与失效清除**：切换至 `code-area` 或启动时，自动校验路由工作区与「最近使用项目」是否在本地磁盘真实存在；失效时自动清除选项并过滤失效历史；
 - 对话流上下文注入：发起 Prompt / FollowUp 时透明注入 `<code_area_routing_context>`（目标绝对路径、免污染铁律与 Hub 技能清单），自动读取并注入目标路由工作区的 `AGENTS.md`（及 `README.md`）。`.agents/skills/` 下的技能规约无需全量强制前置注入，由 Agent 遵循 `AGENTS.md` 中的 Skills 映射矩阵按需查阅并调用；并在 Flow 呈现路由目标胶囊；所有注入条目（Inner-Skill / AGENTS.md / README.md / 路由信封）在 Flow 会话流「路由目标项目」胶囊（或提问卡）下方的「注入提示」信息框中集中呈现（直角简洁风格，默认收起显示「注入提示」与注入数量，点击展开完整清单；动态累积、去重；事件广播必须携带 `task_id`，前端建立按 Task 隔离的注入缓存分仓，多任务直切、设置页历史查看及会话回退时由 `restoreInjectionNoticeFor` 完整自愈复原）。
 
 ## 铁律 14：子代理模型自动钉住与防跃升机制 (Subagents Model Pinning & Escalation Prevention)
 
-- 当启用 `pi-subagents` 扩展组件时，在软件初次启动加载、用户切换模型、或安装/更新组件时，自动将当前主模型同步写入 `~/.pi/agent/settings.json` 的 `subagents.defaultModel` 与各常用角色（`oracle`, `worker`, `reviewer`, `researcher`, `planner`, `scout` 等）的 `agentOverrides`；
-- 采用非破坏性读-合并-写回语义，完整保留其余已有配置；未启用 `pi-subagents` 时绝不产生冗余字段污染，彻底杜绝子代理角色因 high-thinking 能力画像擅自升配调用更昂贵模型（如 `deepseek-v4-pro`）造成的额外 Token 消耗。
+- 当启用 `pi-subagents` 扩展组件时，在软件初次启动加载、用户切换模型、或安装/更新组件时，自动将当前主模型同步写入 `~/.pi/agent/settings.json` 的 `subagents.defaultModel` 与各常用角色（`oracle`, `worker`, `reviewer`, `researcher`, `planner`, `scout`, `advisor`, `context-builder`, `delegate` 等全部内置角色及 `agentOverrides` 中已配置的全部动态角色）的 `agentOverrides`；
+- 采用非破坏性读-合并-写回语义，完整保留其余已有配置；未启用 `pi-subagents` 时绝不产生冗余字段污染，彻底杜绝子代理角色因 high-thinking 能力画像擅自升配调用未授权或更昂贵模型（如 `claude-opus-4-8`、`deepseek-v4-pro`）造成的 401 鉴权崩溃与额外 Token 消耗。
 
 ## 铁律 15：Node.js 运行环境预设检测与安装拦截引导规范 (Node.js Environment Preflight & Degradation)
 
@@ -169,13 +172,19 @@ description: Pi Desktop Lite 桌面端交互 23 项核心铁律的完整机制�
 
 - **痛点与背景**：
   1. **入参冗余外壳**：特定模型（如 DeepSeek-V4 系列在 OpenAI Completions 协议或部分反代渠道中）高频将实际工具入参包裹在冗余外壳（如 `{"arguments": {"command": "..."}}`、`{"parameters": {"path": "..."}}`、`{"args": {...}}` 或同名属性嵌套 `path: { path: "..." }`），导致内核 TypeBox / AJV 参数校验报错 `Validation failed: must have required properties`；错误文本回显给模型后极易诱发模型误判并逐轮叠加嵌套外壳（最高达 5 层深），陷入严重自激死循环；
-  2. **畸形工具名与入参泄漏**：部分预览/推理模型（如 Atria-Dawn-Preview、InternLM 等）会将 XML 结构（`<invoke name="bash"><parameter name="command">...</parameter></invoke>`）、换行指令（`bash\n\ncd ...`）、单行空格参数泄漏（`read path="..."</arg_value>`）或中文别名赋值（`bash的手下命令="..."`）直接输出至 `toolCall.name` 中且将 `arguments` 留空，导致内核报 `Tool ... not found` 并误判为错误；部分模型甚至将 `<｜｜DSML｜｜ calls>` 原生调用直接输出在正文文本中而未被平台结构化，导致无法执行工具直接停顿；
-  3. **空 tools 数组被上游 API 拒绝**：当会话已产生工具历史（`hasToolHistory` 为真）但当前轮次未提供活动工具时，底层适配器会向请求体写入 `"tools": []`；在严格校验的服务商处（如 Atria / InternLM / Groq 等）会直接被 400 拦截抛出：`` `tools` must not be an empty array. Either provide at least one tool or omit the field entirely. (parameter=tools) ``。
-- **三层防御自愈流水线**：系统通过内置内核扩展 `src-tauri/extensions/pi-tool-sanitizer.ts`（应用启动时由 `rollback::materialize_extension()` 幂等物化至全局扩展目录 `~/.pi/agent/extensions/`）：
-  - ① **请求发送前防线 (before_provider_request)**：在请求发送给 Provider 前拦截 Payload，若 `tools` 字段为空数组（`[]`）则就地 `delete payload.tools` 并移除孤立的 `tool_choice`，彻底消除上游 400 校验拦截；
-  - ② **模型输出净化与工具名修复 (message_end 主防线)**：在 `message_end` 阶段（模型输出完成、内核参数校验执行之前）拦截助手消息：自动从正文文本中抽取漏出的原生 DSML / invoke 标签并转为标准 `toolCall` 块；若 `toolCall.name` 包含 `<invoke name="...">`、换行拼接、单行参数泄露或中文描述别名，精准提取规范工具名并将泄漏的命令/路径注入入参；同时无损剥离多层嵌套的 arguments/parameters/args 外壳，恢复为扁平标准结构，阻断校验报错产生；
-  - ③ **底层执行清洗 (tool_call 第二防线)**：在 `tool_call` 阶段进行二次兜底清洗，确保 100% 消除由于入参嵌套或工具名异常引发的报错；
-- **非侵入与零负担**：纯内存对象剥离与清洗，无冗余外壳、工具名正常且工具列表非空时 100% 原样直通，全流程安全降级保护，绝不阻塞会话或篡改模型原本正确的工具参数。
+  2. **畸形工具名与入参泄漏**：部分预览/推理模型（如 Atria-Dawn-Preview、InternLM 等）会将 XML 结构（`<invoke name="bash"><parameter name="command">...</parameter></invoke>`）、换行指令（`bash\n\ncd ...`）、单行空格参数泄漏（`read path="..."</arg_value>`）或中文别名赋值（`bash的手下命令="..."`）直接输出至 `toolCall.name` 中且将 `arguments` 留空，导致内核报 `Tool ... not found` 并误判为错误；部分模型甚至将 `<｜｜DSML｜｜ calls>` 原生调用或 Markdown 命令行代码块（` ```bash\ncd ...\n``` `）直接输出在正文文本中而未被平台结构化，导致无法执行工具直接停止会话，且工具命令泄漏至正文文本框；
+  3. **空 tools 数组与 0.86.0 默认 strict 采样引发国产模型退化**：当会话已产生工具历史（`hasToolHistory` 为真）但当前轮次未提供活动工具时，底层适配器会向请求体写入 `"tools": []`，在严格校验的服务商处（如 Atria / InternLM / Groq 等）直接被 400 拦截；同时，Pi 内核 0.86.0 默认强启 `strict-prefer JSON-schema sampling`，向请求体注入 `strict: true` 并强制所有字段必填，导致国产模型（如火山引擎上的 `glm-5.3-flash` 等）在复杂上下文下受限解码紊乱，拒绝生成结构化 `tool_calls`，退化为在正文中吐出代码块并停止会话。
+- **三层防御自愈流水线**：系统通过内置内核扩展 `src-tauri/extensions/pi-tool-sanitizer.ts`（应用启动时由 `rollback::materialize_extension()` 幂等物化至全局扩展目录 `~/.pi/agent/extensions/`）与前端流式/持久化多层净化：
+  - ① **请求发送前防线 (before_provider_request)**：在请求发送给 Provider 前拦截 Payload：若 `tools` 字段为空数组（`[]`）则就地 `delete payload.tools` 并移除孤立的 `tool_choice`，消除 400 校验拦截；同时针对国产及第三方反代服务商防御性剔除工具定义上的 `strict: true` 限制，根除内核 0.86.0 默认 strict 采样导致的模型退化，恢复宽松高兼容性的 Function Calling；
+  - ② **模型输出净化与正文工具抽取 (message_end 主防线)**：在 `message_end` 阶段（模型输出完成、内核参数校验执行之前）拦截助手消息：若助手正文包含 DSML、标准 XML `<invoke>` 标签、或在未触发任何原生 `toolCall` 时正文末尾泄漏了待执行的 Markdown 命令代码块（如 ` ```bash\ncd ...\n``` ` 包括末尾追加 `-exec` 标记的命令与伪造的 `**Tool Results**` 标记），自动从正文抽取并重构为标准 `toolCall` 块；并彻底清洗正文文本中的模拟命令块、伪造执行标签（`<bash>`、`<invoke>`、`<acp>`）以及假装执行的口头引导/道歉语（如“让我实际运行”、“更正——以实际命令输出为准”），只保留真实自然语言；若清洗后文本块彻底变空，则直接移除无意义的空文本块，确保正常收纳进单行工具卡并顺畅触发底层执行，杜绝会话意外停止；若 `toolCall.name` 包含畸形内容，精准提取规范工具名并注入入参；同时无损剥离多层嵌套的 arguments/parameters/args 外壳，阻断校验报错；
+  - ③ **底层执行清洗与路径目标锚定 (tool_call 第二防线)**：在 `tool_call` 阶段进行二次兜底清洗，消除入参嵌套；同时在 `code-area` 路由工作区下，对 `bash`/`powershell` 等命令工具自动前置注入 `cd "${targetPath}" && `，对 `read`/`write`/`edit`/`grep` 等文件工具自动将相对路径解析为目标项目绝对路径，彻底消灭目标不存在导致退出码 2 的致命缺陷；
+  - ④ **前端阶段性输出 (Point) 多层防泄漏与收纳隔离**：
+    - `src/lib/dom-utils.js` 统一收敛 `cleanPhaseOutputText(text)`，严格剥离所有代码块（含 `-exec` 尾缀）、模拟调用标签与虚假执行废话；
+    - 流式阶段（`flow-stream.js` 的 `text-delta`）：预览文本 `textStep.previewEl.textContent` 实时经 `cleanPhaseOutputText` 净化，杜绝代码块流式闪烁；
+    - 步骤封口（`sealActiveTextStep`）：净化后文本若变为空（说明该段原本只有泄漏工具命令），则直接移除空 Point 卡，不沉淀无意义空卡；
+    - 任务管理器沉淀（`task-manager.js` 的 `tool_execution_start`）：在工具开始执行将已累积的中间段文本压入 `currentTurn.steps` 时，先执行 `cleanPhaseOutputText`，净化后有实质内容才推入，纯泄漏工具段直接丢弃，从数据源头杜绝污染；
+    - 历史与重新渲染（`flow-ui.js` / `flow-render.js`）：`restoreTurnsIntoFlow` 与 `createPhaseStepCard` 双重防线拦截，保证无论是实时生成、挂起恢复、任务直切还是历史回看，泄漏的命令代码块与模拟文本 0% 暴露在 Point 卡片中。
+- **非侵入与零负担**：纯内存对象剥离与清洗，无冗余外壳、工具名正常且工具列表正常时 100% 原样直通，全流程安全降级保护，绝不阻塞会话或篡改模型原本正确的工具参数。
 
 ## 铁律 21：组件推荐配置预设与路径迁移自愈铁律 (Package Preset & Config Path Migration Invariance)
 

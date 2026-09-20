@@ -313,6 +313,9 @@ pub fn sync_subagent_pinned_model_if_enabled(model_id: &str) -> Result<bool, Str
         "researcher",
         "planner",
         "scout",
+        "advisor",
+        "context-builder",
+        "delegate",
     ];
 
     if let Some(obj) = settings.as_object_mut() {
@@ -341,6 +344,14 @@ pub fn sync_subagent_pinned_model_if_enabled(model_id: &str) -> Result<bool, Str
             };
             role_map.insert("model".to_string(), json!(clean_model));
             overrides_obj.insert(role.to_string(), Value::Object(role_map));
+        }
+
+        // 3. 确保 overrides_obj 中已有的任何角色也一并钉住
+        let existing_keys: Vec<String> = overrides_obj.keys().cloned().collect();
+        for key in existing_keys {
+            if let Some(role_map) = overrides_obj.get_mut(&key).and_then(|v| v.as_object_mut()) {
+                role_map.insert("model".to_string(), json!(clean_model));
+            }
         }
 
         subagents_obj.insert("agentOverrides".to_string(), Value::Object(overrides_obj));

@@ -1,4 +1,4 @@
-import { escapeHtml, cleanUserPrompt } from "../lib/dom-utils.js";
+import { escapeHtml, cleanUserPrompt, cleanPhaseOutputText } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
 import { invokeTauri } from "../services/tauri-bridge.js";
@@ -234,12 +234,15 @@ export function initFlowUi(ctx) {
         if (step.type === "text") {
           // 阶段性输出切片 (Point)：必须在 thinking 回退分支之前判断，
           // 否则携带 text 字段的历史步骤会被误渲染为 Thinking 卡
-          const pStep = createPhaseStepCard({
-            text: step.text || "",
-            durationText: step.durationText || "已输出",
-            isOpen: false,
-          });
-          stepsContainerEl.appendChild(pStep.cardEl);
+          const cleanText = cleanPhaseOutputText(step.text || "");
+          if (cleanText) {
+            const pStep = createPhaseStepCard({
+              text: cleanText,
+              durationText: step.durationText || "已输出",
+              isOpen: false,
+            });
+            stepsContainerEl.appendChild(pStep.cardEl);
+          }
         } else if (step.type === "thinking" || step.text) {
           const thinkText = (step.text && step.text.trim()) ? step.text : (step.type === "thinking" ? "已完成思考" : "");
           const tStep = createThinkingStepCard({
