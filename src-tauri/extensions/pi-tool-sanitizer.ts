@@ -1,30 +1,35 @@
 /**
- * pi-tool-sanitizer — Pi 内核工具入参自愈解包与空工具过滤扩展 (Tool Call Argument Auto-Unwrap & Empty Tools Sanitizer)
+ * pi-tool-sanitizer — Pi 内核工具调用全链路自愈扩展 (Tool Call Full-Chain Sanitizer)
  *
  * 作用机制：
  * 1. 【请求发送前防线 (before_provider_request)】：
  *    - 当会话具有工具历史但当前轮次未提供活动工具时，部分协议适配器会输出 `"tools": []`；
  *    - 某些严格校验的服务商（如 Atria-Dawn-Preview、InternLM、Groq 等）会直接报错 400：
  *      "`tools` must not be an empty array. Either provide at least one tool or omit the field entirely."；
- *    - 本扩展在 `before_provider_request` 阶段自动剔除空的 `tools` 数组与孤立的 `tool_choice`，彻底消除 400 校验阻断；
- *    - 针对 Pi 0.86.0 默认强启 strict-prefer JSON-schema 采样导致第三方/国产模型（如火山引擎 GLM/DeepSeek 等）退化拒发 tool_calls 的问题，
- *      自动防御性剥离工具定义上的 strict 限制，恢复高鲁棒性宽松工具调用。
+ *    - 本扩展自动剔除空的 `tools` 数组与孤立的 `tool_choice`，彻底消除 400 校验阻断；
+ *    - 针对 Pi 0.86.0 的 transcript 工具锚定机制被第三方上下文扩展破坏的情形
+ *      （典型：pai-acp 的 `context` 钩子重建消息时丢弃 system 消息及其 `toolsAdded` 工具声明，
+ *      导致 provider 请求整体缺失 `tools` 字段，模型无法发起结构化工具调用，
+ *      只能以正文模拟命令或空响应收场且 stopReason=stop，会话"一到工具调用就自己结束"），
+ *      本扩展在请求发出前从会话 system 条目读回 `toolsAdded` 锚定声明，
+ *      按当前 provider 协议形状（OpenAI Completions / Anthropic Messages）重新注入 `tools`，
+ *      每请求自愈，且不干预任何已正常携带 `tools` 的请求；
+ *    - 防御性剥离工具定义上的 `strict` 字段，保持宽松容错采样。
  * 2. 【模型输出净化防线 (message_end)】：
  *    - 针对特定模型（如 DeepSeek-V4 系列）入参包裹在冗余外壳（{"arguments": {"command": "..."}} 等）；
- *    - 针对预览/推理模型（如 Atria-Dawn-Preview 等）将 XML 格式（`<invoke name="...">`）或换行指令/空格指令
- *      直接嵌入 `toolCall.name`（如 `"read path='...'</arg_value>"`、`"bash\n\ncd ..."`、`"bash的手下命令='...'"`），
- *      导致工具名未命中并丢失入参的问题；
- *    - 针对部分模型将工具调用直接输出在正文文本中（如 DeepSeek 原生 `<｜｜DSML｜｜ calls>` 标签、标准 XML `<invoke>` 标签、
- *      或在无 toolCall 情况下末尾泄漏的待执行 Markdown 命令代码块 ````bash\ncd ...\n```` 与伪造结果标记），
- *      自动从正文抽取并转换为标准 `toolCall` 块，确保收纳进工具信息框并顺畅触发底层执行，杜绝直接停止会话；
+ *    - 针对预览/推理模型将 XML 格式（`<invoke name="...">`）或换行指令直接嵌入 `toolCall.name` 的问题；
+ *    - 针对部分模型将工具调用以私有协议标签直接输出在正文文本中（如 DeepSeek 原生 `<｜｜DSML｜｜ calls>` 标签、
+ *      标准 XML `<invoke>` 标签、`<bash>` 标签）而未被平台结构化的情况，自动从正文抽取并转换为标准 `toolCall` 块；
  *    - 在 `message_end` 阶段规范化工具名、就地提取命令参数并剥离嵌套外壳，恢复为扁平标准结构。
+ *    - 注意：不对正文中普通 Markdown 命令代码块做提取——那可能是模型展示给用户的合法示例，
+ *      贸然转为真实执行会劫持回答语义；私有协议标签才是可靠的"泄漏工具调用"信号。
  * 3. 【工具执行前底层清洗防线 (tool_call)】：
- *    - 在 `tool_call` 执行阶段进行二次兜底，确保 100% 消除由于参数多层嵌套或名称异常引发的
+ *    - 在 `tool_call` 执行阶段进行二次兜底，消除由于参数多层嵌套或名称异常引发的
  *      Validation failed / Tool not found 错误，斩断模型误判与自激死循环。
  *
  * 安全边界：
- * - 纯内存对象规范化，不依赖外部网络与额外依赖包；
- * - 若入参本身规范无嵌套且工具名正常，100% 保持原样直通，零副作用、零性能开销；
+ * - 纯内存对象规范化；工具锚定修复仅在 `payload.tools` 缺失或为空且会话确有锚定声明时介入；
+ * - 工具名修复仅对真正畸形的名称（含空白/尖括号等非法字符）生效，纯净名称 100% 原样直通；
  * - 全流程 try-catch 保护，任何异常均安全降级，绝不阻塞或中断正常会话。
  */
 
@@ -38,55 +43,6 @@ interface NameSanitizeResult {
   name: string;
   args: any;
   changed: boolean;
-}
-
-/**
- * 获取当前活跃路由工作区（code-area 路由目标项目路径）
- */
-function getRoutedTargetPath(): string | null {
-  try {
-    const fs = require("fs");
-    const path = require("path");
-    const os = require("os");
-    const configPath = path.join(os.homedir(), ".pi-dl", "config.json");
-    if (fs.existsSync(configPath)) {
-      const cfg = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-      if (cfg?.workspace?.activeId === "code-area" && cfg.workspace.codeAreaRoutePath) {
-        const target = String(cfg.workspace.codeAreaRoutePath).trim();
-        if (target && fs.existsSync(target)) {
-          return target.replace(/\\/g, "/");
-        }
-      }
-    }
-  } catch {}
-  return null;
-}
-
-/**
- * 自动为 bash 命令行注入路由工作区目录切换前缀 (cd "<target>" && )，
- * 消除模型在 code-area 物理 Hub 目录下执行相对路径命令引发的 No such file or directory
- */
-function anchorBashCommand(command: string, targetPath: string): string {
-  if (!command || typeof command !== "string" || !targetPath) return command;
-  const trimmed = command.trim();
-  const normalizedTarget = targetPath.replace(/\\/g, "/");
-
-  // 1. 若命令已经以显式切换到 targetPath 开头，不重复追加
-  const targetRegex = new RegExp(
-    `^cd\\s+["']?${normalizedTarget.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']?\\s*(?:&&|;)`,
-    "i"
-  );
-  if (targetRegex.test(trimmed)) {
-    return trimmed;
-  }
-
-  // 2. 若命令已经包含绝对路径的 cd（如 cd /c/Users/... 或 cd C:/...），且该路径已在 targetPath 之下，不强行覆盖
-  if (/^cd\s+["']?(?:[a-zA-Z]:|\/|[~])/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  // 3. 自动注入 cd "${targetPath}" && 
-  return `cd "${normalizedTarget}" && ${trimmed}`;
 }
 
 /**
@@ -203,19 +159,22 @@ function unwrapToolCallArguments(args: any): UnwrapResult {
 /**
  * 规范化畸形 toolCall.name，并从中提取泄漏的命令或参数
  * （例如模型生成 `<invoke name="bash"><parameter name="command">...</parameter></invoke>`、
- *  `read path="..."</arg_value>`、`bash\n\ncd ...` 或 `bash的手下命令="..."`）
+ *  `read path="..."</arg_value>` 或 `bash\n\ncd ...`）
+ *
+ * 仅当名称真正畸形（含空白、尖括号、换行等非法字符）时才进入修复分支；
+ * 纯净合法的名称（如第三方扩展注册的 "finder" 等）100% 原样直通，杜绝前缀误改。
  */
 function sanitizeToolCallNameAndArguments(rawName: string, rawArgs: any): NameSanitizeResult {
   let name = String(rawName || "").trim();
   let args = rawArgs;
   let changed = false;
 
-  const knownTools = ["read", "write", "edit", "grep", "find", "ls", "bash", "powershell", "cmd", "sh", "terminal", "run_command"];
-
-  // 0. 若工具名本身完全合法纯净，直接通过
-  if (knownTools.includes(name.toLowerCase())) {
+  // 0. 名称纯净（仅合法标识符字符）且不含标签结构时，直接通过
+  if (/^[a-zA-Z0-9_\-]+$/.test(name) && name.indexOf("<") < 0) {
     return { name, args, changed: false };
   }
+
+  const knownTools = ["read", "write", "edit", "grep", "find", "ls", "bash", "powershell", "cmd", "sh", "terminal", "run_command"];
 
   // 1. 针对模型将 XML 标签嵌入工具名的模式（如 `<invoke name="bash">`）
   const invokeMatch = name.match(/<invoke\s+name=["']?([^"'>\s]+)["']?[^>]*>([\s\S]*?)(?:<\/invoke>|$)/i);
@@ -267,7 +226,7 @@ function sanitizeToolCallNameAndArguments(rawName: string, rawArgs: any): NameSa
             const val = kvMatch[3];
             let normKey = rawKey;
             if (/^(path|file|filepath|target)$/i.test(rawKey)) normKey = "path";
-            else if (/^(command|cmd|code|命令|手下命令)$/i.test(rawKey)) normKey = "command";
+            else if (/^(command|cmd|code|命令)$/i.test(rawKey)) normKey = "command";
             kvParams[normKey] = val;
           }
           if (Object.keys(kvParams).length > 0) {
@@ -292,36 +251,11 @@ function sanitizeToolCallNameAndArguments(rawName: string, rawArgs: any): NameSa
   return { name, args, changed };
 }
 
-function cleanSimulationText(text: string): string {
-  let clean = text
-    .replace(/```(?:bash|sh|powershell|cmd|terminal|json)?\s*\n[\s\S]*?\n```(?:\s*-exec[^\n]*)?/gi, "")
-    .replace(/<acp\s+[^>]*>[\s\S]*?<\/acp>/gi, "")
-    .replace(/<bash(?:\s+[^>]*)?>[\s\S]*?<\/bash>/gi, "")
-    .replace(/<invoke(?:\s+[^>]*)?>[\s\S]*?<\/invoke>/gi, "")
-    .replace(/\*\*很抱歉——我在没有调用工具的情况下模拟了输出[^\n]*\*\*/gi, "")
-    .replace(/(?:我需要实际调用工具而不是在文本中假装执行[^\n]*\n*)+/gi, "")
-    .replace(/(?:下面实际执行代码探查[^\n]*\n*)+/gi, "")
-    .replace(/(?:现在实际执行探查[^\n]*\n*)+/gi, "")
-    .replace(/(?:我现在真正运行这些命令来探查代码[^\n]*\n*)+/gi, "")
-    .replace(/📌\s*正在执行命令[^\n]*/gi, "")
-    .replace(/-exec\s+bash[^\n]*/gi, "")
-    .replace(/(?:<br>|\n)*\*\*Tool Results\*\*[\s\S]*$/gi, "")
-    .replace(/让我(?:实际|真正)?(?:运行[^\n:：]{0,20}|先用[a-zA-Z\s]+工具)[^\n]*/gi, "")
-    .replace(/现在正式开始[^\n]*/gi, "")
-    .replace(/下面(?:实际)?执行[^\n]*/gi, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-
-  if (/^(?:让我(?:实际|真正)?|现在正式开始|下面(?:实际)?执行[：:]?|[：:]\s*|\s*)+$/i.test(clean)) {
-    return "";
-  }
-  return clean;
-}
-
 /**
- * 从普通文本块中提取模型意外漏出的 DSML、XML 或独立命令行代码块工具调用
+ * 从普通文本块中提取模型以私有协议标签泄漏的工具调用
+ * （DeepSeek DSML 原生标签 / 标准 XML <invoke> 标签 / <bash> 标签）
  */
-function extractToolsFromText(text: string, hasExistingToolCalls: boolean = false): { toolCalls: any[]; cleanedText: string } {
+function extractToolsFromText(text: string): { toolCalls: any[]; cleanedText: string } {
   const toolCalls: any[] = [];
   let cleanedText = text;
 
@@ -382,7 +316,7 @@ function extractToolsFromText(text: string, hasExistingToolCalls: boolean = fals
     return { toolCalls, cleanedText };
   }
 
-  // 3. 匹配模型生成的 <bash>...</bash> 标签（如 <bash cmd="...">...</bash> 或 <bash m0000X>...</bash>）
+  // 3. 匹配模型生成的 <bash>...</bash> 标签（如 <bash cmd="...">...</bash>）
   const bashTagRegex = /<bash(?:\s+cmd=["']([^"']+)["']|\s+[^>]*)?>([\s\S]*?)<\/bash>/gi;
   let bMatch: RegExpExecArray | null;
   while ((bMatch = bashTagRegex.exec(text)) !== null) {
@@ -392,14 +326,8 @@ function extractToolsFromText(text: string, hasExistingToolCalls: boolean = fals
       const innerCodeMatch = body.match(/```(?:bash|sh|cmd|powershell)?\s*\n([\s\S]*?)\n```/i);
       if (innerCodeMatch) {
         cmd = innerCodeMatch[1].trim();
-      } else {
-        const filtered = body
-          .replace(/📌\s*正在执行[^\n]*/g, "")
-          .replace(/→\s*entry-output-[^\n]*/g, "")
-          .trim();
-        if (filtered) {
-          cmd = filtered;
-        }
+      } else if (body) {
+        cmd = body;
       }
     }
     if (cmd) {
@@ -419,69 +347,81 @@ function extractToolsFromText(text: string, hasExistingToolCalls: boolean = fals
     return { toolCalls, cleanedText };
   }
 
-  // 4. 若当前消息完全没有任何工具调用（hasExistingToolCalls === false）：
-  // 检查正文末尾或包含执行指示语的命令代码块（如模型因 strict 模式退化为在文本末尾吐出命令并停止）
-  if (!hasExistingToolCalls) {
-    const execLeadRegex = /(?:(?:现在|立即|继续|先|先来)?(?:真正)?执行[^\n:：`]{0,25}|Run(?:ning)?(?:\s+command)?|Executing(?:\s+command)?)\s*[：:]\s*(?:<br>|\n)*```(bash|sh|powershell|cmd|terminal)\s*\n([\s\S]+?)\n```(?:\s*-exec[^\n]*)?/i;
-    const execMatch = text.match(execLeadRegex);
+  return { toolCalls, cleanedText };
+}
 
-    if (execMatch) {
-      const toolName = execMatch[1].toLowerCase() === "sh" ? "bash" : execMatch[1].toLowerCase();
-      const command = execMatch[2].trim();
-      if (command) {
-        toolCalls.push({
-          type: "toolCall",
-          id: "md-" + Math.random().toString(36).slice(2, 10),
-          name: toolName,
-          arguments: { command }
-        });
-        cleanedText = cleanSimulationText(text);
-        return { toolCalls, cleanedText };
+/**
+ * 从会话条目中恢复当前上下文的工具锚定声明
+ *
+ * Pi 0.86.0 将工具声明以 `toolsAdded` / `toolsRemoved` 形式锚定在会话的 system 消息上，
+ * provider 适配器请求时经 getCurrentTools() 解析。第三方上下文扩展（pai-acp）重建消息
+ * 丢弃 system 消息后该锚定即丢失。这里镜像内核 getCurrentTools 的合并语义
+ * （逐条目先删后增），从活动分支条目中恢复最终生效的工具声明列表。
+ */
+function getAnchoredToolDeclarations(ctx: any): any[] {
+  try {
+    const sm = ctx?.sessionManager;
+    if (!sm || typeof sm !== "object") return [];
+    let entries: any[] | undefined;
+    // 优先活动分支 + compaction 后的上下文条目（与请求构建所见完全一致）
+    if (typeof sm.buildContextEntries === "function") {
+      entries = sm.buildContextEntries();
+    } else if (typeof sm.getBranch === "function") {
+      entries = sm.getBranch();
+    } else if (typeof sm.getEntries === "function") {
+      entries = sm.getEntries();
+    }
+    if (!Array.isArray(entries)) return [];
+
+    const tools = new Map<string, any>();
+    for (const entry of entries) {
+      const message = entry && entry.type === "message" ? entry.message : entry;
+      if (!message || message.role !== "system") continue;
+      for (const removed of message.toolsRemoved ?? []) {
+        if (removed && removed.name) tools.delete(removed.name);
+      }
+      for (const added of message.toolsAdded ?? []) {
+        if (added && added.name) tools.set(added.name, added);
       }
     }
+    return [...tools.values()];
+  } catch {
+    return [];
+  }
+}
 
-    // 兜底 A：如果文本末尾紧邻单个纯代码块且包含命令特征（如 cd/grep/rg/ls/git 等，支持尾随 -exec 标识）
-    const tailCodeRegex = /```(bash|sh|powershell|cmd|terminal)\s*\n([\s\S]+?)\n```(?:\s*-exec[^\n]*|\s*<br>\s*|\s*|\s*\*\*Tool Results\*\*[\s\S]*)*$/i;
-    const tailMatch = text.match(tailCodeRegex);
-    if (tailMatch) {
-      const toolName = tailMatch[1].toLowerCase() === "sh" ? "bash" : tailMatch[1].toLowerCase();
-      const command = tailMatch[2].trim();
-      if (command && (command.startsWith("cd ") || command.includes("grep") || command.includes("rg ") || command.includes("ls ") || command.includes("git ") || command.includes("find "))) {
-        toolCalls.push({
-          type: "toolCall",
-          id: "tail-" + Math.random().toString(36).slice(2, 10),
-          name: toolName,
-          arguments: { command }
-        });
-        cleanedText = cleanSimulationText(text);
-        return { toolCalls, cleanedText };
-      }
+/**
+ * 将内核工具声明（{ name, description, parameters }）转换为当前请求 payload 的 provider 协议形状
+ */
+function convertDeclarationsToProviderTools(declarations: any[], payload: any): any[] {
+  const toParameters = (decl: any) => {
+    const params = decl.parameters && typeof decl.parameters === "object" ? decl.parameters : { type: "object", properties: {} };
+    try {
+      return JSON.parse(JSON.stringify(params));
+    } catch {
+      return { type: "object", properties: {} };
     }
+  };
 
-    // 兜底 B：普适匹配文本中的任意独立命令行代码块（即使其前置或后置有额外说明文字）
-    const generalCodeRegex = /```(bash|sh|powershell|cmd|terminal)\s*\n([\s\S]+?)\n```(?:\s*-exec[^\n]*)?/gi;
-    let gMatch: RegExpExecArray | null;
-    let lastMatchedCommand: { toolName: string; command: string; fullMatch: string } | null = null;
-    while ((gMatch = generalCodeRegex.exec(text)) !== null) {
-      const toolName = gMatch[1].toLowerCase() === "sh" ? "bash" : gMatch[1].toLowerCase();
-      const rawCmd = gMatch[2].trim();
-      if (rawCmd && (rawCmd.startsWith("cd ") || rawCmd.includes("grep") || rawCmd.includes("rg ") || rawCmd.includes("ls ") || rawCmd.includes("git ") || rawCmd.includes("find ") || rawCmd.includes("dotnet ") || rawCmd.includes("npm ") || rawCmd.includes("cargo "))) {
-        lastMatchedCommand = { toolName, command: rawCmd, fullMatch: gMatch[0] };
-      }
-    }
-    if (lastMatchedCommand) {
-      toolCalls.push({
-        type: "toolCall",
-        id: "cmd-" + Math.random().toString(36).slice(2, 10),
-        name: lastMatchedCommand.toolName,
-        arguments: { command: lastMatchedCommand.command }
-      });
-      cleanedText = cleanSimulationText(text);
-      return { toolCalls, cleanedText };
-    }
+  // Anthropic Messages 协议：system 位于顶层字段
+  const isAnthropicStyle = payload.system !== undefined;
+  if (isAnthropicStyle) {
+    return declarations.map((decl) => ({
+      name: String(decl.name),
+      description: String(decl.description ?? ""),
+      input_schema: toParameters(decl)
+    }));
   }
 
-  return { toolCalls, cleanedText };
+  // 默认 OpenAI 兼容（Chat Completions）协议
+  return declarations.map((decl) => ({
+    type: "function",
+    function: {
+      name: String(decl.name),
+      description: String(decl.description ?? ""),
+      parameters: toParameters(decl)
+    }
+  }));
 }
 
 export default function (pi: any) {
@@ -492,17 +432,27 @@ export default function (pi: any) {
   // 阶段 0：在请求发送给 Provider 前（before_provider_request）
   // 1. 剔除空的 tools 数组与孤立的 tool_choice，彻底杜绝 Atria / InternLM / Groq 等服务商
   //    报 400："`tools` must not be an empty array. Either provide at least one tool or omit the field entirely."
-  // 2. 针对 Pi 0.86.0 默认强启 strict-prefer JSON-schema 采样导致第三方/国产模型（如火山引擎 GLM/DeepSeek 等）退化拒发 tool_calls 的问题，
-  //    自动防御性剥离工具定义上的 strict 限制，恢复高鲁棒性宽松工具调用。
-  pi.on("before_provider_request", async (event: any) => {
+  // 2. Pi 0.86.0 工具锚定修复：第三方上下文扩展（pai-acp context 钩子）重建消息丢弃 system 的
+  //    toolsAdded 后，请求整体缺失 tools 字段导致模型无法发起结构化工具调用——
+  //    从会话锚定声明恢复并按 provider 形状重新注入，每请求自愈。
+  // 3. 防御性剥离工具定义上的 strict 字段，保持宽松容错采样。
+  pi.on("before_provider_request", async (event: any, ctx: any) => {
     try {
       const payload = event?.payload;
       if (!payload || typeof payload !== "object") return;
 
-
-
-      if (Array.isArray(payload.tools)) {
-        if (payload.tools.length === 0) {
+      if (!Array.isArray(payload.tools) || payload.tools.length === 0) {
+        // 缺失或空工具：优先尝试从会话锚定声明恢复（0.86.0 工具锚定修复）
+        const anchored = getAnchoredToolDeclarations(ctx);
+        if (anchored.length > 0) {
+          payload.tools = convertDeclarationsToProviderTools(anchored, payload);
+          try {
+            console.log(
+              `[pi-tool-sanitizer] Restored ${anchored.length} anchored tool declaration(s) to provider request (transcript tool anchoring was lost)`
+            );
+          } catch {}
+        } else {
+          // 会话确无工具（如纯聊天上下文）：剔除空数组与孤立 tool_choice，杜绝 400 校验阻断
           delete payload.tools;
           if (payload.tool_choice) {
             delete payload.tool_choice;
@@ -512,28 +462,28 @@ export default function (pi: any) {
               "[pi-tool-sanitizer] Omitted empty `tools` array from provider request to prevent API rejection"
             );
           } catch {}
-        } else {
-          // 针对非严格模式友好的兼容层，防御性剔除工具定义上的 strict 字段，保持宽松容错
-          let strictCleaned = false;
-          for (const tool of payload.tools) {
-            if (tool && typeof tool === "object") {
-              if (tool.strict !== undefined) {
-                delete tool.strict;
-                strictCleaned = true;
-              }
-              if (tool.function && typeof tool.function === "object" && tool.function.strict !== undefined) {
-                delete tool.function.strict;
-                strictCleaned = true;
-              }
+        }
+      } else {
+        // 工具本就存在：仅防御性剥离 strict 字段
+        let strictCleaned = false;
+        for (const tool of payload.tools) {
+          if (tool && typeof tool === "object") {
+            if (tool.strict !== undefined) {
+              delete tool.strict;
+              strictCleaned = true;
+            }
+            if (tool.function && typeof tool.function === "object" && tool.function.strict !== undefined) {
+              delete tool.function.strict;
+              strictCleaned = true;
             }
           }
-          if (strictCleaned) {
-            try {
-              console.log(
-                "[pi-tool-sanitizer] Stripped strict mode constraint from provider tools to ensure robust tool calling"
-              );
-            } catch {}
-          }
+        }
+        if (strictCleaned) {
+          try {
+            console.log(
+              "[pi-tool-sanitizer] Stripped strict mode constraint from provider tools to ensure robust tool calling"
+            );
+          } catch {}
         }
       }
 
@@ -553,16 +503,11 @@ export default function (pi: any) {
 
       let modified = false;
 
-      // 0. 判断当前消息是否已包含原生 toolCall / tool_use 块
-      const hasExistingToolCalls = message.content.some(
-        (b: any) => b && (b.type === "toolCall" || b.type === "tool_use")
-      );
-
-      // 若助手正文中包含模型直接输出的 DSML / XML / 待执行 Markdown 代码块，自动转换为标准 toolCall 块
+      // 0. 若助手正文中包含模型以私有协议标签直接输出的工具调用（DSML / XML / <bash>），自动转换为标准 toolCall 块
       const extractedCalls: any[] = [];
       for (const block of message.content) {
         if (block && block.type === "text" && typeof block.text === "string") {
-          const { toolCalls: extracted, cleanedText } = extractToolsFromText(block.text, hasExistingToolCalls);
+          const { toolCalls: extracted, cleanedText } = extractToolsFromText(block.text);
           if (extracted.length > 0) {
             extractedCalls.push(...extracted);
             block.text = cleanedText;
@@ -597,7 +542,7 @@ export default function (pi: any) {
 
           let rawArgs = block[targetKey];
 
-          // 1. 修复畸形 toolCall.name 并提取嵌入在 name 中的参数（如 "read path='...'</arg_value>" 或 "bash\n\nls"）
+          // 1. 修复畸形 toolCall.name 并提取嵌入在 name 中的参数
           if (typeof block.name === "string") {
             const nameRes = sanitizeToolCallNameAndArguments(block.name, rawArgs);
             if (nameRes.changed) {
@@ -647,7 +592,7 @@ export default function (pi: any) {
         const nameRes = sanitizeToolCallNameAndArguments(event.toolName, event.input);
         if (nameRes.changed) {
           event.toolName = nameRes.name;
-          if (nameRes.args && typeof nameRes.args === "object") {
+          if (nameRes.args && typeof nameRes.args === "object" && event.input && typeof event.input === "object") {
             Object.assign(event.input, nameRes.args);
           }
         }
@@ -668,39 +613,6 @@ export default function (pi: any) {
               }"`
             );
           } catch {}
-        }
-      }
-
-      // 3. 针对 code-area 路由工作区，自动锚定命令与文件路径到目标项目目录（消灭 No such file or directory）
-      const routedTarget = getRoutedTargetPath();
-      if (routedTarget && event && event.input && typeof event.input === "object") {
-        const normTool = String(event.toolName || "").toLowerCase();
-        // A. 命令行工具自动注入 cd "${routedTarget}" &&
-        if (["bash", "powershell", "cmd", "sh", "terminal", "run_command"].includes(normTool)) {
-          if (typeof event.input.command === "string") {
-            const anchored = anchorBashCommand(event.input.command, routedTarget);
-            if (anchored !== event.input.command) {
-              event.input.command = anchored;
-              try {
-                console.log(`[pi-tool-sanitizer] Anchored ${normTool} command to routed target: ${routedTarget}`);
-              } catch {}
-            }
-          }
-        }
-        // B. 文件操作工具将相对路径解析为目标工程绝对路径
-        if (["read", "write", "edit", "grep", "find", "ls"].includes(normTool)) {
-          if (typeof event.input.path === "string") {
-            const rawPath = event.input.path.trim();
-            // 若不是绝对路径（Windows 驱动器盘符 C:/ 或 UNC 或正斜杠根路径）
-            if (rawPath && !/^(?:[a-zA-Z]:[\\/]|\\\\|\/)/.test(rawPath)) {
-              const pathModule = require("path");
-              const resolved = pathModule.resolve(routedTarget, rawPath).replace(/\\/g, "/");
-              event.input.path = resolved;
-              try {
-                console.log(`[pi-tool-sanitizer] Anchored ${normTool} path "${rawPath}" -> "${resolved}"`);
-              } catch {}
-            }
-          }
         }
       }
     } catch {

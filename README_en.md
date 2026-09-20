@@ -119,7 +119,7 @@ pi-desktop-lite/
 │   ├── styles.css              # Aggregated style entry (@import to styles/ subfiles)
 │   └── main.js                 # Main orchestrator entry
 ├── src-tauri/                  # High-performance Tauri (Rust) backend
-│   ├── extensions/             # Built-in kernel extensions (pi-rollback-guard.ts snapshot guard, pi-tool-sanitizer.ts tool arguments auto-unwrapper / tool name recovery / empty & strict tools filter / text command extraction / target path anchoring)
+│   ├── extensions/             # Built-in kernel extensions (pi-rollback-guard.ts snapshot guard, pi-tool-sanitizer.ts full-chain tool call sanitizer: 0.86.0 tool anchoring restoration / tool name recovery / argument auto-unwrap / private-protocol tag extraction / empty & strict tools filter)
 │   ├── inner-skills/           # Runtime inner-skills (RULES.md mapping index + 9 on-demand injected skills; mechanism in inner-skills-injection skill)
 │   └── src/                    # Rust core source (lib.rs, main.rs, commands/, config_manager/, workspace, pi_runner, security, session)
 ├── AGENTS.md                   # Project rules and agent guidelines (condensed invariants + skill routing matrix)
