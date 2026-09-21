@@ -57,6 +57,11 @@ export function initFlowPipeline(ctx) {
   const flowScrollArea = flowDom.flowScrollArea;
   const flowBtnAbort = flowDom.flowBtnAbort;
 
+  // 串轮过滤前台门禁：事件帧携 task_id 且非当前前台活跃任务时拦截，
+  // 与 flow-stream.js 同名闭包对齐，保障工具调用事件监听器正常执行
+  const isForegroundStreamEvent = () =>
+    taskManager.isForegroundStreamTask(piClient.lastEventTaskId || null);
+
   const getSkillDisplayName = (skillName) => {
     switch (skillName) {
       case "windows-bash-compatibility":
