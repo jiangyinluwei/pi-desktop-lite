@@ -38,9 +38,11 @@
  *          window.__piRegisterStepBack 注册器，属运行态交互热区 —— 保留原 channel，
  *          收编评估归入「降耦合 GUI 回归专项」（.doc/pi-desktop-lite-降耦合-GUI回归专项.md §5）。
  *
- *   [注解] closeTaskSidebar（task-panel → global-interactions）**不上总线**：
- *          返回 boolean（wasOpen）参与右键 step-back 拦截链（global-interactions.js 依据真值
- *          决定链是否继续），属「控制流命令」，保留 ctx.api 显式槽（阶段 6 重定性）。
+ *   [注解] closeTaskSidebar（task-panel → global-interactions）与 closePlanSidebar
+ *          （flow-plan-panel → global-interactions / task-panel）**不上总线**：
+ *          两者均返回 boolean（wasOpen）参与右键 step-back 拦截链（global-interactions.js 依据真值
+ *          决定链是否继续）与同位互斥开合（任务侧栏 / 计划侧栏同占右侧抽屉位），
+ *          属「控制流命令」，保留 ctx.api 显式槽（阶段 6 重定性；计划侧栏同步入册）。
  *
  * 三、window.__piRegisterStepBack（全局回退栈契约，AGENTS.md 铁律 3）
  *   所有新模块需接入。非本总线管辖，登记于 register.js 使用处；本文件仅声明其契约存在。
@@ -60,7 +62,7 @@
 //   flow:step-start       发射方：flow-stream / flow-pipeline
 //                         监听方：token-telemetry.js (bus.on → 额度图标 1s 弧光高亮)
 
-export const EVENT_CHANNEL_TABLE_VERSION = 3;
+export const EVENT_CHANNEL_TABLE_VERSION = 4;
 
 // =====================================================================
 // 【扩展 UI 交互方法判定 · 唯一源（阶段 8：消除 task-manager / flow-pipeline 双份常量）】
@@ -428,6 +430,8 @@ export function resolveEventTaskId(detail, fallback = null) {
 //  * @property {(tabId: string) => void} switchSettingsTab       settings-navigation → 设置大 Tab 切换（含懒加载分发）
 //  * @property {() => void} updateMiniTaskCapsuleUI              task-panel → Mini 任务胶囊刷新
 //  * @property {() => boolean} closeTaskSidebar                  task-panel → 侧栏关闭（拦截语义，见契约表注解）
+//  * @property {(taskId: string, turns: object[]) => void} rebuildPlanFromTurns flow-plan-panel → 历史/回填链按 Task 重建「计划执行」快照（模型 todo list 可视化）
+//  * @property {() => boolean} closePlanSidebar                  flow-plan-panel → 计划侧栏关闭（拦截语义，见契约表注解）
 //  * @property {() => void} renderTaskSidebarList                task-panel → 任务抽屉渲染
 //  * @property {(taskId: string) => void} restoreTaskToFlow      task-panel → 任务回入 Flow（防重入铁律）
 //  * @property {(task: object) => void} renderTurnsIntoFlow      task-panel → 轮次回填（切换铁律热区）

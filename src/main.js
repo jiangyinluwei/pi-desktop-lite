@@ -33,6 +33,7 @@ import { initHumanInput } from "./modules/flow-human-input.js";
 import { initFileChanges } from "./modules/flow-file-changes.js";
 import { initFlowRollback } from "./modules/flow-rollback.js";
 import { initTaskPanel } from "./modules/task-panel.js";
+import { initPlanPanel } from "./modules/flow-plan-panel.js";
 import { initFileAttachments } from "./modules/file-attachments.js";
 import { initSearchInput } from "./modules/search-input.js";
 import { initTokenTelemetry } from "./modules/token-telemetry.js";
@@ -78,6 +79,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initHumanInput(ctx);
   initFileChanges(ctx);
   initTaskPanel(ctx);
+  initPlanPanel(ctx);
   initFlowRollback(ctx);
   initFileAttachments(ctx);
   initSearchInput(ctx);

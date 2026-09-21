@@ -126,9 +126,72 @@
 }
 
 /* ==========================================================================
+   右上角手绘「计划执行」指示器 (Plan Indicator，同款胶囊语汇，置于任务胶囊左侧)
+   ========================================================================== */
+.plan-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  margin-right: 6px;
+  background: var(--sketch-tag-bg);
+  border: 1px dashed var(--sketch-border-subtle);
+  border-radius: 10px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--ink-muted);
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  transition: transform 0.16s ease, border-color 0.16s ease, color 0.16s ease, background-color 0.16s ease;
+}
+
+.plan-indicator:hover {
+  border-color: var(--sketch-border);
+  color: var(--ink-primary);
+  background: var(--sketch-tag-hover-bg);
+  transform: rotate(-0.5deg) scale(1.02);
+}
+
+.plan-indicator .plan-indicator-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+}
+
+.plan-indicator.is-running .plan-indicator-icon {
+  animation: spin-pulse 2s infinite ease-in-out;
+}
+
+.plan-indicator.all-completed {
+  border: 1px solid #16a34a;
+  color: #15803d;
+  background: rgba(22, 163, 74, 0.08);
+}
+
+:root[data-theme="dark"] .plan-indicator.all-completed {
+  border-color: #22c55e;
+  color: #4ade80;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .plan-indicator.all-completed,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .plan-indicator.all-completed {
+    border-color: #22c55e;
+    color: #4ade80;
+    background: rgba(34, 197, 94, 0.12);
+  }
+}
+
+/* ==========================================================================
    侧边栏展开时主背景毛玻璃高斯模糊 (Backdrop Blur)
    ========================================================================== */
-body.has-task-sidebar-open .app-container {
+body.has-task-sidebar-open .app-container,
+body.has-plan-sidebar-open .app-container {
   filter: blur(4px);
   opacity: 0.6;
   pointer-events: none;
@@ -138,7 +201,9 @@ body.has-task-sidebar-open .app-container {
 /* ==========================================================================
    半透明毛玻璃手绘侧边栏 (Task Details Sidebar)
    ========================================================================== */
-.task-details-sidebar {
+/* 半透明毛玻璃手绘侧边栏 (Task Details Sidebar / Plan Details Sidebar 同款风格) */
+.task-details-sidebar,
+.plan-details-sidebar {
   position: fixed;
   top: var(--titlebar-height);
   right: 0;
@@ -157,20 +222,24 @@ body.has-task-sidebar-open .app-container {
   flex-direction: column;
 }
 
-:root[data-theme="dark"] .task-details-sidebar {
+:root[data-theme="dark"] .task-details-sidebar,
+:root[data-theme="dark"] .plan-details-sidebar {
   background: rgba(20, 19, 18, 0.94);
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.45);
 }
 
 @media (prefers-color-scheme: dark) {
   :root[data-theme="system"] .task-details-sidebar,
-  :root:not([data-theme="light"]):not([data-theme="dark"]) .task-details-sidebar {
+  :root[data-theme="system"] .plan-details-sidebar,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .task-details-sidebar,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .plan-details-sidebar {
     background: rgba(20, 19, 18, 0.94);
     box-shadow: -4px 0 24px rgba(0, 0, 0, 0.45);
   }
 }
 
-.task-details-sidebar.open {
+.task-details-sidebar.open,
+.plan-details-sidebar.open {
   transform: translateX(0);
 }
 
@@ -232,6 +301,87 @@ body.has-task-sidebar-open .app-container {
   color: var(--ink-faint);
   font-size: 12px;
   padding: 30px 10px;
+}
+
+/* 计划侧边栏主体与逐条计划步骤 (已完成灰显划去) */
+.plan-sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.empty-plan-placeholder {
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: 12px;
+  padding: 30px 10px;
+}
+
+.plan-sidebar-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  padding: 2px 2px 4px;
+}
+
+.plan-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 9px;
+  background: var(--sketch-box-bg);
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-primary);
+  transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.plan-item .plan-item-box {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  border: 1.4px solid var(--sketch-border);
+  border-radius: 4px;
+  color: #15803d;
+}
+
+.plan-item .plan-item-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* 已完成计划条目：灰显 + 划线（翠绿对勾收尾） */
+.plan-item.is-done {
+  color: var(--ink-faint);
+  background: transparent;
+  text-decoration: line-through;
+  text-decoration-color: var(--sketch-border);
+  text-decoration-thickness: 1px;
+}
+
+.plan-item.is-done .plan-item-box {
+  border-color: #16a34a;
+}
+
+:root[data-theme="dark"] .plan-item .plan-item-box {
+  color: #4ade80;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .plan-item .plan-item-box,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .plan-item .plan-item-box {
+    color: #4ade80;
+  }
 }
 
 /* 侧边栏任务卡片 */

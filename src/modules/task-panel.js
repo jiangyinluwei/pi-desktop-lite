@@ -118,6 +118,8 @@ export function initTaskPanel(ctx) {
 
   const openTaskSidebar = () => {
     if (!taskDetailsSidebar) return;
+    // 互斥开合：计划侧边栏与任务侧边栏同占右侧抽屉位（控制流命令，见 contracts 注解）
+    if (typeof api.closePlanSidebar === "function") api.closePlanSidebar();
     renderTaskSidebarList();
     taskDetailsSidebar.classList.add("open");
     document.body.classList.add("has-task-sidebar-open");
@@ -521,6 +523,11 @@ export function initTaskPanel(ctx) {
 
     if (typeof api.restoreFileChangesFor === "function") {
       api.restoreFileChangesFor(task.id);
+    }
+
+    // 「计划执行」面板：历史 / 回填链按 Task 重建计划快照（模型 todo list 可视化，回入 Flow 一致恢复）
+    if (typeof api.rebuildPlanFromTurns === "function") {
+      api.rebuildPlanFromTurns(task.id, turns);
     }
 
     // 未决人工交互请求随 Task 挂起保留：回入 Flow 时重建作答横条（请求不丢失，铁律3）

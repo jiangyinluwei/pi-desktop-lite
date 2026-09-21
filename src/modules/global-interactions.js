@@ -36,9 +36,10 @@ export function initGlobalInteractions(ctx) {
     };
   };
 
-  // 1. 注册侧边栏回退（最高优先级）
+  // 1. 注册侧边栏回退（最高优先级：计划侧边栏与任务侧边栏同级，先开者先收）
   registerStepBackHandler(() => {
-    return api.closeTaskSidebar();
+    const planClosed = typeof api.closePlanSidebar === "function" ? api.closePlanSidebar() : false;
+    return planClosed || api.closeTaskSidebar();
   });
 
   // 2. 注册设置页面回退
