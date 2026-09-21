@@ -41,6 +41,26 @@ pub struct PiSupervisor {
     child_exit_signal: Arc<RwLock<Option<Arc<Notify>>>>,
 }
 
+/// 在内核 get_available_models 返回目录中探测指定模型是否存在（大小写不敏感，字段名防御性兼容）
+fn model_exists_in_catalog(catalog: &Value, provider: &str, model_id: &str) -> bool {
+    let models = match catalog.get("models").and_then(|m| m.as_array()) {
+        Some(arr) => arr,
+        None => return false,
+    };
+    let norm = |s: &str| s.trim().to_lowercase();
+    let want_provider = norm(provider);
+    let want_id = norm(model_id);
+    models.iter().any(|m| {
+        let id = m
+            .get("id")
+            .or_else(|| m.get("modelId"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let prov = m.get("provider").and_then(|v| v.as_str()).unwrap_or("");
+        !id.is_empty() && norm(id) == want_id && norm(prov) == want_provider
+    })
+}
+
 impl PiSupervisor {
     pub fn new(app_handle: AppHandle) -> Self {
         let job_object = Arc::new(JobObjectManager::create_or_panic("Supervisor"));
@@ -527,6 +547,23 @@ impl PiSupervisor {
         match first_res {
             Ok(v) => Ok(v),
             Err(ref err) if err.contains("Model not found") => {
+                // 防内核重启风暴：仅当目标模型确实存在于最新配置目录中时，重启内核重载 models.json 才有意义。
+                // 若模型配置已被删除（目录中不存在），重启只会造成「重启 → 仍找不到 → 前端内核状态翻转重放 → 再重启」的死循环。
+                let exists_in_catalog = match self.get_available_models().await {
+                    Ok(catalog) => model_exists_in_catalog(&catalog, provider, model_id),
+                    Err(_) => true, // 目录探测失败时保持旧行为（重启重试），避免误伤正常切换场景
+                };
+                if !exists_in_catalog {
+                    log::warn!(
+                        "[PiSupervisor] Model not found and absent from available models ({}/{}). Refusing to restart kernel.",
+                        provider,
+                        model_id
+                    );
+                    return Err(format!(
+                        "模型不存在或配置已被删除: {}/{}。请重新选择有效模型。",
+                        provider, model_id
+                    ));
+                }
                 log::warn!(
                     "[PiSupervisor] Model not found in active session ({}). Restarting supervisor to reload ~/.pi/agent/models.json...",
                     err

@@ -413,6 +413,21 @@ export function initCustomProviderPanel(ctx) {
         const btnDeleteProvider = card.querySelector(".btn-delete-provider");
         if (btnDeleteProvider) {
           btnDeleteProvider.addEventListener("click", async () => {
+            // 模型保护：该运营商下的模型正在被内核使用时禁止删除（与白名单锁定行为对齐），
+            // 否则后续对持久化选中模型的自动选用会触发内核重启风暴
+            const cur = piClient.currentModel;
+            const providerOwnsActive =
+              cur &&
+              String(cur.provider || "").toLowerCase() === pKey.toLowerCase() &&
+              Array.isArray(models) &&
+              models.some((m) => m.id === cur.id);
+            if (providerOwnsActive) {
+              await sketchAlert(
+                `运营商 [${pKey.toUpperCase()}] 下的模型 [${cur.name || cur.id}] 正在使用中，禁止删除。请先在「模型配置」中切换到其他模型。`,
+                { type: "warning", title: "模型保护" },
+              );
+              return;
+            }
             const confirmed = await sketchConfirm(`确定要删除运营商 [${pKey.toUpperCase()}] 及其全部模型配置吗？`, {
               title: "删除运营商确认",
               isDanger: true
@@ -709,6 +724,16 @@ export function initCustomProviderPanel(ctx) {
             const delBtn = chip.querySelector(".btn-delete-custom-model");
             if (delBtn) {
               delBtn.addEventListener("click", async () => {
+                // 模型保护：正在被内核使用的模型禁止删除
+                const cur = piClient.currentModel;
+                if (
+                  cur &&
+                  String(cur.provider || "").toLowerCase() === pKey.toLowerCase() &&
+                  cur.id === m.id
+                ) {
+                  await sketchAlert("该模型正在使用中，禁止删除！请先切换到其他模型。", { type: "warning", title: "模型保护" });
+                  return;
+                }
                 const confirmed = await sketchConfirm(`确定要删除模型 [${m.name || m.id}] 吗？`, {
                   title: "删除模型确认",
                   isDanger: true

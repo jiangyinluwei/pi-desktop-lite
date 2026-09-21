@@ -75,7 +75,8 @@ description: Pi Desktop Lite 桌面端交互 23 项核心铁律的完整机制�
 - **发送入口屏蔽**：发送按钮置灰禁用（`disabled`），输入框按键拦截并弹出友好指引；
 - **内核面板降级**：内核页状态显示「未检测到内核 / 未安装」，「重启内核」与「不再提醒更新」禁用，内核组件区域完全隐藏；
 - **一键下载自愈**：启动自动检测官方最新版本，支持「一键下载并安装」，安装就绪后自动拉起内核并恢复 UI；
-- **内核保险自动重连 (Kernel Insurance Auto-Reconnect)**：后台检测内核 `crashed` 状态由 Rust 监督器自动平滑重连最多 5 次（间隔 2 秒，重连前二次校验 `is_stopping` 防止竞态）；成功即恢复 Ready；5 次均失败落入终态 Crashed 并广播 `pi:kernel-reconnect-failed`，前端左上角触发红色抖动小闪电胶囊提醒（点击可手动重启内核），内核恢复后自动隐藏。
+- **内核保险自动重连 (Kernel Insurance Auto-Reconnect)**：后台检测内核 `crashed` 状态由 Rust 监督器自动平滑重连最多 5 次（间隔 2 秒，重连前二次校验 `is_stopping` 防止竞态）；成功即恢复 Ready；5 次均失败落入终态 Crashed 并广播 `pi:kernel-reconnect-failed`，前端左上角触发红色抖动小闪电胶囊提醒（点击可手动重启内核），内核恢复后自动隐藏；
+- **模型缺失防重启风暴**：`set_model` 返回 Model not found 时，Rust 监督器（`supervisor.rs`）先经 `get_available_models` 探测目标模型是否仍存在于配置目录——不存在（配置已被删除）则拒绝重启内核并直接返回可读错误，杜绝「重启 → 仍找不到 → 前端 `kernel-status-change` 重放自动选用 → 再重启」死循环；前端 `model-panel.js` 选用持久化模型前同步校验目录存在性，且 `loadModelsAndState` 带防重入闸门；自定义运营商/模型删除入口（`custom-provider-panel.js`）对正在使用的模型及其所属运营商实施删除守卫（与白名单锁定行为对齐）。
 
 ## 铁律 11：多模态文件与文件夹拖拽与剪贴板智能粘贴链路规范
 
