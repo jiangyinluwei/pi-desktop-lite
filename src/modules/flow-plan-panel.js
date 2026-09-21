@@ -15,6 +15,13 @@
  *   4. 计划侧边栏：与 task-details-sidebar 同款毛玻璃半透明抽屉（右侧展开 + 背景模糊），
  *      逐条展现计划步骤；已完成条目灰显 + 划线（line-through）。
  *
+ * 展示与消除生命周期（会话归属铁律）：
+ *   - 指示器仅在 Flow 会话视图内、且前台活跃任务真有计划时展示当前会话的计划信息；
+ *     右键退出会话界面（Step Back 离开 Flow）立即隐藏，绝不残留上一会话的计划缩略框；
+ *   - 任务完成后计划信息持续保留，仅两种途径彻底消除该轮次计划：①开启下一轮会话
+ *     （startNewTurn 轮次增长检测，静默回填轮次除外）；②在计划侧边栏点击「结束计划」
+ *     （该按钮仅在全部条目完成后出现）；消除时烙印轮次裁剪基线，历史重建绝不复活旧计划。
+ *
  * 架构对齐（AGENTS.md / flow-interaction-pattern §1）：
  *   - 计划状态按 taskId 分仓缓存于本模块私有 Map（同 flow-file-changes 按 Task 分仓先例），
  *     不入 flowStore（计划是文本派生缓存，非流式纯数据字段）；
@@ -26,6 +33,9 @@
 import { piClient } from "../services/pi-client.js";
 import { taskManager } from "../services/task-manager.js";
 import { isTaskStatusActive } from "../lib/contracts.js";
+import { bus } from "../lib/event-bus.js";
+import { viewStore } from "../services/stores/view-store.js";
+import { VIEW_FLOW } from "../lib/view-constants.js";
 import { bindAll } from "../lib/el-binder.js";
 import { ICONS } from "../lib/icons.js";
 
@@ -53,6 +63,13 @@ const plans = new Map();
 const textBuffers = new Map();
 /** 计划解析防抖句柄（text-delta 高频触发，text-end 即时解析）。 */
 let parseTimer = null;
+/**
+ * 计划消除基线（taskId → 轮次下标）：「开启下一轮会话 / 结束计划」彻底消除计划时烙印，
+ * rebuildPlanFromTurns 历史重建仅扫描该下标之后的轮次，保证已消除的计划绝不复活。
+ */
+const planClearedFromTurn = new Map();
+/** 新轮次检测基线（taskId → 已知轮次数，首次观测仅建立基线不触发消除）。 */
+const turnCounts = new Map();
 
 /** 归一化条目文本（勾选态跨快照续传的匹配键）。 */
 const normalizeItemText = (text) => String(text || "").replace(/\s+/g, " ").trim();
@@ -236,22 +253,18 @@ function appendBuffer(taskId, delta) {
 }
 
 /**
- * 解析当前指示器应展示的任务计划（前台活跃任务优先，回退最近更新的计划任务）。
- * @returns {{ taskId: string, plan: object, task: object | null } | null}
+ * 解析当前指示器应展示的任务计划（会话归属铁律：仅 Flow 会话视图 + 前台活跃任务真有计划）。
+ * 右键退出会话界面（非 Flow）或无前台活跃任务/无计划时返回 null，
+ * 绝不做「最近更新的计划任务」兜底回退，杜绝退出会话后右上角残留上一会话计划缩略框。
+ * @returns {{ taskId: string, plan: object, task: object } | null}
  */
 function resolveDisplayPlan() {
+  if (viewStore.mode !== VIEW_FLOW) return null;
   const activeTask = taskManager.getCurrentActiveTask();
   if (activeTask && plans.has(activeTask.id)) {
     return { taskId: activeTask.id, plan: plans.get(activeTask.id), task: activeTask };
   }
-  // 回退：最近更新的计划任务（含已终态任务，保持 all-completed 语义可见）
-  let latest = null;
-  for (const [taskId, plan] of plans) {
-    if (!latest || plan.updatedAt > latest.plan.updatedAt) {
-      latest = { taskId, plan, task: taskManager.getAllTasks().find((t) => t.id === taskId) || null };
-    }
-  }
-  return latest;
+  return null;
 }
 
 /**
@@ -269,7 +282,27 @@ export function initPlanPanel(ctx) {
     planSidebarList: "plan-sidebar-list",
     planSidebarSummary: "plan-sidebar-summary",
     btnClosePlanSidebar: "btn-close-plan-sidebar",
+    btnEndPlan: "btn-end-plan",
   });
+
+  /**
+   * 彻底消除某任务当前轮次的计划信息（两种触发：①开启下一轮会话；②侧边栏「结束计划」）。
+   * 同步清退计划快照与文本缓冲，并烙印轮次裁剪基线（planClearedFromTurn），
+   * 保证右键退出后经历史/Task 记录回入 Flow 时 rebuildPlanFromTurns 不复活旧计划。
+   * @param {string} taskId 任务 id
+   * @param {{ keepLastTurn?: boolean }} [options] keepLastTurn=true 保留最后一个轮次
+   *        （新轮次刚开启的消除语义：后续重建仅裁剪该轮之前的轮次）
+   */
+  const clearPlanForTask = (taskId, options = {}) => {
+    if (!taskId) return;
+    plans.delete(taskId);
+    textBuffers.delete(taskId);
+    const task = taskManager.getTask(taskId);
+    const turnCount = Array.isArray(task?.turns) ? task.turns.length : 0;
+    const keepLastTurn = Boolean(options.keepLastTurn);
+    planClearedFromTurn.set(taskId, keepLastTurn && turnCount > 0 ? turnCount - 1 : turnCount);
+    renderPlan();
+  };
 
   // ==========================================================================
   // 渲染：右上角指示器 + 计划侧边栏
@@ -304,6 +337,7 @@ export function initPlanPanel(ctx) {
 
     if (!display || !Array.isArray(display.plan.items) || display.plan.items.length === 0) {
       el.planSidebarSummary.textContent = "暂无任务计划";
+      if (el.btnEndPlan) el.btnEndPlan.classList.add("hidden");
       const empty = document.createElement("div");
       empty.className = "empty-plan-placeholder";
       empty.textContent = "模型执行任务时输出的计划清单将在此展示";
@@ -314,6 +348,11 @@ export function initPlanPanel(ctx) {
     const { plan } = display;
     const doneCount = plan.items.filter((it) => it.done).length;
     el.planSidebarSummary.textContent = `已完成 ${doneCount} / 共 ${plan.items.length} 项`;
+
+    // 「结束计划」仅在全部计划完成后出现（消除该轮次计划信息的第二途径）
+    if (el.btnEndPlan) {
+      el.btnEndPlan.classList.toggle("hidden", !(plan.items.length > 0 && doneCount === plan.items.length));
+    }
 
     if (plan.title && plan.title !== "任务计划") {
       const titleEl = document.createElement("div");
@@ -369,6 +408,14 @@ export function initPlanPanel(ctx) {
   el.planIndicator?.addEventListener("click", openPlanSidebar);
   el.btnClosePlanSidebar?.addEventListener("click", closePlanSidebar);
 
+  // 「结束计划」：彻底消除该轮次计划信息（仅全部条目完成后可见），并收起侧边栏
+  el.btnEndPlan?.addEventListener("click", () => {
+    const display = resolveDisplayPlan();
+    if (!display) return;
+    clearPlanForTask(display.taskId);
+    closePlanSidebar();
+  });
+
   // ==========================================================================
   // 跨模块函数槽注册（contracts.js @typedef 已同步登记）
   // ==========================================================================
@@ -376,15 +423,51 @@ export function initPlanPanel(ctx) {
 
   /**
    * 历史 / 回填链重建任务计划（task-panel.renderTurnsIntoFlow 调用点）。
-   * 扫描各轮 responseText 取最近一段计划清单，保证任务回入 Flow 时计划与文本一致。
+   * 按时间序扫描各轮 steps 文本切片（Point 切片）+ responseText 尾段重建计划快照，
+   * 保证任务回入 Flow 时计划与文本一致（仅扫 responseText 会漏掉工具调用前段内的计划清单）。
    * @param {string} taskId 任务 id
    * @param {Array<{ responseText?: string }>} turns 轮次数组
    */
   api.rebuildPlanFromTurns = (taskId, turns) => {
     if (!taskId || !Array.isArray(turns)) return;
-    const combined = turns
-      .map((t) => (typeof t?.responseText === "string" ? t.responseText : ""))
+    // 历史还原路径的轮次基线种子：restoreConversationToFlow 直接改写 task.turns 不派发
+    // task-updated，若不在此处建立基线，紧随其后的追问（startNewTurn）将因无基准而漏触发消除
+    const knownCount = turnCounts.get(taskId) || 0;
+    if (turns.length > knownCount) turnCounts.set(taskId, turns.length);
+    // 计划消除基线裁剪：已被「开启下一轮会话 / 结束计划」消除的轮次计划文本绝不参与重建
+    const clearedFrom = planClearedFromTurn.get(taskId) || 0;
+    const effectiveTurns = clearedFrom > 0 ? turns.slice(clearedFrom) : turns;
+    // 轮次全文重建铁律：turn.responseText 仅是「最后一次工具调用之后」的尾段文本 ——
+    // task-manager 在 tool_execution_start 时会把已累积文本封口沉淀为 steps 中 type==="text"
+    // 的 Point 切片并清空 responseText，计划清单通常写在首个工具调用之前的段内，
+    // 仅扫 responseText 会漏掉全部计划文本 → 回入 Flow 时 rebuild 落空（combined 为空 →
+    // plans/textBuffers 被清退，指示器不再展示）。故按时间序拼接：steps 文本切片（按序）+
+    // responseText 尾段（封口即清空，两者天然不重叠；重复同文组经 applyPlanSnapshot 幂等对账）。
+    const collectTurnText = (t) => {
+      const segs = [];
+      if (Array.isArray(t?.steps)) {
+        for (const step of t.steps) {
+          if (step?.type === "text" && typeof step.text === "string" && step.text.trim()) {
+            segs.push(step.text);
+          }
+        }
+      }
+      if (typeof t?.responseText === "string" && t.responseText.trim()) {
+        segs.push(t.responseText);
+      }
+      return segs.join(TEXT_BLOCK_SEPARATOR);
+    };
+    const combined = effectiveTurns
+      .map(collectTurnText)
+      .filter((t) => t.trim().length > 0)
       .join(TEXT_BLOCK_SEPARATOR); // 与实时路径同款块边界，保证重进后快照重放语义一致
+    if (!combined.trim()) {
+      // 基线之后无任何计划文本（计划已消除且新轮次尚未产出）→ 计划保持清空
+      textBuffers.delete(taskId);
+      plans.delete(taskId);
+      renderPlan();
+      return;
+    }
     textBuffers.set(taskId, combined.length > MAX_BUFFER_CHARS ? combined.slice(-BUFFER_TRIM_TO) : combined);
     parsePlanForTask(taskId);
     renderPlan();
@@ -438,8 +521,30 @@ export function initPlanPanel(ctx) {
   });
 
   // ==========================================================================
-  // 任务生命周期联动：状态变化刷新运行态 / 终态样式；任务移除清退分仓防泄漏
+  // 任务生命周期联动：四态视图切换 / 状态变化刷新运行态 / 终态样式；
+  // 新轮次消除计划；任务移除清退分仓防泄漏
   // ==========================================================================
+  // 展示门禁联动：右键退出会话界面（离开 Flow）立即隐藏指示器，
+  // 点进带计划的任务会话（回入 Flow）后恢复展示当前会话计划
+  bus.on("view:changed", () => renderPlan());
+
+  // 新轮次消除铁律：startNewTurn 轮次增长即视为「开启下一轮会话」，彻底消除上一轮计划
+  // （静默回填轮次 silentPrompt 为生图路由内部轮，不算用户会话轮次，不清除）；
+  // 首次观测到的任务仅建立基线 —— 历史恢复的任务自带已完成轮次，不得误清除其计划。
+  taskManager.addEventListener("task-updated", (e) => {
+    const task = e.detail;
+    if (!task || !Array.isArray(task.turns)) return;
+    const prevCount = turnCounts.get(task.id);
+    if (prevCount !== undefined && task.turns.length > prevCount) {
+      const newTurn = task.turns[task.turns.length - 1];
+      if (!newTurn?.silentPrompt) {
+        clearPlanForTask(task.id, { keepLastTurn: true });
+      }
+    }
+    turnCounts.set(task.id, task.turns.length);
+    renderPlan();
+  });
+
   taskManager.addEventListener("tasks-changed", () => {
     // 清退已移除任务的计划分仓与文本缓冲（防泄漏）
     const aliveIds = new Set(taskManager.getAllTasks().map((t) => t.id));
@@ -449,6 +554,9 @@ export function initPlanPanel(ctx) {
     for (const taskId of textBuffers.keys()) {
       if (!aliveIds.has(taskId)) textBuffers.delete(taskId);
     }
+    for (const taskId of turnCounts.keys()) {
+      if (!aliveIds.has(taskId)) turnCounts.delete(taskId);
+    }
     renderPlan();
   });
   taskManager.addEventListener("active-task-changed", renderPlan);
@@ -457,6 +565,10 @@ export function initPlanPanel(ctx) {
     if (removedId) {
       plans.delete(removedId);
       textBuffers.delete(removedId);
+      turnCounts.delete(removedId);
+      // 注意：planClearedFromTurn（计划消除基线）故意不随任务移除清退 —— 终态任务退出会被
+      // TaskManager 清理后经历史记录同 id 重建，基线必须跨任务重建存活，杜绝已消除的
+      // 旧计划经历史回入复活（条目仅一个数字，无内存风险）
     }
     renderPlan();
   });
