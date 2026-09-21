@@ -665,7 +665,19 @@ export class TaskManager extends EventTarget {
       const data = e.detail;
       if (!data) return;
 
-      const taskId = resolveEventTaskId(data, this.currentActiveTaskId);
+      let taskId = resolveEventTaskId(data, this.currentActiveTaskId);
+      // 挂起态兜底（修复 BUG：会话进行中转入后台后触发计划，回入 Flow 指示器消失）：
+      // 右键挂起时 currentActiveTaskId === null，帧未携带 task_id 时归属解析落空，
+      // 后台轮次文本不再累积（turns.responseText 恒空）→ 回入 Flow 时重建计划落空。
+      // 仅对「携带轮次内容的流式帧」回落到唯一运行中的挂起任务，杜绝无关帧（状态/查询响应等）
+      // 误沉淀进挂起任务；多挂起任务并行时无法消歧，保持丢弃。
+      if ((!taskId || !this.tasks.has(taskId)) && !this.currentActiveTaskId) {
+        const type = typeof data.type === "string" ? data.type : "";
+        if (type === "agent_start" || type === "message_update" || type === "message_start") {
+          const suspended = this.getActiveSuspendedTasks();
+          if (suspended.length === 1) taskId = suspended[0].id;
+        }
+      }
       if (!taskId || !this.tasks.has(taskId)) return;
 
       this.handleTaskEvent(taskId, data);

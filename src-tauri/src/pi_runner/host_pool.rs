@@ -183,10 +183,22 @@ impl SessionHost {
 
                 // 注入 task_id 与 session 信息确保前端路由精准分发
                 if let Value::Object(ref mut map) = event_val {
-                    if !map.contains_key("task_id") {
+                    // 空值也视为缺失：内核偶发输出 task_id: null / "" 时前端归属解析会落空，
+                    // 导致后台挂起任务的流式文本无法归仓（前端兜底见 task-manager raw-event 监听）
+                    let need_task_id = match map.get("task_id") {
+                        Some(Value::String(s)) => s.is_empty(),
+                        Some(Value::Null) | None => true,
+                        Some(_) => false,
+                    };
+                    if need_task_id {
                         map.insert("task_id".to_string(), Value::String(task_id_clone.clone()));
                     }
-                    if !map.contains_key("taskId") {
+                    let need_task_id_camel = match map.get("taskId") {
+                        Some(Value::String(s)) => s.is_empty(),
+                        Some(Value::Null) | None => true,
+                        Some(_) => false,
+                    };
+                    if need_task_id_camel {
                         map.insert("taskId".to_string(), Value::String(task_id_clone.clone()));
                     }
                     if !map.contains_key("session_id") {

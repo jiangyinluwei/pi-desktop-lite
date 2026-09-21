@@ -462,9 +462,14 @@ export function initPlanPanel(ctx) {
       .filter((t) => t.trim().length > 0)
       .join(TEXT_BLOCK_SEPARATOR); // 与实时路径同款块边界，保证重进后快照重放语义一致
     if (!combined.trim()) {
-      // 基线之后无任何计划文本（计划已消除且新轮次尚未产出）→ 计划保持清空
-      textBuffers.delete(taskId);
-      plans.delete(taskId);
+      // 仅当存在显式计划消除基线（开启下一轮会话 / 结束计划）时才清退分仓。
+      // 无基线时 combined 为空只代表「轮次文本尚未沉淀」——典型情形是会话进行中转入后台后
+      // 事件帧归属缺失，TaskManager 轮次缓冲未累积，但实时采集的计划快照仍在分仓中；
+      // 此时破坏性清退会把存活计划一并抹掉，导致回入 Flow 时指示器消失（BUG 根因之二）。
+      if ((planClearedFromTurn.get(taskId) || 0) > 0) {
+        textBuffers.delete(taskId);
+        plans.delete(taskId);
+      }
       renderPlan();
       return;
     }
@@ -475,11 +480,21 @@ export function initPlanPanel(ctx) {
 
   // ==========================================================================
   // 流式文本采集：text-delta 高频累积（120ms 防抖解析），text-end 即时解析
-  // 归属解析复用 piClient.lastEventTaskId 唯一源；纯数据缓冲不受前台门禁限制，
-  // DOM（指示器 / 侧边栏）为全局 Chrome，非 Flow 流式 DOM，无串轮频闪风险。
+  // 归属解析三级链：piClient.lastEventTaskId → 前台活跃任务 → 挂起态兜底（见 resolveBufferTaskId）；
+  // 纯数据缓冲不受前台门禁限制，DOM（指示器 / 侧边栏）为全局 Chrome，非 Flow 流式 DOM，无串轮频闪风险。
   // ==========================================================================
-  const resolveBufferTaskId = () =>
-    piClient.lastEventTaskId || taskManager.getCurrentActiveTask()?.id || null;
+  const resolveBufferTaskId = () => {
+    if (piClient.lastEventTaskId) return piClient.lastEventTaskId;
+    const active = taskManager.getCurrentActiveTask();
+    if (active) return active.id;
+    // 挂起态兜底（修复 BUG：会话进行中转入后台后触发计划，回入 Flow 指示器消失）：
+    // 右键挂起时 currentActiveTaskId 置 null，前台无活跃任务；此时若事件帧归属缺失
+    // （piClient.lastEventTaskId 为空），唯一运行中的挂起任务即为流式归属；
+    // 多挂起任务并行时无法消歧，保持 null 杜绝串任务污染
+    const suspended = taskManager.getActiveSuspendedTasks();
+    if (suspended.length === 1) return suspended[0].id;
+    return null;
+  };
 
   const scheduleParse = () => {
     if (parseTimer) clearTimeout(parseTimer);
