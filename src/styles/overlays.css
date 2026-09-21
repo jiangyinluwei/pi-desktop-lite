@@ -19,27 +19,14 @@
   height: 24px;
   color: var(--ink-faint);
   opacity: 0;
-  pointer-events: auto;
+  /* 纯装饰图元严禁接收指针事件：子元素显式 auto 会击穿父层 .floating-icons-layer 的
+     pointer-events:none（Flow/Settings 态下父层整层禁用），导致隐形图标飘过内容区时
+     静默吃掉点击与悬浮（错误卡按钮失联复发根因之一）。 */
+  pointer-events: none;
   cursor: default;
   will-change: transform, opacity;
   transition: filter 0.25s ease, color 0.25s ease;
   filter: drop-shadow(0 0 0 transparent);
-}
-
-.floating-icon:hover {
-  color: var(--ink-muted);
-  filter: drop-shadow(0 1px 3px rgba(28, 26, 23, 0.15));
-}
-
-:root[data-theme="dark"] .floating-icon:hover {
-  filter: drop-shadow(0 1px 4px rgba(243, 239, 230, 0.12));
-}
-
-@media (prefers-color-scheme: dark) {
-  :root[data-theme="system"] .floating-icon:hover,
-  :root:not([data-theme="light"]):not([data-theme="dark"]) .floating-icon:hover {
-    filter: drop-shadow(0 1px 4px rgba(243, 239, 230, 0.12));
-  }
 }
 
 /* Flow/Settings 态下隐藏飘荡特效 */
@@ -732,7 +719,12 @@ body.has-plan-sidebar-open .app-container {
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   opacity: 0;
-  pointer-events: auto;
+  /* 铁律：隐藏态（未 visible / closing 淡出中）严禁接收指针事件。
+     本层为 fixed inset:0 全屏覆盖，若隐藏态保留 pointer-events:auto，
+     一旦弹窗创建后 rAF 被挂起（窗体隐藏至托盘/最小化时中途中提问弹窗），
+     就会形成「看不见却吃掉全应用点击与悬浮」的隐形拦截层——
+     错误卡「重试当前提问 / 切换其他模型」等所有按钮将永久失联。 */
+  pointer-events: none;
   transition: opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -749,10 +741,12 @@ body.has-plan-sidebar-open .app-container {
 
 .sketch-modal-overlay.visible {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .sketch-modal-overlay.closing {
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.14s ease-out;
 }
 

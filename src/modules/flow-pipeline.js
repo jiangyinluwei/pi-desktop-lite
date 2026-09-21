@@ -926,9 +926,14 @@ export function initFlowPipeline(ctx) {
         ? (() => {
           const t = taskManager.getCurrentActiveTask();
           if (!t) return null;
-          return (isTaskStatusActive(t) || taskManager.isEngineOwnedTask(t.id))
-            ? t
-            : null;
+          const statusActive = isTaskStatusActive(t) || taskManager.isEngineOwnedTask(t.id);
+          if (!statusActive) return null;
+          // 真实活性门禁：状态标签活跃 ≠ 生成中。错误卡「重试当前提问」链路会先经
+          // clearTurnErrorState 把 error 终态复活为 running，若仅凭状态标签判定，
+          // 每次重试点击都会误弹「上一轮仍在生成中」确认框（按钮看起来点了没反应）。
+          // 故叠加底层在途证据：内核流式在途 / 引擎接管在途 / 人工待确认（paused 等待作答）三者其一。
+          const reallyBusy = piClient.isStreaming || modelFailoverEngine.isActive() || t.status === "paused";
+          return reallyBusy ? t : null;
         })()
         : null;
 
