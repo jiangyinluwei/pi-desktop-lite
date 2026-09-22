@@ -4,8 +4,10 @@
  * 背景：模型执行多步任务时常在输出文本中生成 Markdown 复选框计划清单
  *       （`- [ ]` 待办 / `- [x]` 已完成），随后边执行边回写勾选状态。
  *       本模块把这一「后台计划」收敛为前端可视化：
- *   1. 数据采集：监听 piClient 的 text-delta / text-end 流式文本事件，按 taskId 分仓
- *      累积响应文本（纯数据缓冲，不受前台门禁限制——计划属全局 Chrome，非 Flow DOM）；
+ *   1. 数据采集（双通道）：①监听 piClient 的 text-delta / text-end 流式文本事件，按 taskId
+ *      分仓累积响应文本（纯数据缓冲，不受前台门禁限制——计划属全局 Chrome，非 Flow DOM）；
+ *      ②监听 tool-start 的 scratchpad 工具动作（add/done/undo），收录本任务内模型经内核
+ *      pi-memory 草稿板工具维护的计划条目与勾选态（见「scratchpad 工具通道」）；
  *   2. 计划解析：从文本中按出现顺序提取全部复选框清单组并逐组对账重放
  *      （模型每完成一步会重写「剩余步骤」增量清单；文本块边界补硬分隔防跨块首尾行熔接，
  *      段内同文去重、完成态跨快照续传、已完成但未再出现的历史条目保留、
@@ -14,6 +16,17 @@
  *      （is-running 铅笔同款弧光、all-completed 翠绿对齐任务胶囊语义）；
  *   4. 计划侧边栏：与 task-details-sidebar 同款毛玻璃半透明抽屉（右侧展开 + 背景模糊），
  *      逐条展现计划步骤；已完成条目灰显 + 划线（line-through）。
+ *
+ * scratchpad 工具通道（BUG 修复：清单显示了但永不灰显划去）：
+ *   模型常改用内核 pi-memory 的 `scratchpad` 待办工具推进计划（`add` / `done` / `undo`），
+ *   此时勾选态只出现在**工具入参**里，回复正文不再回写 `- [x]`（正文仅剩「第 N 步完成」散文），
+ *   纯文本解析会永久停在首次快照 → 表现为「计划清单正常显示、没有一步灰显划去，直至任务结束」。
+ *   故计划分为双来源并在此归一：**文本计划**（正文复选框快照对账）与 **scratchpad 分仓**
+ *   （本任务事件流内观察到的工具动作，绝不读全局草稿板文件，历史遗留条目零污染），
+ *   展示层经 isSamePlanItem（剥离 `【…】` 标签前缀 + 去空白后全等 / 互相包含）合并去重，
+ *   完成态取两者之或 —— 模型只在其中一处回写勾选同样驱动灰显划去。
+ *   匹配必须容忍装饰性差异（正文 `步骤 1：…` ↔ 工具 `【测试计划·定时】步骤1：…`）：
+ *   认不出同一条就会把工具条目当成另一批计划追加 —— 表现为「完成第一步后列表翻倍」（BUG 根因）。
  *
  * 展示与消除生命周期（会话归属铁律）：
  *   - 指示器仅在 Flow 会话视图内、且前台活跃任务真有计划时展示当前会话的计划信息；
@@ -54,6 +67,9 @@ const TEXT_BLOCK_SEPARATOR = "\n\n\n\n";
 /** 视为「计划」的最少条目数（单个复选框不足以构成任务计划）。 */
 const MIN_PLAN_ITEMS = 2;
 
+/** scratchpad 待办工具名后缀（内核 pi-memory 草稿板工具，容忍扩展命名空间前缀）。 */
+const SCRATCHPAD_TOOL_SUFFIX = "scratchpad";
+
 /** 单任务文本缓冲上限（超出仅保留尾部，防长会话内存无界增长）。 */
 const MAX_BUFFER_CHARS = 24000;
 const BUFFER_TRIM_TO = 16000;
@@ -70,9 +86,122 @@ let parseTimer = null;
 const planClearedFromTurn = new Map();
 /** 新轮次检测基线（taskId → 已知轮次数，首次观测仅建立基线不触发消除）。 */
 const turnCounts = new Map();
+/**
+ * scratchpad 工具通道的计划条目（taskId → Map<归一化文本, { text, done }>）。
+ * 模型用内核 pi-memory 草稿板工具（add/done/undo/clear_done）维护计划时，勾选态只出现在
+ * 工具入参里、回复正文不回写 `- [x]`，本分仓即该通道的进度来源；只收录**本任务事件流内
+ * 观察到的**条目（绝不读取全局草稿板文件，故历史遗留待办不会污染当前会话计划）。
+ */
+const padItems = new Map();
 
-/** 归一化条目文本（勾选态跨快照续传的匹配键）。 */
+/** 归一化条目文本（同一性判定与勾选态续传的匹配键）。 */
 const normalizeItemText = (text) => String(text || "").replace(/\s+/g, " ").trim();
+
+/** 包含关系判定的最短文本长度（短侧不足此长度时不判定包含，防短文本误配）。 */
+const MIN_MATCH_CHARS = 3;
+
+/**
+ * 计划条目的装饰性前缀（模型常给工具入参里的条目加标签：`【测试计划】` / `【测试计划·定时】` /
+ * `【执行计划】`），匹配时剥离；仅剥离行首单个短括号组（≤12 字符），不碰正文语义。
+ */
+const PLAN_PREFIX_RE = /^[【\[（(][^】\]）)]{0,12}[】\]）)][ \t]*/;
+
+/**
+ * 匹配键：剥离装饰性前缀 → 归一化空白 → **去除全部空白**。
+ * 同一份计划在正文与工具入参之间常有这些装饰性差异，例如真实会话里正文写
+ * `步骤 1：环境预检（确认内核连接、模型配置就绪）`、工具写 `【测试计划·定时】步骤1：…` ——
+ * 不做这层归一就认不出是同一条，工具通道的条目会被当成另一批计划追加（列表翻倍，BUG 根因）。
+ * @param {string} text 条目文本
+ * @returns {string}
+ */
+const matchKeyOf = (text) =>
+  normalizeItemText(String(text || "").replace(PLAN_PREFIX_RE, "")).replace(/\s+/g, "");
+
+/**
+ * 计划条目同一性判定（文本计划 ↔ scratchpad 分仓合并去重，及 done/undo 目标定位）：
+ *   ① 匹配键全等；② 短侧 ≥ 3 字符的互相包含 —— 容器关系天然容忍模型给条目加 `✅` 后缀，
+ *   且 scratchpad 的 done/undo 目标允许截断（pi-memory 本身即按子串匹配，
+ *   如 `步骤1：环境预检` 甚至剥掉前缀后的 `步骤1`）。
+ * 注：**不做**「步骤序号同键」这类宽松兜底 —— 草稿板常驻大量历史编号待办，
+ * 同号即命中会把无关条目的勾选态误传到当前计划；也避免掩盖模型对计划的重新编号修订。
+ * @param {string} a 条目文本
+ * @param {string} b 条目文本
+ * @returns {boolean}
+ */
+function isSamePlanItem(a, b) {
+  const x = matchKeyOf(a);
+  const y = matchKeyOf(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  return Math.min(x.length, y.length) >= MIN_MATCH_CHARS && (x.includes(y) || y.includes(x));
+}
+
+/**
+ * 应用一次 scratchpad 工具动作到计划分仓（工具通道的计划进度来源）。
+ *   - `add`：新条目入仓（与文本计划条目重名时仍入仓，展示层按同一性合并去重）；
+ *   - `done` / `undo`：定位既有条目（分仓 → 文本计划）并翻转完成态；目标未命中任何既有
+ *     条目一律忽略（杜绝模型随手文本造出幽灵条目）；
+ *   - `clear_done` / `list`：不改动计划 —— 计划的消除生命周期由轮次边界与「结束计划」掌管
+ *     （模型清理草稿板已勾选项不等于放弃本轮计划展示）。
+ * @param {string} taskId 分仓键
+ * @param {string} action 工具动作（已小写）
+ * @param {string} text 条目文本（add 为新条目；done/undo 为匹配目标，可被截断）
+ * @returns {boolean} 是否改动了计划（调用方据此决定重渲）
+ */
+function applyPadAction(taskId, action, text) {
+  if (!taskId || !text) return false;
+  const key = matchKeyOf(text);
+  if (!key) return false;
+  const store = padItems.get(taskId) || new Map();
+
+  if (action === "add") {
+    for (const existing of store.keys()) {
+      if (isSamePlanItem(existing, key)) return false;
+    }
+    store.set(key, { text: String(text).trim(), done: false });
+    padItems.set(taskId, store);
+    return true;
+  }
+
+  if (action !== "done" && action !== "undo") return false;
+  const targetDone = action === "done";
+
+  // ① 分仓命中：直接翻转
+  for (const entry of store.values()) {
+    if (isSamePlanItem(entry.text, key)) {
+      if (entry.done === targetDone) return false;
+      entry.done = targetDone;
+      return true;
+    }
+  }
+  // ② 文本计划命中：入仓一条同义条目，展示层按同一性把完成态续传到文本条目上
+  const planItems = plans.get(taskId)?.items;
+  if (!Array.isArray(planItems) || !planItems.some((it) => isSamePlanItem(it.text, key))) {
+    return false;
+  }
+  store.set(key, { text: String(text).trim(), done: targetDone });
+  padItems.set(taskId, store);
+  return true;
+}
+
+/**
+ * 合并文本计划与 scratchpad 通道进度（展示层唯一入口）。
+ * 完成态取两者之或（模型只在其中一处回写勾选同样生效）；未被文本条目覆盖的 scratchpad
+ * 条目按入仓顺序追加（模型仅用草稿板维护计划、正文无清单的场景）。
+ * @param {Array<{ text: string, done: boolean }>} textItems 文本计划条目
+ * @param {Map<string, { text: string, done: boolean }>} [padStore] scratchpad 分仓
+ * @returns {Array<{ text: string, done: boolean }>}
+ */
+function mergePlans(textItems, padStore) {
+  const items = (textItems || []).map((it) => ({ text: it.text, done: it.done }));
+  if (!padStore || padStore.size === 0) return items;
+  for (const entry of padStore.values()) {
+    const hit = items.find((it) => isSamePlanItem(it.text, entry.text));
+    if (hit) hit.done = hit.done || entry.done;
+    else items.push({ text: entry.text, done: entry.done });
+  }
+  return items;
+}
 
 /**
  * 从一段响应文本中按出现顺序提取全部复选框清单组（模型会随执行进度反复重写清单，
@@ -256,15 +385,23 @@ function appendBuffer(taskId, delta) {
  * 解析当前指示器应展示的任务计划（会话归属铁律：仅 Flow 会话视图 + 前台活跃任务真有计划）。
  * 右键退出会话界面（非 Flow）或无前台活跃任务/无计划时返回 null，
  * 绝不做「最近更新的计划任务」兜底回退，杜绝退出会话后右上角残留上一会话计划缩略框。
+ * 展示条目为「文本计划 + scratchpad 分仓」合并结果（见 mergePlans）；
+ * 文本计划缺席时，单条 scratchpad 条目（模型随手记的「回头再处理」备忘）不成计划，按
+ * MIN_PLAN_ITEMS 同样门禁隐藏。
  * @returns {{ taskId: string, plan: object, task: object } | null}
  */
 function resolveDisplayPlan() {
   if (viewStore.mode !== VIEW_FLOW) return null;
   const activeTask = taskManager.getCurrentActiveTask();
-  if (activeTask && plans.has(activeTask.id)) {
-    return { taskId: activeTask.id, plan: plans.get(activeTask.id), task: activeTask };
-  }
-  return null;
+  if (!activeTask) return null;
+  const textPlan = plans.get(activeTask.id) || null;
+  const items = mergePlans(textPlan?.items, padItems.get(activeTask.id));
+  if (items.length === 0 || (!textPlan && items.length < MIN_PLAN_ITEMS)) return null;
+  return {
+    taskId: activeTask.id,
+    plan: { title: textPlan?.title || "任务计划", items },
+    task: activeTask,
+  };
 }
 
 /**
@@ -297,6 +434,7 @@ export function initPlanPanel(ctx) {
     if (!taskId) return;
     plans.delete(taskId);
     textBuffers.delete(taskId);
+    padItems.delete(taskId);
     const task = taskManager.getTask(taskId);
     const turnCount = Array.isArray(task?.turns) ? task.turns.length : 0;
     const keepLastTurn = Boolean(options.keepLastTurn);
@@ -469,12 +607,25 @@ export function initPlanPanel(ctx) {
       if ((planClearedFromTurn.get(taskId) || 0) > 0) {
         textBuffers.delete(taskId);
         plans.delete(taskId);
+        padItems.delete(taskId);
       }
-      renderPlan();
-      return;
+    } else {
+      textBuffers.set(taskId, combined.length > MAX_BUFFER_CHARS ? combined.slice(-BUFFER_TRIM_TO) : combined);
+      parsePlanForTask(taskId);
     }
-    textBuffers.set(taskId, combined.length > MAX_BUFFER_CHARS ? combined.slice(-BUFFER_TRIM_TO) : combined);
-    parsePlanForTask(taskId);
+    // scratchpad 工具通道的轮次重建（须在文本解析之后：done/undo 目标可能只存在于文本计划里）：
+    // 轮次 toolCalls 已记录本轮的 scratchpad 动作（name + args），按时间序重放即可恢复
+    // 与退出前一致的勾选态（padItems 为内存分仓，回入 Flow 时必须重建）。
+    // 从磁盘历史还原的会话可能不含完整 toolCalls（持久化预算裁剪），此路径按尽力而为降级。
+    for (const turn of effectiveTurns) {
+      if (!Array.isArray(turn?.toolCalls)) continue;
+      for (const call of turn.toolCalls) {
+        if (!String(call?.name || "").toLowerCase().endsWith(SCRATCHPAD_TOOL_SUFFIX)) continue;
+        const action = typeof call?.args?.action === "string" ? call.args.action.toLowerCase() : "";
+        const text = typeof call?.args?.text === "string" ? call.args.text : "";
+        applyPadAction(taskId, action, text);
+      }
+    }
     renderPlan();
   };
 
@@ -535,6 +686,21 @@ export function initPlanPanel(ctx) {
     renderPlan();
   });
 
+  // scratchpad 工具通道（BUG 修复：清单显示了但永不灰显划去）：
+  // 模型改用内核 pi-memory 的 `scratchpad` 待办工具推进计划时，勾选态只出现在工具入参
+  // （add/done/undo），回复正文不再回写 `- [x]` —— 只吃正文的计划会永久停在首次快照。
+  // 工具名按后缀容错（扩展命名空间形如 `<pkg>:scratchpad`）；动作即时生效无需防抖。
+  piClient.addEventListener("tool-start", (e) => {
+    const detail = e.detail;
+    const toolName = String(detail?.toolName || "").toLowerCase();
+    if (!toolName.endsWith(SCRATCHPAD_TOOL_SUFFIX)) return;
+    const action = typeof detail?.args?.action === "string" ? detail.args.action.toLowerCase() : "";
+    const text = typeof detail?.args?.text === "string" ? detail.args.text : "";
+    const taskId = resolveBufferTaskId();
+    if (!taskId) return;
+    if (applyPadAction(taskId, action, text)) renderPlan();
+  });
+
   // ==========================================================================
   // 任务生命周期联动：四态视图切换 / 状态变化刷新运行态 / 终态样式；
   // 新轮次消除计划；任务移除清退分仓防泄漏
@@ -572,6 +738,9 @@ export function initPlanPanel(ctx) {
     for (const taskId of turnCounts.keys()) {
       if (!aliveIds.has(taskId)) turnCounts.delete(taskId);
     }
+    for (const taskId of padItems.keys()) {
+      if (!aliveIds.has(taskId)) padItems.delete(taskId);
+    }
     renderPlan();
   });
   taskManager.addEventListener("active-task-changed", renderPlan);
@@ -581,6 +750,7 @@ export function initPlanPanel(ctx) {
       plans.delete(removedId);
       textBuffers.delete(removedId);
       turnCounts.delete(removedId);
+      padItems.delete(removedId);
       // 注意：planClearedFromTurn（计划消除基线）故意不随任务移除清退 —— 终态任务退出会被
       // TaskManager 清理后经历史记录同 id 重建，基线必须跨任务重建存活，杜绝已消除的
       // 旧计划经历史回入复活（条目仅一个数字，无内存风险）
