@@ -790,7 +790,7 @@ export function initFlowUi(ctx) {
     flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
   };
 
-  // 垂直对齐：按钮已右移到 flow 内容区域之外，垂直方向动态对齐 flow 内容区底部（问题3）
+  // 垂直对齐：按钮位于内容列右侧空隙，垂直方向动态对齐 flow 内容区底部（问题3）
   const positionFlowTurnNav = () => {
     if (!flowTurnNav || !flowStage || !appContainer || viewStore.mode !== VIEW_FLOW) return;
     const appRect = appContainer.getBoundingClientRect();
