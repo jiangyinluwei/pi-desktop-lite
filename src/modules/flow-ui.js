@@ -11,6 +11,7 @@ import {
   createPhaseStepCard,
   createToolStepCard,
   autoCollapsePrecedingStepsForPoint,
+  autoCollapseRemainingSteps,
 } from "./flow-render.js";
 import { bindAll } from "../lib/el-binder.js";
 import { getFileCategoryIcon } from "./file-attachments.js";
@@ -272,6 +273,8 @@ export function initFlowUi(ctx) {
           stepsContainerEl.appendChild(toolStep.cardEl);
         }
       });
+      // 补充优化：会话结束时，最后一段输出作为最终回答呈现，其前序剩余 Thinking 与工具调用同样自动聚合收起
+      autoCollapseRemainingSteps(stepsContainerEl);
     } else {
       // 兼容历史单一 thinkingText 与 toolCalls 格式
       if (thinkingText && thinkingText.trim()) {
@@ -300,6 +303,7 @@ export function initFlowUi(ctx) {
           }
         });
       }
+      autoCollapseRemainingSteps(stepsContainerEl);
     }
 
     // 重绑历史快照卡片的点击折叠：仅处理 outerHTML 快照解析出的卡片（解析后无任何监听器）。

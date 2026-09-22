@@ -894,3 +894,65 @@ export const unwrapStepGroup = (groupEl) => {
   groupEl.remove();
 };
 
+/**
+ * 自动收集并收起容器尾部的 Thinking 与工具调用框
+ * 边界：从容器最后一个子节点逆向回溯，直到遇到 Point 卡片、已有折叠组或到达容器顶端。
+ * 用于会话模型结束会话时（最后一段输出作为最终回答呈现，不收纳为 Point 卡）前序步骤自动收起。
+ * @param {HTMLElement} container stepsContainerEl 容器
+ * @returns {HTMLElement|null} 创建的折叠组元素，无符合卡片时返回 null
+ */
+export const autoCollapseRemainingSteps = (container) => {
+  if (!container) return null;
+
+  const cardsToGroup = [];
+  let curr = container.lastElementChild;
+  while (curr) {
+    if (
+      curr.classList.contains("flow-step-phase") ||
+      curr.classList.contains("flow-step-collapsed-group")
+    ) {
+      break;
+    }
+    if (
+      (curr.classList.contains("flow-step-thinking") ||
+        curr.classList.contains("flow-step-tool") ||
+        curr.classList.contains("tool-card")) &&
+      !curr.classList.contains("tool-pseudo-card")
+    ) {
+      cardsToGroup.unshift(curr);
+    }
+    curr = curr.previousElementSibling;
+  }
+
+  if (cardsToGroup.length === 0) return null;
+
+  let thinkingCount = 0;
+  let toolCount = 0;
+  cardsToGroup.forEach((card) => {
+    if (card.classList.contains("flow-step-thinking")) {
+      thinkingCount++;
+    } else if (
+      card.classList.contains("flow-step-tool") ||
+      card.classList.contains("tool-card")
+    ) {
+      toolCount++;
+    }
+  });
+
+  if (thinkingCount + toolCount === 0) return null;
+
+  const groupCard = createCollapsedStepGroupCard({
+    thinkingCount,
+    toolCount,
+    isCollapsed: true,
+  });
+
+  cardsToGroup.forEach((card) => {
+    groupCard.contentEl.appendChild(card);
+  });
+
+  container.appendChild(groupCard.groupEl);
+  return groupCard.groupEl;
+};
+
+

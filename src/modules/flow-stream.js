@@ -13,6 +13,7 @@ import {
   createPhaseStepCard,
   syncThinkingPreview,
   autoCollapsePrecedingStepsForPoint,
+  autoCollapseRemainingSteps,
   unwrapStepGroup,
 } from "./flow-render.js";
 import { resolveMarkdownImages, renderImageCard } from "../lib/markdown-renderer.js";
@@ -366,12 +367,9 @@ export function initFlowStream(ctx) {
         flowView.activeTurnRefs.stepsContainerEl.contains(candidate.step.cardEl))
     ) {
       if (candidate.step?.cardEl) {
-        // 尾段候选回填兜底：若该 Point 候选前存在刚聚合的折叠组，将其解包还原，
-        // 确保只有真正形成中间 Point 框体时才保留折叠效果
-        const prevSibling = candidate.step.cardEl.previousElementSibling;
-        if (prevSibling && prevSibling.classList.contains("flow-step-collapsed-group")) {
-          unwrapStepGroup(prevSibling);
-        }
+        // 会话结束优化：最后一次 point 输出作为最终输出回填时，
+        // 其前序 Thinking 与工具调用的聚合收起组严格保留（严禁解包还原），
+        // 仅将 Point 候选卡移除并将文本回填至最终输出卡
         candidate.step.cardEl.remove();
         if (Array.isArray(flowView.currentSteps)) {
           flowView.currentSteps = flowView.currentSteps.filter((s) => s !== candidate.step);
@@ -381,6 +379,10 @@ export function initFlowStream(ctx) {
       if (flowView.activeTurnRefs?.responseContentEl) {
         flowView.activeTurnRefs.responseContentEl.innerHTML = api.renderMarkdown(candidate.rawText);
       }
+    }
+    // 兜底聚合收起：会话模型结束时，步骤容器尾部残留的未分组步骤（Thinking / 工具调用）同样自动聚合收起
+    if (flowView.activeTurnRefs?.stepsContainerEl) {
+      autoCollapseRemainingSteps(flowView.activeTurnRefs.stepsContainerEl);
     }
     // 中途打断的未封口文本段（未收到 text-end）：内容本就留在最终输出卡中，仅丢弃追踪态
     flowView.pendingTextSegment = null;
