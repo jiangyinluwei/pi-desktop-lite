@@ -4,10 +4,12 @@
  * 背景：模型执行多步任务时常在输出文本中生成 Markdown 复选框计划清单
  *       （`- [ ]` 待办 / `- [x]` 已完成），随后边执行边回写勾选状态。
  *       本模块把这一「后台计划」收敛为前端可视化：
- *   1. 数据采集（双通道）：①监听 piClient 的 text-delta / text-end 流式文本事件，按 taskId
- *      分仓累积响应文本（纯数据缓冲，不受前台门禁限制——计划属全局 Chrome，非 Flow DOM）；
- *      ②监听 tool-start 的 scratchpad 工具动作（add/done/undo），收录本任务内模型经内核
- *      pi-memory 草稿板工具维护的计划条目与勾选态（见「scratchpad 工具通道」）；
+ *   1. 数据采集（三通道）：①监听 piClient 的 text-delta / text-end 流式文本事件，按 taskId
+ *      分仓累积响应文本（纯数据缓冲，不受前台门禁限制——计划属全局 Chrome，非 Flow DOM），
+ *      解析正文复选框清单快照；②监听 tool-start 的 scratchpad 工具动作（add/done/undo），
+ *      收录本任务内模型经内核 pi-memory 草稿板工具维护的计划条目与勾选态（见「scratchpad
+ *      工具通道」）；③散文推进信号解析（applyProseSignals）——模型既不复写复选框也不用
+ *      scratchpad、仅以「步骤N完成 / **Edit N：…**」散文宣告进度时按序号补勾（见该函数注解）；
  *   2. 计划解析：从文本中按出现顺序提取全部复选框清单组并逐组对账重放
  *      （模型每完成一步会重写「剩余步骤」增量清单；文本块边界补硬分隔防跨块首尾行熔接，
  *      段内同文去重、完成态跨快照续传、已完成但未再出现的历史条目保留、
@@ -21,8 +23,9 @@
  *   模型常改用内核 pi-memory 的 `scratchpad` 待办工具推进计划（`add` / `done` / `undo`），
  *   此时勾选态只出现在**工具入参**里，回复正文不再回写 `- [x]`（正文仅剩「第 N 步完成」散文），
  *   纯文本解析会永久停在首次快照 → 表现为「计划清单正常显示、没有一步灰显划去，直至任务结束」。
- *   故计划分为双来源并在此归一：**文本计划**（正文复选框快照对账）与 **scratchpad 分仓**
- *   （本任务事件流内观察到的工具动作，绝不读全局草稿板文件，历史遗留条目零污染），
+ *   故计划分为多来源并在此归一：**文本计划**（正文复选框快照对账）、**scratchpad 分仓**
+ *   （本任务事件流内观察到的工具动作，绝不读全局草稿板文件，历史遗留条目零污染）与
+ *   **散文推进信号**（完成短语 / 粗体阶段头按序号补勾，见 applyProseSignals），
  *   展示层经 isSamePlanItem（剥离 `【…】` 标签前缀 + 去空白后全等 / 互相包含）合并去重，
  *   完成态取两者之或 —— 模型只在其中一处回写勾选同样驱动灰显划去。
  *   匹配必须容忍装饰性差异（正文 `步骤 1：…` ↔ 工具 `【测试计划·定时】步骤1：…`）：
@@ -203,6 +206,116 @@ function mergePlans(textItems, padStore) {
   return items;
 }
 
+// ==========================================================================
+// 散文推进信号通道（第三通道）：真实任务中模型常既不复写复选框清单、也不经
+// scratchpad 工具推进，仅以散文叙述进度并在收尾总结里一次性重发全勾清单 ——
+// 表现为「计划全程冻结在 0/N，任务完成后所有步骤一瞬间全部划去」。本通道从
+// 正文散文中提取两类推进信号并按序号映射到计划条目：
+//   ①完成短语：「步骤1完成」「第 2 步已完成」「✅ 第 3 步」「Step 2 done」；
+//   ②粗体/标题阶段头：「**Edit 2：…**」「## 阶段 3：…」——宣告开始第 N 阶段 =
+//     顺序执行规约下第 1..N-1 步已完成。
+// 信号只标完成、绝不新增/删除/改写条目（幂等可重放）；复选框快照仍是勾选态的
+// 第一权威来源，散文信号仅做增量补勾。
+// ==========================================================================
+
+/** 步骤序号字符集（阿拉伯数字 + 中文数字一~二十）。 */
+const STEP_NUM_CHARS = "[0-9一二三四五六七八九十]{1,3}";
+
+/** 中文数字 → 数值（超出可表示范围返回 null）。 */
+const CN_DIGIT_MAP = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+function parseStepNumber(raw) {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (/^\d+$/.test(s)) return parseInt(s, 10);
+  if (s === "十") return 10;
+  if (s.length === 1) return CN_DIGIT_MAP[s] || null;
+  if (s.length === 2) {
+    if (s[0] === "十") return CN_DIGIT_MAP[s[1]] ? 10 + CN_DIGIT_MAP[s[1]] : null;
+    if (s[1] === "十") return CN_DIGIT_MAP[s[0]] ? CN_DIGIT_MAP[s[0]] * 10 : null;
+    return null;
+  }
+  if (s.length === 3 && s[1] === "十") {
+    const tens = CN_DIGIT_MAP[s[0]];
+    const ones = CN_DIGIT_MAP[s[2]];
+    return tens && ones ? tens * 10 + ones : null;
+  }
+  return null;
+}
+
+/**
+ * 完成短语信号（序号与完成谓词紧邻）。中间严禁冒号——「步骤N：完成XX」是条目标题式
+ * 枚举措辞而非完成宣告，宽松命中会在模型复述计划时把该步骤误标为已完成。
+ */
+const STEP_DONE_RES = [
+  // 步骤N完成 / 第N步已完成 / 步骤N顺利达成（含中文数字）
+  new RegExp(
+    `(?:步骤|第)\\s*(${STEP_NUM_CHARS})\\s*步?\\s*(?:已经|已|很快|顺利)?\\s*(?:完成|达成|搞定了?|收尾)`,
+    "g",
+  ),
+  // Edit/Phase/Stage N 完成（中英混排）
+  new RegExp(
+    `\\b(?:edit|phase|stage)\\s*#?(${STEP_NUM_CHARS})\\s*(?:已经|已)?\\s*(?:完成|达成|搞定了?)`,
+    "gi",
+  ),
+  // Step/Edit/Phase N done|completed|finished（英文）
+  /\b(?:step|edit|phase|stage)\s*#?(\d{1,3})\s*(?:is\s*)?(?:now\s+)?(?:complete[ds]?|done|finished)/gi,
+  // 步骤N ✅ / 第N步 ✓（勾选图元尾缀）
+  new RegExp(`(?:步骤|第)\\s*(${STEP_NUM_CHARS})\\s*步?\\s*(?:✅|✔|✓)`, "g"),
+  // ✅ N. / ✅ 步骤N：行首清单式打勾（后随列表标点，避免「✅ 3 个测试通过」误命中）
+  new RegExp(`(?:✅|✔|✓)\\s*(?:步骤|第)?\\s*(${STEP_NUM_CHARS})\\s*步?\\s*[.、：:)）]`, "g"),
+];
+
+/**
+ * 阶段头宣告信号：粗体（**…** / __…__）或 Markdown 标题（#…）锚定的
+ * 「Edit N：… / Phase N：… / 阶段 N：…」。词表刻意排除「步骤 / step」——那是计划清单
+ * 枚举的高频措辞，宽松命中会在模型复述计划时把前序步骤误标为已完成；
+ * 无粗体/标题锚定的裸「Edit 1：」行同样忽略（宁可不勾也不误勾）。
+ */
+const PHASE_HEADER_RE = new RegExp(
+  `(?:^|\\n)[ \\t]*(?:#{1,6}[ \\t]*|[*_]{2})\\s*(?:edit|phase|stage|阶段)[ \\t]*#?[ \\t]*(${STEP_NUM_CHARS})[ \\t]*(?:[：:.、)）\\]]|—)`,
+  "gi",
+);
+
+/**
+ * 从正文散文中提取推进信号并按序号映射到文本计划条目（只标完成，幂等可重放）。
+ * @param {string} taskId 分仓键
+ * @param {string} buffer 累积正文缓冲
+ * @returns {boolean} 是否产生了勾选态变化
+ */
+function applyProseSignals(taskId, buffer) {
+  const plan = plans.get(taskId);
+  if (!plan || !Array.isArray(plan.items) || plan.items.length === 0 || !buffer) return false;
+  // 剔除复选框清单行再扫描：计划条目标题本身可能含「完成」字样
+  // （如「- [ ] 步骤 4：完成数据库迁移」），不剔除会被完成短语误命中为已完成
+  const prose = buffer
+    .split(/\r?\n/)
+    .filter((line) => !CHECKBOX_LINE_RE.test(line))
+    .join("\n");
+  let changed = false;
+  const markDone = (n) => {
+    if (!Number.isInteger(n) || n < 1 || n > plan.items.length) return;
+    if (!plan.items[n - 1].done) {
+      plan.items[n - 1].done = true;
+      changed = true;
+    }
+  };
+  for (const re of STEP_DONE_RES) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(prose))) markDone(parseStepNumber(m[1]));
+  }
+  PHASE_HEADER_RE.lastIndex = 0;
+  let m;
+  while ((m = PHASE_HEADER_RE.exec(prose))) {
+    const n = parseStepNumber(m[1]);
+    if (!Number.isInteger(n)) continue;
+    // 宣告开始第 N 阶段：顺序执行规约下其前的第 1..N-1 步已完成（灰显划去推进）
+    for (let i = 1; i < n; i++) markDone(i);
+  }
+  if (changed) plan.updatedAt = Date.now();
+  return changed;
+}
+
 /**
  * 从一段响应文本中按出现顺序提取全部复选框清单组（模型会随执行进度反复重写清单，
  * 每组都是一个历史快照，最终状态由最后一个组经对账合并后决定）。
@@ -264,6 +377,13 @@ function buildPlanSnapshot(lines, rawItems) {
   return { title, items };
 }
 
+/** 条目行首序号提取（`1.` / `2、` / `3)：` 等；无序号返回 null）。 */
+const ITEM_ORDINAL_RE = /^(\d{1,2})\s*[.、)）：:]/;
+const ordinalOf = (text) => {
+  const m = ITEM_ORDINAL_RE.exec(String(text || "").trim());
+  return m ? parseInt(m[1], 10) : null;
+};
+
 /**
  * 将一个计划快照对账合并进任务分仓（顺序重放历史快照的最终状态）：
  *   - 按上一快照原顺序稳定重排：命中条目继承/合并完成态（防模型漏勾）；
@@ -274,7 +394,14 @@ function buildPlanSnapshot(lines, rawItems) {
  *   - 少于 MIN_PLAN_ITEMS 条的单条目快照必须与既有计划有交集才生效（末步收尾勾选），
  *     与既有计划零关联的单条目视为噪声忽略；
  *   - 新快照与上一快照完全不相交（零命中）→ 模型开启了全新计划，整表替换绝不追加，
- *     杜绝「每完成一步计划就膨胀一份剩余清单」的累积性增长。
+ *     杜绝「每完成一步计划就膨胀一份剩余清单」的累积性增长；
+ *   - **措辞漂移兜底（翻倍 BUG 之正文版根因）**：模型在收尾总结里常改写条目措辞
+ *     （删括号注解、增补成果描述，如 `1. 修复X（根因：Y）` → `1. 修复X`），全文精确匹配
+ *     只剩个别条目命中，未命中条目被当成「新增步骤」追加 → 列表翻倍。故在**已有文本
+ *     锚点命中**（证明是同一计划的演进，绝不影响全新计划的整表替换判定）的前提下，
+ *     双侧未命中条目按**行首序号相等**配对合并（同号同位 ≈ 同一条的改写）；
+ *     与 scratchpad 分仓的「同号异文按独立条目追加」铁律不冲突 —— 那是跨来源合并
+ *     （草稿板常驻历史编号待办），此处是同一计划快照演进链内的对账。
  * @param {string} taskId 分仓键
  * @param {{ title: string, items: Array<{ text: string, done: boolean }> }} snapshot 单组快照
  */
@@ -307,16 +434,43 @@ function applyPlanSnapshot(taskId, snapshot) {
     // 杜绝「每完成一步计划就膨胀一份剩余清单」的累积性增长
     items = snapshot.items.map((it) => ({ text: it.text, done: it.done }));
   } else {
-    // 有交集：按上一快照原顺序稳定重排，命中条目合并勾选态（防模型漏勾）。
-    // 未再出现条目的去留：仅保留「已完成且位于首个命中条目之前」的连续完成前缀
-    // （模型报剩余步骤时的省略语义）；其余（被取消的未完成步骤、被修订移除的
-    // 已完成步骤）一律视为模型有意移除，实时剔除 —— 计划减步/修订即时生效
-    const firstMatchedPrevIdx = prevItems.findIndex((it) => snapByKey.has(normalizeItemText(it.text)));
+    // 有交集：按上一快照原顺序稳定重排。先做全文精确命中（文本锚点），
+    // 再对双侧未命中条目做行首序号配对兜底（措辞漂移的改写条目），防列表翻倍
+    const prevMatched = new Array(prevItems.length).fill(false);
+    const snapMatched = new Array(snapshot.items.length).fill(false);
+    const pairOf = new Array(snapshot.items.length).fill(-1); // 快照条目 → 上一快照条目下标
+    snapshot.items.forEach((snapIt, si) => {
+      const key = normalizeItemText(snapIt.text);
+      const pi = prevItems.findIndex(
+        (pit, idx) => !prevMatched[idx] && normalizeItemText(pit.text) === key
+      );
+      if (pi >= 0) {
+        snapMatched[si] = true;
+        prevMatched[pi] = true;
+        pairOf[si] = pi;
+      }
+    });
+    snapshot.items.forEach((snapIt, si) => {
+      if (snapMatched[si]) return;
+      const so = ordinalOf(snapIt.text);
+      if (so === null) return;
+      const pi = prevItems.findIndex(
+        (pit, idx) => !prevMatched[idx] && ordinalOf(pit.text) === so
+      );
+      if (pi >= 0) {
+        snapMatched[si] = true;
+        prevMatched[pi] = true;
+        pairOf[si] = pi;
+      }
+    });
+
+    const firstMatchedPrevIdx = prevMatched.indexOf(true);
+    // 按上一快照原顺序重排：命中条目（文本或序号配对）继承/合并勾选态，快照措辞胜出
     items = [];
     prevItems.forEach((prevIt, idx) => {
-      const key = normalizeItemText(prevIt.text);
-      const snapIt = snapByKey.get(key);
-      if (snapIt) {
+      const si = pairOf.indexOf(idx);
+      if (si >= 0) {
+        const snapIt = snapshot.items[si];
         items.push({ text: snapIt.text, done: snapIt.done || prevIt.done });
       } else if (prevIt.done && firstMatchedPrevIdx > 0 && idx < firstMatchedPrevIdx) {
         // 剩余清单省略语义：连续完成前缀原位保留（灰显划去）
@@ -324,11 +478,11 @@ function applyPlanSnapshot(taskId, snapshot) {
       }
     });
     // 新增步骤（上一快照没有的）按新快照顺序追加到尾部
-    for (const it of snapshot.items) {
-      if (!prevByKey.has(normalizeItemText(it.text))) {
+    snapshot.items.forEach((it, si) => {
+      if (!snapMatched[si] && !prevByKey.has(normalizeItemText(it.text))) {
         items.push({ text: it.text, done: it.done });
       }
-    }
+    });
   }
 
   const title =
@@ -353,14 +507,16 @@ function parsePlanForTask(taskId) {
   const buffer = textBuffers.get(taskId);
   if (!buffer) return;
   const groups = extractPlanGroups(buffer);
-  if (groups.length === 0) {
-    // 本轮文本不含计划：保留既有计划不回退（模型可能在输出结论段）
-    return;
+  if (groups.length > 0) {
+    // 逐组重放（单条目组的噪声过滤在 applyPlanSnapshot 内按与既有计划的交集判定）
+    for (const snapshot of groups) {
+      applyPlanSnapshot(taskId, snapshot);
+    }
   }
-  // 逐组重放（单条目组的噪声过滤在 applyPlanSnapshot 内按与既有计划的交集判定）
-  for (const snapshot of groups) {
-    applyPlanSnapshot(taskId, snapshot);
-  }
+  // 散文推进信号（第三通道）：与复选框组是否存在无关，独立扫描——
+  // 本轮文本纯散文（groups 为空）时既有计划保留不回退（语义同原 early-return），
+  // 但「步骤N完成 / **Edit N：…**」类推进信号仍需照常生效
+  applyProseSignals(taskId, buffer);
 }
 
 /**
