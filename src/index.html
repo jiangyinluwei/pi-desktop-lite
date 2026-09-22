@@ -1308,10 +1308,21 @@
 
   <!-- 半透明毛玻璃手绘计划侧边栏抽屉（与 Task Details Sidebar 同款风格） -->
   <aside class="plan-details-sidebar" id="plan-details-sidebar" aria-label="任务计划详情抽屉">
-    <div class="task-sidebar-header">
+    <div class="task-sidebar-header plan-sidebar-header">
       <div class="sidebar-title-group">
-        <h3 class="sidebar-title">计划执行</h3>
-        <span class="sidebar-summary" id="plan-sidebar-summary">暂无任务计划</span>
+        <div class="plan-sidebar-title-row">
+          <span class="plan-sidebar-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2.8 4.2 C3.3 3.7, 4.2 3.8, 4.8 4 L5.6 5.2 L7.2 2.9" />
+              <line x1="9.5" y1="4.5" x2="13.5" y2="4.3" />
+              <path d="M2.8 9.2 C3.3 8.7, 4.2 8.8, 4.8 9 L5.6 10.2 L7.2 7.9" />
+              <line x1="9.5" y1="9.5" x2="13.5" y2="9.3" />
+            </svg>
+          </span>
+          <h3 class="sidebar-title">计划执行</h3>
+        </div>
+        <span class="sidebar-summary plan-sidebar-summary" id="plan-sidebar-summary">暂无任务计划</span>
       </div>
       <button type="button" class="sidebar-close-btn" id="btn-close-plan-sidebar" aria-label="关闭计划侧边栏"
         title="收起 (Esc / 右键)">
@@ -1322,11 +1333,22 @@
         </svg>
       </button>
     </div>
+    <div class="plan-progress-track" id="plan-progress-track">
+      <div class="plan-progress-fill" id="plan-progress-fill" style="width: 0%;"></div>
+    </div>
     <div class="plan-sidebar-body" id="plan-sidebar-list">
       <div class="empty-plan-placeholder">模型执行任务时输出的计划清单将在此展示</div>
     </div>
     <div class="plan-sidebar-footer">
-      <button type="button" class="plan-end-btn hidden" id="btn-end-plan">结束计划</button>
+      <button type="button" class="plan-end-btn hidden" id="btn-end-plan">
+        <span class="plan-end-btn-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3.2 8.5 L6.2 11.5 L12.8 4.5" />
+          </svg>
+        </span>
+        <span>结束计划</span>
+      </button>
     </div>
   </aside>
 

@@ -418,6 +418,8 @@ export function initPlanPanel(ctx) {
     planSidebar: "plan-details-sidebar",
     planSidebarList: "plan-sidebar-list",
     planSidebarSummary: "plan-sidebar-summary",
+    planProgressTrack: "plan-progress-track",
+    planProgressFill: "plan-progress-fill",
     btnClosePlanSidebar: "btn-close-plan-sidebar",
     btnEndPlan: "btn-end-plan",
   });
@@ -467,7 +469,7 @@ export function initPlanPanel(ctx) {
     }
   };
 
-  /** 渲染计划侧边栏内容（逐条计划步骤；已完成条目灰显划去）。 */
+  /** 渲染计划侧边栏内容（逐条计划步骤；已完成条目灰显划去；运行态突出首个未完成执行项）。 */
   const renderPlanSidebar = () => {
     if (!el.planSidebarList || !el.planSidebarSummary) return;
     const display = resolveDisplayPlan();
@@ -475,21 +477,59 @@ export function initPlanPanel(ctx) {
 
     if (!display || !Array.isArray(display.plan.items) || display.plan.items.length === 0) {
       el.planSidebarSummary.textContent = "暂无任务计划";
+      el.planSidebarSummary.classList.remove("all-completed");
+      if (el.planProgressFill) {
+        el.planProgressFill.style.width = "0%";
+        el.planProgressFill.classList.remove("all-completed", "is-running");
+      }
       if (el.btnEndPlan) el.btnEndPlan.classList.add("hidden");
       const empty = document.createElement("div");
       empty.className = "empty-plan-placeholder";
-      empty.textContent = "模型执行任务时输出的计划清单将在此展示";
+      empty.innerHTML = `
+        <div class="empty-plan-illustration" aria-hidden="true">
+          <svg viewBox="0 0 48 48" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.3"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 7 C11 5.8, 12 5, 13.5 5 L30.5 5 L39 13.5 L39 40.5 C39 41.8, 38 43, 36.5 43 L13.5 43 C12 43, 11 41.8, 11 40.5 Z" />
+            <path d="M30.5 5 L30.5 13.5 L39 13.5" />
+            <rect x="16.5" y="19.5" width="4.5" height="4.5" rx="1" />
+            <line x1="24.5" y1="21.8" x2="33.5" y2="21.8" stroke-dasharray="1.5 1.5" />
+            <rect x="16.5" y="27.5" width="4.5" height="4.5" rx="1" />
+            <line x1="24.5" y1="29.8" x2="33.5" y2="29.8" stroke-dasharray="1.5 1.5" />
+            <path d="M16 36 L18.5 38.5 L22.5 33.5" />
+            <line x1="25" y1="36.5" x2="33.5" y2="36.5" />
+          </svg>
+        </div>
+        <div class="empty-plan-primary">暂无任务执行计划</div>
+        <div class="empty-plan-secondary">当大模型在多步执行中规划清单时，此处将实时呈现步骤与勾选进度</div>
+      `;
       el.planSidebarList.appendChild(empty);
       return;
     }
 
     const { plan } = display;
+    const totalCount = plan.items.length;
     const doneCount = plan.items.filter((it) => it.done).length;
-    el.planSidebarSummary.textContent = `已完成 ${doneCount} / 共 ${plan.items.length} 项`;
+    const percent = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
+    const isAllDone = totalCount > 0 && doneCount === totalCount;
+    const isRunning = display.task ? isTaskStatusActive(display.task) : false;
+
+    if (isAllDone) {
+      el.planSidebarSummary.textContent = `${doneCount}/${totalCount} 项 · 100% 已达成`;
+      el.planSidebarSummary.classList.add("all-completed");
+    } else {
+      el.planSidebarSummary.textContent = `${doneCount}/${totalCount} 项 · ${percent}%`;
+      el.planSidebarSummary.classList.remove("all-completed");
+    }
+
+    if (el.planProgressFill) {
+      el.planProgressFill.style.width = `${percent}%`;
+      el.planProgressFill.classList.toggle("all-completed", isAllDone);
+      el.planProgressFill.classList.toggle("is-running", isRunning && !isAllDone);
+    }
 
     // 「结束计划」仅在全部计划完成后出现（消除该轮次计划信息的第二途径）
     if (el.btnEndPlan) {
-      el.btnEndPlan.classList.toggle("hidden", !(plan.items.length > 0 && doneCount === plan.items.length));
+      el.btnEndPlan.classList.toggle("hidden", !isAllDone);
     }
 
     if (plan.title && plan.title !== "任务计划") {
@@ -499,9 +539,21 @@ export function initPlanPanel(ctx) {
       el.planSidebarList.appendChild(titleEl);
     }
 
-    for (const item of plan.items) {
+    // 识别当前正在执行的步骤（首个未完成项，仅在任务活跃进行时生效）
+    const firstPendingIdx = isRunning ? plan.items.findIndex((it) => !it.done) : -1;
+
+    plan.items.forEach((item, idx) => {
+      const isCurrent = idx === firstPendingIdx;
       const row = document.createElement("div");
-      row.className = item.done ? "plan-item is-done" : "plan-item";
+      row.className = [
+        "plan-item",
+        item.done ? "is-done" : "",
+        isCurrent ? "is-current" : "",
+      ].filter(Boolean).join(" ");
+
+      const indexEl = document.createElement("span");
+      indexEl.className = "plan-item-index";
+      indexEl.textContent = String(idx + 1).padStart(2, "0");
 
       const box = document.createElement("span");
       box.className = "plan-item-box";
@@ -510,14 +562,26 @@ export function initPlanPanel(ctx) {
         box.innerHTML = ICONS.check; // 静态手绘 SVG 常量，无注入风险
       }
 
+      const contentEl = document.createElement("div");
+      contentEl.className = "plan-item-content";
+
       const text = document.createElement("span");
       text.className = "plan-item-text";
       text.textContent = item.text;
+      contentEl.appendChild(text);
 
+      if (isCurrent) {
+        const currentTag = document.createElement("span");
+        currentTag.className = "plan-item-current-tag";
+        currentTag.innerHTML = `<span class="current-tag-dot" aria-hidden="true"></span><span>执行中</span>`;
+        contentEl.appendChild(currentTag);
+      }
+
+      row.appendChild(indexEl);
       row.appendChild(box);
-      row.appendChild(text);
+      row.appendChild(contentEl);
       el.planSidebarList.appendChild(row);
-    }
+    });
   };
 
   // ==========================================================================
