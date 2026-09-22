@@ -703,3 +703,194 @@ export const createToolPseudoRunningCard = ({
     durationEl: cardEl.querySelector(".tool-duration"),
   };
 };
+
+/**
+ * 创建步骤聚合折叠组卡片（Point 封口后自动收起上游 Thinking 与工具调用）
+ * 1、收起态采用绘极简框体 + 输出轮次数 + 展开按钮组成，如：“Thinking * 5   |   工具调用 * 3   --展开”
+ * 2、展开后，基本样式和原本正常的 FLOW 界面一致，绝对不要把框体再次收纳进新 panel
+ * 3、在展开后的内容 顶部上方、右下方，都设置一个“收起”按钮
+ * @param {Object} options
+ * @param {number} [options.thinkingCount=0]
+ * @param {number} [options.toolCount=0]
+ * @param {boolean} [options.isCollapsed=true]
+ */
+export const createCollapsedStepGroupCard = ({
+  thinkingCount = 0,
+  toolCount = 0,
+  isCollapsed = true,
+} = {}) => {
+  const groupEl = document.createElement("div");
+  groupEl.className = "flow-step-collapsed-group";
+  groupEl.dataset.collapsed = isCollapsed ? "true" : "false";
+
+  const parts = [];
+  if (thinkingCount > 0) {
+    parts.push(`
+      <span class="group-count-item group-thinking-count">
+        <span class="group-icon" aria-hidden="true">${ICONS.sparkle || ""}</span>
+        <span class="group-count-text">Thinking * ${thinkingCount}</span>
+      </span>
+    `);
+  }
+  if (toolCount > 0) {
+    parts.push(`
+      <span class="group-count-item group-tool-count">
+        <span class="group-icon" aria-hidden="true">${ICONS.tool || ""}</span>
+        <span class="group-count-text">工具调用 * ${toolCount}</span>
+      </span>
+    `);
+  }
+  const summaryLeftHtml = parts.join(`<span class="group-count-divider" aria-hidden="true">|</span>`);
+
+  const chevronUpSvg = `<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10 L8 6 L12 10" /></svg>`;
+
+  groupEl.innerHTML = `
+    <div class="flow-step-group-summary" role="button" tabindex="0" aria-expanded="${isCollapsed ? "false" : "true"}">
+      <div class="flow-step-group-summary-left">
+        ${summaryLeftHtml}
+      </div>
+      <div class="flow-step-group-summary-right">
+        <button type="button" class="flow-step-group-toggle-btn" aria-label="${isCollapsed ? "展开步骤" : "收起步骤"}">
+          <span class="toggle-text">${isCollapsed ? "展开" : "收起"}</span>
+          <span class="toggle-arrow" aria-hidden="true">${isCollapsed ? ICONS.chevronDown : chevronUpSvg}</span>
+        </button>
+      </div>
+    </div>
+    <div class="flow-step-group-content"></div>
+    <div class="flow-step-group-bottom-bar">
+      <button type="button" class="flow-step-group-bottom-collapse-btn" aria-label="收起步骤">
+        <span class="toggle-text">收起</span>
+        <span class="toggle-arrow" aria-hidden="true">${chevronUpSvg}</span>
+      </button>
+    </div>
+  `;
+
+  const summaryEl = groupEl.querySelector(".flow-step-group-summary");
+  const contentEl = groupEl.querySelector(".flow-step-group-content");
+  const bottomBarEl = groupEl.querySelector(".flow-step-group-bottom-bar");
+  const toggleBtn = groupEl.querySelector(".flow-step-group-toggle-btn");
+  const bottomCollapseBtn = groupEl.querySelector(".flow-step-group-bottom-collapse-btn");
+
+  const setCollapsed = (collapsed) => {
+    groupEl.dataset.collapsed = collapsed ? "true" : "false";
+    summaryEl.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    const topText = toggleBtn.querySelector(".toggle-text");
+    const topArrow = toggleBtn.querySelector(".toggle-arrow");
+    if (topText) topText.textContent = collapsed ? "展开" : "收起";
+    if (topArrow) topArrow.innerHTML = collapsed ? ICONS.chevronDown : chevronUpSvg;
+    toggleBtn.setAttribute("aria-label", collapsed ? "展开步骤" : "收起步骤");
+  };
+
+  const toggle = (e) => {
+    if (e) e.stopPropagation();
+    const current = groupEl.dataset.collapsed === "true";
+    setCollapsed(!current);
+  };
+
+  summaryEl.addEventListener("click", toggle);
+  summaryEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggle(e);
+    }
+  });
+
+  if (bottomCollapseBtn) {
+    bottomCollapseBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setCollapsed(true);
+    });
+  }
+
+  return {
+    groupEl,
+    summaryEl,
+    contentEl,
+    bottomBarEl,
+    setCollapsed,
+    isCollapsed: () => groupEl.dataset.collapsed === "true",
+  };
+};
+
+/**
+ * 自动收集并收起指定 Point 卡片之前的 Thinking 与工具调用框
+ * 边界：从当前 Point 卡片向前回溯，直到上一个 Point 卡片、已有折叠组或容器顶端。
+ * @param {HTMLElement} pointCardEl 刚刚生成并挂载的 Point 卡片 DOM 元素
+ * @returns {HTMLElement|null} 创建的折叠组元素，无符合卡片时返回 null
+ */
+export const autoCollapsePrecedingStepsForPoint = (pointCardEl) => {
+  if (!pointCardEl || !pointCardEl.parentElement) return null;
+  const container = pointCardEl.parentElement;
+
+  // 逆向收集在当前 Point 卡片之前、且在上一次 Point / 上一个折叠组之后的所有步骤卡片
+  const cardsToGroup = [];
+  let curr = pointCardEl.previousElementSibling;
+  while (curr) {
+    // 遇到上一个 Point 卡或折叠组即停止
+    if (
+      curr.classList.contains("flow-step-phase") ||
+      curr.classList.contains("flow-step-collapsed-group")
+    ) {
+      break;
+    }
+    // 收集 Thinking 卡与工具卡（含普通 .flow-step-card / .tool-card，排除占位卡）
+    if (
+      (curr.classList.contains("flow-step-thinking") ||
+        curr.classList.contains("flow-step-tool") ||
+        curr.classList.contains("tool-card")) &&
+      !curr.classList.contains("tool-pseudo-card")
+    ) {
+      cardsToGroup.unshift(curr);
+    }
+    curr = curr.previousElementSibling;
+  }
+
+  if (cardsToGroup.length === 0) return null;
+
+  let thinkingCount = 0;
+  let toolCount = 0;
+  cardsToGroup.forEach((card) => {
+    if (card.classList.contains("flow-step-thinking")) {
+      thinkingCount++;
+    } else if (
+      card.classList.contains("flow-step-tool") ||
+      card.classList.contains("tool-card")
+    ) {
+      toolCount++;
+    }
+  });
+
+  if (thinkingCount + toolCount === 0) return null;
+
+  const groupCard = createCollapsedStepGroupCard({
+    thinkingCount,
+    toolCount,
+    isCollapsed: true,
+  });
+
+  // 将收集到的卡片按原始顺序移入 contentEl 中
+  cardsToGroup.forEach((card) => {
+    groupCard.contentEl.appendChild(card);
+  });
+
+  // 将折叠组插入在 pointCardEl 之前
+  container.insertBefore(groupCard.groupEl, pointCardEl);
+  return groupCard.groupEl;
+};
+
+/**
+ * 解包折叠组：将内容卡片释放回父容器，并移除折叠组外壳
+ * @param {HTMLElement} groupEl
+ */
+export const unwrapStepGroup = (groupEl) => {
+  if (!groupEl || !groupEl.parentElement) return;
+  const contentEl = groupEl.querySelector(".flow-step-group-content");
+  const parent = groupEl.parentElement;
+  if (contentEl) {
+    while (contentEl.firstChild) {
+      parent.insertBefore(contentEl.firstChild, groupEl);
+    }
+  }
+  groupEl.remove();
+};
+

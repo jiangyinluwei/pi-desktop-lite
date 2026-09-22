@@ -5,7 +5,13 @@ import { invokeTauri } from "../services/tauri-bridge.js";
 import { renderMarkdown, initMarkdownInteractions, resolveMarkdownImages } from "../lib/markdown-renderer.js";
 import { flowStore } from "../services/stores/flow-store.js";
 import { resolveStreamTaskId } from "./flow-state-view.js";
-import { collapseToolCard, createThinkingStepCard, createPhaseStepCard, createToolStepCard } from "./flow-render.js";
+import {
+  collapseToolCard,
+  createThinkingStepCard,
+  createPhaseStepCard,
+  createToolStepCard,
+  autoCollapsePrecedingStepsForPoint,
+} from "./flow-render.js";
 import { bindAll } from "../lib/el-binder.js";
 import { getFileCategoryIcon } from "./file-attachments.js";
 
@@ -242,6 +248,7 @@ export function initFlowUi(ctx) {
               isOpen: false,
             });
             stepsContainerEl.appendChild(pStep.cardEl);
+            autoCollapsePrecedingStepsForPoint(pStep.cardEl);
           }
         } else if (step.type === "thinking" || step.text) {
           const thinkText = (step.text && step.text.trim()) ? step.text : (step.type === "thinking" ? "已完成思考" : "");

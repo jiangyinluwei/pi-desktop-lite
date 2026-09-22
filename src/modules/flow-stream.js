@@ -8,7 +8,13 @@ import { taskManager } from "../services/task-manager.js";
 import { modelFailoverEngine } from "../services/model-failover.js";
 import { flowStore } from "../services/stores/flow-store.js";
 import { flowView, resolveStreamTaskId, startElapsedTimer } from "./flow-state-view.js";
-import { createThinkingStepCard, createPhaseStepCard, syncThinkingPreview } from "./flow-render.js";
+import {
+  createThinkingStepCard,
+  createPhaseStepCard,
+  syncThinkingPreview,
+  autoCollapsePrecedingStepsForPoint,
+  unwrapStepGroup,
+} from "./flow-render.js";
 import { resolveMarkdownImages, renderImageCard } from "../lib/markdown-renderer.js";
 
 /**
@@ -360,6 +366,12 @@ export function initFlowStream(ctx) {
         flowView.activeTurnRefs.stepsContainerEl.contains(candidate.step.cardEl))
     ) {
       if (candidate.step?.cardEl) {
+        // 尾段候选回填兜底：若该 Point 候选前存在刚聚合的折叠组，将其解包还原，
+        // 确保只有真正形成中间 Point 框体时才保留折叠效果
+        const prevSibling = candidate.step.cardEl.previousElementSibling;
+        if (prevSibling && prevSibling.classList.contains("flow-step-collapsed-group")) {
+          unwrapStepGroup(prevSibling);
+        }
         candidate.step.cardEl.remove();
         if (Array.isArray(flowView.currentSteps)) {
           flowView.currentSteps = flowView.currentSteps.filter((s) => s !== candidate.step);
@@ -983,6 +995,8 @@ export function initFlowStream(ctx) {
       });
       if (flowView.activeTurnRefs?.stepsContainerEl) {
         flowView.activeTurnRefs.stepsContainerEl.appendChild(pStep.cardEl);
+        // Point 阶段性输出封口完成：自动收起该次 point 之前直至上一次 point 的 Thinking 与工具调用卡片
+        autoCollapsePrecedingStepsForPoint(pStep.cardEl);
       }
       stepItem = {
         type: "text",
