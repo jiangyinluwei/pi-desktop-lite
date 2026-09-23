@@ -4,12 +4,15 @@
  * 背景：模型执行多步任务时常在输出文本中生成 Markdown 复选框计划清单
  *       （`- [ ]` 待办 / `- [x]` 已完成），随后边执行边回写勾选状态。
  *       本模块把这一「后台计划」收敛为前端可视化：
- *   1. 数据采集（三通道）：①监听 piClient 的 text-delta / text-end 流式文本事件，按 taskId
+ *   1. 数据采集（四通道）：①监听 piClient 的 text-delta / text-end 流式文本事件，按 taskId
  *      分仓累积响应文本（纯数据缓冲，不受前台门禁限制——计划属全局 Chrome，非 Flow DOM），
  *      解析正文复选框清单快照；②监听 tool-start 的 scratchpad 工具动作（add/done/undo），
  *      收录本任务内模型经内核 pi-memory 草稿板工具维护的计划条目与勾选态（见「scratchpad
  *      工具通道」）；③散文推进信号解析（applyProseSignals）——模型既不复写复选框也不用
  *      scratchpad、仅以「步骤N完成 / **Edit N：…**」散文宣告进度时按序号补勾（见该函数注解）；
+ *      ④内容锚定散文推进（applyContentAnchoredSignals）——模型连序号都没有、只用
+ *      「接下来改X…」「编译通过」这类按内容指代的散文宣告推进时，按文本相似度匹配条目
+ *      补勾（真实会话回放实锤的第四类模型习惯，见该函数注解）；
  *   2. 计划解析：从文本中按出现顺序提取全部复选框清单组并逐组对账重放
  *      （模型每完成一步会重写「剩余步骤」增量清单；文本块边界补硬分隔防跨块首尾行熔接，
  *      段内同文去重、完成态跨快照续传、已完成但未再出现的历史条目保留、
@@ -316,6 +319,144 @@ function applyProseSignals(taskId, buffer) {
   return changed;
 }
 
+// ==========================================================================
+// 内容锚定散文推进（第四通道）：真实会话回放实锤存在第四类模型习惯——中途既不
+// 复写复选框、不经 scratchpad 工具、甚至没有任何带序号的散文信号（「步骤N完成」/
+// 「**Edit N：…**」全不出现），只用**按内容指代**的散文宣告推进：
+//   - 推进转折句：「接下来改传递阀状态变更联动与自动镀膜互锁：」「再改 XAML 绑定…」
+//     ——宣告开始做某条目 ⇒ 顺序执行规约下其前条目已完成；
+//   - 完成宣告句：「编译通过（0 警告 0 错误）。」——宣告某条目完成 ⇒ 该条目及其前
+//     全部条目已完成（工作已推进过它们）。
+// 序号通道（第三通道）全部落空 → 计划全程冻结在 0/N，直到收尾一次性重发全勾清单
+// 瞬间全划去（用户实测症状）。本通道把散文行与计划条目按文本相似度匹配（内容键
+// 二元组重叠预筛 + 最长公共子串复核），只标完成、绝不新增/删除/改写条目（幂等可重放）。
+// 误报防线（宁可不勾也不误勾）：
+//   ①剥离围栏代码块与行内代码——编译命令、文件路径、日志不是散文宣告；
+//   ②复选框行剔除（同第三通道，计划条目标题本身可能含「完成」字样）；
+//   ③含否定/失败措辞（未完成/失败/报错/not done…）的行整行跳过；
+//   ④推进转折句须与条目共享 ≥2 个二元组才生效（转折句通常点名要做的事，与条目共享
+//     更多实词；完成宣告句可以很短——「编译通过」与「编译验证…」仅共享「编译」，
+//     完成语义允许降至 1，配最长公共子串 ≥2 复核兜底）；
+//   ⑤唯一最优匹配才生效：严格压过次优且达其两倍，并列/接近一律弃权；
+//   ⑥转折词命中优先按「开始语义」处理（「接下来完成第二步」是宣告将做而非已做完，
+//     按序号规约补勾其前条目）。
+// ==========================================================================
+
+/** 推进转折词（宣告「开始做某事」；命中即按开始语义匹配）。 */
+const PROSE_TRANSITION_RE =
+  /(?:接下来|接着|然后|下面|现在开始|开始第|再改|再实现|再添加|再写|再跑|继续|\bnext\b|\bnow\b|\bthen\b)/i;
+
+/** 完成谓词（宣告「某事已完成」；行内无转折词时按完成语义匹配）。 */
+const PROSE_DONE_RE =
+  /(?:完成|达成|搞定|完毕)|(?:编译|构建|测试|校验|验证|检查|安装|部署|集成)通过|成功|\b(?:done|completed|finished)\b/i;
+
+/** 否定/失败守卫：否定或失败的进度宣告绝不标完成。 */
+const PROSE_NEGATION_RE =
+  /(?:未(?:完成|通过|实现)|没有(?:完成|通过)|尚未|还没|不通过|失败|报错|出错|无法|failed|not\s+(?:yet\s+)?(?:done|complete))/i;
+
+/** 参与匹配的散文行长度窗口（推进宣告简短；超长叙述行关键词碰撞风险高，直接放弃）。 */
+const PROSE_LINE_MAX_CHARS = 120;
+
+/**
+ * 内容匹配键：matchKeyOf（剥装饰前缀 + 归一空白）基础上再剥离全部标点并小写，
+ * 供中英混排散文行与计划条目的相似度比对。
+ * @param {string} text 原始文本
+ * @returns {string}
+ */
+const contentKeyOf = (text) =>
+  matchKeyOf(text).replace(/[^\p{L}\p{N}]+/gu, "").toLowerCase();
+
+/** 二元组（bigram）集合 —— 中文无分词器的穷人版词元，用于行↔条目相似度快筛。 */
+const bigramsOf = (key) => {
+  const set = new Set();
+  for (let i = 0; i + 1 < key.length; i++) set.add(key.slice(i, i + 2));
+  return set;
+};
+
+/** 最长公共子串长度（预筛命中后的复核：共享二元组但措辞不连续的弱关联不采信）。 */
+const lcSubstrLen = (a, b) => {
+  if (!a || !b) return 0;
+  let best = 0;
+  let prev = new Array(b.length + 1).fill(0);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = new Array(b.length + 1).fill(0);
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : 0;
+      if (cur[j] > best) best = cur[j];
+    }
+    prev = cur;
+  }
+  return best;
+};
+
+/**
+ * 从正文散文中提取内容锚定的推进信号并按相似度映射到计划条目（只标完成，幂等可重放）。
+ * @param {string} taskId 分仓键
+ * @param {string} buffer 累积正文缓冲
+ * @returns {boolean} 是否产生了勾选态变化
+ */
+function applyContentAnchoredSignals(taskId, buffer) {
+  const plan = plans.get(taskId);
+  if (!plan || !Array.isArray(plan.items) || plan.items.length === 0 || !buffer) return false;
+  // 剥离围栏代码块与行内代码：编译命令、文件路径、日志不属于散文宣告
+  const prose = buffer
+    .replace(/```[\s\S]*?(?:```|$)/g, "\n")
+    .replace(/~~~[\s\S]*?(?:~~~|$)/g, "\n")
+    .replace(/`[^`\n]*`/g, " ");
+  const itemCtx = plan.items.map((it, index) => {
+    const key = contentKeyOf(it.text);
+    return { index, key, bigrams: bigramsOf(key) };
+  });
+  let changed = false;
+  const markDone = (n) => {
+    if (!Number.isInteger(n) || n < 1 || n > plan.items.length) return;
+    if (!plan.items[n - 1].done) {
+      plan.items[n - 1].done = true;
+      changed = true;
+    }
+  };
+  for (const rawLine of prose.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line.length < 4 || line.length > PROSE_LINE_MAX_CHARS) continue;
+    if (CHECKBOX_LINE_RE.test(line)) continue;
+    if (PROSE_NEGATION_RE.test(line)) continue;
+    const isStart = PROSE_TRANSITION_RE.test(line);
+    const isDone = !isStart && PROSE_DONE_RE.test(line);
+    if (!isStart && !isDone) continue;
+    const lineKey = contentKeyOf(line);
+    if (lineKey.length < 2) continue;
+    const lineBigrams = bigramsOf(lineKey);
+    const minOverlap = isStart ? 2 : 1;
+    const candidates = [];
+    for (const ic of itemCtx) {
+      let overlap = 0;
+      for (const bg of ic.bigrams) {
+        if (lineBigrams.has(bg)) overlap += 1;
+      }
+      if (overlap < minOverlap) continue;
+      const lcs = lcSubstrLen(lineKey, ic.key);
+      if (lcs < 2) continue;
+      candidates.push({ index: ic.index, overlap, lcs });
+    }
+    if (candidates.length === 0) continue;
+    candidates.sort((a, b) => b.overlap - a.overlap || b.lcs - a.lcs);
+    const best = candidates[0];
+    const second = candidates[1];
+    // 唯一最优匹配才生效：严格压过次优且达其两倍，并列/接近一律弃权（宁可不勾也不误勾）
+    if (second && best.overlap < second.overlap * 2) continue;
+    const n = best.index + 1;
+    if (isStart) {
+      // 宣告开始第 N 项工作 ⇒ 顺序执行规约下第 1..N-1 项已完成
+      for (let i = 1; i < n; i++) markDone(i);
+    } else {
+      // 宣告第 N 项完成 ⇒ 该项及其前全部条目已完成（工作已推进过它们）
+      for (let i = 1; i <= n; i++) markDone(i);
+    }
+  }
+  if (changed) plan.updatedAt = Date.now();
+  return changed;
+}
+
 /**
  * 从一段响应文本中按出现顺序提取全部复选框清单组（模型会随执行进度反复重写清单，
  * 每组都是一个历史快照，最终状态由最后一个组经对账合并后决定）。
@@ -463,6 +604,42 @@ function applyPlanSnapshot(taskId, snapshot) {
         pairOf[si] = pi;
       }
     });
+    // 措辞漂移兜底之二（无行首序号的复选框条目）：真实会话实锤模型会在收尾改写条目
+    // 个别字词（`…上料/下料…` → `…上料/出料…`），全文精确锚点与序号配对双双落空，
+    // 未命中条目被当「新增步骤」追加 → 列表翻倍（3 条计划收尾瞬间变 5 条）。故对双侧
+    // 仍未命中的条目按内容相似度配对（内容键二元组重叠预筛 + 最长公共子串复核），
+    // 唯一最优且达次优两倍才采信 —— 与第四通道共用同一套相似度基元
+    snapshot.items.forEach((snapIt, si) => {
+      if (snapMatched[si]) return;
+      const sk = contentKeyOf(snapIt.text);
+      if (sk.length < 2) return;
+      const sBg = bigramsOf(sk);
+      let bestIdx = -1;
+      let bestOverlap = 0;
+      let secondOverlap = 0;
+      prevItems.forEach((pit, pi) => {
+        if (prevMatched[pi]) return;
+        const pk = contentKeyOf(pit.text);
+        if (pk.length < 2) return;
+        let overlap = 0;
+        for (const bg of bigramsOf(pk)) {
+          if (sBg.has(bg)) overlap += 1;
+        }
+        if (lcSubstrLen(sk, pk) < 2) return;
+        if (overlap > bestOverlap) {
+          secondOverlap = bestOverlap;
+          bestOverlap = overlap;
+          bestIdx = pi;
+        } else if (overlap > secondOverlap) {
+          secondOverlap = overlap;
+        }
+      });
+      if (bestIdx >= 0 && bestOverlap >= 4 && bestOverlap >= secondOverlap * 2) {
+        snapMatched[si] = true;
+        prevMatched[bestIdx] = true;
+        pairOf[si] = bestIdx;
+      }
+    });
 
     const firstMatchedPrevIdx = prevMatched.indexOf(true);
     // 按上一快照原顺序重排：命中条目（文本或序号配对）继承/合并勾选态，快照措辞胜出
@@ -517,6 +694,9 @@ function parsePlanForTask(taskId) {
   // 本轮文本纯散文（groups 为空）时既有计划保留不回退（语义同原 early-return），
   // 但「步骤N完成 / **Edit N：…**」类推进信号仍需照常生效
   applyProseSignals(taskId, buffer);
+  // 内容锚定散文推进（第四通道）：模型只用「接下来改X…」「编译通过」这类按内容
+  // 指代、无任何序号的散文宣告推进时的补勾通道（真实会话回放实锤，见函数注解）
+  applyContentAnchoredSignals(taskId, buffer);
 }
 
 /**
@@ -609,6 +789,11 @@ export function initPlanPanel(ctx) {
 
     if (!display || !Array.isArray(display.plan.items) || display.plan.items.length === 0) {
       el.planIndicator.classList.add("hidden");
+      // 侧边栏打开状态下计划被清空（新轮次 / 结束计划）时同步呈现空态占位，
+      // 杜绝上一轮次旧计划条目在侧边栏残留到下一次有数据渲染
+      if (el.planSidebar && el.planSidebar.classList.contains("open")) {
+        renderPlanSidebar();
+      }
       return;
     }
 
@@ -625,13 +810,40 @@ export function initPlanPanel(ctx) {
     }
   };
 
-  /** 渲染计划侧边栏内容（逐条计划步骤；已完成条目灰显划去；运行态突出首个未完成执行项）。 */
+  /** 上一次侧边栏渲染签名（悬浮防抖动：签名未变化时绝不触碰 DOM）。 */
+  let lastSidebarSig = null;
+  /** 上一次渲染的条目文本序列键（就地更新路径判据：文本不变、仅勾选态/运行态变化时只切类名）。 */
+  let lastSidebarTextsKey = null;
+
+  /** 手绘「执行中」呼吸小徽标（就地更新与全量重建共用同一构建器，杜绝双份漂移）。 */
+  const buildCurrentTag = () => {
+    const tag = document.createElement("span");
+    tag.className = "plan-item-current-tag";
+    tag.innerHTML = `<span class="current-tag-dot" aria-hidden="true"></span><span>执行中</span>`;
+    return tag;
+  };
+
+  /** 渲染计划侧边栏内容（逐条计划步骤；已完成条目灰显划去；运行态突出首个未完成执行项）。
+   *  **悬浮防抖动铁律**：流式期间 renderPlan 以 120ms 防抖（text-delta）+ task-updated 等事件
+   *  高频触发，若每次全量重建列表，鼠标悬浮下的节点被反复销毁重建 —— hover 过渡
+   *  （translateX 微右移）反复重启即持续抖动，且列表清空瞬间滚动条消失闪帧。故：
+   *  ①渲染签名未变化时直接复用既有 DOM，绝不重建；
+   *  ②仅勾选态/运行态变化（条目文本序列不变）时就地切换类名与勾选图元，悬浮节点不销毁；
+   *  ③只有条目增删/修订或标题变化才走全量重建（低频事件）。 */
   const renderPlanSidebar = () => {
     if (!el.planSidebarList || !el.planSidebarSummary) return;
     const display = resolveDisplayPlan();
-    el.planSidebarList.textContent = "";
+    const items = display && Array.isArray(display.plan.items) ? display.plan.items : [];
+    const isRunning = display && display.task ? isTaskStatusActive(display.task) : false;
+    const textsKey = items.map((it) => normalizeItemText(it.text)).join("\u0001");
+    const doneKey = items.map((it) => (it.done ? "1" : "0")).join("");
+    const titleKey = display ? display.plan.title || "" : "";
+    const sig = `${titleKey}\u0002${textsKey}\u0002${doneKey}\u0002${isRunning ? 1 : 0}`;
+    if (sig === lastSidebarSig) return;
+    lastSidebarSig = sig;
 
-    if (!display || !Array.isArray(display.plan.items) || display.plan.items.length === 0) {
+    if (items.length === 0) {
+      lastSidebarTextsKey = null;
       el.planSidebarSummary.textContent = "暂无任务计划";
       el.planSidebarSummary.classList.remove("all-completed");
       if (el.planProgressFill) {
@@ -639,6 +851,7 @@ export function initPlanPanel(ctx) {
         el.planProgressFill.classList.remove("all-completed", "is-running");
       }
       if (el.btnEndPlan) el.btnEndPlan.classList.add("hidden");
+      el.planSidebarList.textContent = "";
       const empty = document.createElement("div");
       empty.className = "empty-plan-placeholder";
       empty.innerHTML = `
@@ -662,12 +875,10 @@ export function initPlanPanel(ctx) {
       return;
     }
 
-    const { plan } = display;
-    const totalCount = plan.items.length;
-    const doneCount = plan.items.filter((it) => it.done).length;
-    const percent = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
-    const isAllDone = totalCount > 0 && doneCount === totalCount;
-    const isRunning = display.task ? isTaskStatusActive(display.task) : false;
+    const totalCount = items.length;
+    const doneCount = items.filter((it) => it.done).length;
+    const percent = Math.round((doneCount / totalCount) * 100);
+    const isAllDone = doneCount === totalCount;
 
     if (isAllDone) {
       el.planSidebarSummary.textContent = `${doneCount}/${totalCount} 项 · 100% 已达成`;
@@ -688,17 +899,48 @@ export function initPlanPanel(ctx) {
       el.btnEndPlan.classList.toggle("hidden", !isAllDone);
     }
 
-    if (plan.title && plan.title !== "任务计划") {
+    // 识别当前正在执行的步骤（首个未完成项，仅在任务活跃进行时生效）
+    const firstPendingIdx = isRunning ? items.findIndex((it) => !it.done) : -1;
+
+    // 就地更新路径：条目文本序列未变（无增删/修订、标题未变）→ 仅切换勾选态与当前执行项
+    // 高亮，悬浮节点绝不销毁 —— 流式期间步骤完成灰显时鼠标仍稳定悬浮于原条目上
+    if (lastSidebarTextsKey === textsKey) {
+      const rows = el.planSidebarList.querySelectorAll(".plan-item");
+      if (rows.length === totalCount) {
+        items.forEach((item, idx) => {
+          const row = rows[idx];
+          if (!row) return;
+          const wasDone = row.classList.contains("is-done");
+          if (wasDone !== item.done) {
+            row.classList.toggle("is-done", item.done);
+            const box = row.querySelector(".plan-item-box");
+            if (box) box.innerHTML = item.done ? ICONS.check : ""; // 静态手绘 SVG 常量，无注入风险
+          }
+          const isCurrent = idx === firstPendingIdx;
+          row.classList.toggle("is-current", isCurrent);
+          const contentEl = row.querySelector(".plan-item-content");
+          if (contentEl) {
+            const tag = contentEl.querySelector(".plan-item-current-tag");
+            if (isCurrent && !tag) contentEl.appendChild(buildCurrentTag());
+            else if (!isCurrent && tag) tag.remove();
+          }
+        });
+        return;
+      }
+    }
+
+    // 全量重建路径：条目增删/修订或标题变化（低频事件；悬浮节点仅在此才会被重建）
+    lastSidebarTextsKey = textsKey;
+    el.planSidebarList.textContent = "";
+
+    if (titleKey && titleKey !== "任务计划") {
       const titleEl = document.createElement("div");
       titleEl.className = "plan-sidebar-title";
-      titleEl.textContent = plan.title;
+      titleEl.textContent = titleKey;
       el.planSidebarList.appendChild(titleEl);
     }
 
-    // 识别当前正在执行的步骤（首个未完成项，仅在任务活跃进行时生效）
-    const firstPendingIdx = isRunning ? plan.items.findIndex((it) => !it.done) : -1;
-
-    plan.items.forEach((item, idx) => {
+    items.forEach((item, idx) => {
       const isCurrent = idx === firstPendingIdx;
       const row = document.createElement("div");
       row.className = [
@@ -727,10 +969,7 @@ export function initPlanPanel(ctx) {
       contentEl.appendChild(text);
 
       if (isCurrent) {
-        const currentTag = document.createElement("span");
-        currentTag.className = "plan-item-current-tag";
-        currentTag.innerHTML = `<span class="current-tag-dot" aria-hidden="true"></span><span>执行中</span>`;
-        contentEl.appendChild(currentTag);
+        contentEl.appendChild(buildCurrentTag());
       }
 
       row.appendChild(indexEl);
