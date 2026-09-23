@@ -31,6 +31,8 @@
  *   **散文推进信号**（完成短语 / 粗体阶段头按序号补勾，见 applyProseSignals），
  *   展示层经 isSamePlanItem（剥离 `【…】` 标签前缀 + 去空白后全等 / 互相包含）合并去重，
  *   完成态取两者之或 —— 模型只在其中一处回写勾选同样驱动灰显划去。
+ *   **展示权威铁律**：文本计划在席时 pad 条目仅作勾选态续传、绝不追加展示行（草稿板 add
+ *   常是随手备忘而非计划增步，见 mergePlans 注解）；文本计划缺席时 pad 分仓即计划本身。
  *   匹配必须容忍装饰性差异（正文 `步骤 1：…` ↔ 工具 `【测试计划·定时】步骤1：…`）：
  *   认不出同一条就会把工具条目当成另一批计划追加 —— 表现为「完成第一步后列表翻倍」（BUG 根因）。
  *
@@ -192,8 +194,14 @@ function applyPadAction(taskId, action, text) {
 
 /**
  * 合并文本计划与 scratchpad 通道进度（展示层唯一入口）。
- * 完成态取两者之或（模型只在其中一处回写勾选同样生效）；未被文本条目覆盖的 scratchpad
- * 条目按入仓顺序追加（模型仅用草稿板维护计划、正文无清单的场景）。
+ * 完成态取两者之或（模型只在其中一处回写勾选同样生效）；**未被文本条目覆盖的 scratchpad
+ * 条目仅在文本计划缺席时按入仓顺序追加**（模型仅用草稿板维护计划、正文无清单的场景）。
+ * **展示权威铁律（幻影第 N 条 BUG 修复）**：文本计划在席时，未命中任何条目的 pad 条目
+ * 绝不追加为展示行 —— 草稿板 add 常是「待复核修复」「回头再处理」式随手备忘而非计划增步
+ * （真实会话实锤：4 步计划执行中模型经草稿板 add 备忘，旧行为把它粘成无序号的幻影第 5 条，
+ * 既破坏条目编号序列、又因模型有意不勾而永不灰显，指示器钉死 4/5、「结束计划」永不出现）。
+ * pad 条目在文本计划在席时的唯一职责是勾选态续传（done/undo 经 isSamePlanItem 命中后取或）；
+ * 计划增删仍由文本快照对账（applyPlanSnapshot）唯一掌管。
  * @param {Array<{ text: string, done: boolean }>} textItems 文本计划条目
  * @param {Map<string, { text: string, done: boolean }>} [padStore] scratchpad 分仓
  * @returns {Array<{ text: string, done: boolean }>}
@@ -201,10 +209,11 @@ function applyPadAction(taskId, action, text) {
 function mergePlans(textItems, padStore) {
   const items = (textItems || []).map((it) => ({ text: it.text, done: it.done }));
   if (!padStore || padStore.size === 0) return items;
+  const hasTextPlan = items.length > 0;
   for (const entry of padStore.values()) {
     const hit = items.find((it) => isSamePlanItem(it.text, entry.text));
     if (hit) hit.done = hit.done || entry.done;
-    else items.push({ text: entry.text, done: entry.done });
+    else if (!hasTextPlan) items.push({ text: entry.text, done: entry.done });
   }
   return items;
 }
