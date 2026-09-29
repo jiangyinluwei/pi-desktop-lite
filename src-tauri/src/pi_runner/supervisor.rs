@@ -4,17 +4,18 @@ use crate::pi_runner::protocol::HostStatus;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{mpsc, Mutex, Notify, RwLock};
 
 use std::collections::HashMap;
 use tokio::sync::oneshot;
 
 use crate::pi_runner::inner_skills::{InjectedContextInfo, InnerSkillInjector};
+use crate::pi_runner::rpc;
 
 // 内核保险：崩溃后自动重连的最大尝试次数与间隔（全局后台检测自愈）
 const RECONNECT_MAX_ATTEMPTS: usize = 5;
@@ -31,14 +32,38 @@ pub struct PiSupervisor {
     is_stopping: Arc<RwLock<bool>>,
     skill_injector: Arc<InnerSkillInjector>,
     custom_workspace: Arc<RwLock<Option<PathBuf>>>,
+    /// 子进程代际计数：每次 start() 自增；旧监视任务唤醒后代际不符即静默退出，
+    /// 杜绝 restart() 竞态下旧监视任务误判崩溃并与新 start() 并行拉起第二个内核进程
+    generation: Arc<AtomicU64>,
+    /// 当前代子进程的强制击杀信号（每代独立 Notify，防陈旧 permit 误杀新一代子进程）
+    child_kill_signal: Arc<RwLock<Option<Arc<Notify>>>>,
+    /// 当前代子进程的退出信号（stop() 等待子进程真实退出以释放文件锁，内核更新依赖）
+    child_exit_signal: Arc<RwLock<Option<Arc<Notify>>>>,
+}
+
+/// 在内核 get_available_models 返回目录中探测指定模型是否存在（大小写不敏感，字段名防御性兼容）
+fn model_exists_in_catalog(catalog: &Value, provider: &str, model_id: &str) -> bool {
+    let models = match catalog.get("models").and_then(|m| m.as_array()) {
+        Some(arr) => arr,
+        None => return false,
+    };
+    let norm = |s: &str| s.trim().to_lowercase();
+    let want_provider = norm(provider);
+    let want_id = norm(model_id);
+    models.iter().any(|m| {
+        let id = m
+            .get("id")
+            .or_else(|| m.get("modelId"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let prov = m.get("provider").and_then(|v| v.as_str()).unwrap_or("");
+        !id.is_empty() && norm(id) == want_id && norm(prov) == want_provider
+    })
 }
 
 impl PiSupervisor {
     pub fn new(app_handle: AppHandle) -> Self {
-        let job_object = Arc::new(JobObjectManager::new().unwrap_or_else(|err| {
-            log::warn!("[Supervisor] JobObject init failed: {}", err);
-            JobObjectManager::new().unwrap()
-        }));
+        let job_object = Arc::new(JobObjectManager::create_or_panic("Supervisor"));
 
         Self {
             app_handle,
@@ -50,6 +75,9 @@ impl PiSupervisor {
             is_stopping: Arc::new(RwLock::new(false)),
             skill_injector: Arc::new(InnerSkillInjector::new()),
             custom_workspace: Arc::new(RwLock::new(None)),
+            generation: Arc::new(AtomicU64::new(0)),
+            child_kill_signal: Arc::new(RwLock::new(None)),
+            child_exit_signal: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -179,6 +207,7 @@ impl PiSupervisor {
         let this = self.clone();
         Box::pin(async move {
             *this.is_stopping.write().await = false;
+            let generation = this.generation.fetch_add(1, Ordering::SeqCst) + 1;
 
             if !this.has_kernel() {
                 log::warn!("[Supervisor] No Pi kernel binary found. Running in kernel-less mode.");
@@ -206,13 +235,13 @@ impl PiSupervisor {
 
             this.update_status(HostStatus::Starting).await;
 
-            this.spawn_child(binary_path, version_str).await
+            this.spawn_child(binary_path, version_str, generation).await
         })
     }
 
     /// 内部拉起子进程并绑定监管通道
-    async fn spawn_child(&self, binary_path: PathBuf, pi_version: String) -> Result<(), String> {
-        let (stdin_tx, mut stdin_rx) = mpsc::channel::<String>(128);
+    async fn spawn_child(&self, binary_path: PathBuf, pi_version: String, generation: u64) -> Result<(), String> {
+        let (stdin_tx, stdin_rx) = mpsc::channel::<String>(128);
         {
             let mut w = self.stdin_tx.lock().await;
             *w = Some(stdin_tx);
@@ -252,16 +281,8 @@ impl PiSupervisor {
         }
         cmd.current_dir(&workspace);
 
-        // 2. 补全 PATH 环境变量（使用 std::env::var 自动大小写兼容，避免 Windows 环境块冲突）
-        if let Some(bin_dir) = binary_path.parent() {
-            let split_char = if cfg!(windows) { ';' } else { ':' };
-            let existing_path = std::env::var("PATH").unwrap_or_default();
-            let bin_dir_str = bin_dir.to_string_lossy().to_string();
-            if !existing_path.split(split_char).any(|p| p.eq_ignore_ascii_case(&bin_dir_str)) {
-                let new_path = format!("{}{}{}", bin_dir_str, split_char, existing_path);
-                cmd.env("PATH", new_path);
-            }
-        }
+        // 2. 补全 PATH 环境变量（大小写兼容 Windows "Path"，内核目录前置）
+        rpc::prepend_binary_dir_to_path(&mut cmd, &binary_path);
 
         let mut child = cmd
             .spawn()
@@ -276,19 +297,7 @@ impl PiSupervisor {
         let stdout = child.stdout.take().ok_or_else(|| "Failed to capture stdout".to_string())?;
         let stderr = child.stderr.take().ok_or_else(|| "Failed to capture stderr".to_string())?;
 
-        tokio::spawn(async move {
-            let mut stdin_writer = stdin;
-            while let Some(line) = stdin_rx.recv().await {
-                if let Err(err) = stdin_writer.write_all(line.as_bytes()).await {
-                    log::error!("[Supervisor] Failed writing to child stdin: {}", err);
-                    break;
-                }
-                if let Err(err) = stdin_writer.flush().await {
-                    log::error!("[Supervisor] Failed flushing child stdin: {}", err);
-                    break;
-                }
-            }
-        });
+        rpc::spawn_stdin_writer(stdin, stdin_rx, "Supervisor");
 
         // 启动 Stdout 分帧与事件广播通道
         let (event_tx, mut event_rx) = mpsc::channel::<Value>(256);
@@ -334,9 +343,25 @@ impl PiSupervisor {
             let _ = run_stderr_logger(stderr).await;
         });
 
-        // 启动独立监督生命周期任务
+        // 启动独立监督生命周期任务（每代独立击杀/退出信号，随本代子进程一同更替）
+        let kill_signal = Arc::new(Notify::new());
+        let exit_signal = Arc::new(Notify::new());
+        {
+            let mut w = self.child_kill_signal.write().await;
+            *w = Some(kill_signal.clone());
+        }
+        {
+            let mut w = self.child_exit_signal.write().await;
+            *w = Some(exit_signal.clone());
+        }
         let self_clone = self.clone();
-        tokio::spawn(Self::monitor_child_lifecycle(self_clone, child));
+        tokio::spawn(Self::monitor_child_lifecycle(
+            self_clone,
+            child,
+            generation,
+            kill_signal,
+            exit_signal,
+        ));
 
         self.update_status(HostStatus::Ready {
             pi_version,
@@ -347,11 +372,38 @@ impl PiSupervisor {
     }
 
     /// 独立监控子进程退出与自愈循环
-    async fn monitor_child_lifecycle(supervisor: PiSupervisor, mut child: tokio::process::Child) {
-        let exit_status = child.wait().await;
+    ///
+    /// 退出路径二选一：子进程自然退出，或 stop() 经 kill_signal 触发强制击杀（优雅 EOF
+    /// 未生效时的最后手段，如内核更新前释放 exe 文件锁）。唤醒后代际不符即静默退出——
+    /// 本代子进程已被 stop()+start() 替换，严禁更新状态或进入重连循环。
+    async fn monitor_child_lifecycle(
+        supervisor: PiSupervisor,
+        mut child: tokio::process::Child,
+        generation: u64,
+        kill_signal: Arc<Notify>,
+        exit_signal: Arc<Notify>,
+    ) {
+        let exit_status = loop {
+            tokio::select! {
+                status = child.wait() => break status,
+                _ = kill_signal.notified() => {
+                    log::warn!("[Supervisor] Kill signal received, force-killing Pi child (generation {}).", generation);
+                    let _ = child.kill().await;
+                    break child.wait().await;
+                }
+            }
+        };
+        // 退出通知：stop() 的等待窗口依赖本信号（Notify 允许无等待者时存留 permit，
+        // 覆盖「子进程先于 stop() 退出」时序）
+        exit_signal.notify_one();
         {
             let mut w = supervisor.stdin_tx.lock().await;
             *w = None;
+        }
+
+        // 代际守卫：本监视任务所属子进程已被新一代 start() 替换，静默退出
+        if supervisor.generation.load(Ordering::SeqCst) != generation {
+            return;
         }
 
         let is_stopping = *supervisor.is_stopping.read().await;
@@ -434,28 +486,13 @@ impl PiSupervisor {
 
     /// 向 Pi 发送通用 RPC 指令（无阻塞等待）
     pub async fn send_command(&self, command_val: Value) -> Result<(), String> {
-        let sender = {
-            let guard = self.stdin_tx.lock().await;
-            guard.clone()
-        };
-
-        if let Some(tx) = sender {
-            if !command_val.is_object() {
-                return Err("Command must be a JSON object".to_string());
-            }
-
-            let json_str = serde_json::to_string(&command_val)
-                .map_err(|e| format!("Failed to serialize command: {}", e))?;
-            let line = format!("{}\n", json_str);
-
-            tx.send(line)
-                .await
-                .map_err(|e| format!("Failed to queue command to Pi stdin: {}", e))?;
-
-            Ok(())
-        } else {
-            Err("Pi host is not currently running or stdin is closed".to_string())
-        }
+        rpc::queue_stdin_line(
+            &self.stdin_tx,
+            &command_val,
+            "Pi host is not currently running or stdin is closed".to_string(),
+            "Failed to queue command to Pi stdin",
+        )
+        .await
     }
 
     /// 向 Pi 发送带有 ID 关联并同步等待结果响应的 RPC 指令
@@ -464,61 +501,12 @@ impl PiSupervisor {
         mut command_val: Value,
         timeout_dur: Duration,
     ) -> Result<Value, String> {
-        let id = format!(
-            "req_{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        );
-
-        if let Some(obj) = command_val.as_object_mut() {
-            obj.insert("id".to_string(), Value::String(id.clone()));
-        } else {
-            return Err("Command must be a JSON object".to_string());
-        }
-
-        let (resp_tx, resp_rx) = oneshot::channel::<Value>();
-        {
-            let mut guard = self.pending_responses.lock().await;
-            guard.insert(id.clone(), resp_tx);
-        }
-
-        // 发送指令
+        let (id, resp_rx) = rpc::register_pending(&self.pending_responses, &mut command_val).await?;
         if let Err(e) = self.send_command(command_val).await {
-            let mut guard = self.pending_responses.lock().await;
-            guard.remove(&id);
+            rpc::remove_pending(&self.pending_responses, &id).await;
             return Err(e);
         }
-
-        // 等待响应返回
-        match tokio::time::timeout(timeout_dur, resp_rx).await {
-            Ok(Ok(response_val)) => {
-                let success = response_val
-                    .get("success")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                if success {
-                    Ok(response_val.get("data").cloned().unwrap_or(Value::Null))
-                } else {
-                    let err = response_val
-                        .get("error")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("RPC command returned failure");
-                    Err(err.to_string())
-                }
-            }
-            Ok(Err(_)) => {
-                let mut guard = self.pending_responses.lock().await;
-                guard.remove(&id);
-                Err("Response channel dropped before receiving response".to_string())
-            }
-            Err(_) => {
-                let mut guard = self.pending_responses.lock().await;
-                guard.remove(&id);
-                Err(format!("RPC command timed out after {:?}", timeout_dur))
-            }
-        }
+        rpc::await_response(&self.pending_responses, id, resp_rx, timeout_dur).await
     }
 
     /// 获取当前会话完整状态（包含当前模型、思考等级、会话ID等）
@@ -527,7 +515,7 @@ impl PiSupervisor {
             serde_json::json!({
                 "type": "get_state"
             }),
-            Duration::from_secs(8),
+            rpc::KERNEL_RPC_TIMEOUT,
         )
         .await
     }
@@ -538,7 +526,7 @@ impl PiSupervisor {
             serde_json::json!({
                 "type": "get_available_models"
             }),
-            Duration::from_secs(8),
+            rpc::KERNEL_RPC_TIMEOUT,
         )
         .await
     }
@@ -552,13 +540,30 @@ impl PiSupervisor {
                     "provider": provider,
                     "modelId": model_id
                 }),
-                Duration::from_secs(8),
+                rpc::KERNEL_RPC_TIMEOUT,
             )
             .await;
 
         match first_res {
             Ok(v) => Ok(v),
             Err(ref err) if err.contains("Model not found") => {
+                // 防内核重启风暴：仅当目标模型确实存在于最新配置目录中时，重启内核重载 models.json 才有意义。
+                // 若模型配置已被删除（目录中不存在），重启只会造成「重启 → 仍找不到 → 前端内核状态翻转重放 → 再重启」的死循环。
+                let exists_in_catalog = match self.get_available_models().await {
+                    Ok(catalog) => model_exists_in_catalog(&catalog, provider, model_id),
+                    Err(_) => true, // 目录探测失败时保持旧行为（重启重试），避免误伤正常切换场景
+                };
+                if !exists_in_catalog {
+                    log::warn!(
+                        "[PiSupervisor] Model not found and absent from available models ({}/{}). Refusing to restart kernel.",
+                        provider,
+                        model_id
+                    );
+                    return Err(format!(
+                        "模型不存在或配置已被删除: {}/{}。请重新选择有效模型。",
+                        provider, model_id
+                    ));
+                }
                 log::warn!(
                     "[PiSupervisor] Model not found in active session ({}). Restarting supervisor to reload ~/.pi/agent/models.json...",
                     err
@@ -582,7 +587,7 @@ impl PiSupervisor {
                         "provider": provider,
                         "modelId": model_id
                     }),
-                    Duration::from_secs(8),
+                    rpc::KERNEL_RPC_TIMEOUT,
                 )
                 .await
             }
@@ -598,7 +603,7 @@ impl PiSupervisor {
                     "type": "set_thinking_level",
                     "level": level
                 }),
-                Duration::from_secs(8),
+                rpc::KERNEL_RPC_TIMEOUT,
             )
             .await?;
         Ok(())
@@ -612,12 +617,37 @@ impl PiSupervisor {
         .await
     }
 
-    /// 停止 Pi Host
+    /// 停止 Pi Host（优雅 RPC + stdin EOF ➔ 等待子进程真实退出 ➔ 超时强制击杀）
+    ///
+    /// 必须等待子进程真正退出：内核热更新需释放 pi.exe 文件锁方可安全换目录，
+    /// restart() 亦依赖子进程死透以杜绝双进程竞态。
     pub async fn stop(&self) {
         *self.is_stopping.write().await = true;
         let _ = self.abort().await;
-        let mut w = self.stdin_tx.lock().await;
-        *w = None;
+        {
+            let mut w = self.stdin_tx.lock().await;
+            *w = None;
+        }
+
+        if let Some(exit_signal) = self.child_exit_signal.read().await.clone() {
+            // 优雅退出窗口 3s（内核对 stdin EOF / abort 的自行退出路径）
+            if tokio::time::timeout(Duration::from_secs(3), exit_signal.notified())
+                .await
+                .is_err()
+            {
+                // 超时：经当前代击杀信号强制结束，再给 3s 退出窗口
+                log::warn!("[Supervisor] Pi child did not exit gracefully, sending kill signal.");
+                if let Some(kill_signal) = self.child_kill_signal.read().await.clone() {
+                    kill_signal.notify_one();
+                }
+                if tokio::time::timeout(Duration::from_secs(3), exit_signal.notified())
+                    .await
+                    .is_err()
+                {
+                    log::error!("[Supervisor] Pi child survived kill signal (generation mismatch or already reaped).");
+                }
+            }
+        }
         self.update_status(HostStatus::Stopped).await;
     }
 
@@ -632,8 +662,8 @@ impl PiSupervisor {
     /// 对输入提示词进行 code-area 路由上下文与动态激活 Inner-Skill 注入处理
     /// （不再静态注入完整 RULES.md；Inner-Skill 改由 tool-call hook 按需动态注入）
     /// 每次真实注入后广播 `pi:context_injected` 事件，
-    /// 携带本次注入条目清单，供前端会话流顶部「注入提示」信息框展示。
-    pub fn inject_prompt(&self, message: &str) -> (String, InjectedContextInfo) {
+    /// 携带本次注入条目清单与 task_id，供前端会话流顶部「注入提示」信息框展示。
+    pub fn inject_prompt(&self, message: &str, task_id: Option<&str>) -> (String, InjectedContextInfo) {
         let (skill_injected, mut info) = self.skill_injector.process_prompt_with_info(message);
 
         // 检查当前是否处于 code-area 预设工作区
@@ -656,7 +686,11 @@ impl PiSupervisor {
             if !info.items.is_empty() {
                 let _ = self.app_handle.emit(
                     "pi:context_injected",
-                    serde_json::json!({ "items": info.items }),
+                    serde_json::json!({
+                        "task_id": task_id,
+                        "taskId": task_id,
+                        "items": info.items,
+                    }),
                 );
             }
 
@@ -667,7 +701,11 @@ impl PiSupervisor {
         if !info.items.is_empty() {
             let _ = self.app_handle.emit(
                 "pi:context_injected",
-                serde_json::json!({ "items": info.items }),
+                serde_json::json!({
+                    "task_id": task_id,
+                    "taskId": task_id,
+                    "items": info.items,
+                }),
             );
         }
 
@@ -678,6 +716,11 @@ impl PiSupervisor {
     /// 监听 tool_execution_start 事件，命中 RULES.md 映射时动态注入对应 Inner-Skill。
     /// 优先通过 steer 在当前轮次下一个 LLM 调用前注入；失败时兑底随下一次 Prompt 注入。
     async fn handle_tool_call_hook(this: &PiSupervisor, event_val: &Value) {
+        let task_id = event_val
+            .get("task_id")
+            .or_else(|| event_val.get("taskId"))
+            .and_then(|v| v.as_str());
+
         let tool_name = event_val
             .get("toolName")
             .and_then(|v| v.as_str())
@@ -713,6 +756,8 @@ impl PiSupervisor {
             let _ = this.app_handle.emit(
                 "pi:inner-skill-activated",
                 serde_json::json!({
+                    "task_id": task_id,
+                    "taskId": task_id,
                     "toolName": activation.tool_name,
                     "skill": activation.skill,
                     "mode": "steer",

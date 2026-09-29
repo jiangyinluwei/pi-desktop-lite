@@ -1,6 +1,7 @@
 use crate::pi_runner::framer::{run_stderr_logger, run_stdout_framer};
 use crate::pi_runner::job_object::JobObjectManager;
 use crate::pi_runner::protocol::{FollowUpRequest, PromptRequest, SteerRequest};
+use crate::pi_runner::rpc;
 use crate::pi_runner::supervisor::PiSupervisor;
 use crate::session::SessionIndexCache;
 use serde_json::Value;
@@ -8,9 +9,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
-use std::time::Instant;
 use tauri::{AppHandle, Emitter};
-use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio::sync::oneshot;
@@ -27,7 +26,6 @@ pub struct SessionHost {
     job_object: Arc<JobObjectManager>,
     stdin_tx: Arc<Mutex<Option<mpsc::Sender<String>>>>,
     is_active: Arc<RwLock<bool>>,
-    started_at: Instant,
     provider: Arc<RwLock<Option<String>>>,
     model_id: Arc<RwLock<Option<String>>>,
     child_handle: Arc<Mutex<Option<tokio::process::Child>>>,
@@ -54,7 +52,6 @@ impl SessionHost {
             stdin_tx: Arc::new(Mutex::new(None)),
             is_active: Arc::new(RwLock::new(false)),
             is_aborted: Arc::new(RwLock::new(false)),
-            started_at: Instant::now(),
             provider: Arc::new(RwLock::new(None)),
             model_id: Arc::new(RwLock::new(None)),
             child_handle: Arc::new(Mutex::new(None)),
@@ -76,10 +73,6 @@ impl SessionHost {
         handle_guard.is_some() && stdin_guard.is_some() && !*self.is_aborted.read().await
     }
 
-    pub fn started_at(&self) -> Instant {
-        self.started_at
-    }
-
     /// 启动该任务专属的 Pi RPC 子进程
     /// @param workspace 创建任务时锁定的当前生效工作区（CWD），切换工作区后新任务自动使用新路径
     pub async fn start(
@@ -91,7 +84,7 @@ impl SessionHost {
         let binary_path = PiSupervisor::find_pi_binary(Some(&self.app_handle))
             .ok_or_else(|| "Could not find pi executable in bundled resources, .mytools or PATH".to_string())?;
 
-        let (stdin_tx, mut stdin_rx) = mpsc::channel::<String>(128);
+        let (stdin_tx, stdin_rx) = mpsc::channel::<String>(128);
         {
             let mut w = self.stdin_tx.lock().await;
             *w = Some(stdin_tx);
@@ -145,16 +138,8 @@ impl SessionHost {
         }
         cmd.current_dir(&workspace);
 
-        // PATH 补全
-        if let Some(bin_dir) = binary_path.parent() {
-            let split_char = if cfg!(windows) { ';' } else { ':' };
-            let existing_path = std::env::var("PATH").unwrap_or_default();
-            let bin_dir_str = bin_dir.to_string_lossy().to_string();
-            if !existing_path.split(split_char).any(|p| p.eq_ignore_ascii_case(&bin_dir_str)) {
-                let new_path = format!("{}{}{}", bin_dir_str, split_char, existing_path);
-                cmd.env("PATH", new_path);
-            }
-        }
+        // PATH 补全（共享实现）
+        rpc::prepend_binary_dir_to_path(&mut cmd, &binary_path);
 
         let mut child = cmd
             .spawn()
@@ -169,20 +154,8 @@ impl SessionHost {
         let stdout = child.stdout.take().ok_or_else(|| "Failed to capture stdout".to_string())?;
         let stderr = child.stderr.take().ok_or_else(|| "Failed to capture stderr".to_string())?;
 
-        // 写入 stdin 循环
-        tokio::spawn(async move {
-            let mut stdin_writer = stdin;
-            while let Some(line) = stdin_rx.recv().await {
-                if let Err(err) = stdin_writer.write_all(line.as_bytes()).await {
-                    log::error!("[SessionHost] Failed writing to child stdin: {}", err);
-                    break;
-                }
-                if let Err(err) = stdin_writer.flush().await {
-                    log::error!("[SessionHost] Failed flushing child stdin: {}", err);
-                    break;
-                }
-            }
-        });
+        // 写入 stdin 循环（共享实现，日志标签区分宿主）
+        rpc::spawn_stdin_writer(stdin, stdin_rx, "SessionHost");
 
         // 启动 Stdout 分帧并在事件中注入 task_id 与 session 信息
         let (event_tx, mut event_rx) = mpsc::channel::<Value>(256);
@@ -210,10 +183,22 @@ impl SessionHost {
 
                 // 注入 task_id 与 session 信息确保前端路由精准分发
                 if let Value::Object(ref mut map) = event_val {
-                    if !map.contains_key("task_id") {
+                    // 空值也视为缺失：内核偶发输出 task_id: null / "" 时前端归属解析会落空，
+                    // 导致后台挂起任务的流式文本无法归仓（前端兜底见 task-manager raw-event 监听）
+                    let need_task_id = match map.get("task_id") {
+                        Some(Value::String(s)) => s.is_empty(),
+                        Some(Value::Null) | None => true,
+                        Some(_) => false,
+                    };
+                    if need_task_id {
                         map.insert("task_id".to_string(), Value::String(task_id_clone.clone()));
                     }
-                    if !map.contains_key("taskId") {
+                    let need_task_id_camel = match map.get("taskId") {
+                        Some(Value::String(s)) => s.is_empty(),
+                        Some(Value::Null) | None => true,
+                        Some(_) => false,
+                    };
+                    if need_task_id_camel {
                         map.insert("taskId".to_string(), Value::String(task_id_clone.clone()));
                     }
                     if !map.contains_key("session_id") {
@@ -369,23 +354,13 @@ impl SessionHost {
             return Err(format!("Task {} has been aborted; command rejected", self.task_id));
         }
 
-        let sender = {
-            let guard = self.stdin_tx.lock().await;
-            guard.clone()
-        };
-
-        if let Some(tx) = sender {
-            let json_str = serde_json::to_string(&command_val)
-                .map_err(|e| format!("Failed to serialize command: {}", e))?;
-            let line = format!("{}\n", json_str);
-
-            tx.send(line)
-                .await
-                .map_err(|e| format!("Failed to queue command to Task stdin: {}", e))?;
-            Ok(())
-        } else {
-            Err(format!("Task {} process is not running or stdin is closed", self.task_id))
-        }
+        rpc::queue_stdin_line(
+            &self.stdin_tx,
+            &command_val,
+            format!("Task {} process is not running or stdin is closed", self.task_id),
+            "Failed to queue command to Task stdin",
+        )
+        .await
     }
 
     /// 向该 Task 子进程发送带 ID 关联并同步等待结果响应的 RPC 指令
@@ -395,60 +370,12 @@ impl SessionHost {
         mut command_val: Value,
         timeout_dur: Duration,
     ) -> Result<Value, String> {
-        let id = format!(
-            "req_{}_{}",
-            self.task_id,
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        );
-
-        if let Some(obj) = command_val.as_object_mut() {
-            obj.insert("id".to_string(), Value::String(id.clone()));
-        } else {
-            return Err("Command must be a JSON object".to_string());
-        }
-
-        let (resp_tx, resp_rx) = oneshot::channel::<Value>();
-        {
-            let mut guard = self.pending_responses.lock().await;
-            guard.insert(id.clone(), resp_tx);
-        }
-
+        let (id, resp_rx) = rpc::register_pending(&self.pending_responses, &mut command_val).await?;
         if let Err(e) = self.send_command(command_val).await {
-            let mut guard = self.pending_responses.lock().await;
-            guard.remove(&id);
+            rpc::remove_pending(&self.pending_responses, &id).await;
             return Err(e);
         }
-
-        match tokio::time::timeout(timeout_dur, resp_rx).await {
-            Ok(Ok(response_val)) => {
-                let success = response_val
-                    .get("success")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                if success {
-                    Ok(response_val.get("data").cloned().unwrap_or(Value::Null))
-                } else {
-                    let err = response_val
-                        .get("error")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("RPC command returned failure");
-                    Err(err.to_string())
-                }
-            }
-            Ok(Err(_)) => {
-                let mut guard = self.pending_responses.lock().await;
-                guard.remove(&id);
-                Err("Response channel dropped before receiving response".to_string())
-            }
-            Err(_) => {
-                let mut guard = self.pending_responses.lock().await;
-                guard.remove(&id);
-                Err(format!("RPC command timed out after {:?}", timeout_dur))
-            }
-        }
+        rpc::await_response(&self.pending_responses, id, resp_rx, timeout_dur).await
     }
 
     /// 强制杀死该 Task 子进程并关闭输入通道
@@ -501,10 +428,7 @@ impl PiHostPool {
         primary_supervisor: Arc<PiSupervisor>,
         session_cache: SessionIndexCache,
     ) -> Self {
-        let job_object = Arc::new(JobObjectManager::new().unwrap_or_else(|err| {
-            log::warn!("[PiHostPool] JobObject init failed: {}", err);
-            JobObjectManager::new().unwrap()
-        }));
+        let job_object = Arc::new(JobObjectManager::create_or_panic("PiHostPool"));
 
         Self {
             app_handle,
@@ -755,7 +679,7 @@ impl PiHostPool {
             return Err(format!("Task {} was aborted", task_id));
         }
 
-        let (processed_message, _info) = self.primary_supervisor.inject_prompt(&request.message);
+        let (processed_message, _info) = self.primary_supervisor.inject_prompt(&request.message, Some(&task_id));
         let mut val = serde_json::json!({
             "type": "prompt",
             "message": processed_message,
@@ -808,6 +732,24 @@ impl PiHostPool {
         host.send_command_with_response(command, timeout).await
     }
 
+    /// 查询指定 Task 会话的实时统计（上下文消耗 / token 用量 / 费用），供前端「额度」遥测面板
+    ///
+    /// `get_session_stats` 的响应帧不进入广播通道（仅唤醒 pending_responses 等待者），
+    /// 必须走 with_response 语义。任务不存在 / 已结束 / 内核未及时响应时静默返回 None。
+    pub async fn get_session_stats(&self, task_id: &str) -> Result<Option<Value>, String> {
+        if task_id.is_empty() {
+            return Ok(None);
+        }
+        let command = serde_json::json!({ "type": "get_session_stats" });
+        match self
+            .send_command_to_task_with_response(task_id, command, rpc::SESSION_STATS_RPC_TIMEOUT)
+            .await
+        {
+            Ok(v) => Ok(Some(v)),
+            Err(_) => Ok(None),
+        }
+    }
+
     /// 向指定 Task 发送 Steer 指令
     pub async fn send_steer(&self, request: SteerRequest) -> Result<(), String> {
         if let Some(ref task_id) = request.task_id {
@@ -833,7 +775,7 @@ impl PiHostPool {
         if let Some(ref task_id) = request.task_id {
             let hosts = self.hosts.read().await;
             if let Some(host) = hosts.get(task_id) {
-                let (processed_message, _) = self.primary_supervisor.inject_prompt(&request.message);
+                let (processed_message, _) = self.primary_supervisor.inject_prompt(&request.message, Some(task_id.as_str()));
                 let val = serde_json::json!({
                     "type": "follow_up",
                     "message": processed_message,
@@ -842,7 +784,7 @@ impl PiHostPool {
             }
         }
         // 兜底发往主 supervisor
-        let (processed_message, _) = self.primary_supervisor.inject_prompt(&request.message);
+        let (processed_message, _) = self.primary_supervisor.inject_prompt(&request.message, None);
         let val = serde_json::json!({
             "type": "follow_up",
             "message": processed_message,

@@ -8,6 +8,7 @@ import { sketchAlert, sketchConfirm } from "../services/sketch-modal.js";
 import { bindAll } from "../lib/el-binder.js";
 import { snapToClosestStandardTokens } from "./preferences.js";
 import { scrollElementIntoViewBottom, scrollSettingsToBottom, switchInnerTab } from "./settings-navigation.js";
+import { isImageGenerationApiType } from "../services/multimodal-detector.js";
 
 /**
  * 两步式自定义通道配置与模型管理
@@ -74,11 +75,18 @@ export function initCustomProviderPanel(ctx) {
           ? `<span class="flat-badge" style="color: #f59e0b; border-color: #f59e0b;" title="启用了 developer 消息角色">dev-role: 开</span>`
           : `<span class="flat-badge" style="color: #10b981; border-color: #10b981;" title="使用兼容的 system 消息角色 (安全)">system-role</span>`;
 
+        const isImageGen = isImageGenerationApiType(provData.api);
+        const apiTag = isImageGen
+          ? (provData.api.includes("dashscope")
+            ? `<span class="flat-badge" style="color: #ec4899; border-color: #ec4899;" title="DashScope 原生异步生图接口">生图: DashScope 异步</span>`
+            : `<span class="flat-badge" style="color: #ec4899; border-color: #ec4899;" title="OpenAI 兼容 /images/generations 生图接口">生图: /images/generations</span>`)
+          : `<span class="flat-badge">${escapeHtml(provData.api || "openai-completions")}</span>`;
+
         card.innerHTML = `
           <div class="custom-provider-header">
             <div class="provider-info-left">
               <span class="flat-badge" style="color: #6366f1; border-color: #6366f1;">${escapeHtml(pKey.toUpperCase())}</span>
-              <span class="flat-badge">${escapeHtml(provData.api || "openai-completions")}</span>
+              ${apiTag}
               ${keyTag}
               ${devRoleBadge}
               <span class="provider-url-meta" title="${escapeHtml(provData.baseUrl || "")}">URL: ${escapeHtml(provData.baseUrl || "")}</span>
@@ -100,10 +108,12 @@ export function initCustomProviderPanel(ctx) {
               <div class="form-field">
                 <label class="form-label">接口类型 (API Protocol) <span class="req">*</span></label>
                 <select class="flat-select input-edit-api-type">
-                  <option value="openai-completions" ${provData.api === "openai-completions" ? "selected" : ""}>openai-completions</option>
-                  <option value="openai-responses" ${provData.api === "openai-responses" ? "selected" : ""}>openai-responses</option>
-                  <option value="anthropic" ${(provData.api === "anthropic" || provData.api === "anthropic-messages") ? "selected" : ""}>anthropic</option>
-                  <option value="ollama" ${provData.api === "ollama" ? "selected" : ""}>ollama</option>
+                  <option value="openai-completions" ${provData.api === "openai-completions" ? "selected" : ""}>openai-completions (/v1/chat/completions)</option>
+                  <option value="openai-responses" ${provData.api === "openai-responses" ? "selected" : ""}>openai-responses (/v1/responses)</option>
+                  <option value="anthropic" ${(provData.api === "anthropic" || provData.api === "anthropic-messages") ? "selected" : ""}>anthropic (Anthropic 协议)</option>
+                  <option value="ollama" ${provData.api === "ollama" ? "selected" : ""}>ollama (Ollama 协议)</option>
+                  <option value="openai-images" ${(provData.api === "openai-images" || provData.api === "openai-image-generations") ? "selected" : ""}>openai-images (OpenAI 兼容 /images/generations 生图)</option>
+                  <option value="dashscope-async-image" ${(provData.api === "dashscope-async-image" || provData.api === "dashscope-image") ? "selected" : ""}>dashscope-async-image (DashScope 原生异步接口 / 通义万相生图)</option>
                 </select>
               </div>
               <div class="form-field">
@@ -386,6 +396,10 @@ export function initCustomProviderPanel(ctx) {
 
               await sketchAlert(`运营商 [${pKey.toUpperCase()}] 配置已成功更新！`, { type: "success", title: "更新成功" });
               loadCustomProvidersConfig();
+              if (isImageGenerationApiType(newApiType)) {
+                models.forEach((m) => configService.removeModelFromWhitelist(pKey, m.id));
+                api.renderWhitelistModels(piClient.currentModel);
+              }
             } catch (err) {
               console.error("Save custom provider failed:", err);
               await sketchAlert(`更新运营商配置失败: ${err}`, { type: "error", title: "更新失败" });
@@ -399,6 +413,21 @@ export function initCustomProviderPanel(ctx) {
         const btnDeleteProvider = card.querySelector(".btn-delete-provider");
         if (btnDeleteProvider) {
           btnDeleteProvider.addEventListener("click", async () => {
+            // 模型保护：该运营商下的模型正在被内核使用时禁止删除（与白名单锁定行为对齐），
+            // 否则后续对持久化选中模型的自动选用会触发内核重启风暴
+            const cur = piClient.currentModel;
+            const providerOwnsActive =
+              cur &&
+              String(cur.provider || "").toLowerCase() === pKey.toLowerCase() &&
+              Array.isArray(models) &&
+              models.some((m) => m.id === cur.id);
+            if (providerOwnsActive) {
+              await sketchAlert(
+                `运营商 [${pKey.toUpperCase()}] 下的模型 [${cur.name || cur.id}] 正在使用中，禁止删除。请先在「模型配置」中切换到其他模型。`,
+                { type: "warning", title: "模型保护" },
+              );
+              return;
+            }
             const confirmed = await sketchConfirm(`确定要删除运营商 [${pKey.toUpperCase()}] 及其全部模型配置吗？`, {
               title: "删除运营商确认",
               isDanger: true
@@ -472,16 +501,25 @@ export function initCustomProviderPanel(ctx) {
                 reasoning: reasoningVal,
               });
 
-              // 自动添加到白名单 (首位固定为当前选中模型，新模型插入其后)
-              configService.addModelToWhitelist({
-                id: modelIdVal,
-                name: modelNameVal,
-                provider: pKey,
-                contextWindow: contextWinVal,
-                maxTokens: maxTokensVal,
-                reasoning: reasoningVal,
-                isCustom: true,
-              });
+              const isImageGenProv = isImageGenerationApiType(provData.api);
+
+              if (isImageGenProv) {
+                // 专用生图模型绝不加入常规对话白名单，且清理误加存量
+                configService.removeModelFromWhitelist(pKey, modelIdVal);
+                await sketchAlert(`生图模型 [${modelNameVal}] 已成功添加至运营商 [${pKey.toUpperCase()}]！可在上方「生图与多模态路由」子 Tab 中选用。`, { type: "success", title: "添加成功" });
+              } else {
+                // 常规对话模型自动添加到白名单 (首位固定为当前选中模型，新模型插入其后)
+                configService.addModelToWhitelist({
+                  id: modelIdVal,
+                  name: modelNameVal,
+                  provider: pKey,
+                  contextWindow: contextWinVal,
+                  maxTokens: maxTokensVal,
+                  reasoning: reasoningVal,
+                  isCustom: true,
+                });
+                await sketchAlert(`模型 [${modelNameVal}] 已成功添加至运营商 [${pKey.toUpperCase()}] 并加入当前模型列表！`, { type: "success", title: "添加成功" });
+              }
 
               // 沉淀至该运营商专有的模型历史池 (隔离记忆)
               const providerCategory = `model:${pKey.toLowerCase()}`;
@@ -493,7 +531,6 @@ export function initCustomProviderPanel(ctx) {
                 reasoning: reasoningVal
               });
 
-              await sketchAlert(`模型 [${modelNameVal}] 已成功添加至运营商 [${pKey.toUpperCase()}] 并加入当前模型列表！`, { type: "success", title: "添加成功" });
               loadCustomProvidersConfig();
               api.renderWhitelistModels(piClient.currentModel);
             } catch (err) {
@@ -534,9 +571,12 @@ export function initCustomProviderPanel(ctx) {
               </div>
               <div style="display: flex; gap: 6px; align-items: center;">
                 <button type="button" class="flat-btn flat-btn-secondary mini btn-edit-custom-model" title="修改模型参数" style="display: inline-flex; align-items: center; gap: 4px;"><span class="btn-icon">${ICONS.edit}</span> 编辑</button>
-                <button type="button" class="flat-btn ${isInWhitelist ? "flat-btn-secondary" : "flat-btn-primary"} mini btn-add-custom-whitelist" ${isInWhitelist ? "disabled" : ""} style="display: inline-flex; align-items: center; gap: 4px;">
-                  ${isInWhitelist ? `<span class="btn-icon">${ICONS.check}</span> 已添加` : "+ 添加到当前列表"}
-                </button>
+                ${isImageGenerationApiType(provData.api)
+                  ? `<span class="flat-badge" style="color: #ec4899; border-color: #ec4899; font-size: 11px;" title="专用生图接口，请在「生图与多模态路由」中选用">专用生图接口</span>`
+                  : `<button type="button" class="flat-btn ${isInWhitelist ? "flat-btn-secondary" : "flat-btn-primary"} mini btn-add-custom-whitelist" ${isInWhitelist ? "disabled" : ""} style="display: inline-flex; align-items: center; gap: 4px;">
+                      ${isInWhitelist ? `<span class="btn-icon">${ICONS.check}</span> 已添加` : "+ 添加到当前列表"}
+                    </button>`
+                }
                 <button type="button" class="flat-btn flat-btn-danger mini btn-delete-custom-model" title="删除模型">删除</button>
               </div>
             `;
@@ -629,8 +669,11 @@ export function initCustomProviderPanel(ctx) {
                     reasoning: updatedReas,
                   });
 
-                  // 如果该模型已在白名单中，同步更新白名单
-                  if (configService.isModelInWhitelist(pKey, m.id)) {
+                  // 如果该模型是专用生图接口，确保绝不在白名单中
+                  const isImageGenProv = isImageGenerationApiType(provData.api);
+                  if (isImageGenProv) {
+                    configService.removeModelFromWhitelist(pKey, m.id);
+                  } else if (configService.isModelInWhitelist(pKey, m.id)) {
                     configService.addModelToWhitelist({
                       id: m.id,
                       name: updatedName,
@@ -654,9 +697,9 @@ export function initCustomProviderPanel(ctx) {
               });
             }
 
-            // 添加到当前列表
+            // 添加到当前列表 (仅非生图模型允许)
             const addBtn = chip.querySelector(".btn-add-custom-whitelist");
-            if (addBtn && !isInWhitelist) {
+            if (addBtn && !isInWhitelist && !isImageGenerationApiType(provData.api)) {
               addBtn.addEventListener("click", () => {
                 configService.addModelToWhitelist({
                   id: m.id,
@@ -681,6 +724,16 @@ export function initCustomProviderPanel(ctx) {
             const delBtn = chip.querySelector(".btn-delete-custom-model");
             if (delBtn) {
               delBtn.addEventListener("click", async () => {
+                // 模型保护：正在被内核使用的模型禁止删除
+                const cur = piClient.currentModel;
+                if (
+                  cur &&
+                  String(cur.provider || "").toLowerCase() === pKey.toLowerCase() &&
+                  cur.id === m.id
+                ) {
+                  await sketchAlert("该模型正在使用中，禁止删除！请先切换到其他模型。", { type: "warning", title: "模型保护" });
+                  return;
+                }
                 const confirmed = await sketchConfirm(`确定要删除模型 [${m.name || m.id}] 吗？`, {
                   title: "删除模型确认",
                   isDanger: true
@@ -703,6 +756,8 @@ export function initCustomProviderPanel(ctx) {
       });
       enhanceAllSelects(customProvidersContainer);
       enhanceAllAutoFills(customProvidersContainer);
+
+      // 联动刷新生图与多模态路由模型下拉框
     } catch (e) {
       console.warn("[Main] Load custom providers failed:", e);
     }

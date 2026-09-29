@@ -1,4 +1,5 @@
 import { escapeHtml, cleanUserPrompt } from "../lib/dom-utils.js";
+import { isTaskStatusActive } from "../lib/contracts.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
 import { bus } from "../lib/event-bus.js";
@@ -9,6 +10,7 @@ import { taskManager, resolveTaskSessionIdentity } from "../services/task-manage
 import { modelFailoverEngine } from "../services/model-failover.js";
 import { flowStore } from "../services/stores/flow-store.js";
 import { bindAll } from "../lib/el-binder.js";
+import { resolveMarkdownImages } from "../lib/markdown-renderer.js";
 
 /**
  * 后台任务胶囊、侧边栏、历史恢复与快照归档
@@ -116,6 +118,8 @@ export function initTaskPanel(ctx) {
 
   const openTaskSidebar = () => {
     if (!taskDetailsSidebar) return;
+    // 互斥开合：计划侧边栏与任务侧边栏同占右侧抽屉位（控制流命令，见 contracts 注解）
+    if (typeof api.closePlanSidebar === "function") api.closePlanSidebar();
     renderTaskSidebarList();
     taskDetailsSidebar.classList.add("open");
     document.body.classList.add("has-task-sidebar-open");
@@ -169,11 +173,7 @@ export function initTaskPanel(ctx) {
 
     tasks.forEach((task) => {
       // 含 paused（人工交互待确认）：终止按钮必须可见，用户方可强制终止阻塞中的任务（铁律19/TC8）
-      const isRunning =
-        task.status === "thinking" ||
-        task.status === "streaming" ||
-        task.status === "tool_exec" ||
-        task.status === "paused";
+      const isRunning = taskManager.isTaskRunning(task);
       const isCurrent = taskManager.currentActiveTaskId === task.id;
 
       // 自动强制重连进行中：该 Task 绑定引擎内置重连流水线时展示专属状态徽章
@@ -298,25 +298,37 @@ export function initTaskPanel(ctx) {
     });
   }
 
+  /**
+   * 彻底中止当前会话与任务（直接中断一切：取消内置重连与定时器、物理强杀子进程、定格轮次、归档历史）
+   */
+  const abortCurrentSession = async () => {
+    const current = taskManager.getCurrentActiveTask();
+    const currentTaskId = current ? current.id : (modelFailoverEngine.taskId || null);
+    if (currentTaskId) {
+      modelFailoverEngine.markTaskAborted(currentTaskId);
+    }
+    // 立即终止引擎待执行的退避定时器与重连流水线 (绝对不触发重连)
+    modelFailoverEngine.cancel("user");
+    // 撤销流中断宽容期等待胶囊（手动终止全链路杜绝任何残留倒计时与超时弹卡）
+    if (typeof api.cancelStreamInterruption === "function") {
+      api.cancelStreamInterruption(currentTaskId);
+    }
+    if (currentTaskId && taskManager.getTask(currentTaskId)) {
+      await taskManager.abortTask(currentTaskId);
+    } else {
+      await piClient.abort();
+    }
+    api.finalizeStream(currentTaskId);
+    api.appendFlowAbortNotice();
+    showGlobalToast("当前任务已手动终止", 1200);
+    archiveCurrentFlowToHistory();
+  };
+  api.abortCurrentSession = abortCurrentSession;
+
   if (flowBtnAbort) {
     flowBtnAbort.addEventListener("click", async (e) => {
       e.stopPropagation();
-      const current = taskManager.getCurrentActiveTask();
-      const currentTaskId = current ? current.id : null;
-      if (currentTaskId) {
-        modelFailoverEngine.markTaskAborted(currentTaskId);
-      }
-      // 立即终止引擎待执行的退避定时器与切换流水线 (绝对不触发重连)
-      modelFailoverEngine.cancel("user");
-      if (current) {
-        await taskManager.abortTask(current.id);
-      } else {
-        await piClient.abort();
-      }
-      api.finalizeStream();
-      api.appendFlowAbortNotice();
-      showGlobalToast("当前任务已手动终止", 1200);
-      archiveCurrentFlowToHistory();
+      await abortCurrentSession();
     });
   }
 
@@ -359,12 +371,33 @@ export function initTaskPanel(ctx) {
     }, 180);
   };
 
+  // 同步 Flow 模式下终止方块按钮的可见性（铁律3：前台活跃任务运行中时显现，否则隐藏）
+  const syncFlowAbortButtonVisibility = () => {
+    if (!flowBtnAbort) return;
+    if (viewStore.mode !== VIEW_FLOW) {
+      flowBtnAbort.classList.add("hidden");
+      return;
+    }
+    const isRunning = taskManager.isTaskRunning();
+    if (isRunning) {
+      flowBtnAbort.classList.remove("hidden");
+    } else {
+      flowBtnAbort.classList.add("hidden");
+    }
+  };
+  api.syncFlowAbortButtonVisibility = syncFlowAbortButtonVisibility;
+
+  taskManager.addEventListener("active-task-changed", () => {
+    syncFlowAbortButtonVisibility();
+  });
+
   taskManager.addEventListener("tasks-changed", () => {
     updateMiniTaskCapsuleUI();
     scheduleConversationMessagesRender();
     if (taskDetailsSidebar && taskDetailsSidebar.classList.contains("open")) {
       renderTaskSidebarList();
     }
+    syncFlowAbortButtonVisibility();
   });
 
   taskManager.addEventListener("task-updated", () => {
@@ -373,6 +406,7 @@ export function initTaskPanel(ctx) {
     if (taskDetailsSidebar && taskDetailsSidebar.classList.contains("open")) {
       renderTaskSidebarList();
     }
+    syncFlowAbortButtonVisibility();
   });
 
   // ==========================================================================
@@ -411,6 +445,10 @@ export function initTaskPanel(ctx) {
     flowView.renderedToolCards.clear();
     flowView.activeThinkingStep = null;
     flowView.currentSteps = [];
+    // 阶段性输出 (Point) 追踪态同属前台视图：跨任务切换必须一并清空，
+    // 否则旧任务尾段候选会在新任务 finalize 时误回填其输出卡
+    flowView.pendingTextSegment = null;
+    flowView.finalPointCandidate = null;
 
     turns.forEach((turn, idx) => {
       const isLast = idx === turns.length - 1;
@@ -431,6 +469,9 @@ export function initTaskPanel(ctx) {
         isOpenThinking: isOpen,
         isAborted: turn.isAborted || turn.responseText?.includes("刚刚会话已手动终止"),
         errorMessage: isLast && !isRunning ? turn.errorMessage : null,
+        // 生图/多模态路由静默回填轮次（铁律23）：历史/挂起恢复时同样跳过提问卡渲染，
+        // 保证回填 Prompt 在任何渲染路径下都不出现在会话流
+        silentPrompt: Boolean(turn.silentPrompt),
       });
 
       if (flowConversation && groupRefs?.groupEl) {
@@ -466,6 +507,7 @@ export function initTaskPanel(ctx) {
 
         if (isRunning && groupRefs.responseContentEl) {
           groupRefs.responseContentEl.innerHTML = api.renderMarkdown(turn.responseText || "") + `<span class="streaming-cursor"></span>`;
+          resolveMarkdownImages(groupRefs.responseContentEl);
         }
       } else {
         // 历史轮次全部收起思考卡片与工具卡片
@@ -473,11 +515,19 @@ export function initTaskPanel(ctx) {
       }
     });
 
-    // 会话流缓存铁律：返回 Flow 时恢复该会话生命周期内收集的「文件变更」收纳框，
+    // 会话流缓存铁律：返回 Flow 时恢复该会话生命周期内收集的「注入提示」信息框与「文件变更」收纳框，
     // 保证右键退出（挂起/归档）后经历史记录 / Task 记录回入时呈现与退出前一致。
-    // 内核会话还原等无缓存仓的会话自然空操作，不产生任何串档
+    if (typeof api.restoreInjectionNoticeFor === "function") {
+      api.restoreInjectionNoticeFor(task.id);
+    }
+
     if (typeof api.restoreFileChangesFor === "function") {
       api.restoreFileChangesFor(task.id);
+    }
+
+    // 「计划执行」面板：历史 / 回填链按 Task 重建计划快照（模型 todo list 可视化，回入 Flow 一致恢复）
+    if (typeof api.rebuildPlanFromTurns === "function") {
+      api.rebuildPlanFromTurns(task.id, turns);
     }
 
     // 未决人工交互请求随 Task 挂起保留：回入 Flow 时重建作答横条（请求不丢失，铁律3）
@@ -499,6 +549,9 @@ export function initTaskPanel(ctx) {
 
     viewStore.morph(VIEW_FLOW, { shouldFocusInput: true });
 
+    // 二次确认：在 viewStore.morph 状态迁移后再次确保终止按钮可见性对齐运行态（铁律3）
+    syncFlowAbortButtonVisibility();
+
     // 同步切换底层 Pi 会话
     if (sessionPath) {
       sessionService.switchSession(sessionPath).catch((err) => {
@@ -517,8 +570,12 @@ export function initTaskPanel(ctx) {
   const restoreTaskToFlow = (task) => {
     if (!task) return;
 
+    // paused（人工交互待确认）同样视为「进行中」：保留流式末尾渲染与终止按钮可见性
+    const isRunning = taskManager.isTaskRunning(task);
+
     // H25 防重入铁律：如果已经在 Flow 模式且当前前台活跃任务正是此任务，直接返回，严禁清空 DOM 与截断流式
     if (viewStore.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id === task.id) {
+      syncFlowAbortButtonVisibility();
       return;
     }
 
@@ -554,13 +611,6 @@ export function initTaskPanel(ctx) {
           errorMessage: task.errorMessage || (task.status === "error" ? "模型调用发生异常终止" : null),
         },
       ];
-
-    // paused（人工交互待确认）同样视为「进行中」：保留流式末尾渲染与终止按钮可见性
-    const isRunning =
-      task.status === "thinking" ||
-      task.status === "streaming" ||
-      task.status === "tool_exec" ||
-      task.status === "paused";
 
     renderTurnsIntoFlow(task, turns, { isRunning, syncModelName: true });
   };
@@ -637,6 +687,7 @@ export function initTaskPanel(ctx) {
     task.responseText = lastTurn?.responseText || conv.responseText || "";
     task.toolCalls = lastTurn?.toolCalls || conv.toolCalls || [];
     task.thinkingDurationText = lastTurn?.thinkingDurationText || conv.thinkingDuration || "已完成思考";
+    task.injectedItems = Array.isArray(conv.injectedItems) ? conv.injectedItems : (task.injectedItems || []);
 
     renderTurnsIntoFlow(task, turns, {
       sessionPath: task.sessionPath,
@@ -708,11 +759,7 @@ export function initTaskPanel(ctx) {
 
       // 铁律 2 (H28)：Task 归档与终结彻底解耦（完全终止才归档至历史记录）
       // 处于运行态或待确认态（thinking / streaming / tool_exec / paused）的 Task 绝不写入 conversationHistoryService
-      const isRunningOrPaused =
-        currentActive.status === "thinking" ||
-        currentActive.status === "streaming" ||
-        currentActive.status === "tool_exec" ||
-        currentActive.status === "paused";
+      const isRunningOrPaused = isTaskStatusActive(currentActive);
 
       if (isRunningOrPaused && !isAborted) {
         return;
@@ -735,6 +782,7 @@ export function initTaskPanel(ctx) {
         sessionPath: resolveTaskSessionIdentity(currentActive).sessionPath || "",
         sessionId: resolveTaskSessionIdentity(currentActive).sessionId || undefined,
         isAborted: turnsToSave.some((t) => t.isAborted),
+        injectedItems: currentActive.injectedItems || [],
       });
 
       if (savedConv && savedConv.id) {
@@ -753,6 +801,7 @@ export function initTaskPanel(ctx) {
         sessionPath: resolveTaskSessionIdentity(currentActive).sessionPath || "",
         sessionId: resolveTaskSessionIdentity(currentActive).sessionId || undefined,
         isAborted,
+        injectedItems: currentActive?.injectedItems || [],
       });
 
       if (savedConv && savedConv.id && currentActive) {
@@ -799,12 +848,7 @@ export function initTaskPanel(ctx) {
       // 探测是否存在匹配的后台活跃/挂起任务 (H28 运行中脉冲徽章)
       const matchedTask = taskManager.getTask(conv.taskId || conv.id) ||
         taskManager.getAllTasks().find((t) => t.conversationId === conv.id);
-      const isRunning = matchedTask && (
-        matchedTask.status === "thinking" ||
-        matchedTask.status === "streaming" ||
-        matchedTask.status === "tool_exec" ||
-        matchedTask.status === "paused"
-      );
+      const isRunning = Boolean(matchedTask && isTaskStatusActive(matchedTask));
 
       card.innerHTML = `
         <svg class="sketch-card-circle-overlay" viewBox="0 0 200 60" preserveAspectRatio="none" aria-hidden="true">
@@ -1019,4 +1063,5 @@ export function initTaskPanel(ctx) {
   api.renderTurnsIntoFlow = renderTurnsIntoFlow;
   api.archiveCurrentFlowToHistory = archiveCurrentFlowToHistory;
   api.renderConversationMessages = renderConversationMessages;
+  api.syncFlowAbortButtonVisibility = syncFlowAbortButtonVisibility;
 }

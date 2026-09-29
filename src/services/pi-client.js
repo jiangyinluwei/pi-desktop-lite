@@ -65,8 +65,8 @@ export function isAbortError(err) {
   if (!err) return false;
   if (err.cancelled === true || err.isAborted === true || err.aborted === true) return true;
   const raw = err?.raw;
-  if (raw?.cancelled === true || raw?.isAborted === true || raw?.aborted === true || raw?.interrupted === true) return true;
-  if (raw?.stopReason === "abort" || raw?.stopReason === "interrupted" || raw?.stopReason === "cancelled" || raw?.stopReason === "canceled") return true;
+  if (raw?.cancelled === true || raw?.isAborted === true || raw?.aborted === true) return true;
+  if (raw?.stopReason === "abort" || raw?.stopReason === "cancelled" || raw?.stopReason === "canceled") return true;
 
   const candidate =
     raw?.errorMessage ||
@@ -79,32 +79,57 @@ export function isAbortError(err) {
     "";
   const str = String(candidate).toLowerCase();
 
-  // 匹配常见中断/手动终止关键字
+  // 排除明确的网络/服务端瞬态错误（即使包含 abort/terminated 等词汇，如 connection terminated / socket reset / timeout aborted）
+  const NETWORK_TRANSIENT_PATTERNS = [
+    "rate limit",
+    "429",
+    "500",
+    "502",
+    "503",
+    "504",
+    "econnreset",
+    "etimedout",
+    "econnrefused",
+    "enotfound",
+    "timeout",
+    "timed out",
+    "connection",
+    "socket",
+    "network error",
+    "fetch failed",
+    "load failed",
+    "status code",
+    "overloaded",
+  ];
+  if (NETWORK_TRANSIENT_PATTERNS.some((kw) => str.includes(kw))) {
+    return false;
+  }
+
+  // 匹配明确的用户手动终止/取消关键字
   const ABORT_PATTERNS = [
-    "abort",
-    "aborted",
-    "aborterror",
-    "interrupted",
-    "cancelled",
-    "canceled",
     "user_abort",
     "manual_abort",
-    "terminated",
     "user cancelled",
     "user aborted",
-    "request was aborted",
-    "the user aborted a request",
     "session aborted",
-    "process terminated",
+    "process terminated by user",
     "请求已被中止",
     "手动终止",
-    "已取消",
     "用户终止",
     "操作已取消",
     "刚刚会话已手动终止",
   ];
+  if (ABORT_PATTERNS.some((kw) => str.includes(kw))) {
+    return true;
+  }
 
-  return ABORT_PATTERNS.some((kw) => str.includes(kw));
+  // 若文本纯粹为短词标识（如单纯的 "abort" / "aborted" / "aborterror" / "cancelled" / "canceled"），则认定为主动中断
+  const trimmed = str.trim();
+  if (["abort", "aborted", "aborterror", "cancelled", "canceled", "interrupted"].includes(trimmed)) {
+    return true;
+  }
+
+  return false;
 }
 
 class PiClient extends EventTarget {
@@ -402,6 +427,16 @@ class PiClient extends EventTarget {
       this.lastEventTaskId = data.task_id || data.taskId;
     }
 
+    // 内核在 message_update 顶层携带累积 usage（input/output/cache*/totalTokens/cost），
+    // 是「额度」遥测面板实时 token 速度与已耗 token 的唯一数据源（无 evt 归属时也派发）。
+    if (data.usage) {
+      this.dispatchEvent(
+        new CustomEvent("usage", {
+          detail: { usage: data.usage, taskId: data.task_id || data.taskId || null },
+        }),
+      );
+    }
+
     switch (evt.type) {
       case "thinking_start":
         this.dispatchEvent(new CustomEvent("thinking-start", { detail: evt }));
@@ -436,18 +471,23 @@ class PiClient extends EventTarget {
   }
 
   /**
-   * 向 Pi 发送用户提示词（支持指定 taskId 绑定多进程独立会话）
+   * 向 Pi 发送用户提示词（支持指定 taskId 绑定多进程独立会话，支持指定特定模型 provider/modelId）
    * @param {string} message
    * @param {Array<any>} [images]
    * @param {string} [streamingBehavior]
    * @param {string} [taskId]
    * @param {string} [sessionPath]
    * @param {string} [sessionId]
+   * @param {string} [provider]
+   * @param {string} [modelId]
    */
-  async sendPrompt(message, images = null, streamingBehavior = null, taskId = null, sessionPath = null, sessionId = null) {
+  async sendPrompt(message, images = null, streamingBehavior = null, taskId = null, sessionPath = null, sessionId = null, provider = null, modelId = null) {
+    if (taskId) {
+      this.lastEventTaskId = taskId;
+    }
     const activeModel = this.currentModel;
-    const provider = activeModel?.provider;
-    const modelId = activeModel?.id || activeModel?.modelId || activeModel?.name;
+    const effectiveProvider = provider || activeModel?.provider;
+    const effectiveModelId = modelId || activeModel?.id || activeModel?.modelId || activeModel?.name;
     const thinkingLevel = this.currentThinkingLevel;
 
     return await this.invoke("pi_send_prompt", {
@@ -456,8 +496,8 @@ class PiClient extends EventTarget {
         taskId: taskId || undefined,
         images,
         streamingBehavior,
-        provider: provider || undefined,
-        modelId: modelId || undefined,
+        provider: effectiveProvider || undefined,
+        modelId: effectiveModelId || undefined,
         thinkingLevel: thinkingLevel || undefined,
         sessionPath: sessionPath || undefined,
         sessionId: sessionId || undefined,
@@ -550,6 +590,36 @@ class PiClient extends EventTarget {
       taskId,
       command: { type: "extension_ui_response", id: requestId, ...payload },
     });
+  }
+
+  /**
+   * 查询指定 Task 会话的实时统计（上下文消耗 / token 用量 / 费用）
+   * （输入框「额度」遥测面板数据源；响应帧不进广播通道，由后端 with_response 同步取回）
+   * @param {string} taskId
+   * @returns {Promise<any|null>} 内核 get_session_stats 的 data（tokens / cost / contextUsage），失败静默返 null
+   */
+  async getSessionStats(taskId) {
+    if (!taskId) return null;
+    try {
+      return await this.invoke("pi_get_session_stats", { taskId });
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 解析指定会话 JSONL 的底层遥测汇总（逐 assistant usage 累加，纯本地文件解析，不依赖内核）。
+   * 供历史会话还原（无内存 stats / 无磁盘快照）时额度遥测直接回填。
+   * @param {string} sessionPath
+   * @returns {Promise<{total_tokens:number, context_tokens:number|null, message_count:number}|null>}
+   */
+  async getSessionTelemetry(sessionPath) {
+    if (!sessionPath) return null;
+    try {
+      return await this.invoke("pi_get_session_telemetry", { sessionPath });
+    } catch {
+      return null;
+    }
   }
 
   /**

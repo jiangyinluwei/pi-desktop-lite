@@ -22,14 +22,19 @@ A desktop research and reasoning application with minimalist hand-drawn sketch &
 
 ---
 
-## ✨ Core Features
+## ✨ Core Feature Highlights
 
-- **Four-State Interface & Flow Streaming**: Detailed, Focus, Flow stream, and full-page Settings modes with single-line thinking chains and Typedown-grade Markdown rendering;
-- **Background Tasks & Routed Workspaces**: Seamless task background suspension, explicit termination with process hard-kill and anti-resurrection guards, terminal-state task cleanup to prevent phantom "completed" badges, session continuity via `--session <path>` (multi-turn conversations never fragment into separate history records), historical turn restoration, `code-area` non-polluting routing hub, and multi-preset switching;
-- **Hand-Drawn Sketch Aesthetics**: Universal hand-drawn SVG vector icons, paper-texture dual-mode themes, and custom `SketchSelect` / `SketchAutoFill` / `SketchModal` components;
-- **Rust Performance & Self-Healing Core**: Kernel-level orphan process harvesting, smooth auto-reconnect insurance on crashes, silent built-in model reconnect (background re-sends a hidden "continue" prompt, fixed 10 attempts, 2/4/8/16s backoff, live "auto reconnect N/10" capsule, executed-step history preserved, covers both foreground and suspended background tasks, error window shown only after all 10 attempts are exhausted — exhaustion locks a terminal state so duplicate error frames never re-trigger auto reconnect, only a manual retry or a new query can re-arm it; manual termination never revives reconnecting; automatic model switching has been removed), Node.js preflight checks, and native desktop integration.
+- **Hand-Drawn Architectural Drafting Aesthetics**: 1.2~1.4px ink sketch line frames with gentle dual-theme paper backgrounds, completely free of system emojis, unified hand-drawn SVG assets;
+- **Four-State Minimalist Flow**: Detailed view (multi-line input, history traversal, multimodal attachment capsules) ➔ Focus view ➔ Flow streaming view ➔ Settings full page, with global Step Back via right-click or Esc;
+- **Flow Sequential ReAct Step Stream**: Compact single-line thinking steps, point phases, and tool slices that never expand automatically;
+- **Plan Execution Visualization**: Markdown checkbox plan lists (todo list) emitted by the model during multi-step tasks are parsed in real time — a progress indicator (completed/total) sits at the top-right (left of the task capsule, with a running arc-glow and an emerald all-completed state); clicking it opens the right-side translucent frosted-glass plan sidebar (background blur, same style as the task sidebar) listing every plan step; each step is grayed out and struck through once completed. **Quad-channel plan tracking**: ① response-text checkbox snapshot reconciliation; ② the kernel's pi-memory scratchpad tool (`scratchpad` add/done/undo actions); ③ prose progress-signal parsing ("step N done" completion phrases and bold phase headers like "**Edit N: …**" mapped to items by ordinal, including Chinese numerals); ④ content-anchored prose signals (when the model advances with purely content-referencing narration that carries no ordinal at all — e.g. "Next, modify the transfer-valve interlock…" or "Build passed" — items are matched by text similarity). All four channels only mark completion — never add/remove entries — with multiple false-positive guards (negation/failure lines skipped entirely, code blocks and checkbox lines stripped, only a unique best match at twice the runner-up score is trusted) — whichever habit the model uses to advance its plan (text rewrite / tool maintenance / ordinal prose / content-referencing prose), steps are grayed out and struck through in real time (only entries observed inside this task's event stream are collected, so stale scratchpad leftovers never leak in; all sources merge and de-duplicate by item identity — when a body-text plan exists, scratchpad entries only continue check-off state and never append display rows (scratchpad adds are usually incidental "pending review" memos, not plan extensions, preventing an unnumbered phantom entry from dead-locking progress) — and reworded final summaries pair by leading ordinal plus content similarity to prevent list doubling). **Sidebar hover anti-jitter**: high-frequency refreshes during streaming are skipped via render-signature comparison; done-state-only changes toggle classes in place (hovered nodes are never destroyed) and only item add/remove/revise triggers a full rebuild. **Session-scoped display & elimination lifecycle**: the indicator only shows the current foreground session's plan while inside the Flow view (it hides immediately upon right-click exiting the session view and never lingers for a previous session; it is consistently restored when re-entering a session that has a plan); after a task completes the plan info persists and is fully eliminated only by ① starting the next conversation turn, or ② clicking the "End Plan" button at the bottom of the plan sidebar (visible only when all items are completed) — an eliminated plan never resurrects via history re-entry;
+- **Direct Image Display & One-Click Desktop Save**: Model-generated and outputted images render directly in the Flow view (supports Markdown images, HTML tags, and standalone image paths); local disk images securely resolve to Data URLs via Rust IPC with frontend Map caching; supports full-screen lightbox zoom, sketch action bar with "One-Click Save to Desktop" (incremental naming + emerald checkmark feedback), and file explorer revealing; pure image generation tasks automatically self-heal and inject preview cards if the model omits Markdown syntax;
+- **Typedown Markdown & External Link Interception**: Code blocks with hand-drawn language badges and copy feedback, Callout alerts, and safe external link opening via the default system browser;
+- **Image Generation & Multimodal Routing**: Managed within top-parallel sub-tabs inside the "Model Configuration" page in Settings. When the active model is text-only and an image generation or multimodal vision inspection task is detected, automatically route to the configured model (image generation strictly requires OpenAI-compatible /images/generations or DashScope async interfaces; vision inspection supports multimodal vision LLMs); upon task completion, seamlessly return to the original model and inject outputs back;
+- **Session Rollback & File Restoration**: Forks kernel history nodes and safely restores modified/deleted files based on pre-execution snapshots (newly added files are never removed);
+- **`code-area` Routing Hub**: Physical CWD stays anchored at the central Hub skills repository, dispatching tasks to external projects via native Windows folder picker without self-pollution.
 
-> 📖 **Full Architecture & Development Specifications**: Refer to [`.agents/skills/pi-desktop-overview/SKILL.md`](.agents/skills/pi-desktop-overview/SKILL.md).
+> 📖 **Full feature list, the 23 interaction ironclads, and architecture specs**: see the development skills under [`.agents/skills/`](.agents/skills/) — overview & feature matrix: [`pi-desktop-overview`](.agents/skills/pi-desktop-overview/SKILL.md); interaction ironclads: [`desktop-interaction-invariants`](.agents/skills/desktop-interaction-invariants/SKILL.md); Flow details: [`flow-interaction-pattern`](.agents/skills/flow-interaction-pattern/SKILL.md).
 
 ---
 
@@ -48,15 +53,21 @@ npm run check
 # 3. Start desktop dev mode
 npm run dev
 
-# 4. Build check (compile binaries without full packaging)
+# 4. Frontend static gate (syntax + import graph + named exports matching + circular dependencies, required before composite refactors)
+npm run check:fe
+
+# 5. Coupling metrics baseline (automated decoupling indicators)
+npm run measure:coupling
+
+# 6. Build check (compile binaries without full packaging)
 npm run build:check
 
-# 5. Build release installer package
+# 7. Build release installer package
 npm run build
 ```
 
 ### Multi-Workspace Switching & `code-area` Routing
-1. Click the gear icon on the bottom-left to enter Settings full-page, select **"Workspaces"**;
+1. Click the gear icon on the bottom-left to enter Settings full-page, select **"Workspaces"** in the left sidebar;
 2. **`code-area` Routing Hub Features**:
    - Native Windows OpenFolder dialog via Rust `rfd` (IFileOpenDialog) supporting directory browsing, direct path input, and MRU project switching;
    - Auto-validates target directory existence upon startup/switching and cleans up stale items;
@@ -77,35 +88,43 @@ Pi Desktop Lite fully adheres to the native Pi kernel ecosystem, supporting vari
 
 ```text
 pi-desktop-lite/
-├── .agents/skills/             # Development-level agent skill definitions (pi-ecosystem-configuration, auto-compile-and-fix, sketch-drafting-ui, etc.)
+├── .agents/skills/             # Development-level agent skill definitions (overview / interaction ironclads / Flow pattern / ecosystem config / compile gates; routing matrix in AGENTS.md)
 ├── .mytools/pi-body/           # Bundled Pi Agent Release engine (contains pi-windows-x64.7z, extract to pi-windows-x64 before development)
 ├── default-area/               # Default workspace template & runtime isolation sandbox
 ├── workspaces/                 # Public preset workspace templates (code-area hub / research-area)
 ├── scripts/                    # Automation and build scripts (tauri.js, check.js, check-frontend.js, measure-coupling.js)
 ├── src/                        # Frontend source code and assets
 │   ├── assets/                 # Static assets (logo.svg, logo.ico, hand-drawn SVG icons)
-│   ├── lib/                    # Shared foundational utilities (dom-utils, icons, markdown-renderer, view-constants, event-bus sync event bus, el-binder on-demand DOM binding, contracts event-channel + api-slot contracts)
-│   ├── modules/                # Feature-scoped UI modules orchestrated by main.js (flow-render pure rendering / flow-dom read-only DOM refs / flow-state-view view-cache owner)
+│   ├── lib/                    # Shared foundational utilities (dom-utils, icons, markdown-renderer, view-constants, event-bus, el-binder, contracts single contract registry)
+│   ├── modules/                # Feature-scoped UI modules orchestrated by main.js
 │   │   ├── view-mode.js        # Four-state state machine & settings routing
 │   │   ├── flow-ui.js          # Flow rendering: Markdown, turns DOM, floating tip, turn navigation
-│   │   ├── flow-render.js      # Flow pure rendering: card factories, argument/result HTML formatting (side-effect free)
-│   │   ├── flow-dom.js         # Flow read-only DOM references: createFlowDom() -> ctx.flowDom
-│   │   ├── flow-state-view.js  # Flow view-derived cache owner: flowView sealed cache object
-│   │   ├── flow-stream.js      # Stream state machine, error cards, and built-in reconnect capsules
-│   │   ├── flow-pipeline.js    # Prompt dispatch, tool call events, self-healing pipeline
+│   │   ├── flow-render.js      # Flow pure rendering layer (side-effect free, explicit imports)
+│   │   ├── flow-dom.js         # Flow read-only DOM references (createFlowDom → ctx.flowDom)
+│   │   ├── flow-state-view.js  # Flow view-derived cache owner (sealed flowView object)
+│   │   ├── flow-stream.js      # Stream state machine, error cards, reconnect capsules & grace period
+│   │   ├── flow-pipeline.js    # Prompt dispatch, tool call events, built-in reconnect engine
+│   │   ├── flow-human-input.js # Mid-run ask-back: answer bars + dialogs + extension_ui_response write-back
+│   │   ├── flow-file-changes.js # Session file-change collector (per-Task stores, consistent restore on re-entry)
+│   │   ├── flow-plan-panel.js  # Plan execution visualization: model todo-list parsing, top-right progress indicator, plan sidebar & session-scoped elimination lifecycle
+│   │   ├── flow-rollback.js    # Session rollback orchestration (kernel fork + file restoration + prune re-render + toast)
 │   │   ├── task-panel.js       # Background task capsule, sidebar, history restore
 │   │   ├── sessions-panel.js   # Session records, search/filter, enter Flow pipeline
+│   │   ├── token-telemetry.js  # Quota telemetry icon: context usage / mean speed / tokens consumed panel + history backfill
+│   │   ├── image-routing-panel.js # Dedicated panel for image generation & multimodal routing
 │   │   ├── workspace-panel.js  # Workspace management panel and routing binding
 │   │   └── global-interactions.js # Global Step Back & URL interceptor
-│   ├── services/               # Decoupled frontend services (tauri-bridge, config-service, pi-client, workspace-service)
-│   ├── styles/                 # Feature-scoped sketch styles (tokens, layout, flow, markdown, settings, form-widgets)
+│   ├── services/               # Frontend service layer (tauri-bridge, config-service, pi-client, multimodal-detector, image-routing-engine, model-failover, workspace-service)
+│   │   └── stores/             # Shared mutable state owners (view-store, settings-store, attachments-store, flow-store per-taskId compartments)
+│   ├── styles/                 # Feature-scoped sketch styles (tokens, layout, flow, markdown, settings)
 │   ├── index.html              # Main HTML container
 │   ├── styles.css              # Aggregated style entry (@import to styles/ subfiles)
 │   └── main.js                 # Main orchestrator entry
 ├── src-tauri/                  # High-performance Tauri (Rust) backend
-│   ├── inner-skills/           # Runtime dynamic inner-skills (RULES.md, bash compatibility, OCR inspection, multi-agent, web search, failure logging, etc.)
+│   ├── extensions/             # Built-in kernel extensions (pi-rollback-guard.ts snapshot guard, pi-tool-sanitizer.ts full-chain tool call sanitizer: 0.86.0 tool anchoring restoration / tool name recovery / argument auto-unwrap / private-protocol tag extraction / empty & strict tools filter)
+│   ├── inner-skills/           # Runtime inner-skills (RULES.md mapping index + 9 on-demand injected skills; mechanism in inner-skills-injection skill)
 │   └── src/                    # Rust core source (lib.rs, main.rs, commands/, config_manager/, workspace, pi_runner, security, session)
-├── AGENTS.md                   # Project rules and agent guidelines
+├── AGENTS.md                   # Project rules and agent guidelines (condensed invariants + skill routing matrix)
 ├── README.md                   # Project overview & configuration guide (Chinese)
 ├── README_en.md                # Project overview & configuration guide (English)
 └── package.json

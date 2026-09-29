@@ -2,7 +2,14 @@ import { escapeHtml } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
 import { bus } from "../lib/event-bus.js";
-import { isInteractiveExtensionUiRequest } from "../lib/contracts.js";
+import {
+  isInteractiveExtensionUiRequest,
+  isGracePeriodError,
+  isTransientServiceError,
+  isTaskStatusActive,
+  isTaskAborted,
+  resolveEventTaskId,
+} from "../lib/contracts.js";
 import { piClient, isAbortError } from "../services/pi-client.js";
 import { configService } from "../services/config-service.js";
 import { promptHistoryNavigator } from "../services/prompt-history.js";
@@ -12,8 +19,10 @@ import { taskManager, resolveTaskSessionIdentity } from "../services/task-manage
 import { sketchAlert, sketchConfirm } from "../services/sketch-modal.js";
 import { modelFailoverEngine } from "../services/model-failover.js";
 import { flowStore } from "../services/stores/flow-store.js";
-import { flowView, resolveStreamTaskId } from "./flow-state-view.js";
+import { flowView, resolveStreamTaskId, startElapsedTimer } from "./flow-state-view.js";
 import { bindAll } from "../lib/el-binder.js";
+import { isModelMultimodal, detectImageTaskType } from "../services/multimodal-detector.js";
+import { imageRoutingEngine } from "../services/image-routing-engine.js";
 import {
   createToolPseudoRunningCard,
   getFriendlyToolName,
@@ -48,6 +57,11 @@ export function initFlowPipeline(ctx) {
   const flowScrollArea = flowDom.flowScrollArea;
   const flowBtnAbort = flowDom.flowBtnAbort;
 
+  // 串轮过滤前台门禁：事件帧携 task_id 且非当前前台活跃任务时拦截，
+  // 与 flow-stream.js 同名闭包对齐，保障工具调用事件监听器正常执行
+  const isForegroundStreamEvent = () =>
+    taskManager.isForegroundStreamTask(piClient.lastEventTaskId || null);
+
   const getSkillDisplayName = (skillName) => {
     switch (skillName) {
       case "windows-bash-compatibility":
@@ -79,7 +93,8 @@ export function initFlowPipeline(ctx) {
   /* ========== 「注入提示」信息框（路由目标项目胶囊下方，默认收起显示标题与注入数量） ==========
    * 展示所有在调用模型之前注入的上下文条目（Inner-Skill 运行态技能、
    * 路由工作区 AGENTS.md / README.md、命中技能与路由上下文信封等），
-   * 随会话动态累积（跨轮保留，按 kind+name 去重），全新会话时重置。
+   * 随会话动态累积（按 Task 隔离、跨轮保留、按 kind+name 去重），全新会话时重置。
+   * 会话流缓存铁律：每个 Task 一份独立注入缓存，切换任务或回入 Flow 时由 restoreInjectionNoticeFor 恢复。
    */
   const INJECTION_KIND_LABELS = {
     inner_skill: "Inner-Skill 运行态技能",
@@ -89,11 +104,24 @@ export function initFlowPipeline(ctx) {
     routing_context: "路由工作区上下文",
   };
 
+  const LEGACY_INJECTION_KEY = "__legacy_session__";
+  // 按 Task 隔离的注入条目缓存仓：taskId -> Map<`${kind}::${name}`, { kind, name }>
+  const sessionInjectionStores = new Map();
+
+  const getInjectionStore = (taskId) => {
+    const key = taskId || LEGACY_INJECTION_KEY;
+    if (!sessionInjectionStores.has(key)) {
+      sessionInjectionStores.set(key, new Map());
+    }
+    return sessionInjectionStores.get(key);
+  };
+
   const injectionNotice = {
     el: null,
     listEl: null,
     countEl: null,
-    items: new Set(),
+    chevronEl: null,
+    renderedKeys: new Set(),
     collapsed: true,
   };
 
@@ -123,17 +151,23 @@ export function initFlowPipeline(ctx) {
       injectionNotice.listEl = injectionNotice.el.querySelector(".injection-notice-list");
       injectionNotice.countEl = injectionNotice.el.querySelector(".injection-notice-count");
       injectionNotice.chevronEl = injectionNotice.el.querySelector(".injection-notice-chevron");
-      injectionNotice.items.clear();
-      // 置于首个消息组的「路由目标项目」胶囊下方（胶囊缺失时回退至组首/会话流顶部）
+      injectionNotice.renderedKeys.clear();
+
+      // 挂载定位：优先置于首个消息组的「路由目标项目」胶囊下方；
+      // 无路由胶囊时置于首组用户提问卡下方；再次兜底置于组首/会话流顶部
       const firstGroup = flowConversation.querySelector(":scope > .flow-message-group");
       const routeCapsule = firstGroup?.querySelector(":scope > .flow-route-capsule:not(.hidden)");
+      const promptCard = firstGroup?.querySelector(":scope > .flow-user-prompt-card");
       if (routeCapsule) {
         routeCapsule.after(injectionNotice.el);
+      } else if (promptCard) {
+        promptCard.after(injectionNotice.el);
       } else if (firstGroup) {
         firstGroup.insertBefore(injectionNotice.el, firstGroup.firstChild);
       } else {
         flowConversation.insertBefore(injectionNotice.el, flowConversation.firstChild);
       }
+
       // 默认收起：点击头部在收起态与完整清单间切换
       injectionNotice.el
         .querySelector(".injection-notice-header")
@@ -149,72 +183,170 @@ export function initFlowPipeline(ctx) {
     return injectionNotice.el;
   };
 
-  const updateInjectionNoticeCount = () => {
+  const updateInjectionNoticeCount = (count = null) => {
     if (injectionNotice.countEl) {
-      injectionNotice.countEl.textContent =
-        injectionNotice.items.size > 0 ? `${injectionNotice.items.size} 项` : "";
+      const actualCount = typeof count === "number" ? count : injectionNotice.renderedKeys.size;
+      injectionNotice.countEl.textContent = actualCount > 0 ? `${actualCount} 项` : "";
     }
   };
 
-  /** 向「注入提示」信息框追加一条注入条目（kind+name 去重，跨轮累积） */
-  const addInjectionNoticeItem = (kind, name) => {
-    if (!kind || !name) return;
-    const key = `${kind}::${name}`;
-    const noticeEl = ensureInjectionNoticeEl();
-    if (!noticeEl || injectionNotice.items.has(key)) return;
-    injectionNotice.items.add(key);
-    const displayName = kind === "inner_skill" ? getSkillDisplayName(name) : name;
+  /** 构建单条「注入提示」条目 li（kind+名称，展示文案统一经 escapeHtml；渲染/add 双入口共用） */
+  const createInjectionNoticeItem = (kind, displayName) => {
     const itemEl = document.createElement("li");
     itemEl.className = "injection-notice-item";
     itemEl.innerHTML = `
       <span class="item-kind">${escapeHtml(INJECTION_KIND_LABELS[kind] || kind)}</span>
       <span class="item-name">${escapeHtml(displayName)}</span>
     `;
-    injectionNotice.listEl.appendChild(itemEl);
-    updateInjectionNoticeCount();
-    // 仅吸底跟随开启时随内容定位到底部，向上滚离后不打断浏览
-    if (flowScrollArea && flowView.followBottom !== false) {
-      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    return itemEl;
+  };
+
+  /** 从给定条目清单全量回填前台提示框 DOM */
+  const renderInjectionNoticeItems = (items) => {
+    const noticeEl = ensureInjectionNoticeEl();
+    if (!noticeEl || !injectionNotice.listEl) return;
+    injectionNotice.listEl.innerHTML = "";
+    injectionNotice.renderedKeys.clear();
+
+    items.forEach((item) => {
+      if (!item?.kind || !item?.name) return;
+      const key = `${item.kind}::${item.name}`;
+      if (injectionNotice.renderedKeys.has(key)) return;
+      injectionNotice.renderedKeys.add(key);
+      const displayName = item.kind === "inner_skill" ? getSkillDisplayName(item.name) : item.name;
+      injectionNotice.listEl.appendChild(createInjectionNoticeItem(item.kind, displayName));
+    });
+    updateInjectionNoticeCount(injectionNotice.renderedKeys.size);
+  };
+
+  /** 向「注入提示」信息框追加一条注入条目（按 Task 归仓，kind+name 去重，跨轮累积） */
+  const addInjectionNoticeItem = (kind, name, taskId = null) => {
+    if (!kind || !name) return;
+    const targetTaskId =
+      taskId ||
+      taskManager.currentActiveTaskId ||
+      piClient.lastEventTaskId ||
+      LEGACY_INJECTION_KEY;
+
+    const store = getInjectionStore(targetTaskId);
+    const key = `${kind}::${name}`;
+    if (!store.has(key)) {
+      store.set(key, { kind, name });
+    }
+
+    // 同步至 Task 结构体，支持历史记录持久化与切换回填
+    const task = taskManager.getTask(targetTaskId);
+    if (task) {
+      task.injectedItems = Array.from(store.values());
+    }
+
+    // 串轮过滤铁律：仅当目标任务为当前前台活跃任务时，才直接更新前台 Flow DOM
+    if (taskManager.isForegroundStreamTask(targetTaskId)) {
+      const noticeEl = ensureInjectionNoticeEl();
+      if (noticeEl && injectionNotice.listEl && !injectionNotice.renderedKeys.has(key)) {
+        injectionNotice.renderedKeys.add(key);
+        const displayName = kind === "inner_skill" ? getSkillDisplayName(name) : name;
+        injectionNotice.listEl.appendChild(createInjectionNoticeItem(kind, displayName));
+        updateInjectionNoticeCount(injectionNotice.renderedKeys.size);
+        // 仅吸底跟随开启时随内容定位到底部，向上滚离后不打断浏览
+        if (flowScrollArea && flowView.followBottom !== false) {
+          flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+        }
+      }
     }
   };
 
+  /**
+   * 按 Task 恢复「注入提示」信息框（会话流缓存铁律，由 renderTurnsIntoFlow 回填调用）
+   * @param {string} taskId
+   */
+  const restoreInjectionNoticeFor = (taskId) => {
+    if (!taskId) return;
+    const store = sessionInjectionStores.get(taskId);
+    const task = taskManager.getTask(taskId);
+    let items = [];
+    if (store && store.size > 0) {
+      items = Array.from(store.values());
+    } else if (Array.isArray(task?.injectedItems) && task.injectedItems.length > 0) {
+      items = task.injectedItems;
+      const s = getInjectionStore(taskId);
+      items.forEach((item) => {
+        if (item?.kind && item?.name) s.set(`${item.kind}::${item.name}`, item);
+      });
+    }
+
+    if (items.length > 0) {
+      renderInjectionNoticeItems(items);
+    } else {
+      if (injectionNotice.el && injectionNotice.el.isConnected) {
+        injectionNotice.el.remove();
+      }
+      injectionNotice.el = null;
+      injectionNotice.listEl = null;
+      injectionNotice.countEl = null;
+      injectionNotice.chevronEl = null;
+      injectionNotice.renderedKeys.clear();
+    }
+  };
+
+  api.restoreInjectionNoticeFor = restoreInjectionNoticeFor;
+
   /** 全新会话时重置「注入提示」信息框（DOM 随 flowConversation 清空一并移除） */
-  const resetInjectionNotice = () => {
+  const resetInjectionNotice = (taskId = null) => {
+    if (injectionNotice.el && injectionNotice.el.isConnected) {
+      injectionNotice.el.remove();
+    }
     injectionNotice.el = null;
     injectionNotice.listEl = null;
     injectionNotice.countEl = null;
     injectionNotice.chevronEl = null;
-    injectionNotice.items.clear();
+    injectionNotice.renderedKeys.clear();
     injectionNotice.collapsed = true;
+
+    if (taskId) {
+      sessionInjectionStores.delete(taskId);
+    } else if (taskManager.currentActiveTaskId) {
+      sessionInjectionStores.delete(taskManager.currentActiveTaskId);
+    }
   };
 
   api.resetInjectionNotice = resetInjectionNotice;
 
-  // 串轮过滤铁律：事件帧携 task_id 且非当前前台活跃任务 (后台挂起任务) 时，
-  // 绝不向前台 Flow 注入任何步骤卡/胶囊/错误卡，也不触发收尾归档
-  const isForegroundStreamEvent = () =>
-    taskManager.isForegroundStreamTask(piClient.lastEventTaskId || null);
-
   // 后端真实注入广播：inject_prompt（兑底 Inner-Skill + code-area 路由上下文）
   // 每次真实注入后携带条目清单广播，前端逐条追加至「注入提示」框
   piClient.addEventListener("context-injected", (e) => {
-    if (!isForegroundStreamEvent()) return;
-    const items = e.detail?.items;
+    const detail = e.detail || {};
+    const targetTaskId = resolveEventTaskId(
+      detail,
+      taskManager.currentActiveTaskId || piClient.lastEventTaskId || LEGACY_INJECTION_KEY
+    );
+
+    const items = detail.items;
     if (Array.isArray(items)) {
       items.forEach((item) => {
-        if (item?.kind && item?.name) addInjectionNoticeItem(item.kind, item.name);
+        if (item?.kind && item?.name) {
+          addInjectionNoticeItem(item.kind, item.name, targetTaskId);
+        }
       });
     }
   });
 
   // Tool-call Hook 命中：Inner-Skill 动态激活（steer 即时或兑底入队）即同步至「注入提示」框
   piClient.addEventListener("inner-skill-activated", (e) => {
-    if (!isForegroundStreamEvent()) return;
-    const skillName = e.detail?.skill;
+    const detail = e.detail || {};
+    const targetTaskId = resolveEventTaskId(
+      detail,
+      taskManager.currentActiveTaskId || piClient.lastEventTaskId || LEGACY_INJECTION_KEY
+    );
+
+    const skillName = detail.skill;
     if (skillName) {
-      addInjectionNoticeItem("inner_skill", skillName);
+      addInjectionNoticeItem("inner_skill", skillName, targetTaskId);
     }
   });
+
+  // 最近一次已宣布触发弧光高亮的工具调用 ID（避免 toolcall-delta-start 与 tool-start 双重触发）
+  let lastAnnouncedToolCallId = null;
 
   /**
    * 辅助：确保当前存在“伪工具运行框”占位卡（工具参数流式期空窗辅助显示）
@@ -239,14 +371,7 @@ export function initFlowPipeline(ctx) {
     };
     flowView.activeToolPseudoStep = pseudoItem;
 
-    if (!flowView.toolPseudoTimerInterval) {
-      flowView.toolPseudoTimerInterval = setInterval(() => {
-        if (flowView.activeToolPseudoStep?.durationEl) {
-          const elapsed = ((Date.now() - flowView.activeToolPseudoStep.startTime) / 1000).toFixed(1);
-          flowView.activeToolPseudoStep.durationEl.textContent = `(${elapsed}s)...`;
-        }
-      }, 100);
-    }
+    startElapsedTimer(flowView, "toolPseudoTimerInterval", () => flowView.activeToolPseudoStep);
 
     return pseudoItem;
   };
@@ -284,17 +409,23 @@ export function initFlowPipeline(ctx) {
       clearInterval(flowView.toolRunTimerInterval);
       flowView.toolRunTimerInterval = null;
     }
-    flowView.toolRunTimerInterval = setInterval(() => {
-      const step = flowView.activeToolStep;
-      if (!step?.durationEl || step.status !== "running") return;
-      const elapsed = ((Date.now() - step.startTime) / 1000).toFixed(1);
-      step.durationText = `(${elapsed}s)...`;
-      step.durationEl.textContent = step.durationText;
-    }, 100);
+    startElapsedTimer(
+      flowView,
+      "toolRunTimerInterval",
+      () => (flowView.activeToolStep?.status === "running" ? flowView.activeToolStep : null),
+      (step, elapsed) => {
+        step.durationText = `(${elapsed}s)...`;
+        step.durationEl.textContent = step.durationText;
+      }
+    );
   };
 
   piClient.addEventListener("toolcall-delta-start", (e) => {
     if (!isForegroundStreamEvent()) return;
+    // 模型恢复输出：立即撤销流中断宽容期并清除错误态（若有）
+    if (typeof api.resolveStreamInterruption === "function") {
+      api.resolveStreamInterruption(piClient.lastEventTaskId);
+    }
     checkResolveFailoverSuccess();
     // 阶段性输出判定铁律：模型输出一段文字后进入工具调用状态（工具参数流式开始即视为进入），
     // 先封口该段文字为 Point 卡，再进入工具调用切片（tool-start 处的封口为幂等兜底）
@@ -309,6 +440,13 @@ export function initFlowPipeline(ctx) {
     api.autoCollapseThinkingOnNextPhase();
     // 伪工具运行框：参数流式期空窗即时呈现「工具调用... + 读秒 + running」
     ensureActiveToolPseudoStep();
+    // 触发新一轮工具调用事件（通知额度图标弧光高亮）
+    const deltaToolId = e.detail?.toolCallId || e.detail?.id || `delta_${Date.now()}`;
+    lastAnnouncedToolCallId = deltaToolId;
+    bus.emit("flow:step-start", {
+      type: "tool",
+      taskId: piClient.lastEventTaskId || taskManager.getCurrentActiveTask()?.id || null,
+    });
   });
 
   piClient.addEventListener("toolcall-delta-end", (e) => {
@@ -319,11 +457,24 @@ export function initFlowPipeline(ctx) {
 
   piClient.addEventListener("tool-start", (e) => {
     if (!isForegroundStreamEvent()) return;
+    // 模型恢复输出：立即撤销流中断宽容期并清除错误态（若有）
+    if (typeof api.resolveStreamInterruption === "function") {
+      api.resolveStreamInterruption(piClient.lastEventTaskId);
+    }
     checkResolveFailoverSuccess();
     streamData(piClient.lastEventTaskId).set({ hasReceivedDelta: true });
     const data = e.detail;
     const toolCallId = data.toolCallId;
     const toolName = data.toolName || "tool";
+
+    // 若此前未经过 toolcall-delta-start 阶段（例如非流式直接进入 tool-start），补发新一轮工具调用事件
+    if (!lastAnnouncedToolCallId || (toolCallId && toolCallId !== lastAnnouncedToolCallId)) {
+      lastAnnouncedToolCallId = toolCallId;
+      bus.emit("flow:step-start", {
+        type: "tool",
+        taskId: piClient.lastEventTaskId || taskManager.getCurrentActiveTask()?.id || null,
+      });
+    }
 
     // 工具开始时，结算或清理当前活跃的思维切片（带有 preserveForTool: true 幂等兜底）
     if (typeof api.sealActiveThinkingStep === "function") {
@@ -481,6 +632,7 @@ export function initFlowPipeline(ctx) {
       clearInterval(flowView.toolRunTimerInterval);
       flowView.toolRunTimerInterval = null;
     }
+    lastAnnouncedToolCallId = null;
 
     if (card) {
       card.classList.remove("running");
@@ -594,7 +746,7 @@ export function initFlowPipeline(ctx) {
    */
   const checkResolveFailoverSuccess = () => {
     if (modelFailoverEngine.isActive() && isForegroundStreamEvent()) {
-      modelFailoverEngine.resolveTurnSuccess();
+      modelFailoverEngine.resolveTurnSuccess(piClient.lastEventTaskId);
     }
   };
 
@@ -604,12 +756,10 @@ export function initFlowPipeline(ctx) {
       return;
     }
 
-    const errTaskId = e.detail?.taskId || e.detail?.raw?.task_id || e.detail?.task_id || piClient.lastEventTaskId;
+    const errTaskId = resolveEventTaskId(e.detail, piClient.lastEventTaskId);
     const isForeground = taskManager.isForegroundStreamTask(errTaskId);
     // 内置重连引擎是否正在服务该任务（后台挂起任务同样需要引擎结算在途尝试）
-    const engineOwnsTask =
-      modelFailoverEngine.isActive() &&
-      (!modelFailoverEngine.taskId || String(modelFailoverEngine.taskId) === String(errTaskId));
+    const engineOwnsTask = taskManager.isEngineOwnedTask(errTaskId);
 
     // 检查所属 Task 是否已处于中止状态或在中止黑名单中（前后台一致门禁）
     if (modelFailoverEngine.isTaskAborted(errTaskId)) {
@@ -617,7 +767,7 @@ export function initFlowPipeline(ctx) {
     }
     if (errTaskId) {
       const task = taskManager.getTask(errTaskId);
-      if (task && (task.status === "aborted" || task.isAborted)) {
+      if (task && isTaskAborted(task)) {
         return;
       }
     }
@@ -642,6 +792,7 @@ export function initFlowPipeline(ctx) {
       }
     }
 
+    const autoReconnectEnabled = configService.getAutoReconnectSwitch();
     const isRateLimit =
       isTransientRateLimitMessage(e.detail?.message) ||
       isTransientRateLimitMessage(e.detail?.raw?.errorMessage);
@@ -654,46 +805,61 @@ export function initFlowPipeline(ctx) {
       }
       return;
     }
-    if (modelFailoverEngine.canHandle(e.detail) || isRateLimit) {
+    // 铁律：自动强制重连未勾选时，一票否决！任何错误（含速率限制）一律严禁进入重连流水线，直接渲染错误卡
+    if (autoReconnectEnabled && (modelFailoverEngine.canHandle(e.detail) || isRateLimit)) {
       // 冷启动：自动强制重连开启且错误含模型上下文（或命中 TPM/RPM 速率限制）→ 统一交由引擎内置重连，绝不降级渲染错误卡。
       // 前台与后台挂起任务一视同仁：后台任务错误原被前台门禁拦截导致引擎永不启动，
       // 随后被 agent_end 误标 completed 且历史归档链路断裂（BUG2 根因）
       modelFailoverEngine.handleModelError(e.detail, failoverHooks);
     } else if (isForeground) {
       // 引擎不接管：仅前台渲染错误卡；后台任务交由 TaskManager 原生错误结算通道
+      // 流中断宽容期（黄色倒计时等待）：瞬态可恢复错误一律不立即弹红色错误卡。
+      // §6.1 的 isGracePeriodError 命中内核流截断/推理瞬时失败三短语；
+      // isTransientServiceError 覆盖更广的「连接异常 / 服务异常」（超时、断连、
+      // 502/503/504、fetch failed、速率限制…）：Pi 内核底层往往仍在重试，
+      // 过一会即恢复输出；立即弹红框会把 Task 提前置 error 终态并隐藏终止按钮，
+      // 内核随后恢复的输出被前台门禁拦截 → 红框永久滞留、按钮反复重建点击落空
+      // （BUG1/BUG2）。改给 300 秒黄色等待窗口：恢复即静默撤销，仅超时才弹红框。
+      if (isGracePeriodError(e.detail) || isTransientServiceError(e.detail)) {
+        // 宽容期胶囊在极早时点可能尚未挂载（轮次 DOM 未建立）：回退直接弹红框，杜绝错误被静默吞掉
+        if (api.handleStreamInterruption(e.detail)) return;
+      }
       api.renderErrorCard(e.detail);
     }
   });
 
   piClient.addEventListener("agent-end", (e) => {
-    const endTaskId = e.detail?.task_id || e.detail?.taskId || piClient.lastEventTaskId;
+    const endTaskId = resolveEventTaskId(e.detail, piClient.lastEventTaskId);
     const isForeground = taskManager.isForegroundStreamTask(endTaskId);
-    // 引擎在途重发尝试的收口帧：无论前后台，只要属于引擎当前任务即结算成功
-    // （后台任务结算成功后不做前台收尾与归档，仅由 TaskManager 结算数据）
-    const engineOwnsTask =
-      modelFailoverEngine.isActive() &&
-      (!modelFailoverEngine.taskId || String(modelFailoverEngine.taskId) === String(endTaskId));
-    if (engineOwnsTask) {
-      modelFailoverEngine.resolveTurnSuccess();
-      if (!isForeground) {
-        return;
+    // 自动重连引擎接管铁律：若自愈引擎当前正服务该任务（处于退避等待、后台续发或失败延迟）：
+    // 1. 若无在途重发尝试（!hasInflightAttempt），本帧属于刚刚被引擎接管的失败轮次的残余收口帧；
+    // 2. 若存在在途重发尝试（hasInflightAttempt），由引擎结算该尝试结果；
+    // 无论前台还是后台，只要引擎处于活跃接管状态，本帧绝不能穿透流向 api.finalizeStream 与归档，
+    // 必须立即拦截 return，杜绝失败轮次 agent-end 误将前台流式界面瞬间终结并切断会话流！
+    if (taskManager.isEngineOwnedTask(endTaskId)) {
+      if (modelFailoverEngine.hasInflightAttempt()) {
+        modelFailoverEngine.resolveTurnSuccess(endTaskId);
       }
+      return;
     }
     // 后台挂起任务的结束帧：不触发前台收尾与归档，仅由 TaskManager 结算数据
     if (!isForeground) {
       return;
     }
     // 「终止并发送」进行中：旧轮结算由 interrupt-send 流水线接管，跳过收尾与归档
-    const endFs = flowStore.for(resolveStreamTaskId(piClient.lastEventTaskId));
-    if (endFs.interruptSendTaskId) {
-      const endTaskId = e.detail?.task_id || e.detail?.taskId;
-      if (!endTaskId || endTaskId === endFs.interruptSendTaskId) {
-        return;
-      }
+    const endFs = flowStore.for(resolveStreamTaskId(endTaskId));
+    if (endFs.interruptSendTaskId && (!endTaskId || endTaskId === endFs.interruptSendTaskId)) {
+      return;
+    }
+    // 流中断宽容期收口：模型流虽无 finish_reason 但已真实产出内容（正文/思维/工具），
+    // 视为已恢复正常——撤销黄色等待胶囊，交由下方正常收尾与归档，杜绝无谓的 300 秒空等；
+    // 未产出任何内容的空轮保持等待，留给宽容期超时后再弹出红色提醒卡
+    if (typeof api.resolveStreamInterruption === "function" && (endFs.responseText || endFs.hasReceivedDelta)) {
+      api.resolveStreamInterruption(endTaskId);
     }
     // 完成后收起所有工具卡片（最终输出卡不收起）
     api.collapseAllToolCards();
-    api.finalizeStream(e.detail?.task_id || e.detail?.taskId || piClient.lastEventTaskId);
+    api.finalizeStream(endTaskId);
     api.archiveCurrentFlowToHistory();
     // 会话完成后展示「文件变更」收纳框（新增/修改的文件，点击可打开所在文件夹）
     if (typeof api.showFileChangesBox === "function") {
@@ -720,7 +886,7 @@ export function initFlowPipeline(ctx) {
         resolve();
       };
       const isTargetTask = (detail) => {
-        const tid = detail?.task_id || detail?.taskId || detail?.raw?.task_id;
+        const tid = resolveEventTaskId(detail);
         return !tid || tid === taskId;
       };
       const onEnd = (e) => {
@@ -760,12 +926,14 @@ export function initFlowPipeline(ctx) {
         ? (() => {
           const t = taskManager.getCurrentActiveTask();
           if (!t) return null;
-          return t.status === "thinking" ||
-            t.status === "streaming" ||
-            t.status === "tool_exec" ||
-            t.status === "paused"
-            ? t
-            : null;
+          const statusActive = isTaskStatusActive(t) || taskManager.isEngineOwnedTask(t.id);
+          if (!statusActive) return null;
+          // 真实活性门禁：状态标签活跃 ≠ 生成中。错误卡「重试当前提问」链路会先经
+          // clearTurnErrorState 把 error 终态复活为 running，若仅凭状态标签判定，
+          // 每次重试点击都会误弹「上一轮仍在生成中」确认框（按钮看起来点了没反应）。
+          // 故叠加底层在途证据：内核流式在途 / 引擎接管在途 / 人工待确认（paused 等待作答）三者其一。
+          const reallyBusy = piClient.isStreaming || modelFailoverEngine.isActive() || t.status === "paused";
+          return reallyBusy ? t : null;
         })()
         : null;
 
@@ -968,9 +1136,40 @@ export function initFlowPipeline(ctx) {
       // 同一个 Flow 使用同一个 currentTask.id 保持会话上下文
 
       // 发送前预检：若在图片准备或排队期间用户已点击终止，直接短路退出
-      if (currentTask && (currentTask.isAborted || currentTask.status === "aborted")) {
+      if (currentTask && isTaskAborted(currentTask)) {
         console.warn(`[FlowPipeline] Task ${currentTask.id} was aborted before sendPrompt, skipping.`);
         return;
+      }
+
+      // 检查是否需要走「生图与多模态路由」管线
+      const isRoutingEnabled = configService.isImageRoutingEnabled();
+      const currentActiveModel = piClient.currentModel || {
+        provider: providerName,
+        id: modelName,
+        name: modelName,
+      };
+      const isCurrentMultimodal = isModelMultimodal(currentActiveModel);
+
+      if (isRoutingEnabled && !isCurrentMultimodal) {
+        const detectedTaskType = detectImageTaskType(query, filesToAttach);
+        if (detectedTaskType) {
+          // 识图任务未显式配置独立识图模型时返回 null，此处自然回落常规会话链路
+          const effectiveRoutingModel = configService.getEffectiveRoutingModel(detectedTaskType);
+          if (effectiveRoutingModel && effectiveRoutingModel.modelId) {
+            await imageRoutingEngine.executeRoutedTask({
+              query,
+              promptToSend,
+              filesToAttach,
+              imagePayloads,
+              taskType: detectedTaskType,
+              originalModel: currentActiveModel,
+              routingModel: effectiveRoutingModel,
+              currentTask,
+              ctx,
+            });
+            return;
+          }
+        }
       }
 
       const sessionIdentity = resolveTaskSessionIdentity(currentTask);
@@ -984,7 +1183,7 @@ export function initFlowPipeline(ctx) {
       );
     } catch (err) {
       // 若任务已被用户手动终止，静默忽略异常，严禁复活为 error 态或渲染错误卡片
-      if (currentTask && (currentTask.isAborted || currentTask.status === "aborted")) {
+      if (currentTask && isTaskAborted(currentTask)) {
         return;
       }
       console.error("Failed to send prompt to Pi:", err);

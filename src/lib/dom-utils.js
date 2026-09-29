@@ -51,8 +51,9 @@ export const cleanUserPrompt = (text) => {
   clean = clean.replace(/<inner_skills_context(?:\s[^>]*)?>[\s\S]*?<\/inner_skills_context>/gi, "");
   clean = clean.replace(/<inner_skill_rules(?:\s[^>]*)?>[\s\S]*?<\/inner_skill_rules>/gi, "");
   clean = clean.replace(/<prompt_context(?:\s[^>]*)?>[\s\S]*?<\/prompt_context>/gi, "");
+  clean = clean.replace(/<image_routing_handover(?:\s[^>]*)?>[\s\S]*?<\/image_routing_handover>/gi, "");
   clean = clean.replace(/<([a-zA-Z0-9_-]*(?:context|rules|skill|routing)[a-zA-Z0-9_-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>/gi, "");
-  clean = clean.replace(/<(?:runtime_context_rules|runtime_inner_skills|runtime_inner_skill|code_area_routing_context|routed_agents_md|routed_readme_md|routed_project_skills|routed_skill|workspace_context|runtime_rules|inner_skills_context|inner_skill_rules|prompt_context)(?:\s[^>]*)?>[\s\S]*$/gi, "");
+  clean = clean.replace(/<(?:runtime_context_rules|runtime_inner_skills|runtime_inner_skill|code_area_routing_context|routed_agents_md|routed_readme_md|routed_project_skills|routed_skill|workspace_context|runtime_rules|inner_skills_context|inner_skill_rules|prompt_context|image_routing_handover)(?:\s[^>]*)?>[\s\S]*$/gi, "");
 
   // 2. 查找并截断附带本地文件路径尾注
   const attachmentMarkers = [
@@ -95,6 +96,51 @@ export const cleanUserPrompt = (text) => {
     clean === "请查阅并分析以下本地目录:"
   ) {
     clean = "";
+  }
+
+  return clean;
+};
+
+/**
+ * 净化阶段性输出 (Point 卡) 文本：
+ * 剥离模型意外漏入正文的工具调用代码块、模拟执行标签与引导提示语，
+ * 确保 Point 卡仅展示纯粹的人类自然语言阶段性说明，杜绝工具命令与伪造输出污染。
+ * 若净化后无实质内容，返回空字符串以触发空卡自愈移除。
+ * @param {string} text
+ * @returns {string}
+ */
+export const cleanPhaseOutputText = (text) => {
+  if (!text || typeof text !== "string") return "";
+  let clean = text;
+
+  // 1. 剥离模型输出的 Markdown 命令行代码块 (```bash ... ``` 等，含尾随 -exec 标识)
+  clean = clean.replace(/```(?:bash|sh|powershell|cmd|terminal|json)?\s*\n[\s\S]*?\n```(?:\s*-exec[^\n]*)?/gi, "");
+
+  // 2. 剥离模型模拟标签或内置工具调用外壳 (<bash>...</bash>, <invoke>...</invoke>, <acp...>...</acp>, <string>...</string> 等)
+  clean = clean.replace(/<(?:bash|invoke|call|acp|dsml|string|m[0-9]+)(?:\s[^>]*)?>[\s\S]*?<\/(?:bash|invoke|call|acp|dsml|string|m[0-9]+)>/gi, "");
+  clean = clean.replace(/<(?:bash|invoke|call|acp|dsml|string|m[0-9]+)(?:\s[^>]*)?>/gi, "");
+  clean = clean.replace(/<\/(?:bash|invoke|call|acp|dsml|string|m[0-9]+)>/gi, "");
+
+  // 3. 剥离伪造执行引导语、自我道歉与模拟语句
+  clean = clean.replace(/\*\*很抱歉——我在没有调用工具的情况下模拟了输出[^\n]*\*\*/gi, "");
+  clean = clean.replace(/(?:我需要实际调用工具而不是在文本中假装执行[^\n]*\n*)+/gi, "");
+  clean = clean.replace(/(?:下面实际执行代码探查[^\n]*\n*)+/gi, "");
+  clean = clean.replace(/(?:现在实际执行探查[^\n]*\n*)+/gi, "");
+  clean = clean.replace(/(?:我现在真正运行这些命令来探查代码[^\n]*\n*)+/gi, "");
+  clean = clean.replace(/📌\s*正在执行命令[^\n]*/gi, "");
+  clean = clean.replace(/-exec\s+bash[^\n]*/gi, "");
+  clean = clean.replace(/(?:<br>|\n)*\*\*Tool Results\*\*[\s\S]*$/gi, "");
+  clean = clean.replace(/让我(?:实际|真正)?(?:运行[^\n:：]{0,25}|先用[a-zA-Z\s]+工具|纠正[^\n:：]{0,25})[^\n]*/gi, "");
+  clean = clean.replace(/现在正式开始[^\n]*/gi, "");
+  clean = clean.replace(/下面(?:实际)?执行[^\n]*/gi, "");
+  clean = clean.replace(/更正——以实际命令输出为准[^\n]*/gi, "");
+
+  // 4. 清理残余的多余连续空行与首尾空白
+  clean = clean.replace(/\n{3,}/g, "\n\n").trim();
+
+  // 若剩余内容仅为无意义的标点符号或前缀引导语，视为空
+  if (/^(?:让我(?:实际|真正)?(?:运行[^\n:：]{0,20}|先用[a-zA-Z\s]+工具)?|现在正式开始|下面(?:实际)?执行[：:]?|[：:]\s*|\s*)+$/i.test(clean)) {
+    return "";
   }
 
   return clean;

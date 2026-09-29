@@ -170,29 +170,34 @@
   font-weight: 600;
 }
 
-/* 设置页面主体：左侧 Tab 导航 + 右侧面板内容 */
+/* 设置页面主体：左侧垂直 Tab 侧边栏 + 右侧主面板内容 */
 .settings-page-body {
   flex: 1;
   display: flex;
+  flex-direction: row;
   overflow: hidden;
   background: transparent;
 }
 
-/* 左侧 Tab 列表 */
+/* 左侧垂直 Tab 侧边栏 */
 .settings-tabs-nav {
   width: 176px;
   min-width: 176px;
   background: transparent;
   border-right: 1px solid var(--sketch-border-subtle);
-  padding: 14px 8px;
+  border-bottom: none;
+  padding: 16px 12px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   overflow-y: auto;
+  overflow-x: hidden;
+  flex-shrink: 0;
 }
 
 .settings-tab-btn {
-  padding: 8px 10px;
+  width: 100%;
+  padding: 7px 10px;
   border-radius: 4px;
   border: 1px solid transparent;
   background: transparent;
@@ -204,8 +209,10 @@
   gap: 8px;
   cursor: pointer;
   text-align: left;
+  justify-content: flex-start;
   transition: all 0.15s ease;
-  width: 100%;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .settings-tab-btn .tab-icon {
@@ -227,6 +234,63 @@
 
 .settings-tab-btn.active .tab-icon {
   opacity: 1;
+}
+
+/* 模型配置 Page 内部顶部并列 Sub-Tab 导航 (模型配置 / 生图与多模态路由) */
+.model-subtabs-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--sketch-border-subtle);
+  padding-bottom: 8px;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+
+.model-subtab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.model-subtab-btn:hover {
+  color: var(--ink-primary);
+  background: var(--sketch-tag-bg);
+}
+
+.model-subtab-btn.active {
+  color: var(--ink-primary);
+  background: var(--sketch-tag-bg);
+  border-color: var(--sketch-border-subtle);
+  font-weight: 600;
+}
+
+.model-subtab-btn svg {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.model-subtab-btn.active svg {
+  opacity: 1;
+}
+
+.model-subpane {
+  display: none;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.model-subpane.active {
+  display: flex;
 }
 
 /* 右侧面板内容区 */
@@ -342,6 +406,152 @@
   color: var(--ink-muted);
   line-height: 1;
   white-space: nowrap;
+}
+
+/* 生图与多模态路由面板样式 (Image & Multimodal Routing Stage) */
+.image-routing-principles-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 8px 6px 9px 7px / 7px 9px 6px 8px;
+  background: var(--bg-hover, rgba(128, 128, 128, 0.04));
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.principles-banner-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.principles-banner-title svg {
+  color: #f59e0b;
+}
+
+.principles-banner-content {
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+  line-height: 1.6;
+}
+
+.principles-banner-content p {
+  margin: 0 0 6px 0;
+}
+
+.principles-banner-content p:last-child {
+  margin-bottom: 0;
+}
+
+.principles-banner-content code {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--sketch-tag-bg);
+  border: 1px solid var(--sketch-border-subtle);
+}
+
+.principles-types-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.principle-type-badge {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px dashed var(--sketch-border-subtle);
+  background: var(--bg-card, transparent);
+  font-size: 11px;
+  color: var(--ink-primary);
+  line-height: 1.4;
+}
+
+.principle-type-badge .type-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+.principle-type-badge .type-sub {
+  font-size: 10.5px;
+  color: var(--ink-muted);
+}
+
+.image-routing-config-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--sketch-border-subtle);
+  border-radius: 8px 6px 9px 7px / 7px 9px 6px 8px;
+  background: var(--bg-elevated, transparent);
+  transition: opacity 150ms ease;
+  will-change: opacity;
+}
+
+.image-routing-config-stage.disabled-routing {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.form-field-hint {
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.form-field-hint code {
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  padding: 1px 3px;
+  border-radius: 3px;
+  background: var(--sketch-tag-bg);
+}
+
+.routing-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.routing-quick-actions .flat-btn {
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.routing-hint-capsule {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--bg-hover, rgba(128, 128, 128, 0.05));
+  border: 1px solid var(--sketch-border-subtle);
+  font-size: 11px;
+  color: var(--ink-secondary);
+  line-height: 1.5;
+}
+
+.routing-hint-capsule .hint-icon {
+  flex-shrink: 0;
 }
 
 /* 表单与分组 */

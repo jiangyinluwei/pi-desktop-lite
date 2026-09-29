@@ -669,13 +669,6 @@ pub fn read_routed_project_readme_md(route_path: &Path) -> Option<(String, Strin
 /// 3. 目标路由项目的 AGENTS.md / AGENT.md 规范与要求
 /// 4. 目标路由项目的 README.md 文档
 /// （.agents/skills/ 下的技能规约无需全量强制前置注入，由 Agent 遵循 AGENTS.md 映射按需运用）
-pub fn build_code_area_routing_context(
-    route_path: &str,
-    hub_skills: &[CodeAreaSkillInfo],
-    skill_injector: &crate::pi_runner::inner_skills::InnerSkillInjector,
-) -> String {
-    build_code_area_routing_context_with_items(route_path, hub_skills, skill_injector).0
-}
 
 /// 带注入条目清单的完整构建：除返回路由上下文信封文本外，
 /// 同时返回本次注入的文件条目（agents_md / readme_md / routing_context），

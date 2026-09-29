@@ -330,10 +330,6 @@ impl InnerSkillInjector {
         activations
     }
 
-    /// 兼容方法：返回首个命中的 ToolSkillActivation
-    pub fn hook_tool_call(&self, tool_name: &str) -> Option<ToolSkillActivation> {
-        self.hook_tool_calls(tool_name).into_iter().next()
-    }
 
     /// 标记 Skill 已激活：当轮去重 + 兑底入队（供下一次出站 Prompt 注入）。
     /// 返回 true 表示本轮首次激活（需要执行动态注入）。
@@ -425,10 +421,6 @@ impl InnerSkillInjector {
         )
     }
 
-    /// 兼容方法：返回注入后的提示词字符串
-    pub fn process_prompt(&self, message: &str) -> String {
-        self.process_prompt_with_info(message).0
-    }
 }
 
 impl Default for InnerSkillInjector {

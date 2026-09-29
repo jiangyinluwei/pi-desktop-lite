@@ -1,7 +1,7 @@
 ---
 name: flow-interaction-pattern
 description: |
-  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/阶段性输出 Point 切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-Point1-工具1-Point2-工具2...」真实因果链条一段一段拼接；③伪框占位机制（首 token 延迟期「Thinking (0.0s)...」伪思考框；工具参数流式期「工具调用(edit)... + 读秒 + running」伪工具运行框，真实卡就位即移除）；④Flow 界面任意区域滚轮事件委托至最外层滚动容器；⑤多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑥多段对话右侧上下轮次定位导航 (Flow Turn Navigation，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑦模型无痕内置重连流水线 (ModelFailoverEngine)；⑧输出卡底部手绘风格的保存操作栏；⑨会话完成后「文件变更」收纳框（flow-file-changes，收集新增/修改/删除的文件、点击条目在资源管理器中定位其所在文件夹；按 Task 会话流缓存至程序生命周期结束，右键退出再经历史/Task 记录回入 Flow 一致恢复）；⑩用户提问卡右侧一键复制提问按钮（prompt-copy-btn：常态透明无边框、悬浮显手绘边框，点击复制净化后原始提问并短暂变绿反馈，静态初始模板与动态历史轮次均生效）；⑪多任务直切自动挂起、历史记录智能重定向与状态隔离（任务直切原活跃任务无缝转入后台挂起、历史进入智能重定向至 restoreTaskToFlow 杜绝静态快照覆写实时 live turns、Flow DOM 防重入与工具切片引用自愈回填）；⑫会话回退与文件撤回（flow-rollback：轮次提问卡悬浮「回退到此处」→ SketchModal 确认 → 工具执行前快照还原「已修改/已删除」文件（新增文件永不撤回）→ 内核原生 RPC fork 历史节点回退 → 本地剪枝重渲 + 提问回填输入框 + 顶部浮窗 3 秒提醒结果）；⑬前端解耦分层架构（flowStore.for(taskId) 纯数据分仓、flowView 视图密封缓存、flow-render 纯渲染显式依赖、flow-dom 只读 DOM 引用与 el-binder 按需自绑定，严禁解构已废除的 ctx.el）；⑭中途提问人工回归选择（flow-human-input：内核 Extension UI 子协议 extension_ui_request 的 select/confirm/input/editor 在 Flow 中呈现手绘待答横条 + SketchModal 作答弹窗，作答回写 extension_ui_response 解除内核阻塞；timeout 由内核自动解析、fire-and-forget 方法不建卡；未决请求随 Task 挂起保留、终止 best-effort 回写 cancelled）。当用户提出"flow界面交互"、"思维链流式展示"、"阶段性输出"、"Point卡"、"工具调用简略"、"单行思维"、"步骤切片"、"伪思考框"、"伪运行框"、"工具调用读秒"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"、"自动强制重连"、"内置重连"、"无痕重连"、"文件变更"、"修改了哪些文件"、"多任务直切"、"任务切换"、"自动挂起"、"历史记录重定向"、"防重入"、"会话回退"、"对话回退"、"回退到此处"、"文件撤回"、"撤销修改"、"中途提问"、"人工选择"、"人工介入"、"extension_ui"、"等待用户作答"、"ask_question"时使用此技能。
+  指导 Flow 流式交互界面（界面3）的核心交互逻辑实现规范：①过程框体（思维切片卡片/阶段性输出 Point 切片卡片/工具调用切片卡片）单行流式紧凑呈现，可手动折叠展开，任何时候均不自动展开；②时序步骤流容器（flow-steps-container）按「思维1-Point1-工具1-Point2-工具2...」真实因果链条一段一段拼接；③伪框占位机制（首 token 延迟期「Thinking (0.0s)...」伪思考框；工具参数流式期「工具调用(edit)... + 读秒 + running」伪工具运行框，真实卡就位即移除）；④Flow 界面任意区域滚轮事件委托至最外层滚动容器；⑤多段对话顶部悬浮当前提问提示 (Flow Floating Question Tip)；⑥多段对话右侧上下轮次定位导航 (Flow Turn Navigation，位于右侧、靠左紧贴对齐会话流/对话框列右边缘，定位到每轮最终输出内容顶部、鼠标弹起触发可连续逐轮定位、长按「下」1.5 秒立即定位到底部，按下伴随由左至右背景填充及轻微抖动动画)；⑦模型无痕内置重连流水线 (ModelFailoverEngine)；⑧输出卡底部手绘风格的保存操作栏；⑨会话完成后「文件变更」收纳框（flow-file-changes，收集新增/修改/删除的文件、点击条目在资源管理器中定位其所在文件夹；按 Task 会话流缓存至程序生命周期结束，右键退出再经历史/Task 记录回入 Flow 一致恢复）；⑩用户提问卡右侧一键复制提问按钮（prompt-copy-btn：常态透明无边框、悬浮显手绘边框，点击复制净化后原始提问并短暂变绿反馈，静态初始模板与动态历史轮次均生效）；⑪多任务直切自动挂起、历史记录智能重定向与状态隔离（任务直切原活跃任务无缝转入后台挂起、历史进入智能重定向至 restoreTaskToFlow 杜绝静态快照覆写实时 live turns、Flow DOM 防重入与工具切片引用自愈回填）；⑫会话回退与文件撤回（flow-rollback：轮次提问卡悬浮「回退到此处」→ SketchModal 确认 → 工具执行前快照还原「已修改/已删除」文件（新增文件永不撤回）→ 内核原生 RPC fork 历史节点回退 → 本地剪枝重渲 + 提问回填输入框 + 顶部浮窗 3 秒提醒结果）；⑬前端解耦分层架构（flowStore.for(taskId) 纯数据分仓、flowView 视图密封缓存、flow-render 纯渲染显式依赖、flow-dom 只读 DOM 引用与 el-binder 按需自绑定，严禁解构已废除的 ctx.el）；⑭中途提问人工回归选择（flow-human-input：内核 Extension UI 子协议 extension_ui_request 的 select/confirm/input/editor 在 Flow 中呈现手绘待答横条 + SketchModal 作答弹窗，作答回写 extension_ui_response 解除内核阻塞；timeout 由内核自动解析、fire-and-forget 方法不建卡；未决请求随 Task 挂起保留、终止 best-effort 回写 cancelled）；⑮额度图标纯粹设计与步骤弧光高亮联动（无刻度表，两个同心缺口圆弧加粗 + 中心小闪电标识，取消常态模糊光晕，新一轮 thinking/point/工具调用 触发 1 秒弧光高亮脉冲）；⑯模型生图直接展示、自愈补齐与一键存桌面（Markdown图片/纯图片路径直显、Data URL 异步映射与前端 Map 缓存、手绘全屏灯箱放大预览、一键保存至系统桌面带绿勾反馈、生图任务检测自愈补丁卡）；⑰生图与多模态路由及会话模型无缝回归流水线（纯文本模型遇生图/识图任务自动调度路由模型，执行完毕无缝切回原会话模型并将额外输出文本与图片回填）；⑱「计划执行」可视化（flow-plan-panel：模型输出的 Markdown 复选框计划清单解析、右上角进度指示器与计划侧边栏、已完成条目灰显划去）；⑲阶段性输出 (Point) 封口自动聚合收起上游过程卡（极简手绘框体+统计计数+展开/收起按钮、展开态原生无嵌套 panel 排版、顶部与右下方双端收起控制、尾段解包自愈）。当用户提出"flow界面交互"、"思维链流式展示"、"阶段性输出"、"Point卡"、"工具调用简略"、"单行思维"、"步骤切片"、"伪思考框"、"伪运行框"、"工具调用读秒"、"滚轮滚动"、"flow滚动条"、"悬浮提问提示"、"上下按钮"、"轮次定位"、"保存输出"、"自动强制重连"、"内置重连"、"无痕重连"、"文件变更"、"修改了哪些文件"、"多任务直切"、"任务切换"、"自动挂起"、"历史记录重定向"、"防重入"、"会话回退"、"对话回退"、"回退到此处"、"文件撤回"、"撤销修改"、"中途提问"、"人工选择"、"人工介入"、"extension_ui"、"等待用户作答"、"ask_question"、"额度图标"、"弧光高亮"、"图片展示"、"显示图片"、"生图"、"保存图片"、"存到桌面"、"生图路由"、"多模态路由"、"计划执行"、"todo list"、"任务计划"、"计划步骤"、"收起思维"、"收起工具"、"point收起"时使用此技能。
 ---
 
 # Flow 交互界面规范 (Flow Interaction Pattern)
@@ -19,17 +19,17 @@ description: |
   │         ├─ flow-question-tip      ← 顶部悬浮提问提示 (sticky top: 0, pointer-events: none)
   │         └─ flow-conversation
   │              └─ flow-message-group
-  │                   ├─ flow-user-prompt-card       用户提问卡（支持多行换行 pre-wrap，右侧 prompt-copy-btn 一键复制提问，事件委托于 flow-conversation）
+  │                   ├─ flow-user-prompt-card       用户提问卡（支持多行换行 pre-wrap、鼠标自由拖拽选择复制 user-select: text，右侧 prompt-copy-btn 一键复制提问，事件委托于 flow-conversation）
   │                   ├─ flow-route-capsule          路由目标项目胶囊
   │                   ├─ flow-injection-notice        「注入提示」信息框 (路由胶囊下方；直角简洁风，默认收起显示「注入提示」与注入数量，点击展开全部注入条目清单)
-  │                   ├─ flow-failover-capsule       无痕内置重连进度胶囊
   │                   ├─ flow-steps-container        【时序步骤流容器】
   │                   │    ├─ flow-step-thinking     思维切片 (单行刷新，常态折叠，绝不自动展开)
   │                   │    ├─ flow-step-phase        阶段性输出 Point 切片 (读秒+折叠内容，绝不自动展开)
   │                   │    ├─ flow-step-tool         工具切片 (单行状态徽章+读秒，常态折叠，绝不自动展开)
   │                   │    └─ tool-pseudo-card      伪工具运行框 (参数流式期占位，虚线边框，真实卡就位即移除)
-  │                   └─ flow-response-card          最终输出正文 (Typedown 质感 Markdown，永不折叠)
-  ├─ flow-turn-nav        ← 右侧上下轮次定位导航 (多轮 >= 2 显现，右移至内容区外)
+  │                   ├─ flow-response-card          最终输出正文 (Typedown 质感 Markdown，永不折叠)
+  │                   └─ flow-failover-capsule       无痕内置重连提醒文本框 (会话流最下方，含手绘「⏹ 中断」按钮，支持延迟期直接彻底中断一切)
+  ├─ flow-turn-nav        ← 右侧上下轮次定位导航 (多轮 >= 2 显现，靠左紧贴对齐内容列右边缘、居于内容列右侧空隙)
   └─ search-section       ← 底部输入区
 ```
 
@@ -39,7 +39,7 @@ description: |
 3. **真实 ReAct 时序交织**：步骤按 `思维1 ➔ 工具1 ➔ 思维2 ➔ 工具2 ➔ ...` 一段一段流式拼接；
 4. **前端解耦分层硬约束**：
    - **流式纯数据归仓**：`responseText`、`thinkingText`、`errorMessage`、`lastUserQuery`、`hasReceivedDelta`、`interruptSendTaskId`、`lastSentPrompt`、`lastSentAttachments`、`lastImagePayloads`、`thinkingStartTime` 等 11 个纯数据字段一律通过 `flowStore.for(taskId)` 分仓读写（分仓键经 `resolveStreamTaskId` 解析），严格禁止 `flow.*` 纯数据裸写（度量断言 = 0）；Store action 一律同步执行，禁止 async/await/微任务挂起；
-   - **视图派生缓存密封**：`renderedToolCards`、`currentSteps`、`active*Step`、读秒计时器（`toolPseudoTimerInterval`、`toolRunTimerInterval`）、`activeTurnRefs`、`followBottom` 统一定义于 `src/modules/flow-state-view.js` 的 `flowView` 密封对象（`Object.seal` 封口保护，严禁入 Store）；
+   - **视图派生缓存密封**：`renderedToolCards`、`currentSteps`、`active*Step`、Point 段追踪态（`pendingTextSegment` / `finalPointCandidate`）、读秒计时器（`toolPseudoTimerInterval`、`toolRunTimerInterval`）、`activeTurnRefs`、`followBottom` 统一定义于 `src/modules/flow-state-view.js` 的 `flowView` 密封对象（`Object.seal` 封口保护，严禁入 Store）；
    - **纯渲染助手显式 import**：工具/思维/阶段卡创建、工具名/图标/摘要映射、入参/结果 HTML 格式化、ANSI 剥离、徽章刷新等无副作用纯渲染函数统一定义于 `src/modules/flow-render.js`，各模块直接 `import { ... } from './flow-render.js'` 显式依赖，杜绝旧 `ctx.api` 纯渲染槽；
    - **Flow 域 DOM 引用隔离与按需自绑定**：只读 DOM 引用由 `src/modules/flow-dom.js`（`createFlowDom`）产出挂载到 `ctx.flowDom`，flow-* 模块改读 `flowDom.flow*`；各模块通过 `src/lib/el-binder.js` 的 `bindAll` 按需自绑定自己的 DOM id 子集，**严禁解构已废除的 `ctx.el`**；
    - **契约化事件派发**：横切通知经 `event-bus.js` 同步派发（`flow:response` 携带 taskId，`ui:toast` 等），事件通道在 `src/lib/contracts.js` 严格登记；控制流走 Store action 或显式 import。
@@ -51,7 +51,7 @@ description: |
 | 切片类型 | 视觉语义与展示规范 | 展开正文与交互细节 | 触发与封口时机 |
 |---|---|---|---|
 | **思维链切片 (`flow-step-thinking`)** | **石墨幽兰冷灰调**（`#f7f6fb` / `#1b1a21`），`Thinking` 手绘胶囊 + 星芒自旋呼吸，动态读秒 `(1.2s)...` ➔ 定格 `(3.2s)`，单行实时从右向左流动输出流预览（跟踪最新输出，输出越快流动越快）；默认折叠。 | 细致思考日志流（字号 12px，行高 1.68，石墨淡墨色 `--ink-muted`），柔和内边距与虚线分割。 | `thinking-start` 创建；`tool-start` 或 `text-start` 时封口。 |
-| **阶段性输出切片 (`flow-step-phase`)** | **温润羊皮纸金调**（`#fdfbf5` / `#201d17`），`Point` 手绘暖调胶囊 + 铅笔图标 + 读秒 `已输出 1.2s`；默认折叠。 | 阶段 Markdown 完整渲染（富文本、代码块、列表、引用），内嵌暖调微衬边。 | 首个 `text-delta` 创建；文本段之后再次进入 Thinking（`thinking-start`）或进入工具调用（`toolcall-delta-start` / `tool-start`）时封口；新轮 `text-start` 封口上一段；最终段保留在输出卡。 |
+| **阶段性输出切片 (`flow-step-phase`)** | **温润羊皮纸金调**（`#fdfbf5` / `#201d17`），`Point` 手绘暖调胶囊 + 铅笔图标 + 定格读秒 `已输出 1.2s`；默认折叠。 | 阶段 Markdown 完整渲染（富文本、代码块、列表、引用），内嵌暖调微衬边。 | **流式期间不建卡**（内容仅在最终输出卡实时可见）；文本段输出完毕（内核 `text-end` 事件）即刻打包创建并定格耗时；内核未派发 `text-end` 时由阶段边界（`thinking-start` / `text-start` / `toolcall-delta-start` / `tool-start`）兜底封口；text-end 打包后直到本轮收尾无任何新阶段开启时为最终段，finalize 回填输出卡（净化前原文，保代码块）。 |
 | **工具调用切片 (`flow-step-tool`)** | **蓝图终端工程调**（`#f2f6fa` / `#141920`），按工具智能映射矢量图标（CLI/文件/搜索/OCR等）+ 中文友好名 + 参数预览 + 三态状态徽章 (`running` 琥珀黄 / `done` 翡翠绿 / `failure` 朱红) + 运行期递增读秒 `(1.2s)...` ➔ 封口定格 `(3.2s)`；默认折叠。 | 结构化拆分 `入参 · Parameters` 与 `执行结果 · Result`，仿终端代码块包装，右上角提供手绘一键复制与复制成功即时微反馈。 | `tool-start` 创建；`tool-end` 封口并更新状态与定格读秒。 |
 | **伪工具运行框 (`tool-pseudo-card`)** | **蓝图虚线占位调**（复用工具卡配色 + 虚线边框 + 降不透明度），通用「工具调用...」标题 + running 徽章 + 100ms 递增读秒，工具图标轻微呼吸摆动；无展开正文。 | 无（纯占位单行卡）。 | `toolcall-delta-start` 创建（覆盖工具参数流式期空窗延迟）；`toolcall-delta-end` 回填真实工具名（如「工具调用(edit)」）；`tool-start` 真实卡创建时移除；`thinking-start` / `text-start` / `finalizeStream` 兜底清理。 |
 
@@ -63,6 +63,27 @@ description: |
 2. **伪工具运行框**：`toolcall-delta-start`（工具参数流式开始）即插入 `工具调用... + running + (0.0s)...` 占位卡（`flow-pipeline.js` 的 `ensureActiveToolPseudoStep`），100ms 读秒；参数流式结束（`toolcall-delta-end` 携带 `toolCall.name`）回填真实工具名；
 3. **真实工具卡读秒与累计延时铁律**：`tool-start` 创建真实卡片时继承伪工具运行框的 `startTime`，将大模型生成工具参数的延时与工具执行耗时累计显示（初始携带 `(${initialElapsed}s)...`），移除占位卡；`startToolRunTimer` 持续以 100ms 刷新累计读秒；`tool-end` 定格为累计总时长 `(Xs)` 并清空 `flowView.toolRunTimerInterval`，杜绝真实工具执行完成后耗时跳回 0.0s/0.1s 导致前期生成延时丢失；
 4. **状态清理铁律**：伪框与读秒计时器（`flowView.activeToolPseudoStep` / `flowView.toolPseudoTimerInterval` / `flowView.toolRunTimerInterval`）必须在 `resetStreamState`、`resetCurrentTurnForResend`、`finalizeStream`、`thinking-start`、`text-start` 全部边界兜底清理，杜绝幽灵计时器与残留占位卡；伪卡不写入 `flowView.currentSteps`，不污染历史快照。
+
+### 阶段性输出 (Point) 净化与防泄漏铁律 (Phase Output Sanitization & Command Leakage Prevention)
+
+当大模型在输出中间过程文本时，可能混杂未结构化的模拟工具调用、命令行代码块（` ```bash\n...\n``` `）、虚假执行引导语（“让我实际运行”、“更正——以实际命令输出为准”等）或伪造的 `**Tool Results**` 标记。为杜绝这些技术实现细节污染用户的自然语言阶段性输出，系统实施全链路多层净化：
+
+1. **统一净化谓词**：`src/lib/dom-utils.js` 中的 `cleanPhaseOutputText(text)` 严格过滤所有带或不带语言标签的代码块（包括末尾追加 `-exec` 标记的命令块）、XML/DSML 工具模拟标签（`<bash>`, `<invoke>`, `<acp>` 等）、假装执行的口头废话以及多余空行；
+2. **流式免卡铁律**：`flow-stream.js` 的 `text-delta` 期间**严禁创建 Point 卡**（含任何带读秒的占位卡）——内容仅在最终输出卡实时可见；提前建卡会导致 Point 卡带着「输出中」读秒空转到下一阶段真正启动（含跨消息 Provider 请求往返延迟），且与输出内容同屏双现；
+3. **空段自愈清理**：`flow-stream.js` 的 `sealTextSegmentAsPointCard` 在打包封口（首选 `text-end`，边界兜底）时执行净化，若净化后内容为空（说明该段仅包含泄漏的命令代码块），则不沉淀 Point 卡并同步清空输出卡正文（泄漏内容已由内核侧抽取为真实工具调用执行）；
+4. **底层存储防污染**：`task-manager.js` 在 `tool_execution_start` 将中间段文本沉淀进 `currentTurn.steps` 时，先执行 `cleanPhaseOutputText` 校验，只有净化后含有实质自然语言时才推入 `{ type: "text", text: cleanedText }`，彻底从数据源头切断未净化文本向 Task 数据、历史归档与会话续写中的渗透；
+5. **历史与重渲兜底**：`flow-ui.js` 的 `restoreTurnsIntoFlow` 与 `flow-render.js` 的 `createPhaseStepCard` 双重防线拦截，保证无论是实时生成、挂起恢复、任务直切还是历史查看，Point 框体中 100% 仅展示纯净的人类可读自然语言。
+
+### 阶段性输出 (Point) 封口自动聚合收起上游过程卡铁律 (Auto-Collapsing Preceding Steps on Point Seal)
+
+在复杂多轮 ReAct 执行链中，大模型产出中间 Point 阶段性输出前常伴随多步 Thinking 与工具调用。为保持 Flow 会话流清晰聚焦，系统实施 Point 封口自动收起上游过程卡机制：
+
+1. **自动触发时机与边界**：必须是 Point 输出完成形成框体（`sealTextSegmentAsPointCard` 封口完成、或历史记录 `createFlowTurnGroupElement` 还原 Point 切片）瞬间触发。从当前 Point 卡向前逆向回溯，遇到上一个 Point 卡片、已有折叠组或到达容器起点为止；收集此区间内所有的 Thinking 与工具调用卡片；
+2. **极简草图框体（收起态）**：采用手绘极简虚线/细线框（`.flow-step-group-summary`），展示真实步骤输出轮次数（如 `Thinking * 5 | 工具调用 * 3`）以及 `展开` 切换按钮，点击框体或按钮即可平滑展开；
+3. **原生排版保持（展开态）**：**绝对严禁把框体再次收纳进新 panel**（容器 `.flow-step-group-content` 保持零外衬、零边框、无背景、无内边距），展开后的切片与原本 FLOW 界面垂直流完全一致；
+4. **双端收起控制**：展开后的内容在**顶部上方**（摘要栏切换为 `收起`）与**右下方**（`.flow-step-group-bottom-bar` 靠右对齐 `收起` 按钮）均设置手绘收起按钮，方便长内容阅读到底部时无需回滚即可一键收起；
+5. **最后一次 Point 输出（会话结束收尾）前序步骤自动聚合**：当识别到“最后一次 Point 输出”触发且会话模型确确实实结束了会话时，该段文字作为最终回答（`flow-response-card`）呈现而非 Point 框体，此时**严格保留**其前序 Thinking 与工具调用的聚合收起组（严禁解包还原）；同时在 `finalizeStream` 与历史恢复末尾通过 `autoCollapseRemainingSteps` 兜底聚合步骤容器尾部残留的未分组步骤，确保整轮会话无论在中间阶段还是最终收尾阶段，上游过程卡均一致自动聚合收起；
+6. **纯前端数据零污染**：100% 纯前端 DOM 编排，不影响后端内核、RPC 协议及 `task.turns[].steps` 底层存储结构。
 
 ### 历史快照卡片重绑铁律 (Snapshot Card Rebinding)
 
@@ -107,7 +128,7 @@ window.addEventListener("wheel", (e) => {
 - **轮次锚定**：根据滚动位置动态取顶部高于/等于视口顶边的最后一个消息组的提问。
 
 ### 4.2 右侧上下轮次定位导航 (`Flow Turn Navigation`)
-- **展示**：多轮对话（`groups >= 2`）时在内容区右侧显现，由 JS 动态对齐内容区底部；
+- **展示**：多轮对话（`groups >= 2`）时位于右侧、靠左紧贴对齐会话流/对话框列（居于 760px 内容列右侧空隙，左缘距内容列右边缘 8px）显现，由 JS 动态对齐内容区底部；
 - **定位目标**：每轮最终输出内容顶部（`.flow-response-card`），扣除顶部提示吸附高度；
 - **「上」两段式优化定位 (`OUTPUT_TOP_PROXIMITY_PX = 100`)**：
   - 视口顶边距当前轮输出顶部 ≤ 100px（含上方思考/提问区）➔ 定位到**第 N-1 轮**输出顶部；
@@ -138,10 +159,10 @@ window.addEventListener("wheel", (e) => {
 - 选择“终止并发送”：先注册 `waitForTurnSettled(taskId)`（6s 兜底），再 `piClient.abort(taskId)`，旧轮定格为「已中断」，旧轮结算后才开启新轮，彻底杜绝内容串轮。
 
 ### 5.4 后台任务流式串轮过滤铁律 (Foreground Stream Gate)
-- **事件帧归属追踪**：`piClient` 在 `handleAgentEvent` / `handleMessageUpdate` 中记录每帧 RPC 的 `task_id` 至 `piClient.lastEventTaskId`（同步派发窗口内可靠）；
+- **事件帧归属追踪**：`piClient` 在 `handleAgentEvent` / `handleMessageUpdate` 中记录每帧 RPC 的 `task_id` 至 `piClient.lastEventTaskId`；同时在 `sendPrompt` / `sendFollowUp` 发起新任务与 `taskManager.createTask` / `setActiveTask` 时**同步立即对齐** `lastEventTaskId`，严禁让首帧事件到达前的真空期残留旧任务 ID 导致前台门禁误杀（如 `pi:context_injected` 首发即被门禁吞噬）；
 - **前台门禁判定**：`taskManager.isForegroundStreamTask(taskId)` —— 事件携 `task_id` 且 ≠ 当前前台活跃任务（含挂起态 `currentActiveTaskId = null`）时视为后台事件；缺失 `task_id` 时视为前台主会话向后兼容；
-- **UI 层全量门禁**：`flow-stream.js` 与 `flow-pipeline.js` 的全部流式监听器（thinking/text/toolcall/tool/agent/retry/注入提示框条目）入口处统一执行 `isForegroundStreamEvent()` 过滤——后台挂起任务的增量只入 `TaskManager` 数据缓冲（供侧边栏与恢复展示），**绝不触碰前台 Flow DOM、流式状态、错误卡与收尾归档**；
-- **历史会话恢复场景**：从历史记录/会话记录进入 Flow 时，后台旧任务继续输出也绝不拼进历史轮次 DOM；仅当该任务被重新置为前台活跃任务时才恢复流式渲染。
+- **UI 层全量门禁与注入分仓**：`flow-stream.js` 与 `flow-pipeline.js` 的全部流式监听器（thinking/text/toolcall/tool/agent/retry/注入提示框条目）统一按 Task 分仓（如 `sessionInjectionStores` 与 `task.injectedItems`）。后台挂起任务的增量只入 `TaskManager` 与分仓缓冲（供侧边栏与恢复展示），**绝不触碰前台 Flow DOM、流式状态、错误卡与收尾归档**；
+- **历史与多任务恢复场景**：从历史记录/会话记录进入 Flow 或多任务直切时，在 `renderTurnsIntoFlow` 中通过 `api.restoreInjectionNoticeFor(task.id)` 完整自愈复原「注入提示」信息框；后台旧任务继续输出也绝不拼进历史轮次 DOM。
 
 ---
 
@@ -152,26 +173,58 @@ flowchart TD
     Err[模型调用报错] --> Gate{自动强制重连开启且非手动终止}
     Gate -->|否| Fallback[直接渲染错误卡]
     Gate -->|是| Silent[隐藏错误窗体 · 后台静默续发「继续」]
-    Silent --> Wait[退避等待 2s->4s->8s->16s->16s…]
+    Silent --> Wait[重试等待 60s]
     Wait --> Capsule[轮次胶囊: 自动内置重连 N/10 · Xs 后重试]
-    Capsule --> Send[静默重发请求]
+    Capsule --> Send[静默发送「继续」]
     Send -->|首响应恢复| Succeed[结算成功 · 胶囊 1.2s 淡出]
-    Send -->|再次报错| Next{N < 10 ?}
+    Send -->|再次报错| PostWait[续发后再延迟 60s · 动态倒数]
+    PostWait --> Next{N < 10 ?}
     Next -->|是| Wait
     Next -->|否 耗尽| Fallback[渲染「模型调用失败」错误卡 + 内置重连摘要]
 ```
 
-- **无痕内置重连 (Silent Reconnect)**：仅在「模型XXX异常」错误窗体本应弹出时触发（设置-模型配置-右上角「自动强制重连」勾选启用）；引擎隐藏错误窗体，后台静默向模型续发「继续」文本（不生成提问卡、不重复压入 prompt history、不新建 Task，全程不显示）；
-- **写死 10 次与固定退避**：`maxReconnectAttempts: 10`、`reconnectBackoffMs: [2000, 4000, 8000, 16000]`、`maxBackoffMs: 16000`；每次续发计作一次「内置重连」；旧引擎残留的 `modelFailover` 持久化块（旧值如 24 + 7 个死字段）在 `pi_get_app_config` 读取时由 `migrate.rs` 幂等归一化为该预设；
-- **进度胶囊与系统弹窗静默**：内置重连期间**严禁触发 Windows 原生系统弹窗 (Toast)**，也**严禁在回答区插入错误卡片**；胶囊作为**纯状态示意条**，恒定以「自动内置重连 N/10 ...」开头（等待中追加「Xs 后重试」，续发中追加「正在重发请求 …」）；
+- **无痕内置重连 (Silent Reconnect)**：仅在「模型XXX异常」错误窗体本应弹出时触发（设置-模型配置-右上角「自动强制重连」勾选启用）；**总开关绝对一票否决铁律**：未勾选/关闭「自动强制重连」时，全链路严禁触发任何内置重连或自动重试，速率限制（TPM/RPM/429）等瞬态错误一律一票否决、严禁进入 ModelFailoverEngine 且直接弹出错误诊断卡；同时关闭开关时同步调用 `pi_clear_model_failover_preset` 物理清退 Pi 内核 `~/.pi/agent/settings.json` 中的 `retry` 注入块，杜绝内核在底层子进程自行重试并刷屏“自动重试中”；开启时引擎隐藏错误窗体，后台静默向模型续发「继续」文本（不生成提问卡、不重复压入 prompt history、不新建 Task，全程不显示）；
+- **写死 10 次与全部 60 秒延迟 + 续发后再延迟 60 秒**：`maxReconnectAttempts: 10`、`reconnectBackoffMs: [60000]`、`maxBackoffMs: 60000`、`postReconnectDelayMs: 60000`；每次续发计作一次「内置重连」，单轮重连周期为 60s + 60s = 120s，写死 10 次共 120s * 10 = 1200 秒；旧引擎残留的 `modelFailover` 持久化块在 `pi_get_app_config` 读取时由 `migrate.rs` 幂等归一化为该预设；
+- **提醒文本框置底与系统弹窗静默**：内置重连期间**严禁触发 Windows 原生系统弹窗 (Toast)**，也**严禁在回答区插入错误卡片**；提醒文本框作为**纯状态示意条**恒定置于当前会话流最下方（`flow-response-card` 正文回答卡下方），并随内容吸底定位；文案恒定以「自动内置重连 N/10 ...」开头（等待中与续发后延迟均动态倒数「Xs 后重试」，续发中追加「正在重发请求 …」）；
+- **延迟期直接彻底中断一切铁律 (Delay Interruption & Direct Abort Invariance)**：允许用户在 60 秒等待退避与续发后延迟过程中直接中断会话；胶囊内提供手绘「⏹ 中断」按钮（`.failover-abort-btn`），同时主界面输入栏 `#flow-btn-abort` 在重连与等待全周期保持可见可用；用户点击胶囊内「中断」或点击 `#flow-btn-abort` 将**直接中断一切**（统一调用 `api.abortCurrentSession`）：立即清退 `_backoffTimer` 定时器并强制解除 `await this._sleep` 挂起，切断重连循环（杜绝触发 `_giveUp` 弹错误卡），物理强杀 Rust 内核子进程（`SessionHost.abort()`），定格轮次为已中断，回答区追加「刚刚会话已手动终止」，隐藏胶囊并清除倒数，归档历史快照，全链路杜绝任何后续复活与再次尝试；
 - **取消自动切换模型**：引擎不再解析候选池、不做 MRU 巡检、不轮转切换、不临时 `pi_set_model`（相关逻辑已彻底移除）；错误卡上的「切换其他模型」为纯手动入口；
-- **耗尽才弹窗与耗尽终态锁定**：仅当 10 次内置重连全部耗尽仍失败时，才渲染「模型调用失败 [模型]」错误卡，并附摘要「已尝试自动内置重连 N/10 次后仍失败」；弹卡同时引擎立即记录该任务「耗尽终态」（`_exhaustedTaskIds`，无归属路径为 `_unattributedExhausted`）：一次失败的内核 run 会经 `message_end` / `turn_end` / `agent_end` / `agent_settled` 多次重复派发 `agent-error`，耗尽后这些重复错误帧**绝不再次自动冷启动、也不重复渲染错误卡**（TaskManager 同步落定 error 终态且 `failTask` 幂等防重复通知），仅用户手动点击「重试当前提问」或发送新提问（`clearTaskAborted` 同步清除耗尽标记）后方可重新发起；
+- **耗尽才弹窗与耗尽终态锁定**：仅当 10 次内置重连全部耗尽仍失败时，才渲染「模型调用失败 [模型]」错误卡，并附摘要「已尝试自动内置重连 N/10 次后仍失败」；弹卡同时引擎立即记录该任务「耗尽终态」（`_exhaustedTaskIds`，无归属路径为 `_unattributedExhausted`）：一次失败的内核 run 会经 `message_end` / `turn_end` / `agent_end` / `agent_settled` 多次重复派发 `agent-error`，耗尽后这些重复错误帧**绝不再次自动冷启动、也不重复渲染错误卡**（TaskManager 同步落定 error 终态且 `failTask` 幂等防重复通知），仅用户手动点击「重试当前提问」（自动向模型发送「继续」文本续发生成，而非完全复用上一轮长提问）或发送新提问（`clearTaskAborted` 同步清除耗尽标记）后方可重新发起；
 - **步骤流记录保留铁律**：重发尝试（`resetCurrentTurnForResend`）时**严禁清空步骤容器（`stepsContainerEl.innerHTML`）与工具卡片缓存（`renderedToolCards`）**，必须 100% 完整保留本轮之前已真实执行完毕的 Thinking 切片（已封口/含实质内容）、工具调用卡片与 Point 阶段性输出切片，恢复后增量无缝追加后续步骤；
 - **首 token 延迟伪框重建铁律**：`resetCurrentTurnForResend` 内部必须**先 `sealActiveThinkingStep()` 再缓冲清理**（顺序颠倒将致 seal 空转、孤儿伪框残留、步骤容器非空而无法重建读秒伪框）：真实思考切片定格保留，纯首字等待伪框静默移除，容器为空则重建「Thinking (0.0s)...」首 token 延迟读秒伪框；
-- **前后台任务全域覆盖铁律**：冷启动、在途热结算与 agent-end 收口结算对前台活跃任务与后台挂起任务一视同仁（后台任务错误原被前台门禁拦截导致引擎永不启动，随后被 `agent_end` 误标 completed 且历史归档链路断裂）；引擎判定按 `taskId` 收敛严禁跨任务误结算；前台专属 DOM 操作一律经 `isForegroundStreamTask` 门禁，后台任务仅做数据层静默续发；`TaskManager.agent_end` 在引擎退避等待期严禁提前落地 completed；后台任务 10 次耗尽经 `TaskManager.failTask` 落定 error 终态；
-- **首响应即时结算与胶囊快速淡出**：模型一旦恢复正常产生响应（Thinking/Text/Toolcall 产生首事件），立即结算成功；胶囊即时显示「自动内置重连成功 · 已恢复正常，继续执行」并于 1.2 秒内快速淡出隐藏，绝不滞留屏幕；同时调用 `clearTurnErrorState` 原子化清除错误状态；解耦重连成功与整轮流式结束，真正的工具卡收起、流式收口与会话归档交由后续 `agent-end` 自然触发；
-- **会话重启与追问时错误卡彻底清理铁律 (Error Card Cleanup on Continuation)**：当界面出现模型调用失败诊断卡（`.sketch-error-card`）后，无论用户发送新提问（如“继续”）、还是点击错误卡「重试当前提问」按钮重新发起会话，系统在启动新轮次前必须彻底物理移除 `flowConversation` 与轮次容器中残留的所有 `.sketch-error-card`，重置重连胶囊，并将 `task.turns` 中上一轮次的错误标记（`errorMessage: null`）与合成占位文本清理归位，确保后续流式生成与历史重渲 0 残留；
+- **前后台任务全域覆盖与失败轮收口拦截铁律**：冷启动、在途热结算与 agent-end 收口结算对前台活跃任务与后台挂起任务一视同仁（后台任务错误原被前台门禁拦截导致引擎永不启动，随后被 `agent_end` 误标 completed 且历史归档链路断裂）；引擎判定按 `taskId` 收敛严禁跨任务误结算；**残余收口帧拦截**：当自愈引擎处于活跃接管状态时（无论是 60s 等待、续发中、还是续发后 60s 延迟），到达的 `agent-end` 无论前台后台均**必须立即 return 拦截**（无在途尝试时属失败轮残余帧，有在途尝试时仅结算引擎），**绝对不能流向 `api.finalizeStream`、`api.collapseAllToolCards` 与历史归档**，彻底根治前台流式被失败轮收口帧瞬间终结导致会话流直接中断的致命缺陷；前台专属 DOM 操作一律经 `isForegroundStreamTask` 门禁，后台任务仅做数据层静默续发；`TaskManager.agent_end` 在引擎退避等待期严禁提前落地 completed；后台任务 10 次耗尽经 `TaskManager.failTask` 落定 error 终态；
+- **isAbortError 精准判定铁律**：`isAbortError` 严格排除包含 `rate limit`、`429`、`500`、`502`、`503`、`504`、`timeout`、`timed out`、`connection`、`socket`、`econnreset`、`etimedout`、`fetch failed` 等网络/服务端瞬态错误，仅匹配明确的用户手动取消关键字（如 `user cancelled`、`手动终止`、`用户终止` 等）或纯短词短语，彻底杜绝远端连接断开或超时被误判为手动中止而直接静默丢弃；
+- **首响应即时结算、等待期拿到输出立即自愈与胶囊快速淡出**：无论自愈引擎当前正处于 60 秒等待退避（`phase: "waiting"`）、续发中（`phase: "sending"`）、还是续发后 60 秒延迟期（`phase: "post_waiting"`），只要模型恢复正常产生响应（Thinking/Text/Toolcall 产生首事件），`resolveTurnSuccess` 立即唤醒并清退 `_backoffTimer` 休眠，直接结算为成功（`_succeed`）并提前安全退出重连流水线，**彻底杜绝在等待重连倒计时跑完后再次盲目向模型补发「继续」提示词或进入二次循环**；胶囊即时显示「自动内置重连成功 · 已恢复正常，继续执行」并于 1.2 秒内快速淡出隐藏，绝不滞留屏幕；同时调用 `clearTurnErrorState` 原子化清除错误状态；解耦重连成功与整轮流式结束，真正的工具卡收起、流式收口与会话归档交由后续 `agent-end` 自然触发；
+- **会话重启与追问时错误卡彻底清理铁律 (Error Card Cleanup on Continuation)**：当界面出现模型调用失败诊断卡（`.sketch-error-card`）后，无论用户发送新提问、还是点击错误卡「重试当前提问」按钮重新发起会话（自动向模型下发「继续」），系统在启动新轮次前必须彻底物理移除 `flowConversation` 与轮次容器中残留的所有 `.sketch-error-card`，重置重连胶囊，并将 `task.turns` 中上一轮次的错误标记（`errorMessage: null`）与合成占位文本清理归位，确保后续流式生成与历史重渲 0 残留；
 - **终止守则与无归属帧静默窗口**：用户点击「⏹ 终止」立即彻底强杀退出（`isTaskAborted` 门禁），全链路严禁触发任何内置重连；终止后引擎对**无任务归属的错误帧**（消息对象不携带 task_id 的旧主会话路径）实施 15 秒保守静默窗口（`hasRecentGlobalAbortion`），杜绝终止后经杂散帧静默复活重连；
+
+### 6.1 流中断宽容期 · 黄色倒计时等待消息框 (Stream Interruption Grace Period)
+
+与内置重连引擎**互补而非重叠**的另一条降级通道，针对内核高频回显的瞬态流截断错误：
+
+```mermaid
+flowchart TD
+    Err[agent-error] --> Abort{手动终止类?}
+    Abort -->|是| Drop[静默丢弃]
+    Abort -->|否| Engine{内置重连引擎活跃或可接管?}
+    Engine -->|是| Failover[走 §6 引擎流水线 · 琥珀胶囊倒数]
+    Engine -->|否| Stream{瞬态可恢复错误?<br/>isGracePeriodError: 流截断/推理瞬时/upstream failure<br/>isTransientServiceError: 连接异常/服务异常全集<br/>超时·断连·Socket·DNS·500/502/503/504<br/>fetch failed·network error·429·overload}
+    Stream -->|否| Red[直接渲染红色错误卡]
+    Stream -->|是| Yellow[黄色倒计时等待消息框<br/>.flow-failover-capsule.waiting · 沙漏图标<br/>「等待模型响应中 · 300s」逐秒倒数]
+    Yellow -->|模型恢复输出<br/>thinking/text/toolcall/tool-start| Recover[resolveStreamInterruption<br/>清除错误态 · 静默撤销等待]
+    Yellow -->|agent-end 且本轮已产出内容| Normal[撤销等待 · 正常收尾归档]
+    Yellow -->|终止 / 挂起 / 移除 / 重发 / 新提问| Cancel[cancelStreamInterruption 清退定时器]
+    Yellow -->|300s 超时仍未恢复| Red
+```
+
+- **判定唯一源（双谓词互补）**：`src/lib/contracts.js` 的 `isGracePeriodError(errDetail)`（正则：`/stream\s+ended\s+without\s+finish_reason/i` 流截断 + `/inference\s+request\s+failed/i` 推理请求瞬时失败 + `/upstream\s+failure/i` 上游瞬时不可用）覆盖内核高频回显的窄短语；**`isTransientServiceError(errDetail)` 覆盖全部「连接异常 / 服务异常」瞬态错误全集**（速率限制 rate limit/429/TPM/RPM；服务端 500/502/503/504/bad gateway/service unavailable/overload（含 overloaded_error 与 "server overload" 回显）/unable to handle/temporarily；连接 connection/socket/econnreset/econnrefused/enotfound/etimedout/timeout/timed out/network error/fetch failed/load failed/status code/reset by peer/socket hang up/stream ended/dns）。两谓词均检查 `errDetail.message` + `errDetail.raw.errorMessage/.message` + `errDetail.error` 全部候选字段。**不可恢复错误一票否决**：正文含 401/403/unauthorized/forbidden/invalid api key/authentication/model not found/multimodal 不支持/context length 超限/too long/payload too large 等关键词时（即使同时含瞬态关键词，如 `Request failed with status code 401`）直接返回 false → 立即弹红色错误卡，300 秒等待毫无意义；判定点位于 `flow-pipeline.js` 的 `agent-error` 监听器**末端**（手动终止门禁、aborted/exhausted/interrupt-send 守则之后，引擎活跃分支之后），仅当「引擎不接管 + 前台任务」时才可能进入；
+- **写死 300 秒**（`STREAM_INTERRUPT_GRACE_MS = 300000`，`src/modules/flow-stream.js`）：胶囊文案「等待模型响应中 · Ns」逐秒递减；等待期间 `piClient.isStreaming` 保持 `true`，主界面 `#flow-btn-abort` 全周期可见可用，胶囊内 `.failover-abort-btn` 隐藏（纯状态示意条，零系统通知、零红色错误卡）；
+- **恢复即撤销（热路径零负担）**：`api.resolveStreamInterruption(taskId)` 在「无等待」时立即返回；有等待时经 `clearTurnErrorState` 一并清除 `errorMessage`、Task `error→running` 状态回退与残留错误卡，撤销点覆盖 `thinking-start/delta`、`text-start/delta`（`flow-stream.js`）、`toolcall-delta-start`、`tool-start`（`flow-pipeline.js`）；`agent-end` 仅当本轮已真实产出（`responseText` 或 `hasReceivedDelta`）才撤销——空轮保持等待，把 300 秒窗口完整留给模型；
+- **全生命周期撤销**：`api.cancelStreamInterruption(taskId)` 清退定时器并隐藏胶囊，调用点 = 手动终止（`task-panel.abortCurrentSession`）、任务挂起（`flow-suspended`）、任务移除（`task-removed`）、重发与新提问（`clearTurnErrorState` 内置调用）；跨任务 `taskId` 校验杜绝误撤销；
+- **超时才弹红框**：倒计时走完调 `api.renderErrorCard(detail)` 渲染红色错误卡，且触发前二次校验该任务仍为前台活跃任务（`isForegroundStreamTask`），杜绝挂起/切换后跨会话误弹；**幂等**：同任务重复错误帧（一次失败 run 经 `message_end`/`turn_end`/`agent_end` 多次派发 `agent-error`）不重置倒计时，前台已切任务则先撤销旧等待；**胶囊未挂载回退**：`handleStreamInterruption` 返回 `true/false`，轮次 DOM 尚未建立时调用方回退 `api.renderErrorCard` 直接弹红框，杜绝错误被静默吞掉；
+- **TaskManager 终态结算延迟对齐**：`task-manager.js` 的 `agent-error` 监听器先于 flow-pipeline 注册（同一帧先执行），对前台任务命中瞬态谓词时同样短路返回（位于 `pendingInterruptSend` 分支之后、`failTask` 之前），绝不提前置 Task 为 error / 弹报错通知；后台任务无宽容期胶囊，仍走 `failTask` 原生结算通道；**graceWaiting 守卫（等待期中断按钮全周期铁律）**：宽容期启动时 `task.graceWaiting = true`，`handleTaskEvent` 在该标记下严禁被残余收口帧提前终态化（`turn_end/message_end/extension_error` 错误分支、`agent_end/agent_settled` 的 errMessage 与空收口完成结算路径一律先守卫 break）——否则 Task 置终态会经 `task-updated` → `syncFlowAbortButtonVisibility()` → `isTaskRunning()=false` 隐藏主界面 `#flow-btn-abort`，且 `finalizeStream` 也会隐藏它，致 300 秒等待期完全失去中断手段；同时 `handleStreamInterruption` 强制恢复显现 `#flow-btn-abort`、`finalizeStream` 以 `!streamPauseTimer` 例外豁免等待期隐藏；期间内核恢复任何真实输出即清标记、后续真实收口帧正常落定终态；`failTask`/`abortTask`/`renderErrorCard` 置终态时同步清标记；
+- **错误卡重复帧幂等（BUG1 修复）**：`renderErrorCard`（`src/modules/flow-stream.js`）以 `${bucketId}::${errorMessage}` 签名烙印卡片 `dataset.errSig`，同任务同正文的重复错误帧**一律短路返回**——绝不重复 `innerHTML` 重建卡片（按钮监听随 DOM 反复销毁，用户点击落空 → 红框「卡死」、「重试当前提问」与「切换其他模型」都点不了）、不重复 `finalizeStream` / Windows 通知 / 历史归档；正文变化或 `clearTurnErrorState` 物理移除卡片后签名自然重置，新错误正常重建；
+- **重试链真实活性门禁（BUG1 同症复发修复）**：`handleFlowQuery`（`src/modules/flow-pipeline.js`）的「上一轮仍在生成中」提交拦截确认，判定必须叠加**底层在途证据**（`piClient.isStreaming` 内核流式在途 / `modelFailoverEngine.isActive()` 引擎接管在途 / `status === "paused"` 人工待确认，三者其一），严禁仅凭 `isTaskStatusActive` 状态标签判定——错误卡「重试当前提问」链路先经 `clearTurnErrorState` 把 `error` 终态复活为 `running`，若仅凭标签判定，每次重试点击都会误弹「上一轮仍在生成中」确认框（僵尸活跃态 → 重试按钮看似点了没反应）。配套两道指针防线：`.sketch-modal-overlay` 隐藏态 / `.closing` 淡出态必须 `pointer-events: none`、仅 `.visible` 态 `auto`（详见 `sketch-modal-pattern` 技能「隐形指针拦截层禁令」——弹窗可见性激活帧被挂起时会形成「看不见却吃掉全应用点击与悬浮」的全屏隐形拦截层）；`.floating-icon` 装饰图元必须 `pointer-events: none`（子元素显式 auto 会击穿父层 `.floating-icons-layer` 的整层 `pointer-events: none`，Flow 视图下隐形图标飘过内容区静默吃掉点击与悬浮）；
+- **样式**：`.flow-failover-capsule.waiting`（`src/styles/flow.css`）= 实线琥珀边 + 黄色微填充 + 沙漏手绘图标 `ICONS.hourglass`，复用既有胶囊 DOM（`createFlowTurnGroupElement` 创建的 `.flow-failover-capsule`），撤销时还原 bolt 图标供内置重连场景复用；
 
 ---
 
@@ -188,7 +241,7 @@ flowchart TD
 
 - **Rust 后端原生净化**：`strip_injected_contexts` 与 `clean_user_prompt` 递归剥离 `<runtime_context_rules>`、`<code_area_routing_context>` 与附件绝对路径尾注；
 - **前端纵深防御**：历史列表与提问卡 100% 还原用户原始纯净输入；
-- **提问卡多行换行与防挤压排版规范**：`.flow-user-prompt-card .prompt-content` 统一采用 `white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;`，完整呈现用户提问文本中的所有换行与段落，杜绝空白合并折叠；左侧图标与操作按钮固定 `flex-shrink: 0` 防挤压，中间内容区 `flex: 1` 自适应伸缩；复制按钮优先取 `card.dataset.copyText` 原汁原味还原原始提问；顶部单行悬浮胶囊 (`flow-question-tip`) 将换行规整为空格单行展示。
+- **提问卡多行换行、文本选择与防挤压排版规范**：`.flow-user-prompt-card .prompt-content` 统一采用 `white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; cursor: text;`，支持用户通过鼠标自由拖拽高亮选择并复制（Ctrl+C），完整呈现用户提问文本中的所有换行与段落，杜绝空白合并折叠；卡片本体与主包裹区显式启用 `user-select: text`，图标与操作按钮固定 `flex-shrink: 0` 防挤压并配置 `user-select: none; pointer-events: none` 杜绝误选与拖拽干扰，中间内容区 `flex: 1` 自适应伸缩；右侧复制按钮优先取 `card.dataset.copyText` 原汁原味一键还原并复制原始提问；顶部单行悬浮胶囊 (`flow-question-tip`) 将换行规整为空格单行展示。
 
 ---
 
@@ -224,7 +277,7 @@ flowchart TD
 1. **自动挂起旧任务与解耦归档（杜绝幽灵任务与半死快照）**：
    - 从右上角任务抽屉、会话记录或系统通知中点击直接进入目标 Task 时，原前台活跃任务必须由 `TaskManager.setActiveTask` / `createTask` 自动转入后台挂起（`prevTask.isSuspended = true`）；
    - **终态任务严禁后台挂起（防幽灵已完成胶囊）**：仅当前台原活跃任务处于运行态或待确认态（`thinking / streaming / tool_exec / paused`）时才转入后台挂起（`prevTask.isSuspended = true`）；若原任务已处于终态（`completed / aborted / error`），严禁赋予 `isSuspended = true`，直接从 `TaskManager` 清理，彻底杜绝从历史记录/会话记录切换进入其他会话时右上角瞬间冒出前一会话「已完成 (1/1 Task)」幽灵绿色徽标；
-   - **会话延续与多轮归属唯一性**：无论是全新会话、还是从「会话记录」或「历史记录」抽屉还原继续提问，后续追问统一透传底层会话文件路径（`sessionPath`）与会话 ID（`sessionId`）；Rust 后端 `PiHostPool` / `SessionHost` 在拉起内核子进程时，若存在已有会话路径（或经 `SessionIndexCache` 反查命中），严格采用 `pi --mode rpc --session <path>` 续写同一 `.jsonl` 文件，严禁使用盲目生成新 UUID 的 `--session-id` 导致多轮对话在重启或直接退出后被割裂为独立碎片记录；`ConversationHistoryService` 归档时严禁用空字符串覆写已有 `sessionPath`，保证历史记录与磁盘会话 100% 对应且多轮聚合完整；
+   - **会话延续与多轮归属唯一性**：无论是全新会话、还是从「会话记录」或「历史记录」抽屉还原继续提问，后续追问统一透传底层会话文件路径（`sessionPath`）与会话 ID（`sessionId`）；Rust 后端 `PiHostPool` / `SessionHost` 在拉起内核子进程时，若存在已有会话路径（或经 `SessionIndexCache` 反查命中），严格采用 `pi --mode rpc --session <path>` 续写同一 `.jsonl` 文件，严禁使用盲目生成新 UUID 的 `--session-id` 导致多轮对话在重启或直接退出后被割裂为独立碎片记录；`ConversationHistoryService` 归档时严禁用空字符串覆写已有 `sessionPath`，保证历史记录与磁盘会话 100% 对应且多轮聚合完整；**持久化尺寸预算与优雅降级**：localStorage 每源硬配额约 10MiB，历史快照含工具卡片 HTML（`toolCalls[].html`）与步骤快照（`steps[]`），超配额时 `setItem` 抛 QuotaExceededError 被吞掉表现为「新会话重启后从历史记录消失」；写入前由 `trimHistoryToFit()` + `shrinkConversationToCap()` 预算瘦身（自最旧会话剥离重载荷快照、仍超则物理丢弃最旧会话、`setItem` 失败再逐级降级重试），最新一条记录在任何降级层级均豁免、永远优先完整落盘，内存与磁盘同步裁剪；**30 天未打开自动归档清除**：`lastViewedAt`（缺省回退 `createdAt`）距今超过 30 天的会话快照，在启动加载与每次持久化时由 `purgeArchivedConversations()` 自动从内存与 localStorage 清除并立即回写（仅清 UI 层快照，不触碰底层 Pi 会话 JSONL；还原/点开时 `touchConversation` 刷新时间保活）；
    - 切换前由 `archiveCurrentFlowToHistory()` 将前台 DOM 当前进度完整同步回原任务内存 `currentActive.turns`；**但若原任务仍在运行中（thinking / streaming / tool_exec / paused），绝对不调用 `conversationHistoryService.recordConversation()` 写入静态历史**，确立“完全终止才归档”铁律；
 2. **跨会话状态彻底重置与工具引用自愈回填**：
    - 共享渲染管线 `renderTurnsIntoFlow`（`task-panel.js`）在渲染新任务前，必须执行：
@@ -234,10 +287,14 @@ flowchart TD
      - `flowView.currentSteps = []`：重置步骤快照，杜绝跨会话残留；
    - **末轮工具卡自愈回填**：`renderTurnsIntoFlow` 在创建末轮 DOM 后，遍历其中的 `.flow-step-tool` 节点回填至 `flowView.renderedToolCards`，并在 `flow-pipeline.js` 的 `tool-update` / `tool-end` 中结合 DOM ID 动态检索与读秒更新兜底，保证切回运行中任务后工具卡绝不永久卡死在 `running`；末轮纯数据回填写入当前任务分仓（`flowStore.for(task.id).set(...)`）；
 3. **Flow DOM 防重入与历史记录智能重定向**：
-   - **防重入铁律**：`restoreTaskToFlow` 与 `restoreConversationToFlow` 在首行校验 `if (viewStore.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id === targetId) return;`，已在 Flow 查看当前任务时绝不重复清空 DOM，防止流式截断与界面闪烁；
+   - **防重入铁律**：`restoreTaskToFlow` 与 `restoreConversationToFlow` 在首行校验 `if (viewStore.mode === VIEW_FLOW && taskManager.getCurrentActiveTask()?.id === targetId) return;`，已在 Flow 查看当前任务时绝不重复清空 DOM，防止流式截断与界面闪烁；在防重入返回前同样确保终止按钮显隐与任务运行态对齐；
    - **历史入口智能重定向**：用户从界面1历史讯息抽屉点击卡片时，优先探测该会话是否在 `TaskManager` 中作为活跃/挂起任务存在。若存在，全链路直接重定向至 `restoreTaskToFlow`，严禁用静态历史旧 turns 覆写实时 live turns，严禁强行覆盖 `task.status = "completed"`；
    - **视觉标识互斥**：历史抽屉卡片探测后台运行态，当会话处于运行中时在 meta 区呈现手绘脉冲「运行中」微动效徽章；
-4. **收纳框与 Mini 胶囊自愈更新**：
+4. **终止按钮显隐双向同步铁律 (Abort Button Visibility Invariance)**：
+   - 非 Flow 模式（Detailed / Focus / Settings）下 `#flow-btn-abort` 绝对隐藏（`classList.add("hidden")`）；
+   - 从任务抽屉、通知、会话记录或历史进入 Flow 时，由 `syncFlowAbortButtonVisibility()` 结合 `view:changed` 与 `TaskManager` 活跃任务事件，依据 `taskManager.isTaskRunning()` 判定前台活跃任务运行态（思考/流式/工具执行/待确认/自愈重连），运行中同步移除 `.hidden` 恢复可见；
+   - 彻底杜绝任务转入后台挂起后重新回入 Flow 导致终止按钮消失、只能被迫退回抽屉终止的缺陷；
+5. **收纳框与 Mini 胶囊自愈更新**：
    - 由 `api.restoreFileChangesFor(task.id)` 恢复目标任务在生命周期内累积的文件变更；
    - 切换完成后即时调用 `updateMiniTaskCapsuleUI()`，确保右上角 Mini 胶囊数字与后台挂起任务数量 100% 精确吻合。
 
@@ -249,7 +306,7 @@ Flow 支持回退到任意一次历史对话（配合 pi 内核原生历史节�
 
 ### 11.1 内核侧确定性快照（工具执行前，杜绝竞态）
 - **启用开关**：桌面端拉起 pi 内核进程时注入环境变量 `PI_DL_ROLLBACK=1`（Supervisor 主进程与 SessionHost 任务进程双侧注入；扩展未检测到该变量时完全静默退出，不影响原生 pi 使用场景）；
-- **物化机制**：`rollback::materialize_extension()` 在应用启动时把编译期内嵌源码（`include_str!`）幂等写入 `~/.pi/agent/extensions/pi-rollback-guard.ts`（全局扩展目录，免项目信任门禁）；
+- **物化机制**：`rollback::materialize_extension()` 在应用启动时把编译期内嵌源码（`include_str!`）幂等写入全局扩展目录 `~/.pi/agent/extensions/`（包括 `pi-rollback-guard.ts` 会话回退快照守卫与 `pi-tool-sanitizer.ts` 工具入参自愈解包净化器，免项目信任门禁）；
 - **快照时机铁律**：扩展监听 `tool_call` 事件（pi 扩展体系中先于工具 `execute` 执行、可阻塞），在工具真正落盘前读取目标文件内容 → 保证快照一定是「执行前状态」，彻底消除前端 tool-start 事件与工具执行之间的竞态；
 - **路径提取**：与前端收纳框同源的 `PATH_KEYS` / `edits/files/changes` 多文件结构 + Shell `rm / del / Remove-Item` 家族启发式解析（`cd` 链路 + `~` 展开 + MSYS 盘符转换 + `ctx.cwd` 兑底归一化）；
 - **落盘格式**：JSONL 追加至 `~/.pi-dl/rollback/<sessionId>/snapshots.jsonl`，每行 `{ ts, sessionId, toolCallId, toolName, path, contentB64, tooLarge? }`；单文件 > 8MB 只记存在标记不落内容；单会话总量 64MB 封顶；文件不存在（新增场景）不写行；
@@ -329,7 +386,7 @@ SessionHost::send_command → 内核 stdin → 解除阻塞续跑
 - **作答时序（严格同步判定 + 异步回写）**：① 用户提交 → **先同步** `takePendingUiRequest` 摘除未决请求并定格横条（杜绝双击双答竞态）；② **再异步** `sendExtensionUiResponse`；③ 回写失败（Task 已终止 / 进程已亡）→ 横条转「作答未能送达 · 任务已终止」失效态 + Toast 提示，**不重试轰炸**；
 - **挂起与直切（铁律 3）**：交互未决时直切任务 → 原 Task 照常 `isSuspended = true`（`paused` 属待确认态，符合终态判定排除）；回入 Flow 由 `renderTurnsIntoFlow → api.restoreHumanInputCards(task.id)` 重建全部未决横条，请求不丢失；后台任务的请求只入 TaskManager 数据与抽屉徽标（「待确认 (N)」），**绝不渲染前台横条**（前台门禁 `isForegroundStreamTask`）；
 - **强制终止（铁律 3 / 18）**：`abortTask` 先 `clearPendingUiRequests` 取回未决请求 → `Promise.all` best-effort 回写 `{cancelled:true}` → 再走既有 `piClient.abort` 强杀链路；Rust `SessionHost::send_command` 的 aborted 门禁物理拒绝迟到作答；`invalidateHumanInputCards` 将横条转失效态；**严禁**触发模型内置重连；
-- **回退互斥（铁律 3）**：交互未决 = 生成进行中；`flow-rollback.js` 的 `isTaskRunning` 已显式纳入 `paused`（**原实现仅含 thinking/streaming/tool_exec，人工交互未决时可被回退撕裂因果链 —— 实施中修复**），命中即 toast「生成进行中，请等待完成或手动终止后再回退」并中止；
+- **回退互斥（铁律 3）**：交互未决 = 生成进行中；`flow-rollback.js` 的 `isTaskRunning` 即 `contracts.js` 唯一源 `isTaskStatusActive`（`TASK_ACTIVE_STATUSES` = thinking/streaming/tool_exec/paused/**running**；**原实现漏判错误恢复过渡态 `running`，已于 2026-09-16 与 TaskManager 一并收敛真源修复**），命中即 toast「生成进行中，请等待完成或手动终止后再回退」并中止；
 - **重连引擎共存（铁律 18）**：`paused`（UI 阻塞）与「模型异常」语义严格区分；`modelFailoverEngine` 仅由错误帧驱动，UI 阻塞不触发续发「继续」；
 - **清理时机**：作答回写 / 读秒归零（内核自动解析）/ `agent_end` / `agent_settled`（`{resume:false}`，避免终态前状态抖动）/ abort / `task-removed` / 内核 `kernel-status-change`（`hasKernel === false` 时全部失效）；`pendingUiRequests` 清空且 Task 仍 `paused`、`piClient.isStreaming` 为真时回落 `streaming`。
 - **文本控件焦点铁律（实施中修复的缺陷）**：`SketchModal.open()` 在自身 `requestAnimationFrame` 内聚焦「提交」按钮；`input` / `editor` 分支的文本控件聚焦**必须再延后一帧**（`requestAnimationFrame(() => field.focus())`）注册，否则会被按钮抢回焦点，用户敲键落到按钮上导致提交空值。
@@ -337,3 +394,102 @@ SessionHost::send_command → 内核 stdin → 解除阻塞续跑
 ### 12.6 门禁与验证
 - `npm run check`（cargo check）+ `npm run check:fe` + `npm run measure:coupling`（裸写断言 = 0）全绿；改动文件逐一 `node --check`；
 - 活体探针脚本与临时扩展（`~/.pi/agent/extensions/test-human-input.ts` 或 `--extension` 指定路径）在验证后**必须清除**（代码卫生铁律）。
+
+---
+
+## ⚡ 13. 额度图标步骤弧光高亮联动规范 (Token Telemetry Arc Flash)
+
+### 13.1 交互规范与视觉设计
+1. **纯粹同心缺口圆弧 + 小闪电**：对话框左侧额度小图标（Mini 布局）不设刻度表，采用纯粹的「两个同心缺口圆弧 + 小闪电标识」组合；外环上下文消耗比值弧（`R=9.5`, 宽 `2.4`）与内环已消耗 Token 比值弧（`R=6.5`, 宽 `2.0`）适当加粗，下方保持 120° 开放缺口（240° 环周），中心内嵌手绘速率小闪电（`ttg-mini-bolt`），兼具清晰辨识度与极简手绘质感；
+2. **取消常态模糊光晕**：小闪电图标在运行期（`spd-active`）取消常态呼吸模糊光晕（彻底移除 `ttg-mini-pulse` 与 `ttg-pulse` 的 `filter: drop-shadow(...)`），保持手绘素描矢量线条的清晰与纯粹；
+3. **新步骤瞬态弧光高亮（1 秒）**：每次触发新一轮「thinking / point / 工具调用」时，额度图标触发 1 秒高能电弧脉冲动画（`.ttg-arc-flash`）：
+   - 中心手绘闪电（`ttg-mini-bolt`）瞬时高亮着色（`brightness(1.75)`）；
+   - 上下文外弧与配额内弧（`ttg-mini-arc-ctx` / `ttg-mini-arc-tok`）同步微扩充线宽（扩至 3.0 / 2.5）并泛起高能电弧光亮；
+   - 1s 后平滑定格回落当前状态。
+4. **事件通道契约（contracts.js）**：
+   - 广播通道：`bus.emit("flow:step-start", { type: "thinking" | "point" | "tool", taskId })`；
+   - 监听通道：`token-telemetry.js` 通过 `bus.on("flow:step-start")` 统一接收，经 `taskManager.isForegroundStreamTask(tid)` 前台门禁校验，调用 `miniGauge.triggerArcFlash()` 与 `gauge.triggerArcFlash()`；
+   - 工具调用防重：流式参数阶段 `toolcall-delta-start` 先触发时记录 `lastAnnouncedToolCallId`，后续 `tool-start` 不重复触发；直接执行阶段（无 delta）由 `tool-start` 补发。
+
+---
+
+## 🖼️ 14. 模型生图直接展示、自愈补齐与一键存桌面规范 (Direct Image Rendering & Desktop Export)
+
+### 14.1 图像展示核心链路
+1. **全形态语法支持**：
+   - Markdown 标准语法：`![alt](path_or_url)`；
+   - HTML `<img>` 标签：`<img src="..." alt="..." />`；
+   - 单独路径独占行识别：文本行若为纯本地/网络图片路径（如 `output/result.png` 或 `https://.../preview.jpg`），直接渲染为手绘图片卡片；
+   - 链接降级直出：指向图片后缀（`.png|.jpg|.jpeg|.webp|.gif|.svg`）的普通 Markdown 链接自动转为图片卡片渲染。
+2. **异步 Data URL 映射与缓存防抖**：
+   - Windows Webview2 禁止直接使用 `file:///` 或绝对磁盘盘符路径加载图片；
+   - 前端 `markdown-renderer.js` 统一调度 `resolveMarkdownImages(container, cwd)`，扫描未解析的 `img[data-raw-src]`；
+   - 本地磁盘路径调用 Tauri IPC `pi_read_image_as_data_url(path, cwd)` 异步转码为 Base64 Data URL；
+   - 内存中维护 `imageCache = new Map<string, string>()` 缓存映射结果，杜绝同一图片在多次重渲或流式追加时反复触发 IPC。
+3. **手绘卡片视觉与操作栏**：
+   - 结构：`.md-image-card` 容器，包裹图片包装区 `.md-image-wrapper`、图片主体 `<img>`、加载指示器及底部操作栏 `.md-image-bar`；
+   - 操作栏包含：
+     - 「一键保存到桌面」按钮（`.md-image-btn`）：调用 `pi_save_image_to_desktop(source, filename, cwd)`，自动保存到当前用户的 Windows 桌面；重复生成自动采用递增计数或时间戳防覆盖；点击后按钮变换为翡翠绿勾（`✓ 已保存到桌面`）并保持 2.2 秒微反馈，且呼出友好通知；
+     - 「打开所在目录」按钮：针对本地物理文件，调用 `pi_reveal_path` 并在 Windows 资源管理器中打开并高亮定位。
+4. **全屏灯箱放大预览 (Lightbox)**：
+   - 点击图片主体自动呼出手绘风格全屏毛玻璃灯箱（`.md-image-lightbox`）；
+   - 居中展示原始比例高分辨率位图；
+   - 支持点击外部遮罩、按下 Esc 键或全域右键 (Step Back) 立即平滑退出。
+
+### 14.2 纯生图任务自愈机制 (Pure Image Generation Self-Healing)
+- **痛点防范**：部分模型在调用生图工具后，回答中仅输出文字如“图像已生成并保存到 ...”，未主动以 Markdown 语法 `![alt](url)` 嵌入图片，导致用户看不到图片预览；
+- **双层防御策略**：
+  1. **运行态指令前置引导**：`RULES.md` 指令 10 与 `document-multimodal-inspection/SKILL.md` 指令 6 明确要求模型在生图工具执行后，必须在最终回复中以 Markdown 格式直接输出图片；
+  2. **流式收口兜底自愈 (Auto-Notice)**：在 `flow-stream.js` 的 `finalizeStream` 阶段，通过 `api.getNewlyAddedImageFiles(task.id)` 检查本轮会话生命周期内所有新增或修改的图片文件；若检测到存在尚未在当前回答卡 DOM 中完成渲染的新增图片，自动在最终输出末尾注入手绘自愈框（`.flow-auto-image-notice`）并补全图片卡片，彻底杜绝生图不展示的缺陷。
+
+---
+
+## 🔄 15. 生图与多模态双阶段路由回归流水线 (Image Generation & Multimodal Routing Pipeline)
+
+### 15.1 触发判定与意图探测 (Multimodal Intent Detection)
+1. **多模态能力校验**：
+   - 任务发起时，前端由 `multimodalDetector` 检查当前会话模型的视觉能力与生图能力；
+   - 纯文本模型（如纯代码/纯文本推理模型、未包含视觉权重的本地模型等）被标记为缺失多模态能力；具备多模态能力的大模型（如 GPT-4o、Claude 3.5 Sonnet、Gemini 1.5/2.0、Qwen-VL、Llava 等）则直通执行。
+2. **两类任务意图识别**：
+   - **生图任务 (`image_gen`)**：用户提问包含绘图、插图、生图、壁纸设计、`generate_image` 等明确意图；
+   - **识图/多模态任务 (`vision_inspect`)**：用户上传了图片附件（`image/*` 或本地图片路径），或提问中包含识别图片、分析截图、图片中写了什么、OCR 等识图意图。
+
+### 15.2 双阶段无缝路由与会话回归 (Two-Phase Seamless Regression)
+1. **第一阶段：定向路由执行 (Phase 1: Routed Execution)**：
+   - 当检测到当前模型缺乏对应能力，且设置中开启了「生图/多模态路由」并配置了目标路由模型时：
+   - 会话通道透明切换至所配置的专用路由模型（或识图专用模型）；
+   - 路由模型执行生图工具调用生成图像，或对图片附件执行多模态深度解析；
+   - Flow 流式步骤中保持单行紧凑呈现与因果拼接，生图产物自动就地渲染。
+2. **第二阶段：无缝回归与上下文回填 (Phase 2: Seamless Regression & Context Piping · 静默回填铁律)**：
+   - 路由任务执行完毕后，系统通过 `imageRoutingEngine` 自动将当前会话模型**无缝切回原会话模型**；
+   - 将路由模型产生的核心输出、图像生成结果（本地文件路径/产物信息）或多模态图像分析文本，作为额外上下文注入回原会话模型中；
+   - **回填 Prompt 静默执行**：回填 Prompt（用户原始提问裸文本 + `<image_routing_handover>` 信封包裹的路由回填说明/产物）是路由模型向会话模型传递的**内部会话信息，绝不在会话流中渲染为提问卡**——回填轮次烙印 `turn.silentPrompt`（`TaskManager.startNewTurn` 第 4 参 options），`createFlowTurnGroupElement` / `renderTurnsIntoFlow` 对静默轮次跳过提问卡与路由胶囊，用户视觉上仅看到「原提问卡 → 生图产物 → 回归回答步骤流与最终输出」的无缝连续会话；`resetStreamState` 静默分支不改写 `lastUserQuery`，悬浮提问提示、保存按钮与「重试当前提问」继续锚定用户原始提问；信封经前后端净化层（`clean_user_prompt` / `cleanUserPrompt`）剥离，输入历史（↑导航）、会话记录与内核历史树摘要仅呈现真实提问；
+   - **回填期收口守卫**：`task.routingHandoverActive` 标记（引擎入口烙印、Phase 2 接管/失败/终止时解除）拦截 Phase 1 收口帧，TaskManager 严禁提前落地 completed / 触发完成通知 / 预归档半截会话；
+   - 原会话模型在完全掌握图像上下文的前提下继续后续的多轮交互与业务逻辑推进，对用户体验而言全程透明连贯。
+
+---
+
+## 🗒️ 16. 「计划执行」可视化 (flow-plan-panel：模型 todo list 计划的前端直观呈现)
+
+模型执行多步任务时，常在输出文本中生成 Markdown 复选框计划清单（`- [ ]` 待办 / `- [x]` 已完成），随后边执行边回写勾选状态；此前该计划完全处于模型后台输出中，前端无任何示意。`src/modules/flow-plan-panel.js` 将其收敛为多层可视化（**计划 = 文本计划 + scratchpad 工具分仓 + 序号散文信号 + 内容锚定散文信号的四来源合并结果**）：
+
+- **数据采集（四通道分仓铁律）**：①**文本通道**——监听 `piClient` 的 `text-start`（块边界分隔）/ `text-delta`（120ms 防抖解析）/ `text-end`（即时解析）流式文本事件，按 taskId 分仓累积响应文本（私有 `textBuffers: Map<taskId, string>`，上限 24000 字符仅保留尾部并丢弃截断产生的首行残片防幽灵残条目）；②**scratchpad 工具通道**——监听 `tool-start`（内核 `tool_execution_start`，帧带 `toolName` + 解析后 `args`），工具名后缀命中 `scratchpad`（内核 pi-memory 草稿板工具，容忍扩展命名空间前缀）且 `args.action ∈ {add, done, undo}` 时即时改写计划（见下）；③**散文推进信号通道**（`applyProseSignals`，见下）——模型既不复写复选框也不用 scratchpad、仅以散文宣告进度时按序号补勾；④**内容锚定散文推进通道**（`applyContentAnchoredSignals`，见下）——模型连序号都没有、仅以「接下来改X…」「编译通过」这类按内容指代的散文宣告推进时，按文本相似度匹配条目补勾；**文本块边界分隔铁律**：模型计划清单习惯直接以末条复选框行收尾（无换行符），若直接拼接下一文本块，首行会与上一块末行熔接成一行——行首匹配出「第N步+第1步」幽灵条目（列表膨胀）且下一块首条勾选行被吞（首步永不完成）；故 `text-start` 时对非空缓冲补 `TEXT_BLOCK_SEPARATOR`（`\n\n\n\n`，≥4 换行保证 gap > GROUP_GAP_LINES 切开清单组逐块快照重放），`rebuildPlanFromTurns` 历史恢复同款 join 分隔保证退出重进前后快照一致；归属键复用 `resolveBufferTaskId()`：`piClient.lastEventTaskId` → `taskManager.getCurrentActiveTask()?.id` → **挂起态兜底** `taskManager.getActiveSuspendedTasks()`（仅恰好 1 个运行中挂起任务时生效，多挂起并行无法消歧保持 null 杜绝串任务）唯一源，**不受前台门禁限制**——计划缓冲为纯数据，指示器/侧边栏属全局 Chrome（非 Flow 流式 DOM），后台任务计划同样实时更新，无串轮频闪风险；**挂起态归属兜底铁律**：右键转入后台后 `currentActiveTaskId === null`，事件帧若未携带有效 task_id（内核偶发输出空值，Rust framer 已对空/null 值强制注入 task_id 加固），前台两条归属链全部落空 → 后台计划完全不采集，且回入 Flow 时 `rebuildPlanFromTurns` 误判「无文本」破坏性清退存活计划（见下），故必须保留挂起兜底；
+- **scratchpad 工具通道（`padItems: Map<taskId, Map<匹配键, {text, done}>>`）**：工具动作语义——`add` 入仓新条目（与既有条目按 `isSamePlanItem` 重名则忽略）、`done` / `undo` 定位既有条目（**分仓 → 文本计划**两级）并翻转完成态、`clear_done` / `list` **不改动计划**（模型清理草稿板已勾选项不等于放弃本轮计划展示，计划消除只由轮次边界与「结束计划」掌管）；`done` / `undo` 目标未命中任何既有条目一律忽略（杜绝模型随手文本造出幽灵条目）；**零污染铁律**：分仓只收录**本任务事件流内观察到的**工具动作，**绝不读取全局草稿板文件**（草稿板为跨会话常驻清单，含大量历史遗留待办）；**匹配键 `matchKeyOf`（装饰性差异归一，翻倍 BUG 根因）**：剥离行首短括号标签（`【测试计划】` / `【测试计划·定时】`，`PLAN_PREFIX_RE` ≤12 字符）→ 归一空白 → **去除全部空白**；**同一性判定 `isSamePlanItem`**：匹配键全等 → 短侧 ≥ 3 字符的互相包含（容忍 `✅` 后缀与截断目标如 `步骤1：环境预检`、剥前缀后的 `步骤1`）；真实会话实锤：正文写 `步骤 1：环境预检（确认内核连接、模型配置就绪）`、工具写 `【测试计划·定时】步骤1：…`，不做这层归一就认不出同一条 → 工具条目被当成另一批计划追加 → **「完成第一步后 6 步变 12 步」**；**严禁**「步骤序号同键」这类宽松兜底——草稿板常驻大量历史编号待办，同号即命中会把无关条目的勾选态误传到当前计划，也会掩盖模型对计划的重新编号修订（同号异文按独立条目追加，不做硬合并）；
+- **展示层合并（唯一入口 `resolveDisplayPlan`）**：`mergePlans(文本条目, pad 分仓)` —— 文本条目完成态 = 文本勾选 **或** 命中 pad 条目的完成态（模型只在其中一处回写勾选同样驱动灰显划去）；未被文本条目覆盖的 pad 条目**仅在文本计划缺席时**按入仓顺序追加（模型仅用草稿板维护计划、正文无清单的场景）；**展示权威铁律（幻影第 N 条 BUG 修复，2026-09-23）**：文本计划在席时，未命中任何条目的 pad 条目**绝不追加为展示行**——草稿板 `add` 常是「待复核修复 / 回头再处理」式随手备忘而非计划增步（真实会话实锤：4 步计划执行中模型经草稿板 add 备忘，旧行为把它粘成幻影第 5 条——前 4 条条目文本自带 `1.`~`4.` 行首序号而备忘没有，既破坏编号序列、又因模型有意不勾而永不灰显，指示器钉死 4/5、「结束计划」按钮永不出现；收尾自动补勾更是谎报——备忘事项客观上未完成，违背「不臆造进度」铁律）；文本计划在席时 pad 条目唯一职责是勾选态续传（done/undo 经 isSamePlanItem 命中取或），计划增删仍由文本快照对账（`applyPlanSnapshot`）唯一掌管；文本计划缺席时按 `MIN_PLAN_ITEMS` 同样门禁（单条草稿板随手备忘不成计划）；计划标题沿用文本计划标题，缺失时兑底「任务计划」；
+- **计划解析（快照重放对账铁律）**：`extractPlanGroups` 按出现顺序提取文本中全部复选框清单组（相邻间隔 > 2 行切段），逐组经 `applyPlanSnapshot` 对账重放——模型每完成一步会重写「剩余步骤」增量清单（如 8 步计划完成 1 步后只重发 7 条待办），故严禁「取最后一段直接替换」：①段内同文去重（旧全量清单与新增量清单紧邻被并为一段时，同一文本多次出现合并勾选态、保留首次出现顺序）；②按上一快照原顺序稳定重排：命中条目继承/合并完成态（防模型漏勾），已完成且位于首个命中条目之前（连续完成前缀）的条目原位保留（灰显划去语义），其余未再出现的条目（被取消的未完成步骤、被修订移除的已完成步骤）视为模型有意移除实时剔除，新增步骤追加尾部——**计划增步/减步/修订均实时反映在指示器与侧边栏**；③新快照与上一快照完全不相交（零命中）→ 模型开启全新计划，整表替换绝不追加；④单条目快照必须与既有计划有交集才生效且走**部分更新语义**（仅合并勾选态、绝不触发整表对账防误删其余步骤，末步收尾勾选/单步勾选回写），零关联单条目视为噪声忽略——三重/四重防线共同杜绝「每完成一步计划就膨胀一份剩余清单」的累积性增长；**措辞漂移反翻倍兜底（2026-09-22）**：模型在收尾总结里常改写条目措辞（删括号注解、增补成果描述，如 `1. 修复X（根因：Y）` → `1. 修复X`），全文精确匹配只剩个别条目命中、未命中条目被当「新增步骤」追加 → 列表翻倍（4 步变 6 条）——故在 `applyPlanSnapshot` 有交集分支内先做全文精确锚点、再对双侧未命中条目按**行首序号相等**配对合并（同号同位 ≈ 同一条的改写），最后按**内容相似度**配对（覆盖无行首序号的复选框条目的个别字词改写，如 `- [x] …上料/下料…` → `- [x] …上料/出料…`，二元组重叠 ≥4 且达次优两倍才采信，与第四通道共用同一套相似度基元）；锚点命中前提保证零交集全新计划的整表替换判定绝不受污染；与 scratchpad 分仓「同号异文按独立条目追加」铁律不冲突（那是跨来源合并、草稿板常驻历史编号待办；此处是同一计划快照演进链内的对账）；标题取清单上方最近 4 行内的 Markdown 标题/加粗行，兑底「任务计划」；
+- **右上角指示器**：`#plan-indicator`（置于 `#mini-task-capsule` 左侧，同款胶囊语汇：虚线边框 20px 高、`is-running` 铅笔同款 `spin-pulse` 弧光、`all-completed` 翠绿），展示「已完成/总数」进度；**会话归属门禁铁律**：仅在 Flow 会话视图（`viewStore.mode === VIEW_FLOW`，经 `view:changed` 订阅同步）且前台活跃任务真有计划时展示该会话的计划信息；右键退出会话界面立即隐藏，绝不做「最近更新的计划任务」兑底回退（杜绝退出会话后右上角残留上一会话计划缩略框、前台无计划时兜底展示后台任务计划）；无计划时隐藏；
+- **计划侧边栏**：`#plan-details-sidebar` 与 task-details-sidebar 同款毛玻璃半透明抽屉（右侧平移入 + `body.has-plan-sidebar-open` 背景模糊 blur(4px)）；Header 配备手绘清单图元与自适应进度胶囊（`N/M 项 · XX%`，全完成翠绿）、底沿内嵌 3px 精细微轨进度条（平滑贝塞尔过渡，执行中暖阳流金、完成翠绿）；逐条渲染计划步骤卡片，采用手绘不对称有机微圆角（`border-radius: 255px 10px 225px 8px / 10px 225px 8px 255px`）、双模微投影与 hover 微右移浮动，展示等宽步骤序号；运行态下首个未完成项自动获得 `.is-current` 流金边框高亮与手绘「执行中」呼吸小徽标；**已完成条目灰显 + 细致草图淡铅笔贯穿线**；无计划时呈现手绘草图清单插画与友好引导；底部「结束计划」按钮（`.plan-end-btn`，手绘按钮规范：常态透明无边框、悬浮显翠绿框与微触感按压缩放）**仅在全部条目完成后出现**；
+- **计划消除生命周期铁律（双途径终局）**：任务完成后计划信息持续保留（all-completed 翠绿），仅两种途径彻底消除该轮次计划：①**开启下一轮会话**——监听 `task-updated` 以轮次数增长判定 `startNewTurn`（首次观测仅建立基线不触发，历史还原任务经 `rebuildPlanFromTurns` 种子基线；静默回填轮次 `silentPrompt` 为生图路由内部轮不算用户会话轮次、不清除），同步清退计划快照、文本缓冲与 scratchpad 分仓（`clearPlanForTask` 三件套）；②**计划侧边栏「结束计划」**——点击即消除并收起侧边栏；消除时烙印轮次裁剪基线（`planClearedFromTurn`，keepLastTurn 语义区分新轮次/整表消除），`rebuildPlanFromTurns` 仅扫描基线之后轮次，**已消除的计划经历史/Task 记录回入绝不复活**；基线跨任务移除存活（终态任务退出被清理后经历史同 id 重建，不随 `task-removed` 清退）；
+- **互斥开合与回退链**：与任务侧边栏同占右侧抽屉位，双向互斥（计划侧开 → `api.closeTaskSidebar()`；任务侧开 → `api.closePlanSidebar()`，均带 typeof 守卫）；`api.closePlanSidebar` 返回 boolean 参与全局 Esc / 右键 Step Back 最高优先回退链（`global-interactions.js` 回退链第一位），契约见 `contracts.js` 注解；
+- **历史一致恢复**：`renderTurnsIntoFlow`（task-panel.js）调用 `api.rebuildPlanFromTurns(task.id, turns)` 重建计划快照，右键退出后经历史/Task 记录回入 Flow 呈现与退出前一致；**轮次全文重建铁律**：重建源必须按时间序拼接各轮 `steps` 中 `type==="text"` 的 Point 切片文本（按序）+ `responseText` 尾段 —— `task-manager` 在 `tool_execution_start` 时会把已累积文本封口沉淀为 Point 切片并清空 `turn.responseText`，计划清单通常写在首个工具调用之前的段内，仅扫 `responseText` 会漏掉全部计划文本 → 回入 Flow 时 rebuild 落空（combined 为空 → 计划与文本缓冲被清退，指示器不再展示）；封口即清空故两者天然不重叠，重复同文组经 `applyPlanSnapshot` 幂等对账不膨胀；**工具通道一并重建**：文本解析之后按轮次时间序重放各轮 `toolCalls` 中的 scratchpad 动作（`name` + `args`，动作幂等，文本解析须先行——`done` 目标可能只存在于文本计划里），恢复与退出前一致的勾选态（`padItems` 为内存分仓）；从磁盘历史还原的会话可能不含完整 `toolCalls`（持久化预算裁剪掉最旧条目），该路径按尽力而为降级；任务移除（`task-removed` / `tasks-changed` 清退）时同步释放计划与文本缓冲分仓防泄漏；**重建非破坏性铁律**：`combined` 为空时**仅当存在显式消除基线**（`planClearedFromTurn.get(taskId) > 0`，即已开启下一轮会话或点击过「结束计划」）才清退分仓——无基线的空文本只代表「轮次文本尚未沉淀」（典型：会话进行中转入后台后触发计划、事件帧归属缺失致 TaskManager 轮次缓冲未累积），此时实时采集的计划快照仍在分仓中，破坏性清退会把它一并抹掉导致回入 Flow 指示器消失；任务移除（`task-removed` / `tasks-changed` 清退）时同步释放计划与文本缓冲分仓防泄漏。
+
+**后台归属与累积的双层兜底（BUG 修复：会话进行中转入后台后触发 todolist，回入 Flow 指示器不显示）**：根因是挂起态下 `currentActiveTaskId === null`，一旦事件帧未携带有效 task_id，`task-manager` 的 `raw-event` 归属解析与 plan 面板的 `resolveBufferTaskId()` 双双落空——后台输出既不入 `turn.responseText` 也不入 `textBuffers`，回入 Flow 时 `rebuildPlanFromTurns` 见 `combined` 为空即破坏性清退，指示器永久消失；对照路径（挂起前已触发计划）因前台期有 `getCurrentActiveTask()?.id` 兜底而正常，故表现为「先后台再触发」独有的不对称缺陷。修复双层：①`task-manager` 的 `raw-event` 监听在归属落空且无前台活跃任务时，对**流式内容帧**（`agent_start` / `message_start` / `message_update`）回落到唯一运行中的挂起任务（无关帧类型不回落，杜绝状态/查询响应误沉淀）；②plan 面板 `resolveBufferTaskId()` 同款挂起兜底；③`rebuildPlanFromTurns` 重建非破坏性（见上）；④Rust `host_pool` 分帧器对 `task_id` 空值/null 值同样强制注入，从源头消除归属缺失。
+
+**计划进度不跟随的根因与修复（BUG：todolist 正常显示，但没有一步灰显划去，直至任务完成所有步骤仍是待办）**：真实会话回放实锤——模型在**正文只输出一次** Markdown 清单，随后改用内核 pi-memory 的 `scratchpad` 工具推进进度（`done` / `undo` / `clear_done`），正文仅剩「T+6s — 步骤1完成」「✅ 第 2 步完成」这类散文。勾选态**只存在于工具入参**，而旧实现只吃正文复选框 → 计划永久停在首次快照，与「无一步灰显划去」的症状完全吻合（正文清单一次都没输出过的会话则表现为指示器完全不出现）。修复：新增 scratchpad 工具通道（`tool-start` → `applyPadAction` → `padItems` 分仓）+ 展示层 `mergePlans` 双来源合并（全等 / 互相包含匹配、完成态取或），使「正文回写」与「工具推进」两种模型习惯都能驱动指示器与划线；历史遗留草稿板条目零污染（只收录本任务事件流内的动作，不读全局文件），`clear_done` 不改动计划（草稿板清理 ≠ 放弃本轮计划展示）；**不臆造进度**：两条通道都没有推进信号时（正文纯散文、且不经草稿板工具）计划保持首次快照，宁可不勾也不误勾；**装饰性差异归一铁律（翻倍 BUG 修复）**：同一批步骤在正文与工具入参之间只差 `步骤 1` / `步骤1` 空格与 `【测试计划·定时】` 标签前缀时，匹配键归一后必须合并为同一条 —— 认不出就会把 6 步计划追加成 12 步（用户实测症状「完成第一步后任务列表增加一倍」）。
+
+**散文推进信号通道（第三通道，2026-09-22；BUG：实际任务全程冻结在 0/N，任务收尾总结一瞬间全部划去）**：真实编码任务回放实锤存在第三类模型习惯——正文只在开工前输出一次 `- [ ]` 清单，**执行中途既不复写复选框快照、也不经 scratchpad 工具**，仅以散文宣告进度：完成短语（`T+6s — 步骤1完成` / `✅ 第 2 步完成` / `Step 4 done`）与粗体阶段头（`**Edit 2：MotionHelper 模拟层**：` / `## 阶段 3：…`——宣告开始第 N 阶段 = 顺序执行规约下第 1..N-1 步已完成），直到收尾总结才一次性重发全勾清单 → 双通道计划全程冻结，最终一刻全部翻转，且收尾改写措辞还会触发列表翻倍。修复 = `applyProseSignals(taskId, buffer)`：在 `parsePlanForTask` 尾部随文本防抖/`text-end` 与历史重建一并扫描，两类信号按**序号**映射到计划条目（支持中文数字一~二十）；**只标完成、绝不新增/删除/改写条目**（幂等可重放，复选框快照仍是勾选态第一权威来源，散文信号仅增量补勾）。**误报防线（宁可不勾也不误勾）**：①扫描前剔除复选框清单行——计划条目标题本身可能含「完成」字样（`- [ ] 步骤 4：完成数据库迁移`）；②完成短语的序号与完成谓词必须紧邻且中间严禁冒号（`步骤N：完成XX` 是标题式枚举措辞而非完成宣告）；③`✅ N` 打勾必须后随列表标点（防 `✅ 3 个测试通过`）；④阶段头必须**粗体（`**…**`）或 Markdown 标题锚定**且词表刻意排除「步骤 / step」（计划枚举高频措辞），裸行 `Edit 1：` 无锚定一律忽略；⑤无计划分仓时不做任何事。
+
+**内容锚定散文推进通道（第四通道，2026-09-22；BUG：三通道下实际任务仍全程冻结 0/N，收尾全勾清单瞬间全划去）**：真实会话离线回放实锤第四类模型习惯（现场会话 2026-09-22T07-01-24 code-area，3 步计划中途 11 条消息）——中途既不复写复选框、不经 scratchpad 工具、甚至没有任何带序号的散文信号，「步骤N完成 / **Edit N：…**」全不出现，只用**按内容指代**的散文宣告推进：推进转折句「接下来改传递阀状态变更联动与自动镀膜互锁：」「再改 XAML 绑定…」（宣告开始做某条目）与完成宣告句「编译通过（0 警告 0 错误）。」（宣告某条目完成）。序号通道全部落空 → 计划全程冻结，直到收尾一次性重发全勾清单瞬间全划去（且收尾个别字词改写如 `下料→出料` 会触发列表 3→5 翻倍）。修复 = `applyContentAnchoredSignals`：散文行与计划条目按**内容键**（`matchKeyOf` 基础上剥全部标点 + 小写）做二元组（bigram）重叠预筛 + 最长公共子串复核，匹配成功按顺序执行规约补勾——**推进转折句命中条目 N ⇒ 第 1..N-1 项已完成；完成宣告句命中条目 N ⇒ 第 1..N 项已完成**（与第三通道阶段头语义一致）；只标完成、绝不新增/删除/改写条目（幂等可重放，复选框快照仍是第一权威来源）。**误报防线（宁可不勾也不误勾）**：①剥离围栏代码块（含未闭合容忍）与行内代码——编译命令/文件路径/日志不是散文宣告；②复选框行剔除（同第三通道）；③含否定/失败措辞（未完成/尚未/失败/报错/not done…）的行整行跳过；④推进转折句须与条目共享 ≥2 个二元组（转折句通常点名要做的事、共享更多实词），完成宣告句可短至共享 1 个（「编译通过」与「编译验证…」仅共享「编译」），但须最长公共子串 ≥2 复核兜底；⑤唯一最优匹配才生效：严格压过次优且达其两倍，并列/接近一律弃权（真实会话中「再改 XAML 绑定…」同时命中两条相似条目即被正确弃权）；⑥转折词命中优先按开始语义处理（「接下来完成第二步」是宣告将做而非已做完）；⑦行长度窗口 4~120 字符（推进宣告简短，超长叙述行关键词碰撞风险高直接放弃）。**配套防翻倍配对**：`applyPlanSnapshot` 有交集分支内的双侧未命中条目配对链升级为「全文精确锚点 → 行首序号相等 → 内容相似度」三级（复选框条目无行首序号，`下料→出料` 类个别字词改写只有相似度配对能接住）。
+
+**计划侧边栏悬浮防抖动铁律（2026-09-22；BUG：侧边栏打开时鼠标悬浮计划条目持续抖动，偶发）**：根因是流式期间 `renderPlan` 以 120ms 防抖（`text-delta`）+ `task-updated` 等事件高频触发，而 `renderPlanSidebar` 每次全量 `textContent = ""` 重建列表——鼠标悬浮下的节点被反复销毁重建，`.plan-item:hover` 的 `translateX(2px)` 过渡反复重启即持续抖动，且列表清空瞬间滚动条消失闪帧。修复 = 三级渲染策略：①**渲染签名比对**（`title + 条目文本序列 + 勾选态序列 + 运行态` 组成 sig）未变化时直接复用既有 DOM 绝不触碰；②**就地更新路径**——仅勾选态/运行态变化（条目文本序列不变，即步骤完成灰显的常态）时只切换 `is-done` / `is-current` 类名与勾选图元 innerHTML、增删「执行中」小徽标，悬浮节点绝不销毁（灰显瞬间鼠标仍稳定悬浮于原条目上）；③**全量重建**仅在条目增删/修订或标题变化时触发（低频）。配套：`.plan-item` 补 `will-change: transform`（防闪烁约定，参照 `.floating-icon` 先例）；`renderPlan` 在无计划时若侧边栏仍打开则同步渲染空态占位（杜绝上一轮次旧计划条目残留到下一次有数据渲染）。
+

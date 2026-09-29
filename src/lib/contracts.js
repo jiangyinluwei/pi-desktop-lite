@@ -23,23 +23,26 @@
  *   | ui:toast | 任意模块 → toast 渲染 | 通知 | bus | task-panel.js (bus.on) |
  *   | ui:workspace-changed | workspace/search → 全局 | 通知 | bus | search-input.js (bus.on) [阶段 6 收编，原 window CustomEvent] |
  *   | flow:response | flow-store → 前台 Flow UI | 通知(带 taskId) | bus | [暂无监听方；payload 必带 taskId，订阅方必须先过 isForegroundStreamTask 前台门禁再触 DOM] |
+ *   | flow:step-start | flow-stream / flow-pipeline → token-telemetry | 通知(带 taskId, type) | bus | token-telemetry.js (bus.on → 额度图标 1s 弧光高亮) |
  *   | pi:view-change | view-mode → window | UI 内部横切(见注解) | window CustomEvent | view-mode.js [保留，§7.2 评估] |
  *   | pi:step-back | global-interactions → window | UI 内部横切(见注解) | window CustomEvent | global-interactions.js [保留，§7.2 评估] |
  *   | pi:kernel-reconnect-failed | pi-client → window | 内核桥接 | Tauri listen | pi-client.js [保留] |
  *   | pi:inner-skill-activated | pi-client → window | 内核桥接 | Tauri listen | pi-client.js [保留] |
  *   | pi:context-injected | pi-client → window | 内核桥接 | Tauri listen | pi-client.js [保留] |
  *   | task-* / tasks-changed / active-task-changed | task-manager → window | 服务域事件 | 服务 EventEmitter | task-manager.js [保留] |
- *   | agent-* / turn-* / message-* / tool-* / text-* / thinking-* / state-update | pi-client → window | 服务域事件 | 服务 EventEmitter | pi-client.js [保留] |
- *   | config-service / conversation-history / version-service / session-service / model-failover | 各自 this.dispatchEvent | 服务域事件 | 服务 EventEmitter | 各服务 [保留] |
+ *   | agent-* / turn-* / message-* / tool-* / text-* / thinking-* / usage / state-update | pi-client → window | 服务域事件 | 服务 EventEmitter | pi-client.js [保留] |
+ *   | config-service (auto-reconnect-change / image-routing-change / custom-models-change) / conversation-history / version-service / session-service / model-failover | 各自 this.dispatchEvent | 服务域事件 | 服务 EventEmitter | 各服务 [保留] |
  *
  *   [注解] pi:view-change / pi:step-back 命名带 pi: 前缀，但实际由 UI 自身在 window 上派发，
  *          并非 Rust→前端桥接。它们深度耦合 AGENTS.md 铁律 3（四态回退链）与
  *          window.__piRegisterStepBack 注册器，属运行态交互热区 —— 保留原 channel，
  *          收编评估归入「降耦合 GUI 回归专项」（.doc/pi-desktop-lite-降耦合-GUI回归专项.md §5）。
  *
- *   [注解] closeTaskSidebar（task-panel → global-interactions）**不上总线**：
- *          返回 boolean（wasOpen）参与右键 step-back 拦截链（global-interactions.js 依据真值
- *          决定链是否继续），属「控制流命令」，保留 ctx.api 显式槽（阶段 6 重定性）。
+ *   [注解] closeTaskSidebar（task-panel → global-interactions）与 closePlanSidebar
+ *          （flow-plan-panel → global-interactions / task-panel）**不上总线**：
+ *          两者均返回 boolean（wasOpen）参与右键 step-back 拦截链（global-interactions.js 依据真值
+ *          决定链是否继续）与同位互斥开合（任务侧栏 / 计划侧栏同占右侧抽屉位），
+ *          属「控制流命令」，保留 ctx.api 显式槽（阶段 6 重定性；计划侧栏同步入册）。
  *
  * 三、window.__piRegisterStepBack（全局回退栈契约，AGENTS.md 铁律 3）
  *   所有新模块需接入。非本总线管辖，登记于 register.js 使用处；本文件仅声明其契约存在。
@@ -56,8 +59,10 @@
 //   ui:toast              发射方：任意模块          监听方：task-panel.js (bus.on)
 //   ui:workspace-changed  发射方：workspace-panel / search-input
 //                         监听方：search-input.js (bus.on → syncWorkspaceInputState)
+//   flow:step-start       发射方：flow-stream / flow-pipeline
+//                         监听方：token-telemetry.js (bus.on → 额度图标 1s 弧光高亮)
 
-export const EVENT_CHANNEL_TABLE_VERSION = 2;
+export const EVENT_CHANNEL_TABLE_VERSION = 4;
 
 // =====================================================================
 // 【扩展 UI 交互方法判定 · 唯一源（阶段 8：消除 task-manager / flow-pipeline 双份常量）】
@@ -103,6 +108,263 @@ export function isInteractiveExtensionUiRequest(data) {
   );
 }
 
+/**
+ * 黄色倒计时宽容期判定关键词。以下两类错误均属「瞬态、很可能自行恢复」，
+ * 不应立即弹出红色错误卡惊扰用户：
+ *   1. 远端 SSE 流提前关闭且无 finish_reason（输出内容往往已基本到位）；
+ *   2. 服务商推理请求瞬时失败（如 Atria 等预览模型回显 `Inference request failed.`）；
+ *   3. 网关/代理回显 `upstream failure`（上游服务瞬时不可用，常自行恢复）。
+ */
+/**
+ * 从 agent-error detail 中收集全部可能携带错误正文的字段（判定谓词共用，
+ * 严禁各模块各自内联字段回退链致同帧判定分裂）。
+ */
+function collectErrorTexts(errDetail) {
+  return [
+    errDetail.message,
+    errDetail.raw?.errorMessage,
+    errDetail.raw?.message,
+    errDetail.error,
+  ];
+}
+
+const STREAM_INTERRUPTED_RE = /stream\s+ended\s+without\s+finish_reason/i;
+const INFERENCE_FAILED_RE = /inference\s+request\s+failed/i;
+const UPSTREAM_FAILURE_RE = /upstream\s+failure/i;
+
+/**
+ * 判定一条 agent-error 是否属于「瞬态可恢复错误」而应进入黄色倒计时宽容期
+ * （典型表现：`Stream ended without finish_reason` 的流截断，或服务商回显
+ * `Inference request failed.` 的推理请求瞬时失败，或网关回显 `upstream failure`
+ * 的上游瞬时不可用）。
+ *
+ * 命中时前端严禁立即弹出红色错误卡，改走「黄色倒计时等待消息框」宽容期
+ * （见 flow-stream.js 的 handleStreamInterruption）：给模型固定 300 秒恢复窗口，
+ * 期间模型恢复输出或会话正常收口即静默撤销等待；仅当超时仍未恢复才弹出红色提醒卡。
+ *
+ * @param {Record<string, any>} errDetail pi-client 派发的 agent-error detail
+ * @returns {boolean}
+ */
+export function isGracePeriodError(errDetail) {
+  if (!errDetail || typeof errDetail !== "object") return false;
+  return collectErrorTexts(errDetail).some(
+    (v) =>
+      typeof v === "string" &&
+      (STREAM_INTERRUPTED_RE.test(v) || INFERENCE_FAILED_RE.test(v) || UPSTREAM_FAILURE_RE.test(v))
+  );
+}
+
+// =====================================================================
+// 【连接异常 / 服务异常 · 瞬态可恢复判定 · 唯一源】
+// =====================================================================
+// 与 isAbortError 的 NETWORK_TRANSIENT_PATTERNS（pi-client.js）语义对齐：
+// 凡属「连接异常 / 服务异常」的远端瞬态错误，一律不立即弹出红色错误卡，
+// 改走黄色倒计时宽容期（handleStreamInterruption，300 秒），给内核与服务商
+// 自行恢复的窗口；期间模型恢复输出即静默撤销，仅超时仍未恢复才弹红框。
+// 与 isGracePeriodError（流截断三短语）互补：后者命中更窄的内核回显短语，
+// 本谓词覆盖更广的网络/网关/速率限制/服务端瞬时错误全集。
+const TRANSIENT_SERVICE_KEYWORDS = [
+  // 速率限制 / 配额瞬时（TPM/RPM/429）
+  "rate limit",
+  "rate_limit",
+  "ratelimit",
+  "429",
+  "tpm",
+  "rpm",
+  "速率限制",
+  "每分钟推理速率",
+  "too many requests",
+  // 服务端瞬时 / 网关
+  "500",
+  "502",
+  "503",
+  "504",
+  "bad gateway",
+  "gateway",
+  "service unavailable",
+  "temporarily unavailable",
+  "temporarily",
+  // `overload` 为子串，同时覆盖服务商回显 "server overload"（无 ed，如
+  // "The service is currently unable to handle additional requests due to
+  // server overload."，典型 529/503 过载瞬态）与 "overloaded_error" 两种变体
+  "overload",
+  "unable to handle",
+  "capacity",
+  "internal server error",
+  "upstream failure",
+  "inference request failed",
+  // 连接 / 网络 / 超时
+  "connection",
+  "socket",
+  "econnreset",
+  "econnrefused",
+  "enotfound",
+  "etimedout",
+  "timeout",
+  "timed out",
+  "time out",
+  "network error",
+  "fetch failed",
+  "load failed",
+  "status code",
+  "reset by peer",
+  "connection reset",
+  "socket hang up",
+  "keep-alive",
+  "stream ended",
+  "stream error",
+  "dns",
+];
+
+// 明确「不可恢复」的错误：即使正文同时含有上面的瞬态关键词（如
+// `Request failed with status code 401` 含 "status code"），也必须立即弹出
+// 红色错误卡——300 秒等待毫无意义，用户需要立刻看到诊断与「切换其他模型」入口。
+const NON_TRANSIENT_KEYWORDS = [
+  "401",
+  "403",
+  "unauthorized",
+  "forbidden",
+  "invalid api key",
+  "invalid_api_key",
+  "invalid key",
+  "authentication",
+  "not authenticated",
+  "auth failed",
+  "model not found",
+  "no such model",
+  "unknown model",
+  "does not exist",
+  "multimodal",
+  "does not support image",
+  "unsupported media",
+  "unsupported content type",
+  "not support binary",
+  "file attachments are not supported",
+  // 上下文/请求体超限：用户必须改写输入或换模型，300 秒等待毫无意义
+  "context length",
+  "maximum context",
+  "context window",
+  "too long",
+  "request too large",
+  "payload too large",
+  "413",
+  "token limit",
+  "prompt is too long",
+  "input too long",
+  "maximum number of tokens",
+];
+
+/**
+ * 判定一条 agent-error 是否属于「连接异常 / 服务异常」类瞬态可恢复错误，
+ * 从而走黄色倒计时宽容期而非立即弹出红色错误卡。
+ *
+ * 设计动机（BUG1/BUG2）：连接/服务类错误往往只是远端瞬时抖动，Pi 内核自身
+ * 仍在底层重试，过一会即恢复正常输出；若立即弹红框，会把 Task 提前置为
+ * error 终态并隐藏终止按钮，内核随后恢复的输出事件被前台门禁拦截无法落 DOM，
+ * 红框即永久滞留（必须右键退出重进才能消除）；同时一次失败 run 会派发多个
+ * agent-error 帧，反复 innerHTML 重建错误卡导致按钮点击落空（红框「卡死」）。
+ *
+ * @param {Record<string, any>} errDetail pi-client 派发的 agent-error detail
+ * @returns {boolean}
+ */
+export function isTransientServiceError(errDetail) {
+  if (!errDetail || typeof errDetail !== "object") return false;
+  let hit = false;
+  for (const v of collectErrorTexts(errDetail)) {
+    if (typeof v !== "string") continue;
+    const s = v.toLowerCase();
+    // 不可恢复错误一票否决（先判，避免 "status code 401" 被瞬态关键词误命中）
+    if (NON_TRANSIENT_KEYWORDS.some((kw) => s.includes(kw))) return false;
+    if (TRANSIENT_SERVICE_KEYWORDS.some((kw) => s.includes(kw))) hit = true;
+  }
+  return hit;
+}
+
+// =====================================================================
+// 【任务运行态判定 · 唯一源】
+// =====================================================================
+// Task 状态机（task-manager.js TaskItem.status）中「生成进行中 / 待确认」的活跃状态全集：
+//   thinking / streaming / tool_exec —— 正常生成三态；
+//   paused    —— 人工交互待确认（内核阻塞等待作答，同属生成进行中，铁律 3）；
+//   running   —— 错误态任务经 clearTurnErrorState 重试恢复后的过渡态（flow-stream.js）。
+// 回退守卫（flow-rollback）、任务管理器（task-manager）等一律引用本常量判定，
+// 严禁各模块自维护状态字面量数组（防同一状态跨模块判定相反，如回退守卫漏判 running）。
+export const TASK_ACTIVE_STATUSES = Object.freeze([
+  "thinking",
+  "streaming",
+  "tool_exec",
+  "paused",
+  "running",
+]);
+
+/**
+ * 判定任务是否处于生成进行中（含人工交互待确认与错误恢复过渡态）。
+ * @param {{ status?: string } | null | undefined} task
+ * @returns {boolean}
+ */
+export function isTaskStatusActive(task) {
+  return Boolean(task && TASK_ACTIVE_STATUSES.includes(task.status));
+}
+
+// =====================================================================
+// 【任务终态判定 · 唯一源】
+// =====================================================================
+// Task 状态机（task-manager.js TaskItem.status）中的终态全集：
+//   completed —— 正常完成；aborted —— 手动终止；error —— 模型调用失败/异常终态。
+// 终态结算（切换清理 / 挂起计数 / 收口落定 / 历史归档）等判定一律引用本常量，
+// 严禁模块自维护终态字面量数组或三连 === 链（防顺序变体漂移致判定分裂）。
+export const TASK_TERMINAL_STATUSES = Object.freeze(["completed", "aborted", "error"]);
+
+/**
+ * 判定任务是否处于终态（completed / aborted / error）。
+ * @param {{ status?: string } | null | undefined} task
+ * @returns {boolean}
+ */
+export function isTaskStatusTerminal(task) {
+  return Boolean(task && TASK_TERMINAL_STATUSES.includes(task.status));
+}
+
+// =====================================================================
+// 【任务终止判定 · 唯一源】
+// =====================================================================
+// 「已终止」为复合语义（铁律 3）：isAborted 是手动终止黑名单标志（可独立于状态机存在），
+// status === "aborted" 是状态机终态 —— 两字段并存且历史 Task 可能仅携带其一，
+// 挂起通道 / 回退守卫 / 引擎结算等判定一律引用本谓词，
+// 严禁内联 `isAborted || status === "aborted"` 习语（防两字段顺序变体漂移）。
+/**
+ * 判定任务是否已处于终止状态（isAborted 标志命中或 aborted 终态）。
+ * @param {{ isAborted?: boolean, status?: string } | null | undefined} task
+ * @returns {boolean}
+ */
+export function isTaskAborted(task) {
+  return Boolean(task && (task.isAborted || task.status === "aborted"));
+}
+
+// =====================================================================
+// 【内核事件帧归属 taskId 解析 · 唯一源】
+// =====================================================================
+// pi-client 派发的事件 detail 统一携带规范化 taskId（camelCase，取自帧 task_id/taskId），
+// raw 为内核原始帧（snake_case task_id）。此前 token-telemetry / flow-stream /
+// flow-pipeline / model-failover / task-manager 各自内联回退链且字段优先级互不一致，
+// 同一事件帧可能被不同模块归到不同任务 —— 现收敛为本唯一源。
+/**
+ * 从内核事件帧 detail 解析归属 taskId（唯一源）。
+ * @param {Record<string, any> | null | undefined} detail 事件帧 detail（raw-event / agent-error / usage 等）
+ * @param {string | null | undefined} [fallback] 调用方兜底（如 piClient.lastEventTaskId / currentActiveTaskId / 引擎 taskId）
+ * @returns {string | null}
+ */
+export function resolveEventTaskId(detail, fallback = null) {
+  if (!detail || typeof detail !== "object") return fallback || null;
+  return (
+    detail.taskId ||
+    detail.task_id ||
+    detail.raw?.task_id ||
+    detail.raw?.taskId ||
+    fallback ||
+    null
+  );
+}
+
 // =====================================================================
 // 【ctx.api 函数槽契约 · 阶段 6 定型】
 // =====================================================================
@@ -115,15 +377,17 @@ export function isInteractiveExtensionUiRequest(data) {
 //  * @typedef {Object} PiApiContracts
 //  * @property {() => void} loadCustomProvidersConfig            custom-provider-panel → 设置页刷新自定义 Provider
 //  * @property {() => void} clearAttachedFiles                   file-attachments → 清空输入框附件胶囊
+//  * @property {(paths: string[]) => Promise<void>} addAttachedFiles file-attachments → 增加多模态路径附件（拖拽/粘贴/选择）
 //  * @property {() => void} showFileChangesBox                   flow-file-changes → 展示文件变更收纳框
 //  * @property {() => void} resetFileChanges                     flow-file-changes → 重置收纳框（任务直切铁律）
 //  * @property {(taskId: string) => void} restoreFileChangesFor  flow-file-changes → 按 Task 恢复会话流缓存仓
 //  * @property {() => object[]} collectRollbackPreview           flow-file-changes → 回退预览逐条变更
 //  * @property {(taskId: string) => void} pruneFileChangesFor    flow-file-changes → 回退后剪枝重渲
+//  * @property {(taskId?: string) => object[]} getNewlyAddedImageFiles flow-file-changes → 收集会话新产生图片列表供自愈展示
 //  * @property {(taskId: string, request: object) => void} showHumanInputCard        flow-human-input → 前台渲染人工交互作答卡
 //  * @property {(taskId: string) => void} restoreHumanInputCards flow-human-input → 挂起任务回入 Flow 时重建未决卡
-//  * @property {(taskId: string, reason?: string) => void} invalidateHumanInputCards flow-human-input → 终止/内核重启/超时后标记卡片失效
-//  * @property {() => void} resetInjectionNotice                 flow-pipeline → 重置「注入提示」信息框
+//  * @property {(taskId?: string) => void} resetInjectionNotice                 flow-pipeline → 重置「注入提示」信息框
+//  * @property {(taskId: string) => void} restoreInjectionNoticeFor             flow-pipeline → 按 Task 恢复「注入提示」信息框
 //  * @property {(text: string) => Promise<void>} handleFlowQuery         flow-pipeline → Flow 提问下发（发送链热区）
 //  * @property {() => void} submitCurrentPrompt                  flow-pipeline → 发送入口
 //  * @property {(toolCallId: string) => void} removeActiveToolPseudoStep flow-pipeline → 伪运行卡移除
@@ -131,12 +395,15 @@ export function isInteractiveExtensionUiRequest(data) {
 //  * @property {() => void} finalizeStream                       flow-stream → 流式收尾
 //  * @property {() => object|undefined} sealActiveThinkingStep  flow-stream → 封口思维切片
 //  * @property {() => object} ensureActiveThinkingStep           flow-stream → 确保思维切片存在
-//  * @property {(text: string) => void} sealActivePhaseOutput    flow-stream → 封口阶段性输出
+//  * @property {(taskId?: string) => void} sealActivePhaseOutput flow-stream → 阶段边界兜底封口阶段性输出（首选封口时机为内核 text-end 事件）
 //  * @property {() => void} resetCurrentTurnForResend            flow-stream → 重发前轮次复位
 //  * @property {(text: string) => string} renderAbortNoticeHtml  flow-stream → 中断提示 HTML
 //  * @property {(html: string) => void} appendFlowAbortNotice    flow-stream → 追加中断提示卡
 //  * @property {(err: object) => object} renderErrorCard         flow-stream → 错误卡渲染
 //  * @property {(taskId?: string) => void} clearTurnErrorState      flow-stream → 彻底清除轮次错误状态与卡片
+//  * @property {(err: object) => void} handleStreamInterruption  flow-stream → 流中断宽容期：黄色倒计时等待消息框（300s，超时才弹错误卡）
+//  * @property {(taskId?: string) => void} cancelStreamInterruption flow-stream → 撤销流中断宽容期（会话终止 / 挂起 / 移除）
+//  * @property {(taskId?: string) => void} resolveStreamInterruption flow-stream → 模型恢复输出时撤销流中断宽容期并清除错误态（热路径零负担）
 //  * @property {(md: string) => string} renderMarkdown           flow-ui → Markdown 渲染引擎
 //  * @property {() => void} collapseAllDoneToolCards             flow-ui → 折叠全部已完成工具卡
 //  * @property {() => void} collapseAllToolCards                 flow-ui → 折叠全部工具卡
@@ -150,6 +417,7 @@ export function isInteractiveExtensionUiRequest(data) {
 //  * @property {() => Promise<void>} loadModelsAndState          model-panel → 模型与状态加载
 //  * @property {(providerId: string) => Promise<void>} renderOfficialProviderDetails model-panel → 官方 Provider 详情
 //  * @property {() => Promise<void>} loadOfficialProvidersConfig model-panel → 官方目录加载
+//  * @property {() => void} syncImageRoutingUI                   image-routing-panel → 生图与多模态路由面板状态同步
 //  * @property {() => Promise<void>} loadInstalledPackages       packages-panel → 已装组件渲染
 //  * @property {() => Promise<void>} loadRecommendedPlugins      packages-panel → 推荐插件渲染
 //  * @property {() => Promise<void>} loadCatalogPackages         packages-panel → 组件目录渲染
@@ -162,11 +430,16 @@ export function isInteractiveExtensionUiRequest(data) {
 //  * @property {(tabId: string) => void} switchSettingsTab       settings-navigation → 设置大 Tab 切换（含懒加载分发）
 //  * @property {() => void} updateMiniTaskCapsuleUI              task-panel → Mini 任务胶囊刷新
 //  * @property {() => boolean} closeTaskSidebar                  task-panel → 侧栏关闭（拦截语义，见契约表注解）
+//  * @property {(taskId: string, turns: object[]) => void} rebuildPlanFromTurns flow-plan-panel → 历史/回填链按 Task 重建「计划执行」快照（模型 todo list 可视化）
+//  * @property {() => boolean} closePlanSidebar                  flow-plan-panel → 计划侧栏关闭（拦截语义，见契约表注解）
 //  * @property {() => void} renderTaskSidebarList                task-panel → 任务抽屉渲染
 //  * @property {(taskId: string) => void} restoreTaskToFlow      task-panel → 任务回入 Flow（防重入铁律）
 //  * @property {(task: object) => void} renderTurnsIntoFlow      task-panel → 轮次回填（切换铁律热区）
+//  * @property {(taskId: string) => Promise<any|null>} getSessionStats  pi-client → 会话实时统计（上下文/token/费用，后端 with_response 取回；token-telemetry 消费）
 //  * @property {() => void} archiveCurrentFlowToHistory          task-panel → 终态归档历史
 //  * @property {() => void} renderConversationMessages           task-panel → 历史讯息渲染
+//  * @property {() => void} syncFlowAbortButtonVisibility        task-panel → Flow 终止按钮显隐同步（铁律3）
+//  * @property {() => Promise<void>} abortCurrentSession         task-panel → 彻底中止当前会话与任务（直接中断一切）
 //  * @property {() => void} openSettingsView                     view-mode → 进入设置页（第 4 态）
 //  * @property {() => void} closeSettingsView                    view-mode → 退出设置页
 //  * @property {() => Promise<void>} loadWorkspaces              workspace-panel → 预设工作区列表

@@ -1,3 +1,4 @@
+use crate::pi_runner::InjectedItem;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -199,6 +200,9 @@ const KNOWN_TAG_NAMES: &[&str] = &[
     "inner_skills_context",
     "inner_skill_rules",
     "prompt_context",
+    // 生图/多模态路由静默回填信封（铁律23）：路由模型向会话模型回传的内部调度信息，
+    // 剥离后输入历史、会话记录与内核历史树摘要仅呈现用户真实提问
+    "image_routing_handover",
 ];
 
 static KNOWN_INJECTED_TAGS_REGEX: Lazy<Regex> = Lazy::new(|| {
@@ -276,12 +280,6 @@ pub fn strip_injected_contexts(text: &str) -> String {
     final_clean.trim().to_string()
 }
 
-/// 兼容旧命名别名
-#[inline]
-pub fn strip_runtime_context_rules(text: &str) -> String {
-    strip_injected_contexts(text)
-}
-
 const ATTACHMENT_MARKERS: &[&str] = &[
     "[附带本地文件/目录绝对路径]:",
     "[附带本地文件绝对路径]:",
@@ -292,25 +290,31 @@ const ATTACHMENT_MARKERS: &[&str] = &[
     "[附带文件路径]:",
 ];
 
+/// 纯附件对话时系统默认的占位前缀（全角/半角冒号变体），命中即还原为空字符串以触发前端 "[附带 N 个文件/图片]" 展示
+const PURE_ATTACHMENT_PLACEHOLDERS: &[&str] = &[
+    "请查阅并分析以下本地文件/目录：",
+    "请查阅并分析以下本地文件/目录:",
+    "请查阅并分析以下本地文件：",
+    "请查阅并分析以下本地文件:",
+    "请查阅并分析以下本地目录：",
+    "请查阅并分析以下本地目录:",
+];
+
+/// 在文本中定位最早出现的附件 marker，返回 (字节偏移, marker 字节长度)；无命中时为 None
+fn find_earliest_marker(text: &str) -> Option<(usize, usize)> {
+    ATTACHMENT_MARKERS
+        .iter()
+        .filter_map(|marker| text.find(marker).map(|pos| (pos, marker.len())))
+        .min_by_key(|(pos, _)| *pos)
+}
+
 /// 清洗用户提问文本：剥离注入信封、附件清单以及引导提示语
 pub fn clean_user_prompt(text: &str) -> String {
     let text_no_contexts = strip_injected_contexts(text);
-    let mut raw = text_no_contexts.as_str();
-    let mut earliest_pos = None;
-
-    for marker in ATTACHMENT_MARKERS {
-        if let Some(pos) = raw.find(marker) {
-            match earliest_pos {
-                Some(p) if pos < p => earliest_pos = Some(pos),
-                None => earliest_pos = Some(pos),
-                _ => {}
-            }
-        }
-    }
-
-    if let Some(pos) = earliest_pos {
-        raw = &raw[..pos];
-    }
+    let raw = match find_earliest_marker(&text_no_contexts) {
+        Some((pos, _)) => &text_no_contexts[..pos],
+        None => text_no_contexts.as_str(),
+    };
 
     let mut cleaned = raw.trim().to_string();
 
@@ -325,13 +329,7 @@ pub fn clean_user_prompt(text: &str) -> String {
     }
 
     // 针对纯附件对话时的系统默认占位前缀，还原为空字符串以触发前端 "[附带 N 个文件/图片]" 展示
-    if cleaned == "请查阅并分析以下本地文件/目录："
-        || cleaned == "请查阅并分析以下本地文件/目录:"
-        || cleaned == "请查阅并分析以下本地文件："
-        || cleaned == "请查阅并分析以下本地文件:"
-        || cleaned == "请查阅并分析以下本地目录："
-        || cleaned == "请查阅并分析以下本地目录:"
-    {
+    if PURE_ATTACHMENT_PLACEHOLDERS.contains(&cleaned.as_str()) {
         cleaned.clear();
     }
 
@@ -341,27 +339,9 @@ pub fn clean_user_prompt(text: &str) -> String {
 /// 从用户提问尾注中提取附带本地文件/目录路径列表
 pub fn split_user_prompt_attachments(text: &str) -> (String, Vec<String>) {
     let text_no_contexts = strip_injected_contexts(text);
-    let mut earliest_pos = None;
-    let mut marker_len = 0;
 
-    for marker in ATTACHMENT_MARKERS {
-        if let Some(pos) = text_no_contexts.find(marker) {
-            match earliest_pos {
-                Some(p) if pos < p => {
-                    earliest_pos = Some(pos);
-                    marker_len = marker.len();
-                }
-                None => {
-                    earliest_pos = Some(pos);
-                    marker_len = marker.len();
-                }
-                _ => {}
-            }
-        }
-    }
-
-    let attachments: Vec<String> = match earliest_pos {
-        Some(pos) => {
+    let attachments: Vec<String> = match find_earliest_marker(&text_no_contexts) {
+        Some((pos, marker_len)) => {
             let after_marker = &text_no_contexts[pos + marker_len..];
             let mut paths = Vec::new();
             for line in after_marker.lines() {
@@ -411,6 +391,75 @@ pub fn split_user_prompt_attachments(text: &str) -> (String, Vec<String>) {
 
     let query = clean_user_prompt(text);
     (query, attachments)
+}
+
+static ROUTED_AGENTS_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?is)<routed_agents_md\s+filename="([^"]+)">"#).unwrap()
+});
+static ROUTED_README_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?is)<routed_readme_md\s+filename="([^"]+)">"#).unwrap()
+});
+static RUNTIME_INNER_SKILL_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?is)<runtime_inner_skill\s+name="([^"]+)">"#).unwrap()
+});
+
+/// 从未清洗的用户原始 prompt 中提取注入的上下文条目（供历史会话恢复「注入提示」信息框）
+pub fn extract_injected_items(text: &str) -> Vec<InjectedItem> {
+    let mut items = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    let mut add_item = |kind: &str, name: &str| {
+        let key = format!("{}::{}", kind, name);
+        if seen.insert(key) {
+            items.push(InjectedItem {
+                kind: kind.to_string(),
+                name: name.to_string(),
+            });
+        }
+    };
+
+    if text.contains("<code_area_routing_context") {
+        add_item("routing_context", "code_area_routing_context");
+    }
+
+    for cap in ROUTED_AGENTS_RE.captures_iter(text) {
+        if let Some(m) = cap.get(1) {
+            add_item("agents_md", m.as_str());
+        }
+    }
+
+    for cap in ROUTED_README_RE.captures_iter(text) {
+        if let Some(m) = cap.get(1) {
+            add_item("readme_md", m.as_str());
+        }
+    }
+
+    for cap in RUNTIME_INNER_SKILL_RE.captures_iter(text) {
+        if let Some(m) = cap.get(1) {
+            add_item("inner_skill", m.as_str());
+        }
+    }
+
+    if text.contains("<runtime_inner_skills") {
+        let known_skills = [
+            "windows-bash-compatibility",
+            "document-multimodal-inspection",
+            "multi-agent-orchestration",
+            "web-search-silent-access",
+            "persistent-memory-retrieval",
+            "dynamic-workflows-orchestration",
+            "active-context-pruning",
+            "temp-file-hygiene",
+            "tool-failure-logging",
+        ];
+        for skill in known_skills {
+            if text.contains(skill) {
+                add_item("inner_skill", skill);
+            }
+        }
+    }
+
+    items
 }
 
 /// 提取消息正文：content 为 string 时直接返回，为 blocks 数组时拼接全部 text 块
@@ -510,13 +559,6 @@ pub fn extract_timestamped_prompts_from_session(path: &Path) -> Vec<(i64, String
     prompts
 }
 
-/// 从单个 .jsonl 会话文件中提取所有真实用户提问 (role: "user")
-pub fn extract_user_prompts_from_session(path: &Path) -> Vec<String> {
-    extract_timestamped_prompts_from_session(path)
-        .into_iter()
-        .map(|(_, text)| text)
-        .collect()
-}
 
 // ==========================================================================
 // 会话完整轮次解析（供 Flow 界面历史还原使用）
@@ -560,6 +602,8 @@ pub struct SessionTurnDetail {
     pub steps: Vec<SessionStepDetail>,
     pub timestamp: Option<String>,
     pub is_aborted: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub injected_items: Vec<InjectedItem>,
 }
 
 /// 按顺序配对解析会话 JSONL 中的 user/assistant/toolResult 消息，还原完整多轮对话。
@@ -602,6 +646,7 @@ pub fn parse_session_turns(path: &Path) -> Result<Vec<SessionTurnDetail>, String
             "user" => {
                 let raw = extract_message_text(msg_obj.get("content"));
                 let (query, attachments) = split_user_prompt_attachments(&raw);
+                let injected_items = extract_injected_items(&raw);
                 turns.push(SessionTurnDetail {
                     query,
                     attachments,
@@ -611,6 +656,7 @@ pub fn parse_session_turns(path: &Path) -> Result<Vec<SessionTurnDetail>, String
                     steps: Vec::new(),
                     timestamp,
                     is_aborted: false,
+                    injected_items,
                 });
             }
             "assistant" => {
@@ -625,6 +671,7 @@ pub fn parse_session_turns(path: &Path) -> Result<Vec<SessionTurnDetail>, String
                         steps: Vec::new(),
                         timestamp,
                         is_aborted: false,
+                        injected_items: Vec::new(),
                     });
                 }
                 let turn = turns.last_mut().expect("turns is non-empty");
@@ -735,4 +782,73 @@ pub fn parse_session_turns(path: &Path) -> Result<Vec<SessionTurnDetail>, String
     }
 
     Ok(turns)
+}
+
+/// 会话底层遥测汇总（从 JSONL 逐 assistant 消息 usage 累加所得）。
+/// 供前端「额度遥测」在历史会话还原（无内存 stats / 无磁盘快照）时直接回填显示。
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionTelemetry {
+    /// 累计已消耗 token（逐消息 usage.totalTokens 累加，与内核会话累计口径一致）
+    pub total_tokens: u64,
+    /// 最末一条 assistant usage 的 totalTokens（≈ 当前上下文占用 tokens；无 usage 时为 None）
+    pub context_tokens: Option<u64>,
+    /// 含有效 usage 的 assistant 消息条数
+    pub message_count: usize,
+}
+
+/// 流式解析会话 JSONL，逐行累加 assistant 消息 usage，还原底层遥测。
+/// 单行解析失败静默跳过；文件不存在 / 无任何 usage 时返回 Ok(None)，由前端优雅降级。
+pub fn parse_session_telemetry(path: &Path) -> Result<Option<SessionTelemetry>, String> {
+    let file = match File::open(path) {
+        Ok(f) => f,
+        Err(_) => return Ok(None),
+    };
+    let reader = BufReader::new(file);
+    let mut total_tokens: u64 = 0;
+    let mut context_tokens: Option<u64> = None;
+    let mut message_count: usize = 0;
+
+    for line in reader.lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let val = match serde_json::from_str::<Value>(trimmed) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if val.get("type").and_then(|v| v.as_str()) != Some("message") {
+            continue;
+        }
+        let msg_obj = match val.get("message") {
+            Some(m) => m,
+            None => continue,
+        };
+        if msg_obj.get("role").and_then(|v| v.as_str()) != Some("assistant") {
+            continue;
+        }
+        let usage = match msg_obj.get("usage") {
+            Some(u) => u,
+            None => continue,
+        };
+        let total = usage.get("totalTokens").and_then(|v| v.as_u64());
+        if let Some(total) = total {
+            total_tokens = total_tokens.saturating_add(total);
+            message_count = message_count.saturating_add(1);
+            context_tokens = Some(total);
+        }
+    }
+
+    if message_count == 0 {
+        return Ok(None);
+    }
+    Ok(Some(SessionTelemetry {
+        total_tokens,
+        context_tokens,
+        message_count,
+    }))
 }

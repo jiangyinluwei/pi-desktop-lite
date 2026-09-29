@@ -3,8 +3,8 @@
  *
  * 在 Flow 流程中模型调用返回错误时，提供「无痕内置重连」自愈流水线：
  *   · 隐藏「模型XXX异常」错误窗体，后台静默向模型续发「继续」文本，用户无感知；
+ *   · 自动内置重连全部为 60 秒延迟，并且发送“继续”提示词重连后再延迟 60 秒，一共内置 10 次（即 120 秒 * 10）；
  *   · 每次续发计作一次「内置重连」，写死上限 10 次；
- *   · 退避序列 2s → 4s → 8s → 16s → 16s…（恒封顶 16s）；
  *   · 重连期间仅在轮次顶部展示进度胶囊「自动内置重连 N/10 ...」；
  *   · 10 次重连全部耗尽仍失败 → 才渲染既有错误卡（「模型调用失败 [模型]」窗体）。
  *
@@ -16,7 +16,8 @@
  */
 
 import { piClient, isAbortError } from "./pi-client.js";
-import { configService } from "./config-service.js";
+import { configService, DEFAULT_FAILOVER_CONFIG } from "./config-service.js";
+import { resolveEventTaskId } from "../lib/contracts.js";
 
 class ModelFailoverEngine extends EventTarget {
   constructor() {
@@ -37,6 +38,7 @@ class ModelFailoverEngine extends EventTarget {
     this.lastError = null; // 最后一次失败详情 (供兜底渲染)
     this.hooks = null;
     this._resolveAttempt = null; // 当前在途尝试的结算回调
+    this._resolveSleep = null;
     this._backoffTimer = null;
     this._currentPhase = "";
   }
@@ -119,7 +121,7 @@ class ModelFailoverEngine extends EventTarget {
     if (isAbortError(detail)) return false;
 
     // 铁律 2：所属 Task 已被手动中止时绝对不接管
-    const tid = detail.taskId || detail.task_id || detail.raw?.task_id || detail.raw?.taskId || this.taskId;
+    const tid = resolveEventTaskId(detail, this.taskId);
     if (this.isTaskAborted(tid)) return false;
 
     // 铁律 3：所属 Task 已进入「重连耗尽」终态时绝不接管 (错误卡已弹出，等待用户手动干预)
@@ -145,6 +147,14 @@ class ModelFailoverEngine extends EventTarget {
    * · 热结算 (活跃)：该错误为当前在途尝试的结果 → 结算为失败并继续流水线。
    */
   handleModelError(detail, hooks = {}) {
+    // 铁律：自动强制重连开关关闭时，严禁冷启动重连流水线（硬性一票否决防御）
+    if (!configService.getAutoReconnectSwitch()) {
+      if (this.isActive()) {
+        this.cancel("switch-disabled");
+      }
+      return;
+    }
+
     // 铁律：若到达的错误属于手动中止，立即取消在途自愈并退出，严禁启动重连
     if (isAbortError(detail)) {
       if (this.isActive()) {
@@ -153,7 +163,7 @@ class ModelFailoverEngine extends EventTarget {
       return;
     }
 
-    const tid = detail?.taskId || detail?.task_id || detail?.raw?.task_id || detail?.raw?.taskId || this.taskId;
+    const tid = resolveEventTaskId(detail, this.taskId);
     if (this.isTaskAborted(tid)) {
       if (this.isActive()) {
         this.cancel("abort");
@@ -188,12 +198,32 @@ class ModelFailoverEngine extends EventTarget {
   }
 
   /**
-   * 全局 agent-end 在引擎活跃时调用：结算当前在途尝试为成功。
+   * 模型输出到达或全局 agent-end 在引擎活跃时调用：结算当前自愈为成功。
+   * 铁律：无论当前处于退避等待 (phase: "waiting")、续发后延迟 (phase: "post_waiting")、
+   * 还是在途重发 (phase: "sending")，只要模型恢复正常产生响应输出，立即终止倒计时并结算成功，
+   * 彻底杜绝在等待重连期间拿到输出后仍继续盲目强行续发「继续」与二次循环。
+   * @param {string | null} [taskId] 事件帧所属任务 ID (可选)
    */
-  resolveTurnSuccess() {
+  resolveTurnSuccess(taskId = null) {
+    if (!this.isActive()) return;
+
+    // 跨任务隔离：若显式指定 taskId 且与引擎当前服务任务不匹配，严禁误结算其他任务
+    if (taskId && this.taskId && String(taskId) !== String(this.taskId)) {
+      return;
+    }
+
+    // 1. 若当前在途有重发网络请求（phase: "sending" 期间），结算该尝试为成功，
+    // 由 _runReconnect() 内部的 await _sendAttempt() 自然唤醒并调用 _succeed()
     if (this._resolveAttempt) {
       this._resolveAttempt({ success: true });
+      return;
     }
+
+    // 2. 若当前正处于 60 秒等待退避 (waiting) 或续发后延迟 (post_waiting)：
+    // 此时 _resolveAttempt 为 null，正处于 await this._sleep()。
+    // 模型在此期间正常产出内容，说明链路已恢复正常，立即终止倒计时并结算成功。
+    // _succeed() 内部通过 _clearTimer() 唤醒 _sleep，随后的 _runReconnect() 判定状态安全退出。
+    this._succeed();
   }
 
   /**
@@ -205,22 +235,28 @@ class ModelFailoverEngine extends EventTarget {
   }
 
   // ==========================================================================
-  // 内置重连流水线：2/4/8/16s 退避，写死上限 10 次
+  // 内置重连流水线：全部 60s 延迟 + 续发后延迟 60s，写死 10 次 (即 120秒 * 10)
   // ==========================================================================
 
   async _runReconnect() {
     const cfg = configService.getModelFailoverConfig();
     const maxAttempts = Math.max(1, Number(cfg.maxReconnectAttempts) || 10);
+    const runTaskId = this.taskId;
     this.maxAttempts = maxAttempts;
 
+    const isAborted = () => {
+      const tid = runTaskId || this.taskId;
+      return this.status !== "reconnecting" || this.isTaskAborted(tid);
+    };
+
     while (this.status === "reconnecting") {
-      if (this.isTaskAborted(this.taskId)) return;
+      if (isAborted()) return;
       if (this.attempt >= maxAttempts) break;
 
       this.attempt++;
       const delay = this._backoffDelay(this.attempt, cfg);
 
-      // 等待退避：轮次顶部胶囊提示「自动内置重连 N/10 · Xs 后重试」
+      // 阶段 1：自动内置重连 60 秒延迟（等待退避重试）
       this._currentPhase = "waiting";
       this._emit({
         status: "reconnecting",
@@ -232,9 +268,9 @@ class ModelFailoverEngine extends EventTarget {
       });
 
       await this._sleep(delay);
-      if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId)) return;
+      if (isAborted()) return;
 
-      // 后台静默续发「继续」文本（不生成提问卡、不显示）
+      // 阶段 2：后台静默续发「继续」文本（不生成提问卡、不显示）
       this._currentPhase = "sending";
       this._emit({
         status: "reconnecting",
@@ -245,7 +281,7 @@ class ModelFailoverEngine extends EventTarget {
       });
 
       const result = await this._sendAttempt();
-      if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId) || result?.cancelled) return;
+      if (isAborted() || result?.cancelled) return;
 
       if (result.success) {
         this._succeed();
@@ -258,9 +294,24 @@ class ModelFailoverEngine extends EventTarget {
       }
 
       this.lastError = result.error || this.lastError;
+
+      // 阶段 3：发送“继续”提示词重连后再延迟 60 秒（一共内置 10 次，即 120 秒 * 10）
+      const postDelay = cfg.postReconnectDelayMs || DEFAULT_FAILOVER_CONFIG.postReconnectDelayMs;
+      this._currentPhase = "post_waiting";
+      this._emit({
+        status: "reconnecting",
+        phase: "post_waiting",
+        attempt: this.attempt,
+        maxAttempts,
+        nextDelayMs: postDelay,
+        modelName: this._modelName(),
+      });
+
+      await this._sleep(postDelay);
+      if (isAborted()) return;
     }
 
-    if (this.status !== "reconnecting" || this.isTaskAborted(this.taskId)) return;
+    if (isAborted()) return;
 
     // 10 次内置重连全部耗尽仍失败 → 弹回「模型XXX异常」窗体文本
     this._giveUp();
@@ -305,6 +356,7 @@ class ModelFailoverEngine extends EventTarget {
    * 内置重连成功：结算胶囊并清除错误状态
    */
   _succeed() {
+    if (!this.isActive()) return;
     const reconnectCount = this.attempt;
     this._unattributedExhausted = false; // 重连成功即解除无归属耗尽标记，后续新错误可正常冷启动
     this.status = "succeeded";
@@ -372,20 +424,23 @@ class ModelFailoverEngine extends EventTarget {
   // ==========================================================================
 
   /**
-   * 退避延迟：2s → 4s → 8s → 16s → 16s… (恒封顶 maxBackoffMs)
-   * delay(attempt) = min(reconnectBackoffMs[attempt-1] ?? maxBackoffMs, maxBackoffMs)
+   * 退避延迟：全部为 60s 延迟 (恒封顶 60s)
    */
   _backoffDelay(attempt, cfg) {
-    const seq = Array.isArray(cfg.reconnectBackoffMs) ? cfg.reconnectBackoffMs : [2000, 4000, 8000, 16000];
-    const cap = cfg.maxBackoffMs || 16000;
+    const seq = Array.isArray(cfg?.reconnectBackoffMs) && cfg.reconnectBackoffMs.length > 0
+      ? cfg.reconnectBackoffMs
+      : DEFAULT_FAILOVER_CONFIG.reconnectBackoffMs;
+    const cap = cfg?.maxBackoffMs || DEFAULT_FAILOVER_CONFIG.maxBackoffMs;
     const v = seq[attempt - 1];
     return Math.min(v === undefined ? cap : v, cap);
   }
 
   _sleep(ms) {
     return new Promise((resolve) => {
+      this._resolveSleep = resolve;
       this._backoffTimer = setTimeout(() => {
         this._backoffTimer = null;
+        this._resolveSleep = null;
         resolve();
       }, ms);
     });
@@ -395,6 +450,11 @@ class ModelFailoverEngine extends EventTarget {
     if (this._backoffTimer) {
       clearTimeout(this._backoffTimer);
       this._backoffTimer = null;
+    }
+    if (this._resolveSleep) {
+      const r = this._resolveSleep;
+      this._resolveSleep = null;
+      r();
     }
   }
 

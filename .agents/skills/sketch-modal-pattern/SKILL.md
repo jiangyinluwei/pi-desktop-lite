@@ -82,10 +82,25 @@ const inputName = await sketchPrompt("请输入新名称：", "默认值", { tit
 
 ---
 
+## 🚧 隐形指针拦截层禁令 (Invisible Pointer Shield Invariant)
+
+`.sketch-modal-overlay` 是 `position: fixed; inset: 0; z-index: 11000` 的**全屏覆盖层**，其显隐由 opacity 过渡驱动。**铁律：遮罩层在隐藏态（未挂 `.visible`）与淡出态（`.closing`）下必须 `pointer-events: none`，仅 `.visible` 态允许 `pointer-events: auto`**：
+
+```css
+.sketch-modal-overlay        { opacity: 0; pointer-events: none; }  /* 隐藏态：绝不吃指针 */
+.sketch-modal-overlay.visible { opacity: 1; pointer-events: auto; } /* 可见态：模态拦截 */
+.sketch-modal-overlay.closing { opacity: 0; pointer-events: none; } /* 淡出态：放行指针 */
+```
+
+**根因（真实事故）**：若隐藏态保留 `pointer-events: auto`，一旦弹窗 `appendChild` 后、`requestAnimationFrame` 添加 `.visible` 前窗体被隐藏至托盘 / 最小化（WebView2 挂起 rAF，`src/services/sketch-modal.js` `open()` 的可见性激活帧被冻结），就会产生**「看不见却吃掉全应用点击与悬浮」的隐形拦截层**——表现为错误卡「重试当前提问 / 切换其他模型」等所有按钮点击无响应、悬浮无反馈、界面视觉完全正常。修复于 `src/styles/overlays.css`；新增任何全屏覆盖层（遮罩 / 引导层 / 预览层）必须遵守同款三态指针规范。
+
+---
+
 ## 📋 交付核查清单
 
 - [ ] 弹窗严格居中于软件框体，具备毛玻璃微模糊背景；
 - [ ] 浅色暖纸与深色炭黑双模投影自然；
 - [ ] 具备清脆的 Pop-Shake 回弹微抖动；
 - [ ] 右键与 Esc 优先关闭弹窗且不触发下层回退；
-- [ ] 危险确认弹窗（`isDanger: true`）呈现红色警告与取消默认聚焦。
+- [ ] 危险确认弹窗（`isDanger: true`）呈现红色警告与取消默认聚焦；
+- [ ] 遮罩层隐藏态 / 淡出态 `pointer-events: none`，仅 `.visible` 态 `pointer-events: auto`（隐形拦截层禁令）。

@@ -61,6 +61,22 @@
 
     <div class="titlebar-drag-area" data-tauri-drag-region></div>
 
+    <!-- 右上角手绘「计划执行」指示器（置于 Mini 任务胶囊左侧，展示进度 N/M，点击展开计划侧边栏） -->
+    <button type="button" class="plan-indicator hidden" id="plan-indicator" data-tauri-no-drag aria-label="任务计划"
+      title="点击展开模型执行计划详情">
+      <span class="plan-indicator-icon" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.4"
+          stroke-linecap="round" stroke-linejoin="round">
+          <!-- 手绘复选框计划清单图元 -->
+          <path d="M2.8 4.2 C3.3 3.7, 4.2 3.8, 4.8 4 L5.6 5.2 L7.2 2.9" />
+          <line x1="9.5" y1="4.5" x2="13.5" y2="4.3" />
+          <path d="M2.8 9.2 C3.3 8.7, 4.2 8.8, 4.8 9 L5.6 10.2 L7.2 7.9" />
+          <line x1="9.5" y1="9.5" x2="13.5" y2="9.3" />
+        </svg>
+      </span>
+      <span class="plan-indicator-text" id="plan-indicator-text">0/0</span>
+    </button>
+
     <!-- 右上角手绘 Mini 任务胶囊 [✏️ 1/3 Task] -->
     <button type="button" class="mini-task-capsule hidden" id="mini-task-capsule" data-tauri-no-drag aria-label="后台任务"
       title="点击展开后台对话任务监控">
@@ -237,7 +253,7 @@
 
     <!-- 多段对话上下轮次定位导航 (Flow Turn Navigation)
          仅当多轮对话 (flow-message-group >= 2) 且处于 Flow 视图时显现；
-         右移到 flow 内容区域之外（窗体内右边距处，由 JS 对齐 flow 内容区底部），
+         位于右侧、靠左紧贴对齐会话流/对话框列（左缘贴齐内容列右边缘，由 JS 对齐 flow 内容区底部），
          纵向排列「上 / 下」按钮；所有定位效果仅在鼠标弹起时响应（按下后移出按钮再弹起不生效）。 -->
     <div class="flow-turn-nav" id="flow-turn-nav">
       <button type="button" class="flow-turn-nav-btn flow-turn-nav-up" id="flow-turn-nav-up"
@@ -295,8 +311,12 @@
           <span class="settings-badge" id="settings-badge"></span>
         </button>
 
+        <!-- 额度遥测图标（悬浮显示上下文消耗 / token 每秒 / 已消耗 token；缩略实时仪表由 token-telemetry.js 注入） -->
+        <button type="button" id="telemetry-btn" class="telemetry-btn" aria-label="额度"></button>
+
         <!-- 手绘线条素描搜索框 -->
         <form class="sketch-search-box" id="search-form" onsubmit="return false;">
+
           <!-- 导入图标与文件选择 -->
           <div class="search-icon" id="search-icon-box" role="button" tabindex="0" aria-label="导入文件"
             title="点击导入文件，或直接将图片/文档拖入此处">
@@ -535,14 +555,37 @@
             </div>
           </div>
 
-          <!-- 2. 模型配置面板 (包含当前模型列表与折叠式官方/自定义通道配置) -->
+          <!-- 2. 模型配置面板 (包含顶部并列 Tab：模型配置 / 生图与多模态路由) -->
           <div class="tab-pane" id="pane-current-models">
-            <div class="pane-header-row">
+            <!-- 顶部并列 Tab 导航 -->
+            <nav class="model-subtabs-nav" aria-label="模型与路由分页">
+              <button type="button" class="model-subtab-btn active" data-subtab="subpane-models-list">
+                <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor"
+                  stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="4" width="14" height="12" rx="2" />
+                  <path d="M7 8h6M7 12h4" />
+                </svg>
+                模型配置
+              </button>
+              <button type="button" class="model-subtab-btn" data-subtab="subpane-image-routing">
+                <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor"
+                  stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2.5" y="3.5" width="15" height="13" rx="2" />
+                  <circle cx="7" cy="8" r="1.5" />
+                  <path d="M17.5 13.5 L13 9 L6 16" />
+                </svg>
+                生图与多模态路由
+              </button>
+            </nav>
+
+            <!-- 子分页 1：模型配置列表与通道配置 -->
+            <div class="model-subpane active" id="subpane-models-list">
+              <div class="pane-header-row">
               <div>
                 <h3 class="pane-title">模型配置</h3>
                 <p class="pane-desc">管理与选用模型列表，或展开下方通道配置以新增更多模型。</p>
               </div>
-              <label class="auto-reconnect-toggle" title="模型调用失败时自动内置重连（后台静默续发「继续」，最多 10 次）">
+              <label class="auto-reconnect-toggle" title="模型调用失败时自动内置重连（60s延迟 + 后台静默续发「继续」后再延迟60s，最多 10 次，即 120s * 10）">
                 <input type="checkbox" class="auto-reconnect-checkbox" id="auto-reconnect-switch" checked
                   autocomplete="off" />
                 <span class="auto-reconnect-box" aria-hidden="true">
@@ -700,10 +743,12 @@
                         <label for="custom-api-type" class="form-label">接口类型 (API Protocol) <span
                             class="req">*</span></label>
                         <select id="custom-api-type" class="flat-select" required>
-                          <option value="openai-completions" selected>openai-completions</option>
-                          <option value="openai-responses">openai-responses</option>
-                          <option value="anthropic">anthropic</option>
-                          <option value="ollama">ollama</option>
+                          <option value="openai-completions" selected>openai-completions (/v1/chat/completions)</option>
+                          <option value="openai-responses">openai-responses (/v1/responses)</option>
+                          <option value="anthropic">anthropic (Anthropic 协议)</option>
+                          <option value="ollama">ollama (Ollama 协议)</option>
+                          <option value="openai-images">openai-images (OpenAI 兼容 /images/generations 生图)</option>
+                          <option value="dashscope-async-image">dashscope-async-image (DashScope 原生异步接口 / 通义万相生图)</option>
                         </select>
                       </div>
                     </div>
@@ -754,10 +799,105 @@
                 </div>
               </div>
             </div>
+            <!-- 子分页 1 结束 -->
           </div>
 
-          <!-- 5. 内核面板 (Kernel & Package Catalog) -->
-          <div class="tab-pane" id="pane-packages">
+          <!-- 子分页 2：生图与多模态路由 -->
+          <div class="model-subpane" id="subpane-image-routing">
+            <div class="pane-header-row">
+              <div>
+                <h3 class="pane-title">生图与多模态路由</h3>
+                <p class="pane-desc">当当前会话模型缺乏多模态能力或面临绘图需求时，自动调度专用路由模型执行，并在任务完成后无缝切回原会话模型。</p>
+              </div>
+              <label class="auto-reconnect-toggle" title="开启后，若当前模型缺乏视觉/生图能力，自动调用路由模型并在完成后切回原模型">
+                <input type="checkbox" class="auto-reconnect-checkbox" id="image-routing-switch" autocomplete="off" />
+                <span class="auto-reconnect-box" aria-hidden="true">
+                  <svg class="auto-reconnect-tick" viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 8.5 L6.5 12 L13 4.5" />
+                  </svg>
+                </span>
+                <span class="auto-reconnect-label">启用生图路由</span>
+              </label>
+            </div>
+
+            <!-- 生图模型配置原则醒目说明条 -->
+            <div class="image-routing-principles-banner">
+              <div class="principles-banner-title">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="8" cy="8" r="7" />
+                  <path d="M8 5v3.5M8 11.5h.01" />
+                </svg>
+                <span>生图模型配置原则与支持规范</span>
+              </div>
+              <div class="principles-banner-content">
+                <p><strong>核心配置原则</strong>：常规的 <code>/v1/chat/completions</code>、<code>/v1/responses</code> 与 <code>Anthropic</code> 协议属于纯文本或多模态对话接口，<strong>均不支持直接输出图片文件</strong>。</p>
+                <p>必须在「模型配置 ➔ 自定义通道配置」中新增并使用以下两种专用生图接口类型，才会在下方生图下拉框中可选：</p>
+                <div class="principles-types-grid">
+                  <div class="principle-type-badge">
+                    <span class="type-dot"></span>
+                    <div><strong>OpenAI 兼容 /images/generations 类型</strong><br><span class="type-sub">如 SiliconFlow FLUX、OpenAI DALL-E、OneAPI 生图中转等</span></div>
+                  </div>
+                  <div class="principle-type-badge">
+                    <span class="type-dot"></span>
+                    <div><strong>DashScope 原生异步接口</strong><br><span class="type-sub">如阿里百炼通义万相 Wanx 系列原生异步图像生成接口</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 路由模型选择与配置区域 -->
+            <div class="image-routing-config-stage" id="image-routing-body">
+              <div class="form-grid-2">
+                <div class="form-field">
+                  <label for="image-routing-model-select" class="form-label">
+                    生图路由模型 (专用图像生成) <span class="req">*</span>
+                  </label>
+                  <select id="image-routing-model-select" class="flat-select">
+                    <option value="">-- 请选择专用生图模型 --</option>
+                  </select>
+                  <div class="form-field-hint" id="image-routing-model-hint">
+                    仅显示接口类型为 <code>/images/generations</code> 或 <code>DashScope 原生异步接口</code> 的专用生图模型。
+                  </div>
+                </div>
+                <div class="form-field" id="vision-routing-field">
+                  <label for="vision-routing-model-select" class="form-label">
+                    识图路由模型 (可选独立指定)
+                  </label>
+                  <select id="vision-routing-model-select" class="flat-select">
+                    <option value="">不单独指定（识图任务走会话模型常规链路）</option>
+                  </select>
+                  <div class="form-field-hint">
+                    可选用具备多模态视觉能力的大模型（如 GPT-4o、Claude 3.5 Sonnet、Qwen-VL 等）。
+                  </div>
+                </div>
+              </div>
+
+              <!-- 快捷跳转通道指引 -->
+              <div class="routing-quick-actions">
+                <button type="button" class="flat-btn flat-btn-secondary mini" id="btn-goto-custom-providers">
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M6 3L11 8L6 13" />
+                  </svg>
+                  前往「模型配置」添加生图运营商与模型
+                </button>
+              </div>
+
+              <div class="routing-hint-capsule">
+                <span class="hint-icon">
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M8 1.5a4.3 4.3 0 0 1 2.4 7.87c-.47.33-.76.73-.86 1.13h-3.08c-.1-.4-.39-.8-.86-1.13A4.3 4.3 0 0 1 8 1.5z" />
+                    <path d="M6.5 12.8h3M7 14.5h2" />
+                  </svg>
+                </span>
+                <span class="hint-text"><b>自动化流水线</b>：检测到绘图需求时调度专用生图接口生成并展示图片；检测到本地图片输入时调度多模态模型深度解析。任务完毕后<strong>无缝切回原本会话模型</strong>继续深度解答。</span>
+              </div>
+            </div>
+          </div>
+          <!-- pane-current-models 结束 -->
+        </div>
+
+        <!-- 3. 内核面板 (Kernel & Package Catalog) -->
+        <div class="tab-pane" id="pane-packages">
             <div class="pane-header">
               <h3 class="pane-title">内核</h3>
               <p class="pane-desc">查看底层 Pi 内核生命周期与软件版本，管理已挂载扩展并连通官方组件市场。</p>
@@ -1163,6 +1303,52 @@
     </div>
     <div class="task-sidebar-body" id="task-sidebar-list">
       <div class="empty-tasks-placeholder" id="empty-tasks-placeholder">暂无后台任务</div>
+    </div>
+  </aside>
+
+  <!-- 半透明毛玻璃手绘计划侧边栏抽屉（与 Task Details Sidebar 同款风格） -->
+  <aside class="plan-details-sidebar" id="plan-details-sidebar" aria-label="任务计划详情抽屉">
+    <div class="task-sidebar-header plan-sidebar-header">
+      <div class="sidebar-title-group">
+        <div class="plan-sidebar-title-row">
+          <span class="plan-sidebar-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2.8 4.2 C3.3 3.7, 4.2 3.8, 4.8 4 L5.6 5.2 L7.2 2.9" />
+              <line x1="9.5" y1="4.5" x2="13.5" y2="4.3" />
+              <path d="M2.8 9.2 C3.3 8.7, 4.2 8.8, 4.8 9 L5.6 10.2 L7.2 7.9" />
+              <line x1="9.5" y1="9.5" x2="13.5" y2="9.3" />
+            </svg>
+          </span>
+          <h3 class="sidebar-title">计划执行</h3>
+        </div>
+        <span class="sidebar-summary plan-sidebar-summary" id="plan-sidebar-summary">暂无任务计划</span>
+      </div>
+      <button type="button" class="sidebar-close-btn" id="btn-close-plan-sidebar" aria-label="关闭计划侧边栏"
+        title="收起 (Esc / 右键)">
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"
+          stroke-linecap="round">
+          <line x1="3.5" y1="3.5" x2="12.5" y2="12.5" />
+          <line x1="12.5" y1="3.5" x2="3.5" y2="12.5" />
+        </svg>
+      </button>
+    </div>
+    <div class="plan-progress-track" id="plan-progress-track">
+      <div class="plan-progress-fill" id="plan-progress-fill" style="width: 0%;"></div>
+    </div>
+    <div class="plan-sidebar-body" id="plan-sidebar-list">
+      <div class="empty-plan-placeholder">模型执行任务时输出的计划清单将在此展示</div>
+    </div>
+    <div class="plan-sidebar-footer">
+      <button type="button" class="plan-end-btn hidden" id="btn-end-plan">
+        <span class="plan-end-btn-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3.2 8.5 L6.2 11.5 L12.8 4.5" />
+          </svg>
+        </span>
+        <span>结束计划</span>
+      </button>
     </div>
   </aside>
 

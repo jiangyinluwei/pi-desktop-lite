@@ -6,6 +6,7 @@ import { enhanceSelect } from "../services/sketch-select.js";
 import { sketchAlert } from "../services/sketch-modal.js";
 import { bindAll } from "../lib/el-binder.js";
 import { scrollSettingsToBottom } from "./settings-navigation.js";
+import { isModelMultimodal, isImageGenerationApiType } from "../services/multimodal-detector.js";
 
 /**
  * 当前模型列表、白名单 MRU 与官方通道配置
@@ -63,9 +64,6 @@ export function initModelPanel(ctx) {
   if (flowModelTag) {
     flowModelTag.classList.toggle("kernel-missing", !initialHasKernel);
   }
-  if (initialHasKernel) {
-    loadModelsAndState();
-  }
 
   // ==========================================================================
   // 3. 当前模型列表与白名单机制 (最近选用 MRU 自动排序 + 选中模型禁止删除保护)
@@ -111,6 +109,26 @@ export function initModelPanel(ctx) {
     }
   };
 
+  // 内核可用模型目录缓存（"provider|id" 小写键集合；null = 未知，绝不误标失效）
+  let availableModelKeys = null;
+  const modelCatalogKey = (provider, id) =>
+    `${String(provider || "").toLowerCase()}|${String(id || "").toLowerCase()}`;
+  const refreshModelAvailability = async () => {
+    try {
+      const list = await piClient.getAvailableModels();
+      if (Array.isArray(list) && list.length > 0) {
+        availableModelKeys = new Set(
+          list.map((m) => modelCatalogKey(m?.provider, m?.id || m?.modelId)),
+        );
+      } else {
+        availableModelKeys = null;
+      }
+    } catch (e) {
+      console.warn("[Main] Failed to probe available models:", e);
+      availableModelKeys = null;
+    }
+  };
+
   const renderWhitelistModels = (activeModel) => {
     if (!whitelistModelsList) return;
 
@@ -121,6 +139,24 @@ export function initModelPanel(ctx) {
     }
 
     let whitelist = configService.loadModelWhitelist();
+
+    // 防污染自愈：过滤掉任何专用生图协议（如 openai-images / dashscope-async-image）的模型，绝不出现在常规模型列表中
+    const customConf = configService.getCustomModelsSync();
+    const customProviders = customConf?.providers || {};
+    const filteredWhitelist = whitelist.filter((m) => {
+      if (m.isCustom && m.provider && customProviders[m.provider]) {
+        const provApi = customProviders[m.provider].api;
+        if (isImageGenerationApiType(provApi)) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    if (filteredWhitelist.length !== whitelist.length) {
+      whitelist = filteredWhitelist;
+      configService.saveModelWhitelist(whitelist);
+    }
 
     if (!whitelist || whitelist.length === 0) {
       whitelistModelsList.innerHTML = `<div class="empty-sessions">暂无已添加的模型，请展开下方“官方通道”或“自定义通道”添加模型。</div>`;
@@ -162,6 +198,10 @@ export function initModelPanel(ctx) {
         item.classList.add("active");
       }
 
+      // 配置失效检测：内核目录中已不存在的白名单残项（运营商/模型已被删除），可视化标注并拦截选用
+      const isDead =
+        !isActive && availableModelKeys !== null && !availableModelKeys.has(modelCatalogKey(m.provider, m.id));
+
       const contextWin = m.contextWindow
         ? `${(m.contextWindow / 1000).toFixed(0)}k context`
         : "";
@@ -192,7 +232,7 @@ export function initModelPanel(ctx) {
           ${isActive
           ? `<span class="flat-badge flat-badge-active">使用中</span>
                  <button type="button" class="flat-btn flat-btn-secondary mini btn-remove-model" disabled style="opacity: 0.35; cursor: not-allowed; display: inline-flex; align-items: center; gap: 4px;" title="当前使用中的模型禁止删除"><span class="btn-icon">${ICONS.lock}</span> 锁定</button>`
-          : `<button type="button" class="flat-btn flat-btn-secondary mini btn-select-model">选用</button>
+          : `${isDead ? `<span class="flat-badge" style="color: #ef4444; border-color: #ef4444;" title="该模型的运营商配置已不存在">已失效</span>` : ""}<button type="button" class="flat-btn flat-btn-secondary mini btn-select-model"${isDead ? ` title="配置已失效：请先重新添加该运营商与模型配置"` : ""}>选用</button>
                  <button type="button" class="flat-btn flat-btn-secondary mini btn-remove-model" title="从列表移除" aria-label="从列表移除" style="display: inline-flex; align-items: center; justify-content: center; padding: 4px 6px;">${ICONS.close}</button>`
         }
         </div>
@@ -203,6 +243,13 @@ export function initModelPanel(ctx) {
       if (selectBtn) {
         selectBtn.addEventListener("click", async (e) => {
           e.stopPropagation();
+          if (isDead) {
+            await sketchAlert(
+              `模型 [${m.name || m.id}] 的运营商配置已不存在（可能已被删除）。请在「模型配置」中重新添加该运营商与模型后再选用，或选择其他有效模型。`,
+              { type: "warning", title: "模型配置已失效" },
+            );
+            return;
+          }
           selectBtn.disabled = true;
           try {
             const switched = await piClient.setModel(m.provider, m.id);
@@ -244,7 +291,12 @@ export function initModelPanel(ctx) {
     });
   };
 
+
+  // 防重入闸门：内核重启期间 kernel-status-change 会连环触发，重入会导致 set_model 重启风暴叠加
+  let loadModelsAndStateInFlight = false;
   const loadModelsAndState = async () => {
+    if (loadModelsAndStateInFlight) return;
+    loadModelsAndStateInFlight = true;
     try {
       // 同步「自动强制重连」勾选状态至设置页 UI
       if (autoReconnectSwitch) {
@@ -260,6 +312,7 @@ export function initModelPanel(ctx) {
       const [state, catalog] = await Promise.all([
         piClient.getState(),
         configService.getOfficialModelsCatalog(),
+        configService.getCustomModels(),
       ]);
 
       settingsStore.setOfficialCatalog(catalog || []);
@@ -291,11 +344,25 @@ export function initModelPanel(ctx) {
           currentActiveModel.id?.toLowerCase() !== savedModel.modelId.toLowerCase() ||
           currentActiveModel.provider?.toLowerCase() !== savedModel.provider.toLowerCase())
       ) {
-        try {
-          const switched = await piClient.setModel(savedModel.provider, savedModel.modelId);
-          if (switched) currentActiveModel = switched;
-        } catch (e) {
-          console.warn("[Main] Auto-switch to saved model failed:", e);
+        // 选用持久化模型前先校验其仍存在于内核可用目录中：
+        // 若模型配置已被删除，盲目 set_model 会触发内核重启且必然再次失败，形成「重启→停止→重启」死循环。
+        await refreshModelAvailability();
+        const savedModelStillExists =
+          availableModelKeys === null ||
+          availableModelKeys.has(modelCatalogKey(savedModel.provider, savedModel.modelId));
+
+        if (savedModelStillExists) {
+          try {
+            const switched = await piClient.setModel(savedModel.provider, savedModel.modelId);
+            if (switched) currentActiveModel = switched;
+          } catch (e) {
+            console.warn("[Main] Auto-switch to saved model failed:", e);
+          }
+        } else {
+          console.warn(
+            "[Main] Saved model no longer exists in catalog, skip auto-switch to avoid kernel restart loop:",
+            savedModel,
+          );
         }
       }
 
@@ -316,8 +383,15 @@ export function initModelPanel(ctx) {
       if (effectiveModelId) {
         configService.syncSubagentPinnedModel(effectiveModelId);
       }
+
+      // 同步生图与多模态路由配置 UI
+      if (typeof api.syncImageRoutingUI === "function") {
+        api.syncImageRoutingUI();
+      }
     } catch (err) {
       console.warn("[Main] Failed to load models and state:", err);
+    } finally {
+      loadModelsAndStateInFlight = false;
     }
   };
 
@@ -563,8 +637,31 @@ export function initModelPanel(ctx) {
     });
   }
 
+  // 模型配置「自动强制重连」开关 (全局持久化与状态双向同步)
+  if (autoReconnectSwitch) {
+    autoReconnectSwitch.checked = configService.getAutoReconnectSwitch();
+    autoReconnectSwitch.addEventListener("change", () => {
+      configService.setAutoReconnectSwitch(autoReconnectSwitch.checked, true);
+    });
+  }
+  configService.addEventListener("auto-reconnect-change", (e) => {
+    if (autoReconnectSwitch && e.detail?.value !== undefined) {
+      autoReconnectSwitch.checked = e.detail.value;
+    }
+  });
+
+  // 自定义运营商/模型增删后刷新可用目录缓存并重渲白名单（失效标注实时同步）
+  configService.addEventListener("custom-models-change", async () => {
+    await refreshModelAvailability();
+    renderWhitelistModels(piClient.currentModel);
+  });
+
   api.renderWhitelistModels = renderWhitelistModels;
   api.loadModelsAndState = loadModelsAndState;
   api.renderOfficialProviderDetails = renderOfficialProviderDetails;
   api.loadOfficialProvidersConfig = loadOfficialProvidersConfig;
+
+  if (initialHasKernel) {
+    loadModelsAndState();
+  }
 }

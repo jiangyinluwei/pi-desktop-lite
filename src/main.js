@@ -15,6 +15,7 @@ import { initPreferences } from "./modules/preferences.js";
 import { initSettingsNavigation } from "./modules/settings-navigation.js";
 import { initModelPanel } from "./modules/model-panel.js";
 import { initCustomProviderPanel } from "./modules/custom-provider-panel.js";
+import { initImageRoutingPanel } from "./modules/image-routing-panel.js";
 import { initKernelPanel } from "./modules/kernel-panel.js";
 import { initSessionsPanel } from "./modules/sessions-panel.js";
 import { initWorkspacePanel } from "./modules/workspace-panel.js";
@@ -32,8 +33,10 @@ import { initHumanInput } from "./modules/flow-human-input.js";
 import { initFileChanges } from "./modules/flow-file-changes.js";
 import { initFlowRollback } from "./modules/flow-rollback.js";
 import { initTaskPanel } from "./modules/task-panel.js";
+import { initPlanPanel } from "./modules/flow-plan-panel.js";
 import { initFileAttachments } from "./modules/file-attachments.js";
 import { initSearchInput } from "./modules/search-input.js";
+import { initTokenTelemetry } from "./modules/token-telemetry.js";
 import { initPackagesPanel } from "./modules/packages-panel.js";
 import { initGlobalInteractions } from "./modules/global-interactions.js";
 
@@ -65,6 +68,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initSettingsNavigation(ctx);
   initModelPanel(ctx);
   initCustomProviderPanel(ctx);
+  initImageRoutingPanel(ctx);
   initKernelPanel(ctx);
   initSessionsPanel(ctx);
   initWorkspacePanel(ctx);
@@ -75,9 +79,11 @@ window.addEventListener("DOMContentLoaded", () => {
   initHumanInput(ctx);
   initFileChanges(ctx);
   initTaskPanel(ctx);
+  initPlanPanel(ctx);
   initFlowRollback(ctx);
   initFileAttachments(ctx);
   initSearchInput(ctx);
+  initTokenTelemetry(ctx);
   initPackagesPanel(ctx);
   initGlobalInteractions(ctx);
 });

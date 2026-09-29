@@ -16,6 +16,7 @@
 
 pub mod agent;
 pub mod file;
+pub mod image_gen;
 pub mod rollback;
 pub mod session;
 pub mod skills;
@@ -182,6 +183,7 @@ pub fn show_and_focus_main_window(app: &tauri::AppHandle) {
 // ---- 统一再导出（供 lib.rs `use commands::*` 裸名引用） ----
 pub use agent::*;
 pub use file::*;
+pub use image_gen::*;
 pub use rollback::*;
 pub use session::*;
 pub use skills::*;

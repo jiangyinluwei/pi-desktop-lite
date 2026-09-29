@@ -1,7 +1,9 @@
 import { VIEW_DETAILED, VIEW_FOCUS, VIEW_FLOW } from "../lib/view-constants.js";
+import { isTaskStatusActive } from "../lib/contracts.js";
 import { bus } from "../lib/event-bus.js";
 import { piClient } from "../services/pi-client.js";
 import { taskManager } from "../services/task-manager.js";
+import { modelFailoverEngine } from "../services/model-failover.js";
 import { openExternalUrl } from "../services/tauri-bridge.js";
 import { bindAll } from "../lib/el-binder.js";
 
@@ -34,9 +36,10 @@ export function initGlobalInteractions(ctx) {
     };
   };
 
-  // 1. 注册侧边栏回退（最高优先级）
+  // 1. 注册侧边栏回退（最高优先级：计划侧边栏与任务侧边栏同级，先开者先收）
   registerStepBackHandler(() => {
-    return api.closeTaskSidebar();
+    const planClosed = typeof api.closePlanSidebar === "function" ? api.closePlanSidebar() : false;
+    return planClosed || api.closeTaskSidebar();
   });
 
   // 2. 注册设置页面回退
@@ -67,8 +70,8 @@ export function initGlobalInteractions(ctx) {
 
       const activeTask = taskManager.getCurrentActiveTask();
       const isRunning = activeTask
-        ? (activeTask.status === "thinking" || activeTask.status === "streaming" || activeTask.status === "tool_exec")
-        : piClient.isStreaming;
+        ? (isTaskStatusActive(activeTask) || taskManager.isEngineOwnedTask(activeTask.id))
+        : (piClient.isStreaming || modelFailoverEngine.isActive());
       const isPaused = activeTask ? activeTask.status === "paused" : false;
 
       if (flowFromSettings && !isRunning && !isPaused) {

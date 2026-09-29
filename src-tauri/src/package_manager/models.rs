@@ -39,6 +39,11 @@ pub struct InstalledPackage {
     pub has_preset: bool,
     pub is_preset_applied: bool,
     pub preset_title: Option<String>,
+    /// 是否有可用的缺陷补丁（源码级修复，如 pi-ocr 在 Windows 上的 Python 解析缺陷）
+    pub has_patches: bool,
+    /// 缺陷补丁是否已完整落盘生效
+    pub is_patches_applied: bool,
+    pub patch_title: Option<String>,
 }
 
 /// 组件更新检查结果

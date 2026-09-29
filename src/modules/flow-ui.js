@@ -1,11 +1,18 @@
-import { escapeHtml, cleanUserPrompt } from "../lib/dom-utils.js";
+import { escapeHtml, cleanUserPrompt, cleanPhaseOutputText } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_FLOW } from "../lib/view-constants.js";
 import { invokeTauri } from "../services/tauri-bridge.js";
-import { renderMarkdown, initMarkdownInteractions } from "../lib/markdown-renderer.js";
+import { renderMarkdown, initMarkdownInteractions, resolveMarkdownImages } from "../lib/markdown-renderer.js";
 import { flowStore } from "../services/stores/flow-store.js";
 import { resolveStreamTaskId } from "./flow-state-view.js";
-import { collapseToolCard, createThinkingStepCard, createPhaseStepCard, createToolStepCard } from "./flow-render.js";
+import {
+  collapseToolCard,
+  createThinkingStepCard,
+  createPhaseStepCard,
+  createToolStepCard,
+  autoCollapsePrecedingStepsForPoint,
+  autoCollapseRemainingSteps,
+} from "./flow-render.js";
 import { bindAll } from "../lib/el-binder.js";
 import { getFileCategoryIcon } from "./file-attachments.js";
 
@@ -119,6 +126,9 @@ export function initFlowUi(ctx) {
    * @param {boolean} [options.isOpenThinking=false]
    * @param {boolean} [options.isAborted=false]
    * @param {string | null} [options.errorMessage=null]
+   * @param {boolean} [options.silentPrompt=false] 静默回填轮次（生图/多模态路由 Phase 2）：
+   *                 回填 Prompt 属于路由模型向会话模型传递的内部会话信息，严禁渲染提问卡与路由胶囊，
+   *                 后台静默执行（铁律23），仅呈现回归回答的步骤流与最终输出
    * @returns {Object} 包含该轮各子元素引用的对象
    */
   const createFlowTurnGroupElement = ({
@@ -132,64 +142,70 @@ export function initFlowUi(ctx) {
     isOpenThinking = false,
     isAborted = false,
     errorMessage = null,
+    silentPrompt = false,
   } = {}) => {
     const groupEl = document.createElement("div");
     groupEl.className = "flow-message-group";
 
     // 1. 用户问题卡片（净化剥离注入信封与绝对路径尾注，始终展示真实用户输入）
-    const userPromptCard = document.createElement("div");
-    userPromptCard.className = "flow-user-prompt-card";
+    let userPromptCard = null;
+    if (!silentPrompt) {
+      userPromptCard = document.createElement("div");
+      userPromptCard.className = "flow-user-prompt-card";
 
-    const cleanQuery = cleanUserPrompt(query);
+      const cleanQuery = cleanUserPrompt(query);
 
-    let attachmentsHtml = "";
-    if (Array.isArray(attachments) && attachments.length > 0) {
-      const chips = attachments
-        .map(
-          (f) => `
-        <span class="flow-attachment-chip" title="${escapeHtml(f.path || f.name)}">
-          <span class="chip-icon">${getFileCategoryIcon(f.category)}</span>
-          <span class="chip-name">${escapeHtml(f.name)}</span>
-        </span>
-      `
-        )
-        .join("");
-      attachmentsHtml = `<div class="flow-prompt-attachments">${chips}</div>`;
+      let attachmentsHtml = "";
+      if (Array.isArray(attachments) && attachments.length > 0) {
+        const chips = attachments
+          .map(
+            (f) => `
+          <span class="flow-attachment-chip" title="${escapeHtml(f.path || f.name)}">
+            <span class="chip-icon">${getFileCategoryIcon(f.category)}</span>
+            <span class="chip-name">${escapeHtml(f.name)}</span>
+          </span>
+        `
+          )
+          .join("");
+        attachmentsHtml = `<div class="flow-prompt-attachments">${chips}</div>`;
+      }
+
+      if (cleanQuery) {
+        userPromptCard.dataset.copyText = cleanQuery;
+      }
+      userPromptCard.innerHTML = `
+        <div class="prompt-icon">
+          <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <path d="M4 10 L16 10 M11 5 L16 10 L11 15" />
+          </svg>
+        </div>
+        <div class="prompt-main-wrap">
+          ${attachmentsHtml}
+          <p class="prompt-content">${escapeHtml(cleanQuery || (attachments.length > 0 ? `[附带 ${attachments.length} 个文件/图片]` : ""))}</p>
+        </div>
+        <button class="prompt-copy-btn" type="button" title="复制提问" aria-label="复制提问">${ICONS.copy}</button>
+        <button class="flow-rollback-btn" type="button" title="回退到此处（撤回此轮及之后的文件变更）" aria-label="回退到此处">${ICONS.rewind}</button>
+      `;
+      groupEl.appendChild(userPromptCard);
     }
 
-    if (cleanQuery) {
-      userPromptCard.dataset.copyText = cleanQuery;
+    // 2. code-area 路由目标项目胶囊（静默回填轮次严禁重复展示，路由上下文已随真实提问轮呈现）
+    if (!silentPrompt) {
+      const isCodeArea = settingsStore.activeWorkspace?.id === "code-area" || settingsStore.activeWorkspace?.requiresRoute;
+      const routePath = settingsStore.activeWorkspace?.routePath;
+      const routeName = settingsStore.activeWorkspace?.routeName || (routePath ? routePath.split("/").pop() : "");
+
+      const routeCapsuleEl = document.createElement("div");
+      routeCapsuleEl.className = `flow-route-capsule ${isCodeArea && routePath ? "" : "hidden"}`;
+      routeCapsuleEl.setAttribute("title", `路由目标物理路径: ${routePath || ""}`);
+      routeCapsuleEl.innerHTML = `
+        <span class="capsule-icon" aria-hidden="true">${ICONS.folder}</span>
+        <span class="capsule-text">路由目标项目：<strong>${escapeHtml(routeName || routePath || "")}</strong></span>
+      `;
+      groupEl.appendChild(routeCapsuleEl);
     }
-    userPromptCard.innerHTML = `
-      <div class="prompt-icon">
-        <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-          <path d="M4 10 L16 10 M11 5 L16 10 L11 15" />
-        </svg>
-      </div>
-      <div class="prompt-main-wrap">
-        ${attachmentsHtml}
-        <p class="prompt-content">${escapeHtml(cleanQuery || (attachments.length > 0 ? `[附带 ${attachments.length} 个文件/图片]` : ""))}</p>
-      </div>
-      <button class="prompt-copy-btn" type="button" title="复制提问" aria-label="复制提问">${ICONS.copy}</button>
-      <button class="flow-rollback-btn" type="button" title="回退到此处（撤回此轮及之后的文件变更）" aria-label="回退到此处">${ICONS.rewind}</button>
-    `;
-    groupEl.appendChild(userPromptCard);
 
-    // 2. code-area 路由目标项目胶囊
-    const isCodeArea = settingsStore.activeWorkspace?.id === "code-area" || settingsStore.activeWorkspace?.requiresRoute;
-    const routePath = settingsStore.activeWorkspace?.routePath;
-    const routeName = settingsStore.activeWorkspace?.routeName || (routePath ? routePath.split("/").pop() : "");
-
-    const routeCapsuleEl = document.createElement("div");
-    routeCapsuleEl.className = `flow-route-capsule ${isCodeArea && routePath ? "" : "hidden"}`;
-    routeCapsuleEl.setAttribute("title", `路由目标物理路径: ${routePath || ""}`);
-    routeCapsuleEl.innerHTML = `
-      <span class="capsule-icon" aria-hidden="true">${ICONS.folder}</span>
-      <span class="capsule-text">路由目标项目：<strong>${escapeHtml(routeName || routePath || "")}</strong></span>
-    `;
-    groupEl.appendChild(routeCapsuleEl);
-
-    // 2b. 无痕内置重连进度胶囊 (手绘草图风格，运行态瞬态展示，不沉淀历史)
+    // 2b. 无痕内置重连进度胶囊 (手绘草图风格，置于会话流最下方，运行态瞬态展示，不沉淀历史)
     const failoverCapsuleEl = document.createElement("div");
     failoverCapsuleEl.className = "flow-failover-capsule hidden";
     failoverCapsuleEl.setAttribute("role", "status");
@@ -197,8 +213,21 @@ export function initFlowUi(ctx) {
     failoverCapsuleEl.innerHTML = `
       <span class="capsule-icon" aria-hidden="true">${ICONS.bolt}</span>
       <span class="capsule-text">自动内置重连中</span>
+      <button type="button" class="failover-abort-btn" title="中断当前重连与会话" aria-label="中断会话">
+        <span class="abort-icon" aria-hidden="true">${ICONS.stop}</span>
+        <span class="abort-text">中断</span>
+      </button>
     `;
-    groupEl.appendChild(failoverCapsuleEl);
+    const failoverAbortBtn = failoverCapsuleEl.querySelector(".failover-abort-btn");
+    if (failoverAbortBtn) {
+      failoverAbortBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (typeof api.abortCurrentSession === "function") {
+          await api.abortCurrentSession();
+        }
+      });
+    }
 
     // 3. 【时序步骤流容器】：按时间拼接思维切片与工具切片 (思维1-工具1-思维2-工具2...)
     const stepsContainerEl = document.createElement("div");
@@ -212,12 +241,16 @@ export function initFlowUi(ctx) {
         if (step.type === "text") {
           // 阶段性输出切片 (Point)：必须在 thinking 回退分支之前判断，
           // 否则携带 text 字段的历史步骤会被误渲染为 Thinking 卡
-          const pStep = createPhaseStepCard({
-            text: step.text || "",
-            durationText: step.durationText || "已输出",
-            isOpen: false,
-          });
-          stepsContainerEl.appendChild(pStep.cardEl);
+          const cleanText = cleanPhaseOutputText(step.text || "");
+          if (cleanText) {
+            const pStep = createPhaseStepCard({
+              text: cleanText,
+              durationText: step.durationText || "已输出",
+              isOpen: false,
+            });
+            stepsContainerEl.appendChild(pStep.cardEl);
+            autoCollapsePrecedingStepsForPoint(pStep.cardEl);
+          }
         } else if (step.type === "thinking" || step.text) {
           const thinkText = (step.text && step.text.trim()) ? step.text : (step.type === "thinking" ? "已完成思考" : "");
           const tStep = createThinkingStepCard({
@@ -240,6 +273,8 @@ export function initFlowUi(ctx) {
           stepsContainerEl.appendChild(toolStep.cardEl);
         }
       });
+      // 补充优化：会话结束时，最后一段输出作为最终回答呈现，其前序剩余 Thinking 与工具调用同样自动聚合收起
+      autoCollapseRemainingSteps(stepsContainerEl);
     } else {
       // 兼容历史单一 thinkingText 与 toolCalls 格式
       if (thinkingText && thinkingText.trim()) {
@@ -268,6 +303,7 @@ export function initFlowUi(ctx) {
           }
         });
       }
+      autoCollapseRemainingSteps(stepsContainerEl);
     }
 
     // 重绑历史快照卡片的点击折叠：仅处理 outerHTML 快照解析出的卡片（解析后无任何监听器）。
@@ -373,9 +409,13 @@ export function initFlowUi(ctx) {
     responseContentEl.innerHTML = initialHtml;
     responseCardEl.appendChild(responseContentEl);
     groupEl.appendChild(responseCardEl);
+    resolveMarkdownImages(responseContentEl);
 
-    const userTextEl = userPromptCard.querySelector(".prompt-content");
-    const promptAttachmentsEl = userPromptCard.querySelector(".flow-prompt-attachments");
+    // 自动内置重连提醒文本框置于会话流最下方（原本是最上方）
+    groupEl.appendChild(failoverCapsuleEl);
+
+    const userTextEl = userPromptCard?.querySelector(".prompt-content") || null;
+    const promptAttachmentsEl = userPromptCard?.querySelector(".flow-prompt-attachments") || null;
     const failoverTextEl = failoverCapsuleEl.querySelector(".capsule-text");
 
     const turnRefs = {
@@ -384,6 +424,7 @@ export function initFlowUi(ctx) {
       promptAttachmentsEl,
       failoverCapsuleEl,
       failoverTextEl,
+      failoverAbortBtn,
       stepsContainerEl,
       thinkingCardEl: firstThinkingRef?.cardEl || null,
       thinkingToggleBtn: firstThinkingRef?.headerEl || null,
@@ -580,7 +621,7 @@ export function initFlowUi(ctx) {
 
   // ==========================================================================
   // 多段对话上下轮次定位导航 (Flow Turn Navigation)
-  // 触发条件：Flow 视图下对话轮次 >= 2 时，在 flow 内容区右侧（内容外）纵向显现「上 / 下」按钮；
+  // 触发条件：Flow 视图下对话轮次 >= 2 时，在 flow 内容列左侧空隙（靠左对齐 760px 内容列左边缘）纵向显现「上 / 下」按钮；
   // 交互铁律：所有定位效果仅在「鼠标弹起」时响应 —— 按下后移出按钮再弹起不生效，
   //           故按下状态在 mouseleave 时即作废，mouseup 仅当指针仍在按钮上才会触发；
   // 定位目标：每轮对话定位到「该轮最终输出内容」的顶部，对齐显示窗体顶部；
@@ -760,7 +801,7 @@ export function initFlowUi(ctx) {
     flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
   };
 
-  // 垂直对齐：按钮已右移到 flow 内容区域之外，垂直方向动态对齐 flow 内容区底部（问题3）
+  // 垂直对齐：按钮位于内容列右侧空隙，垂直方向动态对齐 flow 内容区底部（问题3）
   const positionFlowTurnNav = () => {
     if (!flowTurnNav || !flowStage || !appContainer || viewStore.mode !== VIEW_FLOW) return;
     const appRect = appContainer.getBoundingClientRect();

@@ -45,3 +45,11 @@ description: Runtime constraint active when traversing directories or handling m
 ## 5. Authentic Content Synthesis
 
 * After extracting document structures, text, or visual findings across the directory, synthesize conclusions grounded strictly in actual extracted content, avoiding speculative or unsubstantiated generalizations.
+
+---
+
+## 6. Generated Images Direct Markdown Output Invariance
+
+* **Direct Visual Presentation**: When an image is generated, drawn, produced, or rendered (e.g. via scripts, python matplotlib/PIL, diffusers, image generation tools/APIs, or saved image files), especially for dedicated image generation requests (生图/绘图任务):
+  1. You **MUST directly embed and present the image in your final response using Markdown image syntax**: `![description](image_path)` (using the absolute or relative file path, e.g. `![生成的图片](image.png)` or `![Cat](cat.png)`).
+  2. **Never** merely output a plain text file path or state "image has been saved" without embedding the `![...](...)` tag. The host UI renders embedded images directly for immediate visual inspection and one-click saving to the user's desktop.

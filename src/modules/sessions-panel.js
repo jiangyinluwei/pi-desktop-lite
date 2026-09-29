@@ -1,4 +1,5 @@
 import { escapeHtml, cleanUserPrompt } from "../lib/dom-utils.js";
+import { isTaskStatusActive } from "../lib/contracts.js";
 import { ICONS } from "../lib/icons.js";
 import { VIEW_SETTINGS } from "../lib/view-constants.js";
 import { bus } from "../lib/event-bus.js";
@@ -164,11 +165,7 @@ export function initSessionsPanel(ctx) {
       // 智能重定向铁律：若该会话已作为活跃/挂起任务运行在 TaskManager 中，直接接入实时现场，杜绝用静态历史覆写
       let existingTask = taskManager.getTask(convId);
       if (existingTask) {
-        const isRunning =
-          existingTask.status === "thinking" ||
-          existingTask.status === "streaming" ||
-          existingTask.status === "tool_exec" ||
-          existingTask.status === "paused";
+        const isRunning = isTaskStatusActive(existingTask);
         if (isRunning) {
           api.restoreTaskToFlow(existingTask);
           viewStore.set({ flowFromSettings: true });
@@ -177,9 +174,23 @@ export function initSessionsPanel(ctx) {
       }
 
       let turns;
+      let injectedItems = [];
       try {
         const detail = await sessionService.getSessionDetail(s.file_path);
         turns = mapSessionTurns(detail);
+        if (Array.isArray(detail)) {
+          const itemMap = new Map();
+          for (const t of detail) {
+            if (Array.isArray(t.injected_items)) {
+              for (const item of t.injected_items) {
+                if (item?.title && !itemMap.has(item.title)) {
+                  itemMap.set(item.title, item);
+                }
+              }
+            }
+          }
+          injectedItems = Array.from(itemMap.values());
+        }
       } catch (err) {
         console.error("[SessionsPanel] Failed to parse session detail:", err);
         turns = [];
@@ -217,10 +228,12 @@ export function initSessionsPanel(ctx) {
         toolCalls: lastTurn.toolCalls || [],
         steps: lastTurn.steps || [],
         sessionPath: s.file_path,
+        injectedItems,
       });
 
       // 绑定 TaskManager 活跃 Task，后续追问接入同一 Pi 会话
       let task = taskManager.getTask(convId);
+      const isExistingRunning = Boolean(task && taskManager.isTaskRunning(task));
       if (!task) {
         task = taskManager.createTask({
           id: convId,
@@ -230,9 +243,14 @@ export function initSessionsPanel(ctx) {
           isSuspended: false,
         });
       }
-      task.turns = JSON.parse(JSON.stringify(turns));
-      task.conversationId = convId;
-      task.status = "completed";
+      if (!isExistingRunning) {
+        task.turns = JSON.parse(JSON.stringify(turns));
+        task.conversationId = convId;
+        task.status = "completed";
+      }
+      if (!isExistingRunning || !task.injectedItems?.length) {
+        task.injectedItems = injectedItems;
+      }
       task.sessionPath = s.file_path;
       task.sessionId = s.session_id;
       task.thinkingText = lastTurn.thinkingText || "";
@@ -242,7 +260,11 @@ export function initSessionsPanel(ctx) {
       task.thinkingDurationText = lastTurn.thinkingDurationText || "已完成思考";
 
       // 直接切 Flow，不调用 closeSettingsView（避免先跳回 previous 的中间态抖动）
-      api.renderTurnsIntoFlow(task, turns, { sessionPath: s.file_path, sessionId: s.session_id });
+      api.renderTurnsIntoFlow(task, turns, {
+        isRunning: isExistingRunning,
+        sessionPath: s.file_path,
+        sessionId: s.session_id,
+      });
       viewStore.set({ flowFromSettings: true });
 
       api.renderConversationMessages();

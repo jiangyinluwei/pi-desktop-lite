@@ -523,8 +523,270 @@
 .md-img {
   max-width: 100%;
   height: auto;
-  border-radius: 6px;
-  border: 1px solid var(--sketch-border-subtle);
-  margin: 8px 0;
-  box-shadow: var(--sketch-shadow);
+  max-height: 520px;
+  object-fit: contain;
+  border-radius: 4px;
+  display: block;
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
+
+/* --------------------------------------------------------------------------
+   手绘草图风格图片卡片 (.md-image-card)
+   -------------------------------------------------------------------------- */
+.md-image-card {
+  margin: 14px 0;
+  background: var(--sketch-box-bg);
+  border: 1.2px solid var(--sketch-border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--sketch-shadow);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.md-image-card:hover {
+  border-color: var(--sketch-border-hover);
+}
+
+.md-image-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.02);
+  padding: 8px;
+  min-height: 100px;
+  cursor: zoom-in;
+  overflow: hidden;
+}
+
+:root[data-theme="dark"] .md-image-wrapper {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* 加载中与加载错误状态 */
+.md-image-loading-placeholder {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--ink-muted);
+  font-size: 12.5px;
+}
+
+.md-image-card.is-loading .md-image-loading-placeholder {
+  display: flex;
+}
+
+.md-image-card.is-loading .md-img {
+  opacity: 0;
+  position: absolute;
+  pointer-events: none;
+}
+
+.md-image-spinner {
+  width: 13px;
+  height: 13px;
+  border: 1.4px solid var(--sketch-border-subtle);
+  border-top-color: var(--ink-primary);
+  border-radius: 50%;
+  animation: md-spin 0.9s linear infinite;
+}
+
+@keyframes md-spin {
+  to { transform: rotate(360deg); }
+}
+
+.md-image-card.is-error .md-image-wrapper {
+  cursor: default;
+}
+
+.md-image-card.is-error .md-img {
+  display: none;
+}
+
+.md-image-card.is-error .md-image-loading-placeholder {
+  display: flex;
+  color: #c53030;
+}
+
+/* 底部操作栏 */
+.md-image-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--sketch-border-subtle);
+  background: var(--sketch-tag-bg);
+  font-size: 12px;
+  user-select: none;
+}
+
+.md-image-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 55%;
+}
+
+.md-image-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--ink-muted);
+}
+
+.md-image-name {
+  font-family: "Consolas", "Cascadia Code", monospace;
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-primary);
+}
+
+.md-image-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* 铁律 5：按钮设计规范 (常态 transparent + 1px transparent 几何占位，仅 hover/focus 显框) */
+.md-image-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--ink-muted);
+  padding: 3px 8px;
+  font-size: 11.5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+  line-height: 1.4;
+  outline: none;
+}
+
+.md-image-btn:hover {
+  background: var(--sketch-hover-bg);
+  border-color: var(--sketch-border-subtle);
+  color: var(--ink-primary);
+}
+
+.md-image-btn:active {
+  transform: scale(0.97);
+}
+
+.md-image-btn.saving {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.md-image-btn.saved {
+  color: #107c41;
+  background: rgba(16, 124, 65, 0.08);
+  border-color: rgba(16, 124, 65, 0.35);
+}
+
+:root[data-theme="dark"] .md-image-btn.saved {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.12);
+  border-color: rgba(74, 222, 128, 0.35);
+}
+
+/* --------------------------------------------------------------------------
+   全屏手绘图片预览模态框 (Lightbox)
+   -------------------------------------------------------------------------- */
+.md-image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(5px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  cursor: zoom-out;
+  animation: md-fade-in 0.15s ease-out forwards;
+}
+
+@keyframes md-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.md-image-lightbox-content {
+  position: relative;
+  max-width: 92vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: default;
+}
+
+.md-image-lightbox-img {
+  max-width: 100%;
+  max-height: 82vh;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.md-image-lightbox-toolbar {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(20, 20, 20, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 5px 12px;
+  border-radius: 6px;
+  backdrop-filter: blur(8px);
+}
+
+.md-image-lightbox-toolbar .md-image-btn {
+  color: #eee;
+}
+
+.md-image-lightbox-toolbar .md-image-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+/* --------------------------------------------------------------------------
+   纯生图任务：自动追加的手绘提示框
+   -------------------------------------------------------------------------- */
+.flow-auto-image-notice {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--sketch-border-subtle);
+}
+
+.flow-auto-image-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  margin-bottom: 6px;
+}
+
+.flow-auto-image-header .header-icon {
+  color: var(--ink-muted);
+}
+

@@ -400,7 +400,8 @@ async fn do_update(
     );
 
     supervisor.stop().await;
-    tokio::time::sleep(Duration::from_millis(600)).await;
+    // stop() 已等待子进程真实退出（优雅 3s + 强杀 3s）；短暂 sleep 兜底 OS 句柄释放延迟
+    tokio::time::sleep(Duration::from_millis(300)).await;
 
     // 6. 原子替换内核目录
     emit_progress(
@@ -416,8 +417,22 @@ async fn do_update(
     // 如果目标目录已存在，将其重命名备份
     if target_kernel_dir.exists() {
         if let Err(e) = fs::rename(&target_kernel_dir, &backup_dir) {
-            log::warn!("[Updater] Failed to rename target to backup: {}, attempting copy fallback", e);
-            let _ = fs::remove_dir_all(&target_kernel_dir);
+            log::warn!("[Updater] Failed to rename target to backup: {}, attempting removal fallback", e);
+            // 旧目录删除失败（exe/句柄仍被锁定）时严禁向未清空的目录继续拷贝——
+            // 会产出新旧混装的损坏内核；必须中止更新、回拉旧内核宿主
+            if let Err(remove_err) = fs::remove_dir_all(&target_kernel_dir) {
+                log::error!(
+                    "[Updater] Failed to remove locked kernel directory: {} — aborting update",
+                    remove_err
+                );
+                if let Err(start_err) = supervisor.start().await {
+                    log::error!("[Updater] Failed to restart supervisor after aborted update: {}", start_err);
+                }
+                return Err(format!(
+                    "Kernel directory is locked ({}); update aborted, old kernel restored",
+                    remove_err
+                ));
+            }
         }
     }
 
@@ -436,9 +451,15 @@ async fn do_update(
     if let Err(err) = fs::rename(&staged_source_dir, &target_kernel_dir) {
         log::warn!("[Updater] Rename staging failed: {}, attempting dir copy", err);
         if let Err(copy_err) = copy_dir_all(&staged_source_dir, &target_kernel_dir) {
-            // 回滚旧版本
+            // 回滚旧版本（回滚失败必须显式暴露——此时磁盘上可能没有可用内核）
             if backup_dir.exists() {
-                let _ = fs::rename(&backup_dir, &target_kernel_dir);
+                if let Err(rb_err) = fs::rename(&backup_dir, &target_kernel_dir) {
+                    log::error!("[Updater] Failed to roll back old kernel from backup: {}", rb_err);
+                }
+            }
+            // 更新失败路径 supervisor 已被 stop 停止，必须回拉内核宿主，否则内核面板永久停摆
+            if let Err(start_err) = supervisor.start().await {
+                log::error!("[Updater] Failed to restart supervisor after failed update: {}", start_err);
             }
             return Err(format!("Failed to install new kernel directory: {}", copy_err));
         }

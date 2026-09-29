@@ -1,12 +1,22 @@
-import { escapeHtml } from "../lib/dom-utils.js";
+import { escapeHtml, cleanPhaseOutputText } from "../lib/dom-utils.js";
 import { ICONS } from "../lib/icons.js";
+import { bus } from "../lib/event-bus.js";
+import { resolveEventTaskId } from "../lib/contracts.js";
 import { piClient } from "../services/pi-client.js";
 import { notificationService } from "../services/notification-service.js";
 import { taskManager } from "../services/task-manager.js";
 import { modelFailoverEngine } from "../services/model-failover.js";
 import { flowStore } from "../services/stores/flow-store.js";
-import { flowView, resolveStreamTaskId } from "./flow-state-view.js";
-import { createThinkingStepCard, createPhaseStepCard, syncThinkingPreview } from "./flow-render.js";
+import { flowView, resolveStreamTaskId, startElapsedTimer } from "./flow-state-view.js";
+import {
+  createThinkingStepCard,
+  createPhaseStepCard,
+  syncThinkingPreview,
+  autoCollapsePrecedingStepsForPoint,
+  autoCollapseRemainingSteps,
+  unwrapStepGroup,
+} from "./flow-render.js";
+import { resolveMarkdownImages, renderImageCard } from "../lib/markdown-renderer.js";
 
 /**
  * 流式状态机、错误卡渲染与内置重连胶囊
@@ -32,6 +42,145 @@ export function initFlowStream(ctx) {
   const flowBtnAbort = flowDom.flowBtnAbort;
   const taskDetailsSidebar = flowDom.taskDetailsSidebar;
 
+  let failoverCountdownInterval = null;
+  const clearFailoverCountdown = () => {
+    if (failoverCountdownInterval) {
+      clearInterval(failoverCountdownInterval);
+      failoverCountdownInterval = null;
+    }
+  };
+
+  /**
+   * 流中断宽容期（Stream Interruption Grace Period）
+   *
+   * 内核回显 `Stream ended without finish_reason` 时，通常只是远端 SSE 流提前关闭，
+   * 并非真正的模型调用失败。此时严禁立即弹出红色错误卡惊扰用户，改为在会话流最下方
+   * 呈现「黄色倒计时等待消息框」，给模型 STREAM_INTERRUPT_GRACE_MS 毫秒恢复窗口：
+   *   - 期间模型恢复任何输出（思维 / 正文 / 工具）或会话正常收口 / 被终止 → 静默撤销等待；
+   *   - 仅当超时仍未恢复 → 才渲染既有红色错误诊断卡（renderErrorCard）。
+   */
+  const STREAM_INTERRUPT_GRACE_MS = 300000;
+  let streamPauseTimer = null;
+  let streamPauseInterval = null;
+  let streamPauseTaskId = null;
+  let streamPauseDetail = null;
+
+  const clearStreamPauseTimers = () => {
+    if (streamPauseTimer) {
+      clearTimeout(streamPauseTimer);
+      streamPauseTimer = null;
+    }
+    if (streamPauseInterval) {
+      clearInterval(streamPauseInterval);
+      streamPauseInterval = null;
+    }
+  };
+
+  /** 隐藏黄色等待胶囊并还原胶囊图标（内置重连场景复用同一胶囊，须还原 bolt 图标） */
+  const hideStreamPauseCapsule = () => {
+    const capsule = flowView.activeTurnRefs?.failoverCapsuleEl;
+    if (!capsule) return;
+    capsule.classList.add("hidden");
+    capsule.classList.remove("waiting");
+    const iconEl = capsule.querySelector(".capsule-icon");
+    if (iconEl) iconEl.innerHTML = ICONS.bolt;
+    const abortBtn = flowView.activeTurnRefs?.failoverAbortBtn || capsule.querySelector(".failover-abort-btn");
+    if (abortBtn) abortBtn.classList.remove("hidden");
+  };
+
+  /**
+   * 撤销流中断宽容期：清退倒计时并隐藏黄色等待胶囊。
+   * 模型恢复输出、会话被手动终止、重发或重新提问时调用（幂等）。
+   * @param {string} [taskId] 传入时仅当与等待中的任务一致才撤销（杜绝跨任务误撤销）
+   */
+  const cancelStreamInterruption = (taskId = null) => {
+    if (!streamPauseTimer) return;
+    if (taskId && streamPauseTaskId && String(taskId) !== String(streamPauseTaskId)) return;
+    clearStreamPauseTimers();
+    streamPauseTaskId = null;
+    streamPauseDetail = null;
+    hideStreamPauseCapsule();
+  };
+
+  /**
+   * 模型恢复输出时撤销流中断宽容期：热路径零负担（无等待时立即返回），
+   * 有等待时经 clearTurnErrorState 一并清除任务错误态与残留错误卡（含取消宽容期）。
+   * @param {string} [taskId]
+   */
+  const resolveStreamInterruption = (taskId = null) => {
+    if (!streamPauseTimer) return;
+    clearTurnErrorState(taskId);
+  };
+
+  /**
+   * 启动流中断宽容期（幂等：同一任务等待期间重复错误帧不重置倒计时）。
+   * @param {{ message: string, model?: string, taskId?: string, raw?: object }} errDetail agent-error detail
+   * @returns {boolean} true = 宽容期已启动（调用方应跳过红框），false = 胶萃未挂载（调用方回退弹红框）
+   */
+  const handleStreamInterruption = (errDetail) => {
+    const taskId = resolveEventTaskId(errDetail, piClient.lastEventTaskId);
+    // 一次失败 run 会经 message_end / turn_end / agent_end 多次派发 agent-error：
+    // 同任务重复帧保持既有倒计时，绝不重置 300 秒窗口；前台已切到别的任务则先撤销旧等待
+    if (streamPauseTimer) {
+      if (!streamPauseTaskId || String(streamPauseTaskId) === String(taskId)) return true;
+      clearStreamPauseTimers();
+    }
+
+    const capsule = flowView.activeTurnRefs?.failoverCapsuleEl;
+    const textEl = flowView.activeTurnRefs?.failoverTextEl;
+    if (!capsule || !textEl) return false;
+
+    streamPauseTaskId = taskId;
+    streamPauseDetail = errDetail;
+
+    // 纯状态示意条：切换为黄色等待态，隐藏胶囊内中断按钮
+    // （主界面 #flow-btn-abort 在等待全周期保持可用，用户仍可随时彻底终止）
+    clearFailoverCountdown();
+    capsule.classList.remove("ok");
+    capsule.classList.add("waiting");
+    capsule.classList.remove("hidden");
+    const iconEl = capsule.querySelector(".capsule-icon");
+    if (iconEl) iconEl.innerHTML = ICONS.hourglass;
+    const abortBtn = flowView.activeTurnRefs?.failoverAbortBtn || capsule.querySelector(".failover-abort-btn");
+    if (abortBtn) abortBtn.classList.add("hidden");
+
+    // 铁律18：主界面 #flow-btn-abort 在等待全周期保持可见可用（用户随时可彻底终止会话与一切后台模型调用）。
+    // 残余收口帧（message_end/agent_end）可能已在此前经 finalizeStream / 终态结算将本按钮隐藏，此处强制恢复显现
+    if (flowBtnAbort) {
+      flowBtnAbort.classList.remove("hidden");
+    }
+
+    let secs = Math.max(1, Math.round(STREAM_INTERRUPT_GRACE_MS / 1000));
+    textEl.textContent = `等待模型响应中 · ${secs}s`;
+    streamPauseInterval = setInterval(() => {
+      secs--;
+      if (secs <= 0) return;
+      textEl.textContent = `等待模型响应中 · ${secs}s`;
+    }, 1000);
+
+    streamPauseTimer = setTimeout(() => {
+      streamPauseTimer = null;
+      clearStreamPauseTimers();
+      const detail = streamPauseDetail || errDetail;
+      const expiredTaskId = streamPauseTaskId;
+      streamPauseDetail = null;
+      streamPauseTaskId = null;
+      // 任务已挂起或切走：错误卡严禁落入其他会话，静默放弃
+      if (expiredTaskId && !taskManager.isForegroundStreamTask(expiredTaskId)) {
+        hideStreamPauseCapsule();
+        return;
+      }
+      // 超时仍未恢复：才弹出红色错误提醒卡
+      hideStreamPauseCapsule();
+      api.renderErrorCard(detail);
+    }, STREAM_INTERRUPT_GRACE_MS);
+
+    if (flowScrollArea && flowView.followBottom !== false) {
+      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    }
+    return true;
+  };
+
   /** 事件帧归属任务的纯数据分仓（事件处理器内调用；调用点均已过前台门禁）。 */
   const streamData = (explicit) => flowStore.for(resolveStreamTaskId(explicit));
 
@@ -50,7 +199,9 @@ export function initFlowStream(ctx) {
     flowView.currentSteps = [];
     flowView.activeThinkingStep = null;
     flowView.activeToolStep = null;
-    flowView.activeTextStep = null;
+    flowView.pendingTextSegment = null;
+    flowView.finalPointCandidate = null;
+    flowView.activeToolPseudoStep = null;
     if (typeof api.removeActiveToolPseudoStep === "function") {
       api.removeActiveToolPseudoStep();
     }
@@ -61,10 +212,6 @@ export function initFlowStream(ctx) {
     if (flowView.toolRunTimerInterval) {
       clearInterval(flowView.toolRunTimerInterval);
       flowView.toolRunTimerInterval = null;
-    }
-    if (flowView.textTimerInterval) {
-      clearInterval(flowView.textTimerInterval);
-      flowView.textTimerInterval = null;
     }
   };
 
@@ -122,9 +269,16 @@ export function initFlowStream(ctx) {
    * @param {Array<any>} attachments
    * @param {boolean} isFollowUpTurn 是否为同会话多轮后续追问
    * @param {string} [taskId] 本轮归属任务 id（发送链显式传入；缺省回退前台活跃任务）
+   * @param {Object} [options]
+   * @param {boolean} [options.silentPrompt=false] 静默回填轮次（生图/多模态路由 Phase 2，铁律23）：
+   *                 不渲染提问卡与路由胶囊，且严禁改写 lastUserQuery（悬浮提问提示、保存按钮
+   *                 与「重试当前提问」必须继续对应用户原始提问，而非路由回填 Prompt）
    */
-  const resetStreamState = (query, attachments = [], isFollowUpTurn = false, taskId = null) => {
-    streamData(taskId).set({ lastUserQuery: query });
+  const resetStreamState = (query, attachments = [], isFollowUpTurn = false, taskId = null, options = {}) => {
+    const silentPrompt = Boolean(options.silentPrompt);
+    if (!silentPrompt) {
+      streamData(taskId).set({ lastUserQuery: query });
+    }
     clearStreamTimersAndBuffers(taskId);
     clearTurnErrorState(taskId);
     if (!modelFailoverEngine.isActive()) {
@@ -166,6 +320,7 @@ export function initFlowStream(ctx) {
       toolCalls: [],
       steps: [],
       isOpenThinking: false,
+      silentPrompt,
     });
 
     if (flowConversation && flowView.activeTurnRefs?.groupEl) {
@@ -195,20 +350,42 @@ export function initFlowStream(ctx) {
   const finalizeStream = (taskId = null) => {
     piClient.isStreaming = false;
     const fs = streamData(taskId);
-    // 若存在未封口的活跃阶段性输出切片，说明它是本轮最终输出段：
-    // 移除 Point 卡（内容保留在最终输出卡中），不沉淀为步骤快照
-    if (flowView.activeTextStep) {
-      const lastStep = flowView.activeTextStep;
-      flowView.activeTextStep = null;
-      lastStep.cardEl?.remove();
-      if (Array.isArray(flowView.currentSteps)) {
-        flowView.currentSteps = flowView.currentSteps.filter((s) => s !== lastStep);
+    // 尾段候选回填：若最后一段文本已在 text-end 打包为 Point 卡，且此后直到本轮收尾
+    // 都未开启任何新阶段（无 thinking / 工具调用 / 新文本段边界），说明该段即本轮最终
+    // 输出——移除 Point 卡，将净化前原文（保留代码块等合法内容）回填最终输出卡。
+    // 连接性守卫：任务直切会整体重建轮次 DOM，后台残余收口帧的结算必须跳过回填，
+    // 严禁把旧任务文本写入重建后的其他任务输出卡
+    const candidate = flowView.finalPointCandidate;
+    flowView.finalPointCandidate = null;
+    if (
+      candidate &&
+      candidate.taskId === resolveStreamTaskId(taskId) &&
+      typeof candidate.rawText === "string" &&
+      candidate.rawText.trim() &&
+      flowView.activeTurnRefs?.stepsContainerEl &&
+      (!candidate.step?.cardEl ||
+        flowView.activeTurnRefs.stepsContainerEl.contains(candidate.step.cardEl))
+    ) {
+      if (candidate.step?.cardEl) {
+        // 会话结束优化：最后一次 point 输出作为最终输出回填时，
+        // 其前序 Thinking 与工具调用的聚合收起组严格保留（严禁解包还原），
+        // 仅将 Point 候选卡移除并将文本回填至最终输出卡
+        candidate.step.cardEl.remove();
+        if (Array.isArray(flowView.currentSteps)) {
+          flowView.currentSteps = flowView.currentSteps.filter((s) => s !== candidate.step);
+        }
+      }
+      fs.set({ responseText: candidate.rawText });
+      if (flowView.activeTurnRefs?.responseContentEl) {
+        flowView.activeTurnRefs.responseContentEl.innerHTML = api.renderMarkdown(candidate.rawText);
       }
     }
-    if (flowView.textTimerInterval) {
-      clearInterval(flowView.textTimerInterval);
-      flowView.textTimerInterval = null;
+    // 兜底聚合收起：会话模型结束时，步骤容器尾部残留的未分组步骤（Thinking / 工具调用）同样自动聚合收起
+    if (flowView.activeTurnRefs?.stepsContainerEl) {
+      autoCollapseRemainingSteps(flowView.activeTurnRefs.stepsContainerEl);
     }
+    // 中途打断的未封口文本段（未收到 text-end）：内容本就留在最终输出卡中，仅丢弃追踪态
+    flowView.pendingTextSegment = null;
     sealActiveThinkingStep();
     // 伪工具运行框兜底清理：流式结束时若仍在参数流式期，定格读秒后移除占位卡
     if (typeof api.removeActiveToolPseudoStep === "function") {
@@ -222,9 +399,47 @@ export function initFlowStream(ctx) {
     if (flowView.activeTurnRefs?.responseContentEl) {
       const cursor = flowView.activeTurnRefs.responseContentEl.querySelector(".streaming-cursor");
       if (cursor) cursor.remove();
+
+      // 1. 异步解析输出卡片中的图片（本地文件转 Data URL 并加载）
+      resolveMarkdownImages(flowView.activeTurnRefs.responseContentEl);
+
+      // 2. 纯生图任务自愈呈现：检查当前会话是否有新产生且未在回答卡中展示的图片文件
+      if (typeof api.getNewlyAddedImageFiles === "function") {
+        const effTaskId = taskId || taskManager.currentActiveTaskId;
+        const newImages = api.getNewlyAddedImageFiles(effTaskId);
+        if (Array.isArray(newImages) && newImages.length > 0) {
+          const container = flowView.activeTurnRefs.responseContentEl;
+          for (const imgItem of newImages) {
+            const cards = container.querySelectorAll(".md-image-card");
+            let alreadyShown = false;
+            for (const c of cards) {
+              const src = c.getAttribute("data-src") || "";
+              if (src.includes(imgItem.name) || src === imgItem.path) {
+                alreadyShown = true;
+                break;
+              }
+            }
+            if (!alreadyShown) {
+              const autoNoticeEl = document.createElement("div");
+              autoNoticeEl.className = "flow-auto-image-notice";
+              autoNoticeEl.innerHTML = `
+                <div class="flow-auto-image-header">
+                  <span class="header-icon">${ICONS.sparkle || ""}</span>
+                  <span>任务产出图片预览</span>
+                </div>
+                ${renderImageCard(imgItem.name, imgItem.path)}
+              `;
+              container.appendChild(autoNoticeEl);
+              resolveMarkdownImages(autoNoticeEl);
+            }
+          }
+        }
+      }
     }
     // 流式结束时隐藏 Flow 中止按钮
-    if (flowBtnAbort) {
+    // （例外：流中断宽容期等待中严禁隐藏——残余 agent-end 收口帧会经此路径把按钮藏掉，
+    //   致 300 秒「等待模型响应中」期间用户完全失去中断手段，违背铁律18）
+    if (flowBtnAbort && !streamPauseTimer) {
       flowBtnAbort.classList.add("hidden");
     }
     // 正常完成且无错误时，为当前轮次输出卡片挂载保存按钮
@@ -254,6 +469,9 @@ export function initFlowStream(ctx) {
    * @param {string} [taskId]
    */
   const clearTurnErrorState = (taskId = null) => {
+    clearFailoverCountdown();
+    // 流中断宽容期同步撤销（重发 / 新提问 / 自愈成功 / 终止 等错误状态清除场景统一收口）
+    cancelStreamInterruption(taskId);
     const bucketId = resolveStreamTaskId(taskId);
     const fs = flowStore.for(bucketId);
     fs.set({ errorMessage: null });
@@ -358,38 +576,86 @@ export function initFlowStream(ctx) {
     const phase = payload.phase || "";
     const textEl = flowView.activeTurnRefs.failoverTextEl;
     const capsule = flowView.activeTurnRefs.failoverCapsuleEl;
+    const abortBtn = flowView.activeTurnRefs.failoverAbortBtn || capsule.querySelector(".failover-abort-btn");
 
     if (payload.status === "succeeded") {
+      clearFailoverCountdown();
       clearTurnErrorState();
+      if (abortBtn) abortBtn.classList.add("hidden");
       textEl.textContent = "自动内置重连成功 · 已恢复正常，继续执行";
       capsule.classList.remove("hidden");
       capsule.classList.add("ok");
       setTimeout(() => {
         capsule.classList.add("hidden");
         capsule.classList.remove("ok");
+        if (abortBtn) abortBtn.classList.remove("hidden");
       }, 1200);
       return;
     }
     if (payload.status === "gave_up" || payload.status === "cancelled") {
+      clearFailoverCountdown();
       capsule.classList.add("hidden");
       capsule.classList.remove("ok");
       return;
     }
-    if (payload.status !== "reconnecting") return;
+    if (payload.status !== "reconnecting") {
+      clearFailoverCountdown();
+      return;
+    }
 
-    // 内置重连等待中 / 续发中：恒定以「自动内置重连 N/10 ...」开头
+    if (abortBtn) abortBtn.classList.remove("hidden");
+
+    // 内置重连等待中 / 续发中 / 续发后延迟中：恒定以「自动内置重连 N/10 ...」开头
     capsule.classList.remove("ok");
     const progress = `${payload.attempt || 0}/${payload.maxAttempts || 0}`;
+
+    /**
+     * 重连倒计时统一驱动（waiting / post_waiting 双分支收敛）：逐秒递减，归零即清退，
+     * 两分支仅文案前缀不同（waiting 空前缀 / post_waiting 「已续发... · 」）
+     * @param {string} labelPrefix 倒计时行文案前缀
+     * @param {number} delayMs 倒计时总时长（ms）
+     */
+    const startFailoverCountdown = (labelPrefix, delayMs) => {
+      clearFailoverCountdown();
+      let secs = Math.max(1, Math.round(delayMs / 1000));
+      textEl.textContent = `自动内置重连 ${progress} · ${labelPrefix}${secs}s 后重试`;
+      failoverCountdownInterval = setInterval(() => {
+        secs--;
+        if (secs <= 0) {
+          clearFailoverCountdown();
+          return;
+        }
+        textEl.textContent = `自动内置重连 ${progress} · ${labelPrefix}${secs}s 后重试`;
+      }, 1000);
+    };
+
     if (phase === "waiting" && payload.nextDelayMs) {
-      const secs = Math.max(1, Math.round(payload.nextDelayMs / 1000));
-      textEl.textContent = `自动内置重连 ${progress} · ${secs}s 后重试`;
+      startFailoverCountdown("", payload.nextDelayMs);
+    } else if (phase === "post_waiting" && payload.nextDelayMs) {
+      startFailoverCountdown("已续发... · ", payload.nextDelayMs);
     } else if (phase === "sending") {
+      clearFailoverCountdown();
       textEl.textContent = `自动内置重连 ${progress} · 正在重发请求 …`;
     } else {
+      clearFailoverCountdown();
       textEl.textContent = `自动内置重连 ${progress} ...`;
     }
     capsule.classList.remove("hidden");
+    if (flowScrollArea && flowView.followBottom !== false) {
+      flowScrollArea.scrollTop = flowScrollArea.scrollHeight;
+    }
   };
+
+  // 任务转入后台挂起或被移除：其流中断宽容期同步撤销（黄色等待胶囊与倒计时仅属于
+  // 前台活跃任务，挂起/移除后由 TaskManager 统一结算，杜绝残留倒计时与跨会话超时弹卡）
+  taskManager.addEventListener("flow-suspended", (e) => {
+    const suspendedTaskId = e.detail?.id || null;
+    if (suspendedTaskId) cancelStreamInterruption(suspendedTaskId);
+  });
+  taskManager.addEventListener("task-removed", (e) => {
+    const removedTaskId = e.detail?.taskId || null;
+    if (removedTaskId) cancelStreamInterruption(removedTaskId);
+  });
 
   // 自动强制重连引擎进度事件 → 更新 Flow 进度胶囊
   modelFailoverEngine.addEventListener("failover-status", (e) => {
@@ -407,14 +673,26 @@ export function initFlowStream(ctx) {
       }
       return;
     }
+
+    // 延迟等待与重连全周期内，确保 Flow 模式中止按钮可见可用（支持随时中断一切）
+    if (payload.status === "reconnecting") {
+      if (flowBtnAbort) {
+        flowBtnAbort.classList.remove("hidden");
+      }
+    } else if (payload.status === "cancelled" || payload.status === "gave_up") {
+      if (flowBtnAbort && !piClient.isStreaming) {
+        flowBtnAbort.classList.add("hidden");
+      }
+    }
+
     // 退避等待期间停止思考计时，避免耗时位残留「思考中」虚长
-    if (payload.status === "reconnecting" && payload.phase === "waiting" && flowView.thinkingTimerInterval) {
+    if (
+      payload.status === "reconnecting" &&
+      (payload.phase === "waiting" || payload.phase === "post_waiting") &&
+      flowView.thinkingTimerInterval
+    ) {
       clearInterval(flowView.thinkingTimerInterval);
       flowView.thinkingTimerInterval = null;
-    }
-    if (payload.status === "reconnecting" && payload.phase === "waiting" && flowView.textTimerInterval) {
-      clearInterval(flowView.textTimerInterval);
-      flowView.textTimerInterval = null;
     }
     updateFailoverCapsule(payload);
     // 侧边栏挂起任务状态徽章 (自动内置重连中) 实时刷新
@@ -481,13 +759,14 @@ export function initFlowStream(ctx) {
    */
   const renderErrorCard = (errDetail) => {
     piClient.isStreaming = false;
-    // 分仓键：错误帧自带 taskId（agent-error / 引擎 detail）优先，缺省回退前台活跃任务
-    const bucketId = resolveStreamTaskId(errDetail?.taskId || errDetail?.task_id || errDetail?.raw?.task_id || null);
+    // 分仓键：错误帧归属 taskId 经 contracts 唯一源解析，缺省由 resolveStreamTaskId 回退前台活跃任务
+    const bucketId = resolveStreamTaskId(resolveEventTaskId(errDetail));
     const fs = flowStore.for(bucketId);
     fs.set({ errorMessage: errDetail?.message || "与模型服务通信中断或返回异常" });
     const currentTask = taskManager.getCurrentActiveTask();
     if (currentTask) {
       currentTask.status = "error";
+      currentTask.graceWaiting = false;
       currentTask.completedAt = Date.now();
       currentTask.errorMessage = fs.errorMessage;
       taskManager.dispatchEvent(new CustomEvent("task-updated", { detail: currentTask }));
@@ -498,6 +777,14 @@ export function initFlowStream(ctx) {
       flowBtnAbort.classList.add("hidden");
     }
     const errMsg = fs.errorMessage;
+
+    // 重复错误帧幂等（BUG1 根因）：一次失败 run 会经 message_end / turn_end / agent_end /
+    // agent_settled 多次派发 agent-error；若每帧都 innerHTML 重建错误卡，按钮监听随 DOM 反复销毁，
+    // 用户点击落空 → 红框「卡死」（重试当前提问 / 切换其他模型都点不了），并重复弹 Windows 通知。
+    // 同任务同正文的后续帧一律短路返回，DOM 与按钮监听纹丝不动
+    const errSig = `${bucketId}::${errMsg}`;
+    const stagedTarget = flowView.activeTurnRefs?.responseContentEl || flowResponseContent;
+    if (stagedTarget?.querySelector(".sketch-error-card")?.dataset.errSig === errSig) return;
 
     // 软件失焦时立即弹出报错终止通知 (带 Windows 默认提示音)
     // 注：不再传幻影 taskId "agent-prompt"，真实任务的注销与报错通知由 taskManager 的 agent-error 监听器负责
@@ -566,7 +853,7 @@ export function initFlowStream(ctx) {
       </div>
     `;
 
-    // 移除已存在的错误卡片，避免重复堆叠
+    // 移除已存在的错误卡片，避免重复堆叠（同正文重复帧已在上方短路返回，走到这里的必为不同正文的新错误）
     const existingCard = targetResponseEl.querySelector(".sketch-error-card");
     if (existingCard) {
       existingCard.remove();
@@ -577,6 +864,9 @@ export function initFlowStream(ctx) {
     } else {
       targetResponseEl.insertAdjacentHTML("beforeend", cardHtml);
     }
+    // 签名烙印：供重复帧幂等短路比对（clearTurnErrorState 会物理移除卡片从而自然重置）
+    const stagedCard = targetResponseEl.querySelector(".sketch-error-card");
+    if (stagedCard) stagedCard.dataset.errSig = errSig;
 
     // 报错时确保移除可能已挂载的保存按钮
     if (flowView.activeTurnRefs && typeof api.attachResponseSaveButton === "function") {
@@ -595,9 +885,7 @@ export function initFlowStream(ctx) {
       if (btnRetry) {
         btnRetry.addEventListener("click", () => {
           clearTurnErrorState(bucketId);
-          if (fs.lastUserQuery) {
-            api.handleFlowQuery(fs.lastUserQuery, fs.lastSentAttachments);
-          }
+          api.handleFlowQuery("继续");
         });
       }
 
@@ -663,109 +951,95 @@ export function initFlowStream(ctx) {
     }
     flowView.currentSteps.push(stepItem);
 
-    if (!flowView.thinkingTimerInterval) {
-      flowView.thinkingTimerInterval = setInterval(() => {
-        if (flowView.activeThinkingStep?.durationEl) {
-          const elapsed = ((Date.now() - flowView.activeThinkingStep.startTime) / 1000).toFixed(1);
-          flowView.activeThinkingStep.durationEl.textContent = `(${elapsed}s)...`;
-        }
-      }, 100);
-    }
-
-    return stepItem;
-  };
-
-  /**
-   * 辅助函数：确保当前存在活跃的阶段性输出切片 (Point 卡)
-   * 阶段性输出流式期间内容在最终输出卡中实时可见（不折叠），
-   * Point 卡仅在步骤流中承载「Point + 读秒」标题位，封口时内容整体折叠进卡片正文。
-   */
-  const ensureActiveTextStep = () => {
-    if (flowView.activeTextStep) return flowView.activeTextStep;
-
-    const pStep = createPhaseStepCard({
-      text: "",
-      durationText: "输出中 (0.0s)...",
-      isOpen: false, // 铁律：任何时候都不自动展开
+    bus.emit("flow:step-start", {
+      type: "thinking",
+      taskId: piClient.lastEventTaskId || taskManager.getCurrentActiveTask()?.id || null,
     });
 
-    if (flowView.activeTurnRefs?.stepsContainerEl) {
-      flowView.activeTurnRefs.stepsContainerEl.appendChild(pStep.cardEl);
-    }
-
-    const stepItem = {
-      type: "text",
-      id: `phase_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      text: "",
-      durationText: "输出中 (0.0s)...",
-      startTime: Date.now(),
-      cardEl: pStep.cardEl,
-      headerEl: pStep.headerEl,
-      durationEl: pStep.durationEl,
-      previewEl: pStep.previewEl,
-      bodyEl: pStep.bodyEl,
-      textStreamEl: pStep.textStreamEl,
-    };
-
-    flowView.activeTextStep = stepItem;
-    if (!Array.isArray(flowView.currentSteps)) {
-      flowView.currentSteps = [];
-    }
-    flowView.currentSteps.push(stepItem);
-
-    if (!flowView.textTimerInterval) {
-      flowView.textTimerInterval = setInterval(() => {
-        if (flowView.activeTextStep?.durationEl) {
-          const elapsed = ((Date.now() - flowView.activeTextStep.startTime) / 1000).toFixed(1);
-          flowView.activeTextStep.durationEl.textContent = `输出中 (${elapsed}s)...`;
-        }
-      }, 100);
-    }
+    startElapsedTimer(flowView, "thinkingTimerInterval", () => flowView.activeThinkingStep);
 
     return stepItem;
   };
 
   /**
-   * 封口当前活跃的阶段性输出切片：把已累积的中间段文本从最终输出卡
-   * 折叠进 Point 卡正文，定格读秒，并重置最终输出卡以承接下一段输出。
-   * 触发时机：tool-start（进入工具调用）或新一轮 text-start（上一段未结清）。
-   * @param {string} [taskId] 事件帧归属任务 id（缺省回退前台活跃任务）
+   * 阶段性输出 (Point) 打包封口唯一实现：
+   * 流式期间内容仅在最终输出卡实时可见（不建卡、不读秒）；文本段输出完毕
+   * （text-end，或内核未派发 text-end 时的下一个阶段边界兜底）才把该段文本
+   * 整体打包折叠进 Point 卡，耗时于打包瞬间定格为「已输出 X.Xs」。
+   * 严禁在首个 text-delta 提前建卡——那会让 Point 卡带着「输出中」读秒空转到
+   * 下一阶段真正启动（含跨消息 Provider 请求往返延迟），且与输出内容同屏双现。
+   * @param {string|null} [taskId] 事件帧归属任务 id（缺省回退前台活跃任务）
+   * @param {boolean} [recordFinalCandidate] 是否登记尾段候选（仅 text-end 打包时为 true）
    */
-  const sealActivePhaseOutput = (taskId = null) => {
-    if (!flowView.activeTextStep) return;
-    const step = flowView.activeTextStep;
-    flowView.activeTextStep = null;
-    if (flowView.textTimerInterval) {
-      clearInterval(flowView.textTimerInterval);
-      flowView.textTimerInterval = null;
-    }
+  const sealTextSegmentAsPointCard = (taskId = null, { recordFinalCandidate = false } = {}) => {
+    const seg = flowView.pendingTextSegment;
+    flowView.pendingTextSegment = null;
 
-    const sealedText = (step.text || "").trim();
-    if (!sealedText) {
-      // 空段（无实际输出内容）：直接移除空 Point 卡，不沉淀
-      step.cardEl?.remove();
-      if (Array.isArray(flowView.currentSteps)) {
-        flowView.currentSteps = flowView.currentSteps.filter((s) => s !== step);
+    const fs = streamData(taskId);
+    const rawSegText = fs.responseText || "";
+    const cleanedText = cleanPhaseOutputText(rawSegText);
+    const elapsed = ((Date.now() - (seg?.startTime || Date.now())) / 1000).toFixed(1);
+    const durationText = `已输出 ${elapsed}s`;
+
+    // 尾段候选登记：text-end 打包后若直到本轮收尾都无新阶段开启，finalizeStream
+    // 会据此把净化前原文回填最终输出卡（尾段严禁沉淀为 Point 卡）
+    const candidate =
+      recordFinalCandidate && rawSegText.trim()
+        ? { taskId: resolveStreamTaskId(taskId), rawText: rawSegText, step: null }
+        : null;
+
+    let stepItem = null;
+    if (cleanedText) {
+      const pStep = createPhaseStepCard({
+        text: cleanedText,
+        durationText,
+        isOpen: false, // 铁律：任何时候都不自动展开
+      });
+      if (flowView.activeTurnRefs?.stepsContainerEl) {
+        flowView.activeTurnRefs.stepsContainerEl.appendChild(pStep.cardEl);
+        // Point 阶段性输出封口完成：自动收起该次 point 之前直至上一次 point 的 Thinking 与工具调用卡片
+        autoCollapsePrecedingStepsForPoint(pStep.cardEl);
       }
-      return;
+      stepItem = {
+        type: "text",
+        id: `phase_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        text: cleanedText,
+        durationText,
+        startTime: seg?.startTime || Date.now(),
+        cardEl: pStep.cardEl,
+        headerEl: pStep.headerEl,
+        durationEl: pStep.durationEl,
+        previewEl: pStep.previewEl,
+        bodyEl: pStep.bodyEl,
+        textStreamEl: pStep.textStreamEl,
+      };
+      if (!Array.isArray(flowView.currentSteps)) {
+        flowView.currentSteps = [];
+      }
+      flowView.currentSteps.push(stepItem);
+    }
+    if (candidate) {
+      candidate.step = stepItem;
+      flowView.finalPointCandidate = candidate;
     }
 
-    const elapsed = ((Date.now() - step.startTime) / 1000).toFixed(1);
-    step.durationText = `已输出 ${elapsed}s`;
-    step.text = sealedText;
-    step.cardEl?.classList.remove("running");
-    if (step.durationEl) {
-      step.durationEl.textContent = step.durationText;
-    }
-    if (step.textStreamEl) {
-      step.textStreamEl.innerHTML = api.renderMarkdown(sealedText);
-    }
-
-    // 重置最终输出卡：仅保留光标，承接下一段（最终）输出
-    streamData(taskId).set({ responseText: "" });
+    // 重置最终输出卡：仅保留光标，承接下一段（最终）输出；
+    // 纯泄漏工具指令段（净化后为空）同样清空——其内容已由内核侧抽取为真实工具调用
+    fs.set({ responseText: "" });
     if (flowView.activeTurnRefs?.responseContentEl) {
       flowView.activeTurnRefs.responseContentEl.innerHTML = `<span class="streaming-cursor"></span>`;
     }
+  };
+
+  /**
+   * 兜底封口当前文本段：thinking-start / text-start / toolcall-delta-start / tool-start
+   * 等阶段边界调用（内核未派发 text-end 的异常流时生效）。任何边界封口都证明本轮
+   * 还有后续阶段，必须撤销尾段候选的回填资格。
+   * @param {string} [taskId] 事件帧归属任务 id（缺省回退前台活跃任务）
+   */
+  const sealActivePhaseOutput = (taskId = null) => {
+    flowView.finalPointCandidate = null;
+    sealTextSegmentAsPointCard(taskId);
   };
 
   /**
@@ -805,8 +1079,10 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("thinking-start", () => {
     if (!isForegroundStreamEvent()) return;
+    // 模型恢复输出：立即撤销流中断宽容期（若有）
+    resolveStreamInterruption(piClient.lastEventTaskId);
     if (modelFailoverEngine.isActive()) {
-      modelFailoverEngine.resolveTurnSuccess();
+      modelFailoverEngine.resolveTurnSuccess(piClient.lastEventTaskId);
     }
     streamData(piClient.lastEventTaskId).set({ hasReceivedDelta: true });
     // 阶段性输出判定铁律：模型输出一段文字后再次进入 Thinking 状态，
@@ -823,8 +1099,9 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("thinking-delta", (e) => {
     if (!isForegroundStreamEvent()) return;
+    resolveStreamInterruption(piClient.lastEventTaskId);
     if (modelFailoverEngine.isActive()) {
-      modelFailoverEngine.resolveTurnSuccess();
+      modelFailoverEngine.resolveTurnSuccess(piClient.lastEventTaskId);
     }
     const fs = streamData(piClient.lastEventTaskId);
     fs.set({ hasReceivedDelta: true });
@@ -862,8 +1139,9 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("text-start", () => {
     if (!isForegroundStreamEvent()) return;
+    resolveStreamInterruption(piClient.lastEventTaskId);
     if (modelFailoverEngine.isActive()) {
-      modelFailoverEngine.resolveTurnSuccess();
+      modelFailoverEngine.resolveTurnSuccess(piClient.lastEventTaskId);
     }
     streamData(piClient.lastEventTaskId).set({ hasReceivedDelta: true });
     // 新一段文本开始：若上一段阶段性输出尚未封口（无工具调用边界），先封口
@@ -879,27 +1157,51 @@ export function initFlowStream(ctx) {
 
   piClient.addEventListener("text-delta", (e) => {
     if (!isForegroundStreamEvent()) return;
+    resolveStreamInterruption(piClient.lastEventTaskId);
     if (modelFailoverEngine.isActive()) {
-      modelFailoverEngine.resolveTurnSuccess();
+      modelFailoverEngine.resolveTurnSuccess(piClient.lastEventTaskId);
     }
     const fs = streamData(piClient.lastEventTaskId);
     // appendResponse 同步累积响应文本并置 hasReceivedDelta（流式热路径）
     fs.appendResponse(e.detail || "");
     sealActiveThinkingStep();
-    // 阶段性输出切片：首增量时创建 Point 卡（标题 + 读秒），内容仍在最终输出卡流式可见
-    const textStep = ensureActiveTextStep();
-    // 关键：同步累积 Point 步骤文本 —— 否则 sealActivePhaseOutput 读到的 step.text 恒为空，
-    // 封口时会被误判为「空段」直接移除，导致 Point 卡永不保留（阶段性输出显示逻辑失效的根因）
-    textStep.text += e.detail || "";
-    if (textStep.previewEl) {
-      textStep.previewEl.textContent = fs.responseText.replace(/[\r\n\t]+/g, " ").trim();
+    // 阶段性输出 (Point)：流式期间内容仅在最终输出卡实时可见，不建卡、不读秒；
+    // 文本段输出完毕（text-end）时才整体打包为 Point 卡并定格耗时
+    if (!flowView.pendingTextSegment) {
+      flowView.pendingTextSegment = { startTime: Date.now() };
+      // 触发新一轮 point 事件（通知额度图标弧光高亮）
+      bus.emit("flow:step-start", {
+        type: "point",
+        taskId: piClient.lastEventTaskId || taskManager.getCurrentActiveTask()?.id || null,
+      });
     }
     if (flowView.activeTurnRefs?.responseContentEl) {
       flowView.activeTurnRefs.responseContentEl.innerHTML =
         api.renderMarkdown(fs.responseText) + `<span class="streaming-cursor"></span>`;
+      if (fs.responseText && (fs.responseText.includes("![") || fs.responseText.includes("<img") || fs.responseText.includes(".png") || fs.responseText.includes(".jpg") || fs.responseText.includes(".jpeg") || fs.responseText.includes(".webp"))) {
+        debouncedResolveImages(flowView.activeTurnRefs.responseContentEl);
+      }
     }
     followScrollToBottom();
   });
+
+  piClient.addEventListener("text-end", () => {
+    if (!isForegroundStreamEvent()) return;
+    // 阶段性输出打包铁律：文本段输出完毕即刻封口为 Point 卡（耗时定格「已输出 X.Xs」），
+    // 严禁等待下一个 thinking-start / 工具边界——否则 Point 卡会带着「输出中」读秒
+    // 空转到下一阶段真正启动，且打包内容与输出卡正文同屏双现。
+    // text-end 打包后直到本轮收尾都无新阶段开启时，finalizeStream 将该段回填为最终输出。
+    sealTextSegmentAsPointCard(piClient.lastEventTaskId, { recordFinalCandidate: true });
+  });
+
+  let resolveImagesTimer = null;
+  const debouncedResolveImages = (el) => {
+    if (!el) return;
+    if (resolveImagesTimer) clearTimeout(resolveImagesTimer);
+    resolveImagesTimer = setTimeout(() => {
+      resolveMarkdownImages(el);
+    }, 120);
+  };
 
   api.resetStreamState = resetStreamState;
   api.finalizeStream = finalizeStream;
@@ -911,4 +1213,7 @@ export function initFlowStream(ctx) {
   api.appendFlowAbortNotice = appendFlowAbortNotice;
   api.renderErrorCard = renderErrorCard;
   api.clearTurnErrorState = clearTurnErrorState;
+  api.handleStreamInterruption = handleStreamInterruption;
+  api.cancelStreamInterruption = cancelStreamInterruption;
+  api.resolveStreamInterruption = resolveStreamInterruption;
 }

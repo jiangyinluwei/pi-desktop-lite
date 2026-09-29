@@ -124,13 +124,17 @@
 /* --------------------------------------------------------------------------
    多段对话上下轮次定位导航 (Flow Turn Navigation)
    仅当多轮对话 (flow-message-group >= 2) 且处于 Flow 视图时显现；
-   右移到 flow 内容区域之外（窗体内右边距处），纵向排列「上 / 下」按钮；
+   位于右侧、靠左紧贴对齐会话流/对话框列（导航左缘贴齐 760px 内容列右边缘），
+   纵向排列「上 / 下」按钮；
    垂直位置由 JS (positionFlowTurnNav) 动态对齐 flow 内容区底部；
    所有定位效果仅在鼠标弹起时响应（按下后移出按钮再弹起不生效）。
    -------------------------------------------------------------------------- */
 .flow-turn-nav {
   position: absolute;
-  right: 24px; /* 右移到 flow 内容区域之外（默认 900px 窗体内位于 760px 内容区右侧空隙） */
+  /* 位于右侧紧贴内容列右边缘：内容列宽 760px 居中（半宽 380px），
+     导航整体（34px 宽）左缘距内容列右边缘 8px；
+     极窄窗体时以 min(..., 100% - 34px - 16px) 兜底，右缘至少留 16px 防止被裁切 */
+  left: min(calc(50% + 380px + 8px), calc(100% - 34px - 16px));
   top: auto;   /* 由 positionFlowTurnNav() 动态计算 */
   z-index: 40;
   display: none;
@@ -265,6 +269,8 @@
   border-radius: 8px;
   padding: 8px 16px;
   box-shadow: var(--sketch-shadow);
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .flow-user-prompt-card .prompt-icon {
@@ -273,6 +279,9 @@
   align-items: center;
   margin-top: 3px;
   flex-shrink: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none;
 }
 
 .prompt-main-wrap {
@@ -281,6 +290,8 @@
   gap: 4px;
   min-width: 0;
   flex: 1;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .flow-prompt-attachments {
@@ -288,6 +299,8 @@
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 2px;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .flow-attachment-chip {
@@ -302,6 +315,7 @@
   color: var(--ink-primary);
   line-height: 1;
   user-select: none;
+  -webkit-user-select: none;
 }
 
 .flow-attachment-chip .chip-icon {
@@ -318,6 +332,9 @@
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 /* 提问一键复制按钮：常态透明无边框（1px 透明占位防抖），悬浮/聚焦显现手绘边框 */
@@ -336,6 +353,7 @@
   border-radius: 4px;
   cursor: pointer;
   user-select: none;
+  -webkit-user-select: none;
   transition: all 0.15s ease;
 }
 
@@ -376,6 +394,7 @@
   border-radius: 4px;
   cursor: pointer;
   user-select: none;
+  -webkit-user-select: none;
   opacity: 0;
   pointer-events: none;
   transition: all 0.15s ease;
@@ -1039,7 +1058,7 @@
   align-self: flex-start;
   gap: 6px;
   padding: 4px 11px;
-  margin: 0 0 10px 2px;
+  margin: 8px 0 12px 2px;
   font-size: 11.5px;
   font-family: inherit;
   color: var(--ink-primary);
@@ -1075,6 +1094,61 @@
   font-weight: 500;
   letter-spacing: 0.01em;
 }
+
+/* 胶囊内手绘风格中断按钮 (常态透明无边框，悬停显手绘红框) */
+.flow-failover-capsule .failover-abort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  margin-left: 6px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--ink-secondary, #b91c1c);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+}
+.flow-failover-capsule .failover-abort-btn.hidden {
+  display: none !important;
+}
+.flow-failover-capsule .failover-abort-btn .abort-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.flow-failover-capsule .failover-abort-btn:hover {
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.35);
+}
+.flow-failover-capsule .failover-abort-btn:active {
+  transform: scale(0.96);
+}
+:root[data-theme="dark"] .flow-failover-capsule .failover-abort-btn {
+  color: #f87171;
+}
+:root[data-theme="dark"] .flow-failover-capsule .failover-abort-btn:hover {
+  color: #fca5a5;
+  background: rgba(248, 113, 113, 0.14);
+  border-color: rgba(248, 113, 113, 0.45);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .flow-failover-capsule .failover-abort-btn,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .flow-failover-capsule .failover-abort-btn {
+    color: #f87171;
+  }
+  :root[data-theme="system"] .flow-failover-capsule .failover-abort-btn:hover,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .flow-failover-capsule .failover-abort-btn:hover {
+    color: #fca5a5;
+    background: rgba(248, 113, 113, 0.14);
+    border-color: rgba(248, 113, 113, 0.45);
+  }
+}
 .flow-failover-capsule.ok {
   border-color: rgba(21, 128, 61, 0.45);
 }
@@ -1089,6 +1163,22 @@
   :root[data-theme="system"] .flow-failover-capsule.ok .capsule-icon,
   :root:not([data-theme="light"]):not([data-theme="dark"]) .flow-failover-capsule.ok .capsule-icon {
     color: #4ade80;
+  }
+}
+
+/* 流中断宽容期：黄色倒计时等待消息框（纯状态示意，实线琥珀边 + 沙漏图标，无中断按钮） */
+.flow-failover-capsule.waiting {
+  border-style: solid;
+  border-color: rgba(217, 119, 6, 0.7);
+  background: rgba(251, 191, 36, 0.14);
+}
+:root[data-theme="dark"] .flow-failover-capsule.waiting {
+  background: rgba(251, 191, 36, 0.1);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .flow-failover-capsule.waiting,
+  :root:not([data-theme="light"]):not([data-theme="dark"]) .flow-failover-capsule.waiting {
+    background: rgba(251, 191, 36, 0.1);
   }
 }
 
@@ -1667,6 +1757,8 @@
   color: var(--ink-primary);
   white-space: pre-wrap;
   word-break: break-all;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .tool-empty-tip {
@@ -1674,6 +1766,183 @@
   color: var(--ink-faint);
   font-style: italic;
   padding: 4px 0;
+}
+
+/* ==========================================================================
+   4. 步骤聚合折叠组 (.flow-step-collapsed-group - 手绘极简草图风格)
+   用于 Point 阶段性输出封口后自动收起上游 Thinking 与工具调用切片
+   ========================================================================== */
+.flow-step-collapsed-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* 极简框体 (收起态单行框体 / 展开态顶部控制栏) */
+.flow-step-group-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 12px;
+  min-height: 30px;
+  border: 1px dashed var(--sketch-border-subtle);
+  border-radius: 6px;
+  background: var(--sketch-box-bg);
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 0.18s ease,
+              box-shadow 0.18s ease;
+}
+
+.flow-step-group-summary:hover {
+  border-color: var(--sketch-border);
+  background: var(--sketch-box-bg-hover, rgba(128, 128, 128, 0.04));
+  box-shadow: var(--sketch-shadow-hover);
+}
+
+.flow-step-group-summary:focus-visible {
+  outline: none;
+  border-color: var(--ink-primary);
+  box-shadow: 0 0 0 2px var(--sketch-focus-ring, rgba(0, 0, 0, 0.08));
+}
+
+.flow-step-group-summary-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-count-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.group-count-item .group-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.group-count-item .group-icon svg {
+  display: block;
+}
+
+.group-thinking-count .group-icon {
+  color: var(--sketch-step-thinking-accent);
+}
+
+.group-tool-count .group-icon {
+  color: var(--sketch-step-tool-accent);
+}
+
+.group-count-divider {
+  display: inline-flex;
+  align-items: center;
+  color: var(--sketch-border-subtle);
+  font-size: 10px;
+  user-select: none;
+  margin: 0 2px;
+}
+
+.flow-step-group-summary-right {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* 顶部与底部手绘收起/展开按钮 */
+.flow-step-group-toggle-btn,
+.flow-step-group-bottom-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2.5px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.flow-step-group-toggle-btn:hover,
+.flow-step-group-summary:hover .flow-step-group-toggle-btn,
+.flow-step-group-bottom-collapse-btn:hover {
+  color: var(--ink-primary);
+  border-color: var(--sketch-border-subtle);
+  background: var(--sketch-box-bg);
+}
+
+.flow-step-group-toggle-btn .toggle-arrow,
+.flow-step-group-bottom-collapse-btn .toggle-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* 展开态：绝不放入新 panel，完全继承正常的 FLOW 垂直流 */
+.flow-step-group-content {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* 右下方收起按钮栏 */
+.flow-step-group-bottom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 2px 2px 4px 2px;
+}
+
+.flow-step-group-bottom-collapse-btn {
+  border: 1px dashed var(--sketch-border-subtle);
+  padding: 2.5px 10px;
+}
+
+/* 收起与展开状态切换控制 */
+.flow-step-collapsed-group[data-collapsed="true"] .flow-step-group-content,
+.flow-step-collapsed-group[data-collapsed="true"] .flow-step-group-bottom-bar {
+  display: none !important;
+}
+
+.flow-step-collapsed-group[data-collapsed="false"] .flow-step-group-content {
+  display: flex;
+  animation: sketchFadeIn 0.2s ease-out;
+}
+
+.flow-step-collapsed-group[data-collapsed="false"] .flow-step-group-bottom-bar {
+  display: flex;
+  animation: sketchFadeIn 0.2s ease-out;
 }
 
 /* AI Agent 思考过程卡片（向后兼容旧容器） */

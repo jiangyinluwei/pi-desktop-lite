@@ -258,6 +258,36 @@ export const PROVIDER_PRESETS = [
       { id: "meta-llama/Llama-3.3-70B-Instruct-Turbo", name: "Llama 3.3 70B Turbo", contextWindow: 128000, maxTokens: 8192, reasoning: false },
       { id: "deepseek-ai/DeepSeek-R1", name: "DeepSeek R1 (Together)", contextWindow: 64000, maxTokens: 8192, reasoning: true }
     ]
+  },
+  {
+    id: "siliconflow-flux",
+    name: "硅基流动生图 (SiliconFlow FLUX)",
+    tag: "AI生图",
+    protocol: "openai-images",
+    baseUrl: "https://api.siliconflow.cn/v1",
+    devRole: false,
+    reasoningEffort: false,
+    desc: "OpenAI 兼容 /images/generations 专用生图端点，支持 FLUX.1 / SD3.5 等",
+    models: [
+      { id: "black-forest-labs/FLUX.1-schnell", name: "FLUX.1 schnell (极速生图)", contextWindow: 4096, maxTokens: 4096, reasoning: false },
+      { id: "black-forest-labs/FLUX.1-dev", name: "FLUX.1 dev (高质量生图)", contextWindow: 4096, maxTokens: 4096, reasoning: false },
+      { id: "stabilityai/stable-diffusion-3-5-large", name: "Stable Diffusion 3.5 Large", contextWindow: 4096, maxTokens: 4096, reasoning: false }
+    ]
+  },
+  {
+    id: "dashscope-wanx",
+    name: "阿里云百炼通义万相 (DashScope Wanx)",
+    tag: "AI生图",
+    protocol: "dashscope-async-image",
+    baseUrl: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+    devRole: false,
+    reasoningEffort: false,
+    desc: "DashScope 原生异步生图接口，支持通义万相生图大模型",
+    models: [
+      { id: "wanx-v1", name: "通义万相 Wanx v1", contextWindow: 4096, maxTokens: 4096, reasoning: false },
+      { id: "wanx2.1-t2i-turbo", name: "通义万相 2.1 Turbo (极速生图)", contextWindow: 4096, maxTokens: 4096, reasoning: false },
+      { id: "wanx2.1-t2i-plus", name: "通义万相 2.1 Plus (旗舰生图)", contextWindow: 4096, maxTokens: 4096, reasoning: false }
+    ]
   }
 ];
 
@@ -278,7 +308,9 @@ export const COMMON_MODEL_PRESETS = [
   { id: "o3-mini", name: "o3-mini", contextWindow: 200000, maxTokens: 65536, reasoning: true, tag: "深度推理", desc: "OpenAI 高速推理模型" },
   { id: "llama3.3:latest", name: "Llama 3.3 70B", contextWindow: 32768, maxTokens: 4096, reasoning: false, tag: "Ollama", desc: "Meta 开源最新旗舰" },
   { id: "deepseek-r1:8b", name: "DeepSeek R1 8B", contextWindow: 32768, maxTokens: 4096, reasoning: true, tag: "Ollama", desc: "蒸馏版轻量推理模型" },
-  { id: "deepseek-r1:14b", name: "DeepSeek R1 14B", contextWindow: 32768, maxTokens: 4096, reasoning: true, tag: "Ollama", desc: "蒸馏版中型推理模型" }
+  { id: "deepseek-r1:14b", name: "DeepSeek R1 14B", contextWindow: 32768, maxTokens: 4096, reasoning: true, tag: "Ollama", desc: "蒸馏版中型推理模型" },
+  { id: "black-forest-labs/FLUX.1-schnell", name: "FLUX.1 schnell", contextWindow: 4096, maxTokens: 4096, reasoning: false, tag: "AI生图", desc: "极速开源生图大模型" },
+  { id: "wanx2.1-t2i-turbo", name: "通义万相 2.1 Turbo", contextWindow: 4096, maxTokens: 4096, reasoning: false, tag: "AI生图", desc: "阿里百炼生图大模型" }
 ];
 
 // ============================================================================

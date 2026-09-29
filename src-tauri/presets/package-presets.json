@@ -9,8 +9,12 @@
         "npm:pi-web-access"
       ],
       "title": "静默后台自动摘要",
-      "description": "配置全后台静默搜索与大模型自动摘要，禁止自动弹出浏览器网页夺取焦点",
-      "configFile": "~/.pi/web-search.json",
+      "description": "配置全后台静默搜索与大模型自动摘要，禁止自动弹出浏览器网页夺取焦点（pi-web-access >= 0.29.0 默认读取 ~/.pi/agent/web-search.json，旧版回退 ~/.pi/web-search.json，双写全覆盖）",
+      "configFile": "~/.pi/agent/web-search.json",
+      "configFiles": [
+        "~/.pi/agent/web-search.json",
+        "~/.pi/web-search.json"
+      ],
       "settings": {
         "workflow": "auto-summary",
         "autoOpenBrowser": false

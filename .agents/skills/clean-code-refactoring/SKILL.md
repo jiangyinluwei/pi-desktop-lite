@@ -163,7 +163,7 @@ fn show_and_focus_main_window(app: &tauri::AppHandle) {
 - **视图派生缓存不入 Store**：`renderedToolCards` / `currentSteps` / `active*Step` / `activeTurnRefs` / 计时器 / `followBottom` 属视图层，统一归位为 `src/modules/flow-state-view.js` 的 `flowView` 密封对象（`Object.seal` 保护），严禁入 store；
 - **纯渲染层显式 import**：无副作用、不读共享状态、不碰视图缓存的纯函数（工具/思维/阶段/伪运行卡创建、工具名/图标/摘要映射、入参/结果 HTML 格式化、ANSI 剥离、徽章刷新）统一定义于 `src/modules/flow-render.js`，调用方 `import { ... } from './flow-render.js'` 显式依赖，替代旧 `ctx.api` 字符串槽；
 - **Flow 域只读 DOM 引用层**：`src/modules/flow-dom.js` 的 `createFlowDom()` 从容器中抽出 flow 子集挂 `ctx.flowDom`，flow-* 模块改读 `flowDom.flow*`；
-- **DOM 按需自绑定 (`src/lib/el-binder.js`)**：模块通过 `bindAll` / `bindEl` 按需自绑定自己的 DOM id 子集，`ctx.el` 已彻底废除；
+- **DOM 按需自绑定 (`src/lib/el-binder.js`)**：模块通过 `bindAll` 按需自绑定自己的 DOM id 子集，`ctx.el` 已彻底废除（原 `bindEl` 容器作用域绑定为零调用死代码已删除）；
 - **落地方式**：`view.mode === VIEW_FLOW` → `viewStore.mode === VIEW_FLOW`；`api.setViewMode(VIEW_FLOW, true)` → `viewStore.morph(VIEW_FLOW, { shouldFocusInput: true })`；`settings.activeWorkspace.routePath = x` → `settingsStore.updateActiveWorkspace({ routePath: x })`；`attachments.files.push(m)` → `attachmentsStore.addFiles([m])`；
 - **后端命令层解耦（已落地）**：Tauri IPC 命令按领域拆到 `src-tauri/src/commands/`（`file`/`window`/`agent`/`session`/`rollback`/`workspace_cmd`/`skills`/`version`），`lib.rs` 仅保留 `invoke_handler!` 汇总 + `run()` 启动，由 1229 行瘦至 248 行；`config_manager.rs` 拆为 `config_manager/{io,schema,migrate,validate}.rs` 目录（`mod.rs` `pub use` 再导出，调用方 `use` 路径零改动）；
 - **函数槽契约定型（已落地）**：`contracts.js` 以 JSDoc `@typedef` 登记全部保留的 ctx 函数槽（按属主模块分组，标注保留原因：①流式/切换热区 ②拦截语义 ③初始化顺序依赖）；新增槽位必须同步登记。

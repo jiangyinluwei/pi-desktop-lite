@@ -47,10 +47,28 @@ pub fn pi_save_provider_api_key(provider: String, api_key: String) -> Result<(),
     pi_save_auth_config(current_auth)
 }
 
-/// 读取 models.json (自定义模型与端点)
+/// 读取 models.json (自定义模型与端点，并自动治愈补齐 supportsStrictMode: false 杜绝 0.86.0 strict-prefer sampling 引发的退化)
 #[tauri::command]
 pub fn pi_get_custom_models() -> Result<Value, String> {
-    read_agent_json("models.json", json!({ "providers": {} }))
+    let mut config = read_agent_json("models.json", json!({ "providers": {} }))?;
+    let mut changed = false;
+    if let Some(providers) = config.get_mut("providers").and_then(|p| p.as_object_mut()) {
+        for (_p_name, p_val) in providers.iter_mut() {
+            if let Some(p_obj) = p_val.as_object_mut() {
+                let compat_entry = p_obj.entry("compat".to_string()).or_insert_with(|| json!({}));
+                if let Some(compat_obj) = compat_entry.as_object_mut() {
+                    if !compat_obj.contains_key("supportsStrictMode") {
+                        compat_obj.insert("supportsStrictMode".to_string(), json!(false));
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    if changed {
+        let _ = write_agent_json("models.json", &config);
+    }
+    Ok(config)
 }
 
 /// 写入 models.json
@@ -88,7 +106,8 @@ pub fn pi_save_custom_provider(entry: CustomProviderEntry) -> Result<(), String>
     let default_dev_role = api_type_str == "openai-responses";
     let compat_val = json!({
         "supportsDeveloperRole": entry.supports_developer_role.unwrap_or(default_dev_role),
-        "supportsReasoningEffort": entry.supports_reasoning_effort.unwrap_or(false)
+        "supportsReasoningEffort": entry.supports_reasoning_effort.unwrap_or(false),
+        "supportsStrictMode": false
     });
 
     let providers = ensure_providers_map_mut(&mut custom_config);

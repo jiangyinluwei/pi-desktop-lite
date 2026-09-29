@@ -1,3 +1,4 @@
+pub mod app_meta;
 pub mod commands;
 pub mod config_manager;
 pub mod package_manager;
@@ -11,16 +12,17 @@ pub mod workspace;
 use commands::*;
 use config_manager::{
     pi_add_custom_model, pi_add_custom_provider_model, pi_apply_model_failover_preset,
-    pi_delete_custom_model, pi_delete_custom_provider, pi_fetch_custom_provider_models,
-    pi_fetch_official_models, pi_get_app_config, pi_get_auth_config, pi_get_custom_models,
-    pi_get_official_models_catalog, pi_get_settings_config, pi_save_app_config,
-    pi_save_auth_config, pi_save_custom_models, pi_save_custom_provider,
-    pi_save_provider_api_key, pi_save_settings_config, pi_sync_subagent_pinned_model,
+    pi_clear_model_failover_preset, pi_delete_custom_model, pi_delete_custom_provider,
+    pi_fetch_custom_provider_models, pi_fetch_official_models, pi_get_app_config,
+    pi_get_auth_config, pi_get_custom_models, pi_get_official_models_catalog,
+    pi_get_settings_config, pi_save_app_config, pi_save_auth_config, pi_save_custom_models,
+    pi_save_custom_provider, pi_save_provider_api_key, pi_save_settings_config,
+    pi_sync_subagent_pinned_model,
 };
 use package_manager::{
-    pi_apply_package_preset, pi_check_node_environment, pi_check_package_updates,
-    pi_get_installed_packages, pi_get_recommended_plugins, pi_install_package,
-    pi_search_packages, pi_uninstall_package, pi_update_package,
+    pi_apply_package_patches, pi_apply_package_preset, pi_check_node_environment,
+    pi_check_package_updates, pi_get_installed_packages, pi_get_recommended_plugins,
+    pi_install_package, pi_search_packages, pi_uninstall_package, pi_update_package,
 };
 use pi_runner::{PiHostPool, PiSupervisor};
 use session::{SessionIndexCache, SessionWatcher};
@@ -54,6 +56,7 @@ pub fn run() {
             pi_send_follow_up,
             pi_send_command,
             pi_send_command_to_task,
+            pi_get_session_stats,
             pi_get_fork_messages,
             pi_fork_session,
             pi_rollback_files,
@@ -82,6 +85,7 @@ pub fn run() {
             pi_get_prompt_history,
             pi_get_session_tree,
             pi_get_session_detail,
+            pi_get_session_telemetry,
             pi_switch_session,
             pi_new_session,
             pi_get_inner_skills_rules,
@@ -105,6 +109,7 @@ pub fn run() {
             pi_get_settings_config,
             pi_save_settings_config,
             pi_apply_model_failover_preset,
+            pi_clear_model_failover_preset,
             pi_sync_subagent_pinned_model,
             pi_get_app_config,
             pi_save_app_config,
@@ -120,6 +125,7 @@ pub fn run() {
             pi_check_package_updates,
             pi_update_package,
             pi_apply_package_preset,
+            pi_apply_package_patches,
             pi_inspect_paths,
             pi_inspect_file,
             pi_read_file_text_preview,
@@ -128,6 +134,11 @@ pub fn run() {
             pi_reveal_path,
             pi_path_exists,
             pi_get_home_dir,
+            pi_read_clipboard_files,
+            pi_save_clipboard_image,
+            pi_read_image_as_data_url,
+            pi_save_image_to_desktop,
+            pi_generate_image,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
@@ -151,10 +162,20 @@ pub fn run() {
             app.manage(supervisor.clone());
             app.manage(host_pool);
 
-            // 2b. 物化会话回退快照守卫扩展至全局扩展目录（幂等，内容变更时覆盖）
+            // 2b. 物化内置内核扩展（快照守卫与工具参数自愈净化器）至全局扩展目录（幂等，内容变更时覆盖）
             if let Err(e) = rollback::materialize_extension() {
-                log::warn!("[Setup] Failed to materialize rollback extension: {}", e);
+                log::warn!("[Setup] Failed to materialize kernel extensions: {}", e);
             }
+
+            // 2c. 启动时自愈已安装组件的推荐配置与缺陷补丁（应对组件升级后配置路径迁移
+            //     或 npm 覆盖 node_modules 导致补丁丢失，如 pi-web-access 0.29.0 将
+            //     web-search.json 由 ~/.pi/ 迁移至 ~/.pi/agent/ 导致既有「后台静默执行」
+            //     配置被忽略、联网搜索重新弹出网页端人工确认；pi-ocr 1.4.x 在 Windows
+            //     上的 python3 占位 stub 缺陷需重打补丁）
+            tauri::async_runtime::spawn(async move {
+                package_manager::presets::self_heal_installed_package_presets();
+                package_manager::patches::self_heal_installed_package_patches();
+            });
 
             // 3. 初始化 Version Scheduler
             let version_scheduler = Arc::new(VersionScheduler::new(app.handle().clone()));

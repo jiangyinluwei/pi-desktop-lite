@@ -5,7 +5,16 @@
  * 1. 记录与沉淀 Flow 界面完成的对话快照（问题、思考链、工具调用、回答与元数据）；
  * 2. 维护按最近“浏览/点开”时间 (MRU: Most Recently Viewed) 排序的会话列表；
  * 3. 管理 UI 层的讯息隐藏（仅从界面移除，不破坏底层 Pi 会话或磁盘记忆）；
- * 4. 提供业务级标准记忆接口，预留挂载 Pi 官方/社区 Memory 扩展 (如 pi-memory / NPM 插件) 的通道。
+ * 4. 提供业务级标准记忆接口，预留挂载 Pi 官方/社区 Memory 扩展 (如 pi-memory / NPM 插件) 的通道；
+ * 5. 持久化尺寸预算与优雅降级（Persistence Budget & Graceful Degradation）：
+ *    Chromium localStorage 每源硬配额约 10MiB（值以 UTF-16 落盘，实测 2 字节/字符）。历史记录
+ *    含工具卡片 HTML 快照（toolCalls[].html）与步骤/结果快照（steps[]），单个工具密集会话可达
+ *    数 MB；一旦总序列化体积超配额，`setItem` 会抛 QuotaExceededError 且被 try/catch 吞掉，
+ *    表现为「新会话界面内可见、重启后永久消失」。因此写入前主动预算控制并自最旧会话起降级，
+ *    保证最新一条记录永远优先完整落盘。
+ * 6. 30 天未打开自动归档清除（Archive & Evict Stale Conversations）：最后一次打开时间
+ *    （lastViewedAt）距今超过 30 天的会话快照，在启动加载与每次持久化时自动从内存与
+ *    localStorage 归档清除（仅清理 UI 层快照，绝不触碰 ~/.pi 底层 Pi 会话 JSONL 文件）。
  */
 
 import { cleanUserPrompt } from "../lib/dom-utils.js";
@@ -13,6 +22,75 @@ import { cleanUserPrompt } from "../lib/dom-utils.js";
 const STORAGE_KEY_HISTORY = "pi_conversation_history";
 const STORAGE_KEY_HIDDEN = "pi_hidden_conversation_ids";
 const MAX_STORED_CONVERSATIONS = 60;
+
+// —— 30 天未打开自动归档清除（Archive & Evict Stale Conversations）——
+// 最后一次打开（lastViewedAt）距今超过该天数的会话快照，在启动加载与每次持久化时
+// 自动从内存与 localStorage 归档清除（仅清理 UI 层快照，绝不触碰 ~/.pi 底层会话 JSONL）。
+const ARCHIVE_RETENTION_DAYS = 30;
+const ARCHIVE_RETENTION_MS = ARCHIVE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+// —— 持久化尺寸预算（防御 localStorage 静默 QuotaExceeded 丢失）——
+// 全列表序列化字符预算：×2 字节 (UTF-16) ≈ 8MB 落盘，为其他 key（遥测/输入历史等）留出配额余量；
+const MAX_STORAGE_BUDGET_CHARS = 4_000_000;
+// 单条会话序列化字符上限：×2 ≈ 3MB，防止单个工具密集会话独自撑爆预算；
+const MAX_CONVERSATION_CHARS = 1_500_000;
+// 逐轮回答文本保底截断上限（超出仅保头部，真实回答通常远小于该值）；
+const MAX_RESPONSE_TEXT_CHARS = 120_000;
+const STORAGE_TRUNCATION_MARKER = "…[内容过长已截断]";
+
+/** 估算对象 JSON 序列化后的字符长度（循环引用等异常返回 0，仅用于预算核算） */
+const jsonLen = (value) => {
+  try {
+    return JSON.stringify(value ?? "").length;
+  } catch {
+    return 0;
+  }
+};
+
+/** 剥离单轮重载荷快照（步骤流 / 工具卡片 HTML / 思考链） */
+const stripTurnHeavyFields = (turn) => {
+  turn.steps = [];
+  turn.toolCalls = [];
+  turn.thinkingText = "";
+};
+
+/**
+ * 将单条会话的序列化体积压缩至上限内（仅在该会话超限时调用）：
+ * ① 自最旧的非末轮开始整体剥离重载荷；
+ * ② 末轮优先从最旧条目起逐条丢弃 steps / toolCalls（保留近期工具卡完整可渲染），再清思考链；
+ * ③ 仍超限则自最旧轮起截断回答文本（保头部 + 截断标记），确保提问/回答骨架永远存活。
+ */
+const shrinkConversationToCap = (conv, capChars) => {
+  let excess = jsonLen(conv) - capChars;
+  if (excess <= 0) return;
+  const turns = Array.isArray(conv.turns) ? conv.turns : [];
+  for (let i = 0; i < turns.length - 1 && excess > 0; i++) {
+    const t = turns[i];
+    excess -= jsonLen(t.steps) + jsonLen(t.toolCalls) + (t.thinkingText || "").length;
+    stripTurnHeavyFields(t);
+  }
+  const last = turns[turns.length - 1];
+  if (last && excess > 0) {
+    while (excess > 0 && Array.isArray(last.steps) && last.steps.length > 0) {
+      excess -= jsonLen(last.steps.shift());
+    }
+    while (excess > 0 && Array.isArray(last.toolCalls) && last.toolCalls.length > 0) {
+      excess -= jsonLen(last.toolCalls.shift());
+    }
+    if (excess > 0) {
+      excess -= (last.thinkingText || "").length;
+      last.thinkingText = "";
+    }
+  }
+  for (const t of turns) {
+    if (excess <= 0) break;
+    const text = typeof t.responseText === "string" ? t.responseText : "";
+    if (text.length > MAX_RESPONSE_TEXT_CHARS) {
+      excess -= text.length - MAX_RESPONSE_TEXT_CHARS;
+      t.responseText = text.slice(0, MAX_RESPONSE_TEXT_CHARS) + STORAGE_TRUNCATION_MARKER;
+    }
+  }
+};
 
 class ConversationHistoryService extends EventTarget {
   constructor() {
@@ -56,6 +134,11 @@ class ConversationHistoryService extends EventTarget {
               lastViewedAt: item.lastViewedAt || item.createdAt || Date.now(),
             };
           });
+          // 30 天未打开的会话快照在启动加载时自动归档清除并立即回写，
+          // 保证磁盘持久化与内存一致（底层 Pi 会话文件不受影响）
+          if (this.purgeArchivedConversations() > 0) {
+            this.saveToStorage();
+          }
         }
       }
     } catch (err) {
@@ -66,20 +149,95 @@ class ConversationHistoryService extends EventTarget {
   }
 
   /**
-   * 持久化保存至 LocalStorage
+   * 30 天未打开自动归档清除：移除最后一次打开时间（lastViewedAt，缺省回退 createdAt）
+   * 距今超过 ARCHIVE_RETENTION_DAYS 的会话快照；无任何时间戳的损坏记录不予清除（无法判定）。
+   * @returns {number} 本次清除的会话数量
+   */
+  purgeArchivedConversations() {
+    const now = Date.now();
+    const before = this.conversations.length;
+    this.conversations = this.conversations.filter((conv) => {
+      if (!conv || typeof conv !== "object") return false;
+      const lastOpened = conv.lastViewedAt || conv.createdAt || 0;
+      if (!lastOpened) return true;
+      return now - lastOpened <= ARCHIVE_RETENTION_MS;
+    });
+    if (this.conversations.length === before) return 0;
+    // 同步清掉已不存在会话的隐藏标记，避免隐藏列表残留幽灵 ID
+    const aliveIds = new Set(this.conversations.map((c) => c.id));
+    for (const id of Array.from(this.hiddenIds)) {
+      if (!aliveIds.has(id)) this.hiddenIds.delete(id);
+    }
+    return before - this.conversations.length;
+  }
+
+  /**
+   * 持久化保存至 LocalStorage（带尺寸预算与优雅降级）
+   * 0. 写入前先执行 30 天未打开自动归档清除；
+   * 1. 写入前执行 trimHistoryToFit 预算瘦身；
+   * 2. setItem 仍失败（如被其他 key 挤占配额）时逐级降级重试：
+   *    物理丢弃最旧会话 → 极限压缩最新会话，保证最新记录永远优先落盘且绝不静默丢失。
    */
   saveToStorage() {
-    try {
-      localStorage.setItem(
-        STORAGE_KEY_HISTORY,
-        JSON.stringify(this.conversations.slice(0, MAX_STORED_CONVERSATIONS))
-      );
-      localStorage.setItem(
-        STORAGE_KEY_HIDDEN,
-        JSON.stringify(Array.from(this.hiddenIds))
-      );
-    } catch (err) {
-      console.warn("[ConversationHistory] Failed to save history to storage:", err);
+    this.purgeArchivedConversations();
+    this.trimHistoryToFit();
+    let attempt = 0;
+    while (attempt < 4) {
+      try {
+        localStorage.setItem(
+          STORAGE_KEY_HISTORY,
+          JSON.stringify(this.conversations.slice(0, MAX_STORED_CONVERSATIONS))
+        );
+        localStorage.setItem(
+          STORAGE_KEY_HIDDEN,
+          JSON.stringify(Array.from(this.hiddenIds))
+        );
+        return;
+      } catch (err) {
+        attempt += 1;
+        console.warn(
+          `[ConversationHistory] localStorage 写入失败（降级重试 ${attempt}/4）:`,
+          err?.name || err
+        );
+        if (this.conversations.length > 1) {
+          // 仍超配额：物理丢弃最旧会话后重试（最新记录永不丢弃）
+          this.conversations.pop();
+        } else if (attempt < 4) {
+          // 仅剩最新记录仍写不进：极限压缩后重试
+          shrinkConversationToCap(
+            this.conversations[0],
+            Math.floor(MAX_CONVERSATION_CHARS / 2 ** attempt)
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * 持久化预算瘦身：序列化总量超预算时，自最旧会话起剥离重载荷快照
+   * （steps / toolCalls HTML / 思考链），仍超则物理丢弃最旧会话；
+   * 最新一条记录（index 0）在两级降级中均豁免，保证本次归档永远可落盘。
+   * 内存与磁盘同步裁剪，保证 restore / 重渲行为与已持久化内容一致。
+   */
+  trimHistoryToFit() {
+    if (this.conversations.length === 0) return;
+    let excess = jsonLen(this.conversations) - MAX_STORAGE_BUDGET_CHARS;
+    if (excess <= 0) return;
+    // 第一级：自最旧会话起剥离重载荷（index 0 最新记录豁免）
+    for (let i = this.conversations.length - 1; i >= 1 && excess > 0; i--) {
+      const conv = this.conversations[i];
+      const turns = Array.isArray(conv.turns) ? conv.turns : [];
+      for (const t of turns) {
+        excess -= jsonLen(t.steps) + jsonLen(t.toolCalls) + (t.thinkingText || "").length;
+        stripTurnHeavyFields(t);
+      }
+      // 兼容旧记录结构：顶层可能直接挂载 steps / toolCalls / thinkingText
+      excess -= jsonLen(conv.steps) + jsonLen(conv.toolCalls) + (conv.thinkingText || "").length;
+      stripTurnHeavyFields(conv);
+    }
+    // 第二级：仍超预算 → 物理丢弃最旧会话（永远保留最新一条）
+    while (excess > 0 && this.conversations.length > 1) {
+      excess -= jsonLen(this.conversations.pop());
     }
   }
 
@@ -171,6 +329,9 @@ class ConversationHistoryService extends EventTarget {
       if (typeof data.isAborted === "boolean") {
         conv.isAborted = data.isAborted;
       }
+      if (Array.isArray(data.injectedItems)) {
+        conv.injectedItems = data.injectedItems;
+      }
       // 重新恢复显示（若此前被隐藏）
       this.hiddenIds.delete(conv.id);
     } else {
@@ -188,6 +349,7 @@ class ConversationHistoryService extends EventTarget {
         sessionId: data.sessionId || undefined,
         isAborted: Boolean(data.isAborted),
         turns: cleanedTurns,
+        injectedItems: Array.isArray(data.injectedItems) ? data.injectedItems : [],
         createdAt: now,
         lastViewedAt: now,
       };
@@ -198,6 +360,9 @@ class ConversationHistoryService extends EventTarget {
     if (this.conversations.length > MAX_STORED_CONVERSATIONS) {
       this.conversations = this.conversations.slice(0, MAX_STORED_CONVERSATIONS);
     }
+
+    // 单条会话体积硬上限：防止单个工具密集会话独自撑爆持久化预算
+    shrinkConversationToCap(conv, MAX_CONVERSATION_CHARS);
 
     this.saveToStorage();
     this.dispatchEvent(new CustomEvent("conversations-change", { detail: this.getVisibleConversations() }));
@@ -289,7 +454,9 @@ class ConversationHistoryService extends EventTarget {
       conv.thinkingText = lastTurn.thinkingText || "";
       conv.toolCalls = lastTurn.toolCalls || [];
       conv.steps = lastTurn.steps || [];
-      conv.thinkingDuration = lastTurn.thinkingDurationText || "";
+      // 思考耗时字段兼容：旧版记录轮次内为 thinkingDuration，现行标准为 thinkingDurationText
+      // （恢复侧 renderTurnsIntoFlow 已做双名兼容读取，剪枝侧同步兼容，杜绝瘦身回写后丢失耗时展示）
+      conv.thinkingDuration = lastTurn.thinkingDurationText || lastTurn.thinkingDuration || "";
       conv.isAborted = Boolean(lastTurn.isAborted);
     }
     this.saveToStorage();

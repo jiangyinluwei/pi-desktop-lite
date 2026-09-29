@@ -5,11 +5,19 @@
 
 import { piClient, parseErrorMessage, isAbortError } from "./pi-client.js";
 import { notificationService, isTransientRateLimitMessage } from "./notification-service.js";
+import { configService } from "./config-service.js";
 import { modelFailoverEngine } from "./model-failover.js";
 import { sessionService } from "./session-service.js";
+import { cleanPhaseOutputText } from "../lib/dom-utils.js";
 import {
   EXTENSION_UI_RESPONDABLE_METHODS,
   isInteractiveExtensionUiRequest,
+  isGracePeriodError,
+  isTransientServiceError,
+  isTaskStatusActive,
+  isTaskStatusTerminal,
+  isTaskAborted,
+  resolveEventTaskId,
 } from "../lib/contracts.js";
 
 /**
@@ -153,6 +161,9 @@ export class TaskManager extends EventTarget {
 
     this.tasks.set(taskId, task);
     this.currentActiveTaskId = taskId;
+    if (piClient) {
+      piClient.lastEventTaskId = taskId;
+    }
 
     // 注册到系统通知服务
     notificationService.registerTask(taskId, {
@@ -172,15 +183,21 @@ export class TaskManager extends EventTarget {
    * @param {string} taskId
    * @param {string} query
    * @param {Array<any>} [attachments=[]]
+   * @param {Object} [options={}]
+   * @param {boolean} [options.silentPrompt=false] 静默回填轮次（生图/多模态路由 Phase 2，铁律23）：
+   *                 轮次快照烙印 silentPrompt，渲染层跳过提问卡（回填 Prompt 绝不在会话流展示），
+   *                 完成通知文案继续对应用户原始提问（task.query）
    * @returns {Object}
    */
-  startNewTurn(taskId, query, attachments = []) {
+  startNewTurn(taskId, query, attachments = [], options = {}) {
     const task = this.tasks.get(taskId);
     if (!task) return null;
 
     if (!Array.isArray(task.turns)) {
       task.turns = [];
     }
+
+    const silentPrompt = Boolean(options && options.silentPrompt);
 
     const newTurn = {
       id: `turn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -194,6 +211,7 @@ export class TaskManager extends EventTarget {
       status: "thinking",
       errorMessage: null,
       isAborted: false,
+      silentPrompt,
       startedAt: Date.now(),
       completedAt: null,
     };
@@ -220,10 +238,10 @@ export class TaskManager extends EventTarget {
     task.thinkingDurationText = "思考中...";
     task.startedAt = Date.now();
 
-    // 重新注册到系统通知服务
+    // 重新注册到系统通知服务（静默回填轮次：通知文案继续对应用户原始提问，严禁回填 Prompt 污染）
     notificationService.registerTask(taskId, {
       title: task.title,
-      query: query || task.query,
+      query: silentPrompt ? (task.query || query) : (query || task.query),
       type: "agent",
     });
 
@@ -259,12 +277,8 @@ export class TaskManager extends EventTarget {
    * @param {TaskItem} prevTask
    */
   _settlePrevTaskOnSwitch(prevTask) {
-    const isRunningOrPaused =
-      prevTask.status === "thinking" ||
-      prevTask.status === "streaming" ||
-      prevTask.status === "tool_exec" ||
-      prevTask.status === "paused";
-    if (isRunningOrPaused || !["completed", "aborted", "error"].includes(prevTask.status)) {
+    // 运行态/终态判定唯一源见 contracts.js（运行态含错误恢复过渡态 running）
+    if (isTaskStatusActive(prevTask) || !isTaskStatusTerminal(prevTask)) {
       prevTask.isSuspended = true; // 原前台活跃任务自动转入后台挂起
       return;
     }
@@ -288,6 +302,9 @@ export class TaskManager extends EventTarget {
     }
 
     this.currentActiveTaskId = taskId;
+    if (taskId && piClient) {
+      piClient.lastEventTaskId = taskId;
+    }
     if (taskId && this.tasks.has(taskId)) {
       const task = this.tasks.get(taskId);
       task.hasUnread = false;
@@ -303,7 +320,7 @@ export class TaskManager extends EventTarget {
    * @param {string | null | undefined} taskId
    * @returns {boolean}
    */
-  _engineOwnedTask(taskId) {
+  isEngineOwnedTask(taskId) {
     return (
       modelFailoverEngine.isActive() &&
       (!modelFailoverEngine.taskId || String(modelFailoverEngine.taskId) === String(taskId))
@@ -416,7 +433,7 @@ export class TaskManager extends EventTarget {
   _settlePausedAfterUi(task) {
     if (!task || task.status !== "paused") return;
     if (task.pendingUiRequests && task.pendingUiRequests.size > 0) return;
-    if (task.isAborted || task.status === "aborted") return;
+    if (isTaskAborted(task)) return;
     if (!piClient.isStreaming) return;
     task.status = "streaming";
     const lastTurn = task.turns && task.turns.length > 0 ? task.turns[task.turns.length - 1] : null;
@@ -433,9 +450,10 @@ export class TaskManager extends EventTarget {
    */
   failTask(taskId, message) {
     const task = this.tasks.get(taskId);
-    if (!task || task.isAborted || task.status === "aborted") return;
+    if (!task || isTaskAborted(task)) return;
     // 幂等守卫：已处于 error 终态时严禁重复结算 (重复错误帧会重复触发系统通知与广播风暴)
     if (task.status === "error") return;
+    task.graceWaiting = false;
     task.status = "error";
     task.completedAt = Date.now();
     task.errorMessage = message || "模型调用发生异常";
@@ -469,18 +487,30 @@ export class TaskManager extends EventTarget {
   }
 
   /**
+   * 判定指定任务（或当前活跃任务）是否处于运行/流式/工具执行/待确认/自愈重连态
+   * @param {TaskItem | null | undefined} [task]
+   * @returns {boolean}
+   */
+  isTaskRunning(task = null) {
+    const t = task || this.getCurrentActiveTask();
+    if (!t) {
+      return Boolean(piClient.isStreaming || modelFailoverEngine.isActive());
+    }
+    return (
+      isTaskStatusActive(t) ||
+      (this.currentActiveTaskId === t.id && piClient.isStreaming) ||
+      this.isEngineOwnedTask(t.id)
+    );
+  }
+
+  /**
    * 获取所有活跃中（思考、流式、工具执行、待确认）的任务
    * @returns {Array<TaskItem>}
    */
   getActiveTasks() {
     const active = [];
     for (const task of this.tasks.values()) {
-      if (
-        task.status === "thinking" ||
-        task.status === "streaming" ||
-        task.status === "tool_exec" ||
-        task.status === "paused"
-      ) {
+      if (this.isTaskRunning(task)) {
         active.push(task);
       }
     }
@@ -502,13 +532,7 @@ export class TaskManager extends EventTarget {
    * @returns {Array<TaskItem>}
    */
   getActiveSuspendedTasks() {
-    return this.getSuspendedTasks().filter(
-      (t) =>
-        t.status === "thinking" ||
-        t.status === "streaming" ||
-        t.status === "tool_exec" ||
-        t.status === "paused"
-    );
+    return this.getSuspendedTasks().filter((t) => this.isTaskRunning(t));
   }
 
   /**
@@ -526,7 +550,7 @@ export class TaskManager extends EventTarget {
   getCompletedSuspendedCount() {
     let count = 0;
     for (const task of this.getSuspendedTasks()) {
-      if (task.status === "completed" || task.status === "aborted" || task.status === "error") {
+      if (isTaskStatusTerminal(task)) {
         count += 1;
       }
     }
@@ -547,7 +571,7 @@ export class TaskManager extends EventTarget {
    */
   suspendCurrentFlow() {
     const current = this.getCurrentActiveTask();
-    if (!current || current.isAborted || current.status === "aborted") {
+    if (!current || isTaskAborted(current)) {
       return null;
     }
     current.isSuspended = true;
@@ -572,6 +596,9 @@ export class TaskManager extends EventTarget {
 
     task.status = "aborted";
     task.isAborted = true;
+    task.graceWaiting = false;
+    // 路由静默回填守卫随终止同步清退：杜绝遗留标记使后续新提问的收口帧被误拦截（铁律23）
+    task.routingHandoverActive = false;
     task.completedAt = Date.now();
     const lastTurn = task.turns && task.turns.length > 0 ? task.turns[task.turns.length - 1] : null;
     if (lastTurn && !lastTurn.completedAt) {
@@ -608,7 +635,7 @@ export class TaskManager extends EventTarget {
     const task = this.tasks.get(taskId);
     if (!task) return;
 
-    if (task.status === "thinking" || task.status === "streaming" || task.status === "tool_exec" || task.status === "paused") {
+    if (isTaskStatusActive(task)) {
       try {
         await piClient.abort(taskId);
         await piClient.destroyTask(taskId);
@@ -638,7 +665,19 @@ export class TaskManager extends EventTarget {
       const data = e.detail;
       if (!data) return;
 
-      const taskId = data.task_id || data.taskId || this.currentActiveTaskId;
+      let taskId = resolveEventTaskId(data, this.currentActiveTaskId);
+      // 挂起态兜底（修复 BUG：会话进行中转入后台后触发计划，回入 Flow 指示器消失）：
+      // 右键挂起时 currentActiveTaskId === null，帧未携带 task_id 时归属解析落空，
+      // 后台轮次文本不再累积（turns.responseText 恒空）→ 回入 Flow 时重建计划落空。
+      // 仅对「携带轮次内容的流式帧」回落到唯一运行中的挂起任务，杜绝无关帧（状态/查询响应等）
+      // 误沉淀进挂起任务；多挂起任务并行时无法消歧，保持丢弃。
+      if ((!taskId || !this.tasks.has(taskId)) && !this.currentActiveTaskId) {
+        const type = typeof data.type === "string" ? data.type : "";
+        if (type === "agent_start" || type === "message_update" || type === "message_start") {
+          const suspended = this.getActiveSuspendedTasks();
+          if (suspended.length === 1) taskId = suspended[0].id;
+        }
+      }
       if (!taskId || !this.tasks.has(taskId)) return;
 
       this.handleTaskEvent(taskId, data);
@@ -649,26 +688,28 @@ export class TaskManager extends EventTarget {
       // 手动终止/中断错误：直接忽略，不发报错通知、不置为 error 状态
       if (isAbortError(detail)) return;
 
-      const taskId = detail.task_id || detail.taskId || this.currentActiveTaskId;
+      const taskId = resolveEventTaskId(detail, this.currentActiveTaskId);
       if (modelFailoverEngine.isTaskAborted(taskId)) return;
 
       const task = (taskId && this.tasks.get(taskId)) || (this.currentActiveTaskId ? this.tasks.get(this.currentActiveTaskId) : null);
       if (!task) return;
-      if (task.status === "aborted" || task.isAborted) return;
+      if (isTaskAborted(task)) return;
 
       // 自动强制重连进行中 或 将被引擎接管冷启动 (内置重连开启且含模型上下文) 或 瞬态速率限制：
       // 错误一律由 ModelFailoverEngine 结算，绝不提前置 Task 为 error / 弹错误通知。
       // 引擎占用判定按任务收敛：引擎正服务其他任务时，本任务错误仍走正常 error 结算通道
       // (注：taskManager 监听器先于 main.js 注册，故冷启动时引擎尚未激活，需以 canHandle 预判接管)
-      const engineOwned = this._engineOwnedTask(taskId);
+      const engineOwned = this.isEngineOwnedTask(taskId);
       // 耗尽终态 (10 次重连全部失败、错误卡已弹出) 的任务不视为引擎可接管：
       // 后续重复错误帧 (message_end/turn_end/agent_end/agent_settled 各派发一次)
       // 必须落入 failTask 终态收口，而非被误判为引擎将接管而永久悬空
+      const autoReconnectEnabled = configService.getAutoReconnectSwitch();
       const engineAvailable =
         !modelFailoverEngine.isActive() && !modelFailoverEngine.isTaskExhausted(taskId);
       if (
         engineOwned ||
         (engineAvailable &&
+          autoReconnectEnabled &&
           (modelFailoverEngine.canHandle(detail) || isTransientRateLimitMessage(detail.message)))
       ) {
         return;
@@ -685,6 +726,24 @@ export class TaskManager extends EventTarget {
         }
         return;
       }
+
+      // 流中断宽容期（黄色倒计时等待）优先于终态结算：前台任务的瞬态可恢复错误
+      // （isGracePeriodError 流截断三短语 + isTransientServiceError 「连接异常/服务异常」全集）
+      // 一律交由 flow-pipeline 的 handleStreamInterruption 接管，本监听器绝不提前置 Task 为
+      // error / 弹错误通知——Pi 内核底层往往仍在重试，过一会即恢复输出；提前终态会导致恢复的
+      // 输出事件被前台门禁拦截、会话流中断（BUG2）。300 秒超时由 renderErrorCard 落定终态，
+      // 恢复则由 clearTurnErrorState 回退 error→running。后台任务无宽容期胶囊，仍走 failTask。
+      if (
+        this.isForegroundStreamTask(taskId) &&
+        (isGracePeriodError(detail) || isTransientServiceError(detail))
+      ) {
+        // 标记宽容期等待中：后续 message_end/agent_end 残余收口帧严禁提前落定终态，
+        // 否则 Task 置 error/completed 会经 syncFlowAbortButtonVisibility 隐藏终止按钮，
+        // 致 300 秒「等待模型响应中」期间用户完全失去中断手段（铁律18）
+        task.graceWaiting = true;
+        return;
+      }
+
       this.failTask(task.id || taskId, detail.message || "模型调用发生异常");
     });
   }
@@ -706,12 +765,44 @@ export class TaskManager extends EventTarget {
     }
 
     // 铁律：已显式手动终止 (isAborted / aborted) 的任务，绝对禁止被任何迟到的内核事件复活或覆盖状态！
-    if (task.isAborted || task.status === "aborted") {
+    if (isTaskAborted(task)) {
       return;
+    }
+
+    // 宽容期恢复探测：等待期间内核恢复任何真实输出（思维/正文/工具调用）→ 清除等待标记，
+    // 后续真实收口帧可正常落定终态（与自愈引擎恢复探测同构）
+    if (task.graceWaiting) {
+      const evtType = data.assistantMessageEvent?.type;
+      if (
+        data.type === "tool_execution_start" ||
+        evtType === "thinking_start" ||
+        evtType === "thinking_delta" ||
+        evtType === "text_start" ||
+        evtType === "text_delta" ||
+        evtType === "toolcall_start"
+      ) {
+        task.graceWaiting = false;
+      }
     }
 
     // 压入事件缓冲区
     task.events.push(data);
+
+    // 自动强制重连自愈成功探测：当前 Task 只要开始产生响应输出（思维/正文/工具调用），
+    // 且引擎正在为此任务重连，立即通知引擎自愈成功，彻底掐死等待期定时器与后续静默续发
+    if (this.isEngineOwnedTask(taskId)) {
+      const evtType = data.assistantMessageEvent?.type;
+      if (
+        data.type === "tool_execution_start" ||
+        evtType === "thinking_start" ||
+        evtType === "thinking_delta" ||
+        evtType === "text_start" ||
+        evtType === "text_delta" ||
+        evtType === "toolcall_start"
+      ) {
+        modelFailoverEngine.resolveTurnSuccess(taskId);
+      }
+    }
 
     if (!Array.isArray(task.turns)) {
       task.turns = [];
@@ -793,18 +884,19 @@ export class TaskManager extends EventTarget {
           currentTurn.status = "tool_exec";
           currentTurn.toolCalls.push({ ...newTool });
           if (!Array.isArray(currentTurn.steps)) currentTurn.steps = [];
-          // 阶段性输出封口：工具开始前，将已累积的中间段文本沉淀为 Point 步骤切片
-          if (currentTurn.responseText && currentTurn.responseText.trim()) {
+          // 阶段性输出封口：工具开始前，将已累积的中间段文本沉淀为 Point 步骤切片（净化排除泄漏工具命令）
+          const cleanedSegText = cleanPhaseOutputText(currentTurn.responseText);
+          if (cleanedSegText) {
             const segElapsed = currentTurn.textStartedAt
               ? ((Date.now() - currentTurn.textStartedAt) / 1000).toFixed(1)
               : null;
             currentTurn.steps.push({
               type: "text",
-              text: currentTurn.responseText,
+              text: cleanedSegText,
               durationText: segElapsed ? `已输出 ${segElapsed}s` : "已输出",
             });
-            currentTurn.responseText = "";
           }
+          currentTurn.responseText = "";
           currentTurn.textStartedAt = null;
           const toolStartTime = currentTurn.toolCallStartedAt || Date.now();
           currentTurn.toolCallStartedAt = null;
@@ -865,13 +957,16 @@ export class TaskManager extends EventTarget {
       case "message_start":
       case "message_end":
         // 自动强制重连进行中（且引擎正服务本任务）：错误分支交由引擎结算，不提前置 Task 为 error
-        if (this._engineOwnedTask(taskId)) break;
+        if (this.isEngineOwnedTask(taskId)) break;
         // 「终止并发送」流程中旧轮错误已由 interrupt-send 流水线结算
         if (task.pendingInterruptSend) break;
+        // 流中断宽容期等待中：瞬态错误已交由黄色倒计时接管，严禁残余收口帧提前置 error 终态
+        if (task.graceWaiting) break;
         if (data.message && (data.message.stopReason === "error" || data.message.errorMessage)) {
           const rawErrMsg = data.message.errorMessage || "";
           if (
             (!modelFailoverEngine.isActive() &&
+              configService.getAutoReconnectSwitch() &&
               (modelFailoverEngine.canHandle({ raw: data.message, message: rawErrMsg }) ||
                 isTransientRateLimitMessage(rawErrMsg) ||
                 isTransientRateLimitMessage(parseErrorMessage(rawErrMsg))))
@@ -891,9 +986,11 @@ export class TaskManager extends EventTarget {
 
       case "extension_error":
         // 自动强制重连进行中（且引擎正服务本任务）：错误分支交由引擎结算
-        if (this._engineOwnedTask(taskId)) break;
+        if (this.isEngineOwnedTask(taskId)) break;
         // 「终止并发送」流程中旧轮错误已由 interrupt-send 流水线结算
         if (task.pendingInterruptSend) break;
+        // 流中断宽容期等待中：严禁残余收口帧提前置 error 终态（超时由 renderErrorCard 落定）
+        if (task.graceWaiting) break;
         task.status = "error";
         task.completedAt = Date.now();
         task.errorMessage = parseErrorMessage(data.error || "扩展插件运行异常");
@@ -926,10 +1023,13 @@ export class TaskManager extends EventTarget {
           );
           if (errMessage) {
             // 自动强制重连进行中（且引擎正服务本任务）：错误分支交由引擎结算，不提前置 Task 为 error
-            if (this._engineOwnedTask(taskId)) break;
+            if (this.isEngineOwnedTask(taskId)) break;
+            // 流中断宽容期等待中：严禁残余收口帧提前置 error 终态
+            if (task.graceWaiting) break;
             const rawErrMsg = errMessage.errorMessage || "";
             if (
               (!modelFailoverEngine.isActive() &&
+                configService.getAutoReconnectSwitch() &&
                 (modelFailoverEngine.canHandle({ raw: errMessage, message: rawErrMsg }) ||
                   isTransientRateLimitMessage(rawErrMsg) ||
                   isTransientRateLimitMessage(parseErrorMessage(rawErrMsg))))
@@ -948,7 +1048,7 @@ export class TaskManager extends EventTarget {
             break;
           }
         }
-        if (task.status === "completed" || task.status === "error" || task.status === "aborted") {
+        if (isTaskStatusTerminal(task)) {
           if (currentTurn && !currentTurn.completedAt) {
             currentTurn.status = task.status;
             currentTurn.completedAt = Date.now();
@@ -959,7 +1059,20 @@ export class TaskManager extends EventTarget {
         // 内置重连引擎正为此任务退避等待（上一失败尝试已被引擎结算，无在途重发）：
         // 本帧属于已被引擎接管的失败轮收口，严禁提前落地 completed 造成幽灵已完成胶囊与历史归档断裂；
         // 引擎成功后由恢复运行的真实完成帧自然收口，10 次耗尽则经 failTask 落定 error 终态
-        if (this._engineOwnedTask(taskId) && !modelFailoverEngine.hasInflightAttempt()) {
+        if (this.isEngineOwnedTask(taskId) && !modelFailoverEngine.hasInflightAttempt()) {
+          scheduleSessionRefresh();
+          break;
+        }
+        // 流中断宽容期等待中（残余空收口帧）：严禁提前落地 completed——等待恢复或超时后再由
+        // renderErrorCard / 恢复后的真实收口帧自然结算，否则终态会隐藏终止按钮致等待期不可中断
+        if (task.graceWaiting) {
+          scheduleSessionRefresh();
+          break;
+        }
+        // 生图/多模态路由静默回填期守卫（铁律23）：本帧属于路由 Phase 1（识图路由模型执行）的
+        // 收口帧，引擎即将无缝回归原会话模型继续 Phase 2 静默续跑（回填 Prompt 不渲染提问卡），
+        // 严禁提前落地 completed / 触发完成通知 / 预归档半截会话，由 Phase 2 结束后的真实收口帧统一结算
+        if (task.routingHandoverActive) {
           scheduleSessionRefresh();
           break;
         }

@@ -711,6 +711,35 @@ export function initFileChanges(ctx) {
     return true;
   };
 
+  const IMAGE_FILE_EXTS = new Set(["png", "jpg", "jpeg", "webp", "gif", "svg", "bmp", "ico", "avif"]);
+
+  /**
+   * 收集本会话中产生的所有非删除态图片文件清单（供纯生图任务自愈呈现图片）
+   * @param {string} [key] 会话键 (Task ID)
+   * @returns {Array<{path: string, name: string, dir: string, kind: string}>}
+   */
+  api.getNewlyAddedImageFiles = (key) => {
+    const effKey = key || taskManager.currentActiveTaskId || LEGACY_SESSION_KEY;
+    const store = sessionStores.get(effKey);
+    const results = [];
+    if (!store || !store.items) return results;
+
+    for (const [absPath, item] of store.items.entries()) {
+      if (item && item.kind !== "delete") {
+        const ext = String(item.name || "").split(".").pop().toLowerCase();
+        if (IMAGE_FILE_EXTS.has(ext)) {
+          results.push({
+            path: item.path || absPath,
+            name: item.name,
+            dir: item.dir,
+            kind: item.kind,
+          });
+        }
+      }
+    }
+    return results;
+  };
+
   // ==========================================================================
   // 会话回退：文件撤回预览与剪枝 (与 flow-rollback.js 配套)
   // ==========================================================================

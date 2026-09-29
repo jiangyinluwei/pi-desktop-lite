@@ -22,17 +22,19 @@
 
 ---
 
-## ✨ 核心特性
+## ✨ 核心特性亮点
 
-- **四态界面与 Flow 流式交互**：涵盖详细版、专注版、Flow 流式交互版及设置页，支持单行紧凑思维链（伪思维框读秒、收起态实时从右向左流动输出流跟踪最新输出、无显式文本跃迁工具定格保留为“已完成思考”并消除渐隐清晰呈现）与 Typedown 质感 Markdown 预览；
-- **会话回退与文件撤回**：Flow 支持回退到任意一次历史对话（配合 pi 内核原生 fork 历史节点回退），基于工具执行前确定性快照自动还原「已修改/已删除」的文件（新增文件永不撤回），并实现历史记录双向同步与草稿态解耦（首轮回退物理清理历史、多轮回退同步剪枝、防幽灵反向覆写），完成后顶部浮窗提醒成功/失败（持续 3 秒）；
-- **中途提问人工回归选择**：模型/扩展在运行中途发起的人工交互请求（内核 Extension UI 子协议 `select` / `confirm` / `input` / `editor`）在 Flow 中呈现手绘待答横条与作答弹窗，用户作答后回写 `extension_ui_response` 解除内核阻塞并续跑；带 `timeout` 的请求由内核自动按默认值解析（卡片读秒示意）；未决请求随任务挂起保留、回入 Flow 100% 重建，终止时 best-effort 回写取消；
-- **后台多任务管理与状态无缝挂起**：支持多任务并发、前后台活跃任务直接切换无感自动挂起（防幽灵任务丢失）、显式「⏹ 终止」强制彻底杀灭子进程与防后台泄漏（杜绝 Token 消耗与迟到事件复活）、终态任务与活跃任务挂起彻底解耦（杜绝幽灵已完成徽标）、会话延续透传与多轮归属唯一性保证（`--session <path>` 续写同一底层文件，彻底杜绝历史被割裂为新记录）、会话流与文件变更收纳框隔离恢复，右上角 Mini 任务胶囊与半透明抽屉实时联动；
-- **工作区路由调度中枢**：提供 `code-area` 免污染路由调度中枢、Windows 原生文件夹选择器与多预设工作区平滑切换；
-- **手绘草图美学与组件套件**：全域手绘 SVG 图元、明暗纸质双模自适应，配套 `SketchSelect` / `SketchAutoFill` / `SketchModal` 原生草图组件；
-- **Rust 高性能核心与自愈保障**：底层孤儿进程级监管、内核崩溃平滑自动重连、模型调用无痕内置重连（后台静默续发「继续」文本、写死 10 次、2/4/8/16s 固定退避、轮次胶囊「自动内置重连 N/10 ...」实时提示、已有步骤记录完好保留、前台与后台挂起任务全域覆盖，10 次耗尽才弹出错误窗体且耗尽即锁定终态——后续重复错误帧绝不自动重连，仅手动「重试当前提问」/新提问可重新发起；手动终止后全链路绝不复活重连，已彻底取消自动切换模型逻辑）、Node.js 运行环境极速预检与 Windows 桌面级系统集成。
+- **手绘工程绘图美学**：1.2~1.4px 实墨草图线框与柔和纸质双模主题，全域消除系统 Emoji，统一手绘矢量图元；
+- **四态极简交互流**：详细版（多行输入、历史翻阅、多模态附件胶囊）➔ 专注版 ➔ Flow 交互版 ➔ 设置全页面，全域右键/Esc 支持 Step Back；
+- **Flow 流式因果步骤流**：单行紧凑折叠的思维切片、阶段 Point 切片与工具调用切片，过程永不自动展开；
+- **「计划执行」可视化**：模型执行多步任务时输出的 Markdown 复选框计划清单（todo list）实时解析为前端示意——右上角（任务胶囊左侧）展示「已完成/总数」进度指示器（运行态弧光、全部完成翠绿），点击展开右侧半透明毛玻璃计划侧边栏（背景模糊，与任务侧边栏同款风格）逐条查看计划步骤；每次任务（条目）完成后该条计划灰显划去。**四通道计划采集**：①正文复选框快照对账重放；②跟随内核 pi-memory 草稿板工具（`scratchpad` 的 add/done/undo 动作）；③散文推进信号解析（「步骤N完成」完成短语与「**Edit N：…**」粗体阶段头按序号补勾，支持中文数字）；④内容锚定散文推进（模型连序号都没有、仅以「接下来改X…」「编译通过」这类按内容指代的散文宣告推进时，按文本相似度匹配条目补勾）——四通道均只标完成绝不增删条目，多重误报防线（否定/失败措辞整行跳过、代码块与复选框行剔除、唯一最优匹配达次优两倍才采信）宁可不勾也不误勾；模型无论用哪种习惯推进（正文回写 / 工具维护 / 序号散文 / 内容指代散文），步骤都实时灰显划去（仅收录本任务事件流内观察到的条目，历史遗留待办零污染；多来源按文本同一性合并去重，正文计划在席时草稿板条目仅作勾选态续传、不追加展示行（草稿板 `add` 常是「待复核修复」式随手备忘而非计划增步，杜绝无序号幻影条目钉死进度），收尾总结措辞漂移按行首序号配对 + 内容相似度配对双重防线防列表翻倍）。**侧边栏悬浮防抖动**：流式期间高频刷新经渲染签名比对跳过，仅勾选态变化时就地切换类名（悬浮节点不销毁），条目增删/修订才全量重建。**会话归属与消除生命周期**：指示器仅在 Flow 会话视图内展示当前前台活跃会话的计划（右键退出会话界面立即隐藏，绝不残留上一会话计划缩略框，回入带计划的会话时快照一致恢复）；任务完成后计划信息持续保留，仅两种途径彻底消除该轮次计划——①开启下一轮会话，②在计划侧边栏点击「结束计划」（该按钮仅在全部条目完成后出现），已消除的计划经历史回入绝不复活；
+- **图片直观展示与一键存桌面**：模型生成与输出的图片在 Flow 界面直观呈现（支持 Markdown 图片、HTML 标签与路径行）；本地磁盘图片经 Rust IPC 异步安全转码 Data URL，前端 Map 缓存防抖；支持点击全屏灯箱放大预览、手绘操作栏「一键保存到桌面」（时间戳防覆盖 + 翠绿对勾微反馈）与资源管理器高亮定位；纯生图任务若模型漏发 Markdown 语法，流式收口阶段自动探测会话新增图片并兜底自愈补全；
+- **Typedown 质感 Markdown 与全域外链拦截**：代码块手绘徽标一键复制、Callout 警示框、外链经操作系统默认浏览器安全打开；
+- **生图与多模态智能路由**：设置页「模型配置」内部顶部并列 Tab 翻页管理。当会话主模型为纯文本模型且出现图片生成或多模态识图任务时，自动调度路由模型（生图模型严格限制为 OpenAI 兼容 /images/generations 或 DashScope 异步生图接口，识图模型支持多模态视觉 LLM）；执行完毕后无缝切回原会话模型并回填产物与分析文本；
+- **会话回退与文件撤回**：配合内核原生 RPC fork 历史节点，基于工具执行前确定性快照安全撤回已修改/删除文件（新增文件永不撤回）；
+- **`code-area` 路由调度中枢**：物理 CWD 驻留技能 Hub，原生 Windows 选夹器透明绑定目标外部工程，严格免污染。
 
-> 📖 **完整特性与架构规范**：详见项目内置开发技能 [`.agents/skills/pi-desktop-overview/SKILL.md`](.agents/skills/pi-desktop-overview/SKILL.md)。
+> 📖 **完整特性清单、23 项交互铁律与架构规范**：详见 [`.agents/skills/`](.agents/skills/) 下各开发技能（总览与特性矩阵：[`pi-desktop-overview`](.agents/skills/pi-desktop-overview/SKILL.md)；交互铁律：[`desktop-interaction-invariants`](.agents/skills/desktop-interaction-invariants/SKILL.md)；Flow 细节：[`flow-interaction-pattern`](.agents/skills/flow-interaction-pattern/SKILL.md)）。
 
 ---
 
@@ -51,10 +53,10 @@ npm run check
 # 3. 启动桌面端开发调试
 npm run dev
 
-# 4. 前端静态校验门禁（语法 + import 图解析 + 循环依赖检测，~复合重构前必做）
+# 4. 前端静态校验门禁（语法 + import 图解析 + 命名导出匹配 + 循环依赖检测，复合重构前必做）
 npm run check:fe
 
-# 5. 耦合度量基线（自动化约 §1 指标，每阶段对比“在降”）
+# 5. 耦合度量基线（自动化架构降耦合指标）
 npm run measure:coupling
 
 # 6. 构建测试（生成二进制，无需打包）
@@ -65,7 +67,7 @@ npm run build
 ```
 
 ### 多工作区切换与 `code-area` 路由调度中枢
-1. 点击主界面左下角手绘齿轮按钮进入「设置」全屏页，在左侧选择 **「工作区」**；
+1. 点击主界面左下角手绘齿轮按钮进入「设置」全屏页，在左侧边栏选择 **「工作区」**；
 2. **`code-area` 路由工作区特性**：
    - 基于 Rust `rfd` (IFileOpenDialog) 实现 Windows 原生 OpenFolder 文件夹选择器，支持目录浏览、绝对路径输入与历史项目快速切换；
    - 每次切换或启动时自动校验目标项目存在性，失效时自动清理；
@@ -86,40 +88,43 @@ Pi Desktop Lite 深度依托 Pi 原生内核生态，全面支持主流大模型
 
 ```text
 pi-desktop-lite/
-├── .agents/skills/             # 项目开发级技能规范定义 (pi-ecosystem-configuration, auto-compile-and-fix, sketch-drafting-ui 等)
+├── .agents/skills/             # 项目开发级技能规范定义（总览 / 交互铁律 / Flow 模式 / 生态配置 / 编译门禁等，映射矩阵见 AGENTS.md）
 ├── .mytools/pi-body/           # 最新 Pi Agent Release 引擎包 (含 pi-windows-x64.7z 压缩包，开发前需解压为 pi-windows-x64 目录)
 ├── default-area/               # Pi 默认工作区目录（打包与运行时隔离工作空间）
 ├── workspaces/                 # 公共预设工作区模板（code-area 代码工程中枢 / research-area 深度调研区）
 ├── scripts/                    # 自动化与环境配置脚本 (tauri.js, check.js, check-frontend.js, measure-coupling.js)
 ├── src/                        # 前端页面源码与运行时资源
 │   ├── assets/                 # 静态资源 (logo.svg, logo.ico, 手绘 SVG 图标)
-│   ├── lib/                    # 跨模块共享基础件 (dom-utils, icons, markdown-renderer, view-constants, event-bus 同步事件总线, el-binder DOM 按需自绑定, contracts 事件通道契约表 + api 槽契约定型)
-│   ├── modules/                # 按功能域拆分的 UI 业务模块（由 main.js 统一编排；flow-render 纯渲染 / flow-dom 只读 DOM 引用 / flow-state-view 视图派生缓存属主）
+│   ├── lib/                    # 跨模块共享基础件 (dom-utils, icons, markdown-renderer, view-constants, event-bus, el-binder, contracts 契约归口)
+│   ├── modules/                # 按功能域拆分的 UI 业务模块（由 main.js 统一编排）
 │   │   ├── view-mode.js        # 四态状态机与设置页路由
 │   │   ├── flow-ui.js          # Flow 渲染核心：Markdown、轮次 DOM、悬浮提问、上下定位导航
-│   │   ├── flow-render.js      # Flow 纯渲染层：工具/思维/阶段卡片创建、入参/结果 HTML 格式化（无副作用，显式 import）
-│   │   ├── flow-dom.js         # Flow 域只读 DOM 引用层：createFlowDom() → ctx.flowDom，flow-* 模块只读引用
-│   │   ├── flow-state-view.js  # Flow 视图派生缓存唯一属主：flowView 密封对象（密封隔离，严禁入 store）
-│   │   ├── flow-stream.js      # 流式状态机、错误卡渲染与内置重连胶囊
+│   │   ├── flow-render.js      # Flow 纯渲染层（无副作用，显式 import）
+│   │   ├── flow-dom.js         # Flow 域只读 DOM 引用层 (createFlowDom → ctx.flowDom)
+│   │   ├── flow-state-view.js  # Flow 视图派生缓存唯一属主 (flowView 密封对象)
+│   │   ├── flow-stream.js      # 流式状态机、错误卡渲染、重连胶囊与流中断宽容期
 │   │   ├── flow-pipeline.js    # 提问下发、工具调用事件、内置重连引擎与发送拦截
-│   │   ├── flow-human-input.js # 中途提问人工回归选择：待答横条 + SketchModal 作答弹窗 + extension_ui_response 回写
-│   │   ├── flow-file-changes.js # 会话文件变更收纳框（新增/修改/删除文件汇总，点击打开所在文件夹；按 Task 会话流缓存，回入 Flow 一致恢复；含逐条变更日志供回退预览/剪枝）
-│   │   ├── flow-rollback.js     # 会话回退编排（轮次「回退到此处」入口、SketchModal 确认、文件撤回还原 + 内核 fork + 剪枝重渲 + 3 秒浮窗提醒）
+│   │   ├── flow-human-input.js # 中途提问人工回归：待答横条 + 作答弹窗 + extension_ui_response 回写
+│   │   ├── flow-file-changes.js # 会话文件变更收纳框（按 Task 分仓缓存，回入 Flow 一致恢复）
+│   │   ├── flow-plan-panel.js  # 「计划执行」可视化：模型 todo list 计划解析、右上角进度指示器、计划侧边栏与会话归属消除生命周期
+│   │   ├── flow-rollback.js    # 会话回退编排（内核 fork + 文件撤回 + 剪枝重渲 + 浮窗提醒）
 │   │   ├── task-panel.js       # 后台任务胶囊、侧边栏、历史恢复与快照归档
-│   │   ├── sessions-panel.js   # 会话记录列表、搜索筛选、进入 Flow 管线与界面会话清空
+│   │   ├── sessions-panel.js   # 会话记录列表、搜索筛选、进入 Flow 管线
+│   │   ├── token-telemetry.js  # 额度遥测图标：上下文消耗 / 均值推理速度 / 已耗 token 悬浮面板 + 历史回填
+│   │   ├── image-routing-panel.js # 生图与多模态路由独立面板（接口协议过滤、双下拉框与状态同步）
 │   │   ├── workspace-panel.js  # 多预设工作区设置面板与路由绑定
 │   │   └── global-interactions.js # 全局右键/Esc 回退与外链拦截
-│   ├── services/               # 前端服务层 (tauri-bridge, config-service, pi-client, model-failover 内置重连引擎, workspace-service 等)
+│   ├── services/               # 前端服务层 (tauri-bridge, config-service, pi-client, multimodal-detector, image-routing-engine, model-failover, workspace-service 等)
 │   │   └── stores/             # 共享可变状态唯一属主 (view-store, settings-store, attachments-store, flow-store 按 taskId 分仓)
-│   ├── styles/                 # 按功能域拆分的手绘样式 (tokens, layout, flow, markdown, settings, form-widgets 等)
+│   ├── styles/                 # 按功能域拆分的手绘样式 (tokens, layout, flow, markdown, settings 等)
 │   ├── index.html              # 页面主体
 │   ├── styles.css              # 样式聚合入口 (@import 各功能域子样式)
 │   └── main.js                 # 前端编排主入口
 ├── src-tauri/                  # Tauri (Rust) 高性能后端核心
-│   ├── extensions/             # 内置内核扩展 (pi-rollback-guard.ts 会话回退文件快照守卫，启动时物化至全局扩展目录)
-│   ├── inner-skills/           # 应用内置运行态约束技能与规则 (RULES.md, bash兼容, OCR文档解析, 多Agent, 联网搜索, 临时文件沙盒, 工具失败日志 等)
+│   ├── extensions/             # 内置内核扩展 (pi-rollback-guard.ts 回退快照守卫、pi-tool-sanitizer.ts 工具调用全链路自愈：0.86.0 工具锚定丢失回注/畸形工具名修复/入参外壳解包/私有协议标签正文泄漏抽取/空工具与 strict 防御过滤，启动时物化至全局扩展目录)
+│   ├── inner-skills/           # 应用内置运行态约束技能 (RULES.md 映射总纲 + 9 个按需注入技能，机制见 inner-skills-injection 技能)
 │   └── src/                    # Rust 源码 (lib.rs, main.rs, commands/, config_manager/, workspace, pi_runner, security, session)
-├── AGENTS.md                   # 项目规则与代理行为准则
+├── AGENTS.md                   # 项目规则与代理行为准则（浓缩不变量 + 技能映射路由）
 ├── README.md                   # 项目介绍与完整配置指南（中文）
 ├── README_en.md                # 英文介绍与完整配置指南（English）
 └── package.json

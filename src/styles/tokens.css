@@ -48,6 +48,17 @@
   --sketch-step-tool-accent: #2563eb;
   --sketch-step-tool-code-bg: #eaf0f7;
   --sketch-step-tool-code-border: rgba(175, 195, 218, 0.60);
+
+  /* 「额度」遥测动态配额量级三档色（resolveTokenQuota：1M 档绿 / 10M 档橙 / 100M 及以后红） */
+  --ttg-quota-green: #4a7c59;
+  --ttg-quota-orange: #d97706;
+  --ttg-quota-red: #c2413c;
+
+  /* 「额度」遥测推理速度四档色（<50 红 / <100 橙 / <200 绿 / ≥200 蓝） */
+  --ttg-speed-red: #c2413c;
+  --ttg-speed-orange: #d97706;
+  --ttg-speed-green: #4a7c59;
+  --ttg-speed-blue: #2563eb;
 }
 
 :root[data-theme="dark"] {
@@ -97,6 +108,17 @@
   --sketch-step-tool-accent: #60a5fa;
   --sketch-step-tool-code-bg: #0e1218;
   --sketch-step-tool-code-border: rgba(45, 60, 85, 0.65);
+
+  /* 「额度」遥测动态配额量级三档色 - 深色炭黑素描提亮 */
+  --ttg-quota-green: #7fb384;
+  --ttg-quota-orange: #e6970e;
+  --ttg-quota-red: #e07a72;
+
+  /* 「额度」遥测推理速度四档色 - 深色炭黑素描提亮 */
+  --ttg-speed-red: #e07a72;
+  --ttg-speed-orange: #e6970e;
+  --ttg-speed-green: #7fb384;
+  --ttg-speed-blue: #60a5fa;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -147,6 +169,18 @@
     --sketch-step-tool-accent: #60a5fa;
     --sketch-step-tool-code-bg: #0e1218;
     --sketch-step-tool-code-border: rgba(45, 60, 85, 0.65);
+
+    /* 「额度」遥测动态配额量级三档色 - 系统跟随深色提亮 */
+    /* 「额度」遥测动态配额量级三档色 - 系统跟随深色提亮 */
+    --ttg-quota-green: #7fb384;
+    --ttg-quota-orange: #e6970e;
+    --ttg-quota-red: #e07a72;
+
+    /* 「额度」遥测推理速度四档色 - 系统跟随深色提亮 */
+    --ttg-speed-red: #e07a72;
+    --ttg-speed-orange: #e6970e;
+    --ttg-speed-green: #7fb384;
+    --ttg-speed-blue: #60a5fa;
   }
 }
 
