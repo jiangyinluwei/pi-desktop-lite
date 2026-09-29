@@ -87,6 +87,7 @@
 | | **`auto-compile-and-fix`** | [`.agents/skills/auto-compile-and-fix/SKILL.md`](.agents/skills/auto-compile-and-fix/SKILL.md) | 任务完成后自动极速编译与失败自愈闭环、前端门禁与度量（触发：编译校验/自动修复/构建验证/门禁）。 |
 | | **`clean-code-refactoring`** | [`.agents/skills/clean-code-refactoring/SKILL.md`](.agents/skills/clean-code-refactoring/SKILL.md) | 桌面端与 Web 混合架构逻辑去重、结构精简与样板消除（触发：代码精简/去冗余/重构优化）。 |
 | | **`iterative-modification-hygiene`** | [`.agents/skills/iterative-modification-hygiene/SKILL.md`](.agents/skills/iterative-modification-hygiene/SKILL.md) | 连续迭代代码卫生、AST 语法静态校验与防幽灵残余（触发：多次修改代码/清理冗余/代码卫生）。 |
+| | **`app-version-upgrade`** | [`.agents/skills/app-version-upgrade/SKILL.md`](.agents/skills/app-version-upgrade/SKILL.md) | 桌面应用（Tauri 2 + Node/Web）全工程版本号同步升级、六大关键文件对齐、环境自愈与全量构建验证闭环（触发：更新版本/升级版本/版本号变更/发布版本/version bump/bump version）。 |
 
 ### 2. 应用内置运行态约束级 Inner-Skills (`src-tauri/inner-skills/`)
 > **作用对象**：桌面端作为 Pi Agent 宿主时，由 Rust 监督器在底层工具调用时 Hook 嗅探、按需动态注入（映射驱动，无工具调用时零消耗）。
